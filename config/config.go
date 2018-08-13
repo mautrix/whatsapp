@@ -1,4 +1,4 @@
-// mautrix-whatsapp - A Matrix-Whatsapp puppeting bridge.
+// mautrix-whatsapp - A Matrix-WhatsApp puppeting bridge.
 // Copyright (C) 2018 Tulir Asokan
 //
 // This program is free software: you can redistribute it and/or modify
@@ -33,7 +33,10 @@ type Config struct {
 		Hostname string `yaml:"hostname"`
 		Port     uint16 `yaml:"port"`
 
-		Database string `yaml:"database"`
+		Database struct {
+			Type string `yaml:"type"`
+			URI  string `yaml:"uri"`
+		} `yaml:"database"`
 
 		ID  string `yaml:"id"`
 		Bot struct {
@@ -70,7 +73,7 @@ func (config *Config) Save(path string) error {
 	return ioutil.WriteFile(path, data, 0600)
 }
 
-func (config *Config) Appservice() (*appservice.Config, error) {
+func (config *Config) MakeAppService() (*appservice.AppService, error) {
 	as := appservice.Create()
 	as.LogConfig = config.Logging
 	as.HomeserverDomain = config.Homeserver.Domain

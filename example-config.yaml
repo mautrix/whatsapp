@@ -15,8 +15,12 @@ appservice:
   hostname: 0.0.0.0
   port: 8080
 
-  # The full URI to the database. Only SQLite is currently supported.
-  database: sqlite:///mautrix-whatsapp.db
+  # Database config.
+  database:
+    # The database type. Only "sqlite3" is supported.
+    type: sqlite3
+    # The database URI. Usually file name. https://github.com/mattn/go-sqlite3#connection-string
+    uri: mautrix-whatsapp.db
 
   # The unique ID of this appservice.
   id: whatsapp
@@ -35,12 +39,12 @@ appservice:
 
 # Bridge config. Currently unused.
 bridge:
-  # Localpart template of MXIDs for Whatsapp users.
-  # {{.receiver}} is replaced with the Whatsapp user ID of the Matrix user receiving messages.
-  # {{.userid}} is replaced with the user ID of the Whatsapp user.
+  # Localpart template of MXIDs for WhatsApp users.
+  # {{.receiver}} is replaced with the WhatsApp user ID of the Matrix user receiving messages.
+  # {{.userid}} is replaced with the user ID of the WhatsApp user.
   username_template: "whatsapp_{{.Receiver}}_{{.UserID}}"
-  # Displayname template for Whatsapp users.
-  # {{.displayname}} is replaced with the display name of the Whatsapp user.
+  # Displayname template for WhatsApp users.
+  # {{.displayname}} is replaced with the display name of the WhatsApp user.
   displayname_template: "{{.Displayname}}"
 
 # Logging config.

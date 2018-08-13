@@ -14,37 +14,38 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-package main
+package database
 
 import (
+	"database/sql"
+	_ "github.com/mattn/go-sqlite3"
 	log "maunium.net/go/maulogger"
 )
 
-type MatrixListener struct {
-	bridge *Bridge
-	log    *log.Sublogger
-	stop   chan struct{}
+type Database struct {
+	*sql.DB
+	log *log.Sublogger
+
+	User *UserQuery
 }
 
-func NewMatrixListener(bridge *Bridge) *MatrixListener {
-	return &MatrixListener{
-		bridge: bridge,
-		stop:   make(chan struct{}, 1),
-		log: bridge.Log.CreateSublogger("Matrix", log.LevelDebug),
+func New(file string) (*Database, error) {
+	conn, err := sql.Open("sqlite3", file)
+	if err != nil {
+		return nil, err
 	}
-}
 
-func (ml *MatrixListener) Start() {
-	for {
-		select {
-		case evt := <-ml.bridge.AppService.Events:
-			log.Debugln("Received Matrix event:", evt)
-		case <-ml.stop:
-			return
-		}
+	db := &Database{
+		DB:  conn,
+		log: log.CreateSublogger("Database", log.LevelDebug),
 	}
+	db.User = &UserQuery{
+		db:  db,
+		log: log.CreateSublogger("Database/User", log.LevelDebug),
+	}
+	return db, nil
 }
 
-func (ml *MatrixListener) Stop() {
-	ml.stop <- struct{}{}
+type Scannable interface {
+	Scan(...interface{}) error
 }

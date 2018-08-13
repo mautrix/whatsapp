@@ -1,4 +1,4 @@
-// mautrix-whatsapp - A Matrix-Whatsapp puppeting bridge.
+// mautrix-whatsapp - A Matrix-WhatsApp puppeting bridge.
 // Copyright (C) 2018 Tulir Asokan
 //
 // This program is free software: you can redistribute it and/or modify
