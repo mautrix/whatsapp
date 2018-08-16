@@ -19,6 +19,7 @@ package database
 import (
 	log "maunium.net/go/maulogger"
 	"github.com/Rhymen/go-whatsapp"
+	"maunium.net/go/mautrix-whatsapp/types"
 )
 
 type UserQuery struct {
@@ -61,7 +62,7 @@ func (uq *UserQuery) GetAll() (users []*User) {
 	return
 }
 
-func (uq *UserQuery) Get(userID string) *User {
+func (uq *UserQuery) Get(userID types.MatrixUserID) *User {
 	row := uq.db.QueryRow("SELECT * FROM user WHERE mxid=?", userID)
 	if row == nil {
 		return nil
@@ -73,8 +74,8 @@ type User struct {
 	db  *Database
 	log log.Logger
 
-	UserID         string
-	ManagementRoom string
+	UserID         types.MatrixUserID
+	ManagementRoom types.MatrixRoomID
 	Session        *whatsapp.Session
 }
 

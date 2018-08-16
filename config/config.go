@@ -38,6 +38,8 @@ type Config struct {
 			URI  string `yaml:"uri"`
 		} `yaml:"database"`
 
+		StateStore string `yaml:"state_store_path"`
+
 		ID  string `yaml:"id"`
 		Bot struct {
 			Username    string `yaml:"username"`

@@ -22,12 +22,15 @@ appservice:
     # The database URI. Usually file name. https://github.com/mattn/go-sqlite3#connection-string
     uri: mautrix-whatsapp.db
 
+  # Path to the Matrix room state store.
+  state_store_path: ./mx-state.json
+
   # The unique ID of this appservice.
   id: whatsapp
   # Appservice bot details.
   bot:
     # Username of the appservice bot.
-    username: whatsappbot
+    username: whatsapp
     # Display name and avatar for bot. Set to "remove" to remove display name/avatar, leave empty
     # to leave display name/avatar as-is.
     displayname: WhatsApp bridge bot
@@ -46,8 +49,21 @@ bridge:
   # Displayname template for WhatsApp users.
   # {{.displayname}} is replaced with the display name of the WhatsApp user.
   displayname_template: "{{.Displayname}}"
-  # Path to the Matrix room state store.
-  state_store_path: ./mx-state.json
+
+  # The prefix for commands. Only required in non-management rooms.
+  command_prefix: "!wa"
+
+  # Permissions for using the bridge.
+  # Permitted values:
+  #     user - Access to use the bridge to chat with a WhatsApp account.
+  #    admin - User level and some additional administration tools
+  # Permitted keys:
+  #        * - All Matrix users
+  #   domain - All users on that homeserver
+  #     mxid - Specific user
+  permissions:
+    "example.com": full
+    "@admin:example.com": admin
 
 # Logging config.
 logging:

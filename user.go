@@ -24,6 +24,7 @@ import (
 	"os"
 	"github.com/skip2/go-qrcode"
 	log "maunium.net/go/maulogger"
+	"maunium.net/go/mautrix-whatsapp/types"
 )
 
 type User struct {
@@ -33,12 +34,12 @@ type User struct {
 	bridge *Bridge
 	log    log.Logger
 
-	portalsByMXID map[string]*Portal
-	portalsByJID  map[string]*Portal
-	puppets       map[string]*Portal
+	portalsByMXID map[types.MatrixRoomID]*Portal
+	portalsByJID  map[types.WhatsAppID]*Portal
+	puppets       map[types.WhatsAppID]*Puppet
 }
 
-func (bridge *Bridge) GetUser(userID string) *User {
+func (bridge *Bridge) GetUser(userID types.MatrixUserID) *User {
 	user, ok := bridge.users[userID]
 	if !ok {
 		dbUser := bridge.DB.User.Get(userID)

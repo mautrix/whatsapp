@@ -18,6 +18,7 @@ package database
 
 import (
 	log "maunium.net/go/maulogger"
+	"maunium.net/go/mautrix-whatsapp/types"
 )
 
 type PuppetQuery struct {
@@ -45,8 +46,8 @@ func (pq *PuppetQuery) New() *Puppet {
 	}
 }
 
-func (pq *PuppetQuery) GetAll() (puppets []*Puppet) {
-	rows, err := pq.db.Query("SELECT * FROM puppet")
+func (pq *PuppetQuery) GetAll(receiver types.MatrixUserID) (puppets []*Puppet) {
+	rows, err := pq.db.Query("SELECT * FROM puppet WHERE receiver=%s")
 	if err != nil || rows == nil {
 		return nil
 	}
@@ -57,7 +58,7 @@ func (pq *PuppetQuery) GetAll() (puppets []*Puppet) {
 	return
 }
 
-func (pq *PuppetQuery) Get(jid, receiver string) *Puppet {
+func (pq *PuppetQuery) Get(jid types.WhatsAppID, receiver types.MatrixUserID) *Puppet {
 	row := pq.db.QueryRow("SELECT * FROM user WHERE jid=? AND receiver=?", jid, receiver)
 	if row == nil {
 		return nil
@@ -69,8 +70,8 @@ type Puppet struct {
 	db  *Database
 	log log.Logger
 
-	JID      string
-	Receiver string
+	JID      types.WhatsAppID
+	Receiver types.MatrixUserID
 
 	Displayname string
 	Avatar      string

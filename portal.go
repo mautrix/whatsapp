@@ -20,9 +20,10 @@ import (
 	"maunium.net/go/mautrix-whatsapp/database"
 	log "maunium.net/go/maulogger"
 	"fmt"
+	"maunium.net/go/mautrix-whatsapp/types"
 )
 
-func (user *User) GetPortalByMXID(mxid string) *Portal {
+func (user *User) GetPortalByMXID(mxid types.MatrixRoomID) *Portal {
 	portal, ok := user.portalsByMXID[mxid]
 	if !ok {
 		dbPortal := user.bridge.DB.Portal.GetByMXID(mxid)
@@ -38,7 +39,7 @@ func (user *User) GetPortalByMXID(mxid string) *Portal {
 	return portal
 }
 
-func (user *User) GetPortalByJID(jid string) *Portal {
+func (user *User) GetPortalByJID(jid types.WhatsAppID) *Portal {
 	portal, ok := user.portalsByJID[jid]
 	if !ok {
 		dbPortal := user.bridge.DB.Portal.GetByJID(user.UserID, jid)

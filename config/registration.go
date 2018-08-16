@@ -54,7 +54,7 @@ func (config *Config) copyToRegistration(registration *appservice.Registration) 
 	registration.RateLimited = false
 	registration.SenderLocalpart = config.AppService.Bot.Username
 
-	userIDRegex, err := regexp.Compile(fmt.Sprintf("@%s:%s",
+	userIDRegex, err := regexp.Compile(fmt.Sprintf("^@%s:%s$",
 		config.Bridge.FormatUsername("[0-9]+", "[0-9]+"),
 		config.Homeserver.Domain))
 	if err != nil {

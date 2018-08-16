@@ -18,6 +18,7 @@ package database
 
 import (
 	log "maunium.net/go/maulogger"
+	"maunium.net/go/mautrix-whatsapp/types"
 )
 
 type PortalQuery struct {
@@ -44,7 +45,7 @@ func (pq *PortalQuery) New() *Portal {
 	}
 }
 
-func (pq *PortalQuery) GetAll(owner string) (portals []*Portal) {
+func (pq *PortalQuery) GetAll(owner types.MatrixUserID) (portals []*Portal) {
 	rows, err := pq.db.Query("SELECT * FROM portal WHERE owner=?", owner)
 	if err != nil || rows == nil {
 		return nil
@@ -56,11 +57,11 @@ func (pq *PortalQuery) GetAll(owner string) (portals []*Portal) {
 	return
 }
 
-func (pq *PortalQuery) GetByJID(owner, jid string) *Portal {
+func (pq *PortalQuery) GetByJID(owner types.MatrixUserID, jid types.WhatsAppID) *Portal {
 	return pq.get("SELECT * FROM portal WHERE jid=? AND owner=?", jid, owner)
 }
 
-func (pq *PortalQuery) GetByMXID(mxid string) *Portal {
+func (pq *PortalQuery) GetByMXID(mxid types.MatrixRoomID) *Portal {
 	return pq.get("SELECT * FROM portal WHERE mxid=?", mxid)
 }
 
@@ -76,9 +77,9 @@ type Portal struct {
 	db  *Database
 	log log.Logger
 
-	JID   string
-	MXID  string
-	Owner string
+	JID   types.WhatsAppID
+	MXID  types.MatrixRoomID
+	Owner types.MatrixUserID
 }
 
 func (portal *Portal) Scan(row Scannable) *Portal {

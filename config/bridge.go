@@ -19,12 +19,19 @@ package config
 import (
 	"bytes"
 	"text/template"
+	"maunium.net/go/mautrix-appservice"
+	"strings"
+	"strconv"
 )
 
 type BridgeConfig struct {
-	UsernameTemplate    string             `yaml:"username_template"`
-	DisplaynameTemplate string             `yaml:"displayname_template"`
-	StateStore          string             `yaml:"state_store_path"`
+	UsernameTemplate    string `yaml:"username_template"`
+	DisplaynameTemplate string `yaml:"displayname_template"`
+
+	CommandPrefix string `yaml:"command_prefix"`
+
+	Permissions PermissionConfig `yaml:"permissions"`
+
 	usernameTemplate    *template.Template `yaml:"-"`
 	displaynameTemplate *template.Template `yaml:"-"`
 }
@@ -76,4 +83,88 @@ func (bc BridgeConfig) MarshalYAML() (interface{}, error) {
 	bc.DisplaynameTemplate = bc.FormatDisplayname("{{.Displayname}}")
 	bc.UsernameTemplate = bc.FormatUsername("{{.Receiver}}", "{{.UserID}}")
 	return bc, nil
+}
+
+type PermissionConfig map[string]PermissionLevel
+
+type PermissionLevel int
+
+const (
+	PermissionLevelDefault PermissionLevel = 0
+	PermissionLevelUser    PermissionLevel = 10
+	PermissionLevelAdmin   PermissionLevel = 100
+)
+
+func (pc *PermissionConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	rawPC := make(map[string]string)
+	err := unmarshal(&rawPC)
+	if err != nil {
+		return err
+	}
+
+	if *pc == nil {
+		*pc = make(map[string]PermissionLevel)
+	}
+	for key, value := range rawPC {
+		switch strings.ToLower(value) {
+		case "user":
+			(*pc)[key] = PermissionLevelUser
+		case "admin":
+			(*pc)[key] = PermissionLevelAdmin
+		default:
+			val, err := strconv.Atoi(value)
+			if err != nil {
+				(*pc)[key] = PermissionLevelDefault
+			} else {
+				(*pc)[key] = PermissionLevel(val)
+			}
+		}
+	}
+	return nil
+}
+
+func (pc *PermissionConfig) MarshalYAML() (interface{}, error) {
+	if *pc == nil {
+		return nil, nil
+	}
+	rawPC := make(map[string]string)
+	for key, value := range *pc {
+		switch value {
+		case PermissionLevelUser:
+			rawPC[key] = "user"
+		case PermissionLevelAdmin:
+			rawPC[key] = "admin"
+		default:
+			rawPC[key] = strconv.Itoa(int(value))
+		}
+	}
+	return rawPC, nil
+}
+
+func (pc PermissionConfig) IsWhitelisted(userID string) bool {
+	return pc.GetPermissionLevel(userID) >= 10
+}
+
+func (pc PermissionConfig) IsAdmin(userID string) bool {
+	return pc.GetPermissionLevel(userID) >= 100
+}
+
+func (pc PermissionConfig) GetPermissionLevel(userID string) PermissionLevel {
+	permissions, ok := pc[userID]
+	if ok {
+		return permissions
+	}
+
+	_, homeserver := appservice.ParseUserID(userID)
+	permissions, ok = pc[homeserver]
+	if len(homeserver) > 0 && ok {
+		return permissions
+	}
+
+	permissions, ok = pc["*"]
+	if ok {
+		return permissions
+	}
+
+	return PermissionLevelDefault
 }
