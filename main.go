@@ -67,6 +67,8 @@ type Bridge struct {
 	Log        *log.Logger
 
 	MatrixListener *MatrixListener
+
+	users map[string]*User
 }
 
 func NewBridge() *Bridge {
@@ -133,7 +135,9 @@ func (bridge *Bridge) Main() {
 }
 
 func main() {
-	flag.SetHelpTitles("mautrix-whatsapp - A Matrix-WhatsApp puppeting bridge.", "[-h] [-c <path>] [-r <path>] [-g]")
+	flag.SetHelpTitles(
+		"mautrix-whatsapp - A Matrix-WhatsApp puppeting bridge.",
+		"mautrix-whatsapp [-h] [-c <path>] [-r <path>] [-g]")
 	err := flag.Parse()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)

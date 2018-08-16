@@ -26,7 +26,9 @@ type Database struct {
 	*sql.DB
 	log *log.Sublogger
 
-	User *UserQuery
+	User   *UserQuery
+	Portal *PortalQuery
+	Puppet *PuppetQuery
 }
 
 func New(file string) (*Database, error) {
@@ -42,6 +44,14 @@ func New(file string) (*Database, error) {
 	db.User = &UserQuery{
 		db:  db,
 		log: log.CreateSublogger("Database/User", log.LevelDebug),
+	}
+	db.Portal = &PortalQuery{
+		db:  db,
+		log: log.CreateSublogger("Database/Portal", log.LevelDebug),
+	}
+	db.Puppet = &PuppetQuery{
+		db:  db,
+		log: log.CreateSublogger("Database/Puppet", log.LevelDebug),
 	}
 	return db, nil
 }

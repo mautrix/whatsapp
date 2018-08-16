@@ -44,8 +44,8 @@ func (pq *PortalQuery) New() *Portal {
 	}
 }
 
-func (pq *PortalQuery) GetAll() (portals []*Portal) {
-	rows, err := pq.db.Query("SELECT * FROM portal")
+func (pq *PortalQuery) GetAll(owner string) (portals []*Portal) {
+	rows, err := pq.db.Query("SELECT * FROM portal WHERE owner=?", owner)
 	if err != nil || rows == nil {
 		return nil
 	}

@@ -1,2 +1,5 @@
 .idea
 *.session
+
+*.yaml
+!example-config.yaml
