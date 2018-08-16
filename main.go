@@ -64,7 +64,9 @@ type Bridge struct {
 	AppService *appservice.AppService
 	Config     *config.Config
 	DB         *database.Database
-	Log        *log.Logger
+	Log        log.Logger
+
+	StateStore *AutosavingStateStore
 
 	MatrixListener *MatrixListener
 
@@ -84,33 +86,71 @@ func NewBridge() *Bridge {
 
 func (bridge *Bridge) Init() {
 	var err error
+
 	bridge.AppService, err = bridge.Config.MakeAppService()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "Failed to initialize AppService:", err)
 		os.Exit(11)
 	}
 	bridge.AppService.Init()
-	bridge.Log = bridge.AppService.Log.Parent
-	log.DefaultLogger = bridge.Log
-	bridge.AppService.Log = log.CreateSublogger("Matrix", log.LevelDebug)
+	bridge.Log = bridge.AppService.Log
+	log.DefaultLogger = bridge.Log.(*log.BasicLogger)
+	bridge.AppService.Log = log.Sub("Matrix")
+
+	bridge.StateStore = NewAutosavingStateStore(bridge.Config.Bridge.StateStore)
+	err = bridge.StateStore.Load()
+	if err != nil {
+		bridge.Log.Fatalln("Failed to load state store:", err)
+		os.Exit(12)
+	}
+	bridge.AppService.StateStore = bridge.StateStore
 
 	bridge.DB, err = database.New(bridge.Config.AppService.Database.URI)
 	if err != nil {
 		bridge.Log.Fatalln("Failed to initialize database:", err)
-		os.Exit(12)
+		os.Exit(13)
 	}
 
 	bridge.MatrixListener = NewMatrixListener(bridge)
 }
 
 func (bridge *Bridge) Start() {
-	bridge.AppService.Start()
-	bridge.MatrixListener.Start()
+	bridge.DB.CreateTables()
+	go bridge.AppService.Start()
+	go bridge.MatrixListener.Start()
+	go bridge.UpdateBotProfile()
+}
+
+func (bridge *Bridge) UpdateBotProfile() {
+	botConfig := bridge.Config.AppService.Bot
+
+	var err error
+	if botConfig.Avatar == "remove" {
+		err = bridge.AppService.BotIntent().SetAvatarURL("")
+	} else if len(botConfig.Avatar) > 0 {
+		err = bridge.AppService.BotIntent().SetAvatarURL(botConfig.Avatar)
+	}
+	if err != nil {
+		bridge.Log.Warnln("Failed to update bot avatar:", err)
+	}
+
+	if botConfig.Displayname == "remove" {
+		err = bridge.AppService.BotIntent().SetDisplayName("")
+	} else if len(botConfig.Avatar) > 0 {
+		err = bridge.AppService.BotIntent().SetDisplayName(botConfig.Displayname)
+	}
+	if err != nil {
+		bridge.Log.Warnln("Failed to update bot displayname:", err)
+	}
 }
 
 func (bridge *Bridge) Stop() {
 	bridge.AppService.Stop()
 	bridge.MatrixListener.Stop()
+	err := bridge.StateStore.Save()
+	if err != nil {
+		bridge.Log.Warnln("Failed to save state store:", err)
+	}
 }
 
 func (bridge *Bridge) Main() {

@@ -76,7 +76,7 @@ func (user *User) NewPortal(dbPortal *database.Portal) *Portal {
 		Portal: dbPortal,
 		user:   user,
 		bridge: user.bridge,
-		log:    user.bridge.Log.CreateSublogger(fmt.Sprintf("Portal/%s/%s", user.UserID, dbPortal.JID), log.LevelDebug),
+		log:    user.log.Sub(fmt.Sprintf("Portal/%s", dbPortal.JID)),
 	}
 }
 
@@ -85,5 +85,5 @@ type Portal struct {
 
 	user   *User
 	bridge *Bridge
-	log    *log.Sublogger
+	log    log.Logger
 }

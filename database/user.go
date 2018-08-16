@@ -23,7 +23,7 @@ import (
 
 type UserQuery struct {
 	db  *Database
-	log *log.Sublogger
+	log log.Logger
 }
 
 func (uq *UserQuery) CreateTable() error {
@@ -71,7 +71,7 @@ func (uq *UserQuery) Get(userID string) *User {
 
 type User struct {
 	db  *Database
-	log *log.Sublogger
+	log log.Logger
 
 	UserID         string
 	ManagementRoom string

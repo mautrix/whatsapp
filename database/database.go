@@ -24,7 +24,7 @@ import (
 
 type Database struct {
 	*sql.DB
-	log *log.Sublogger
+	log log.Logger
 
 	User   *UserQuery
 	Portal *PortalQuery
@@ -39,21 +39,27 @@ func New(file string) (*Database, error) {
 
 	db := &Database{
 		DB:  conn,
-		log: log.CreateSublogger("Database", log.LevelDebug),
+		log: log.Sub("Database"),
 	}
 	db.User = &UserQuery{
 		db:  db,
-		log: log.CreateSublogger("Database/User", log.LevelDebug),
+		log: db.log.Sub("User"),
 	}
 	db.Portal = &PortalQuery{
 		db:  db,
-		log: log.CreateSublogger("Database/Portal", log.LevelDebug),
+		log: db.log.Sub("Portal"),
 	}
 	db.Puppet = &PuppetQuery{
 		db:  db,
-		log: log.CreateSublogger("Database/Puppet", log.LevelDebug),
+		log: db.log.Sub("Puppet"),
 	}
 	return db, nil
+}
+
+func (db *Database) CreateTables() {
+	db.User.CreateTable()
+	db.Portal.CreateTable()
+	db.Puppet.CreateTable()
 }
 
 type Scannable interface {

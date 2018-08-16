@@ -78,6 +78,8 @@ func (config *Config) MakeAppService() (*appservice.AppService, error) {
 	as.LogConfig = config.Logging
 	as.HomeserverDomain = config.Homeserver.Domain
 	as.HomeserverURL = config.Homeserver.Address
+	as.Host.Hostname = config.AppService.Hostname
+	as.Host.Port = config.AppService.Port
 	var err error
 	as.Registration, err = config.GetRegistration()
 	return as, err

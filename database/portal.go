@@ -22,7 +22,7 @@ import (
 
 type PortalQuery struct {
 	db  *Database
-	log *log.Sublogger
+	log log.Logger
 }
 
 func (pq *PortalQuery) CreateTable() error {
@@ -74,7 +74,7 @@ func (pq *PortalQuery) get(query string, args ...interface{}) *Portal {
 
 type Portal struct {
 	db  *Database
-	log *log.Sublogger
+	log log.Logger
 
 	JID   string
 	MXID  string

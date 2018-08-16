@@ -22,7 +22,7 @@ import (
 
 type PuppetQuery struct {
 	db  *Database
-	log *log.Sublogger
+	log log.Logger
 }
 
 func (pq *PuppetQuery) CreateTable() error {
@@ -67,7 +67,7 @@ func (pq *PuppetQuery) Get(jid, receiver string) *Puppet {
 
 type Puppet struct {
 	db  *Database
-	log *log.Sublogger
+	log log.Logger
 
 	JID      string
 	Receiver string

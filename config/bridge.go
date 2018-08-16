@@ -24,6 +24,7 @@ import (
 type BridgeConfig struct {
 	UsernameTemplate    string             `yaml:"username_template"`
 	DisplaynameTemplate string             `yaml:"displayname_template"`
+	StateStore          string             `yaml:"state_store_path"`
 	usernameTemplate    *template.Template `yaml:"-"`
 	displaynameTemplate *template.Template `yaml:"-"`
 }

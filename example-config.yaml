@@ -46,6 +46,8 @@ bridge:
   # Displayname template for WhatsApp users.
   # {{.displayname}} is replaced with the display name of the WhatsApp user.
   displayname_template: "{{.Displayname}}"
+  # Path to the Matrix room state store.
+  state_store_path: ./mx-state.json
 
 # Logging config.
 logging:
@@ -61,4 +63,4 @@ logging:
   timestamp_format: Jan _2, 2006 15:04:05
   # Minimum severity for log messages.
   # Options: debug, info, warn, error, fatal
-  print_level: info
+  print_level: debug

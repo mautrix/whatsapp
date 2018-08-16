@@ -31,7 +31,7 @@ type User struct {
 	Conn *whatsapp.Conn
 
 	bridge *Bridge
-	log    *log.Sublogger
+	log    log.Logger
 
 	portalsByMXID map[string]*Portal
 	portalsByJID  map[string]*Portal
@@ -77,7 +77,7 @@ func (bridge *Bridge) NewUser(dbUser *database.User) *User {
 	return &User{
 		User:   dbUser,
 		bridge: bridge,
-		log:    bridge.Log.CreateSublogger(fmt.Sprintf("User/%s", dbUser.UserID), log.LevelDebug),
+		log:    bridge.Log.Sub("User").Sub(dbUser.UserID),
 	}
 }
 
