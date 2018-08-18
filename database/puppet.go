@@ -19,6 +19,7 @@ package database
 import (
 	log "maunium.net/go/maulogger"
 	"maunium.net/go/mautrix-whatsapp/types"
+	"database/sql"
 )
 
 type PuppetQuery struct {
@@ -59,7 +60,7 @@ func (pq *PuppetQuery) GetAll(receiver types.MatrixUserID) (puppets []*Puppet) {
 }
 
 func (pq *PuppetQuery) Get(jid types.WhatsAppID, receiver types.MatrixUserID) *Puppet {
-	row := pq.db.QueryRow("SELECT * FROM user WHERE jid=? AND receiver=?", jid, receiver)
+	row := pq.db.QueryRow("SELECT * FROM puppet WHERE jid=? AND receiver=?", jid, receiver)
 	if row == nil {
 		return nil
 	}
@@ -80,7 +81,10 @@ type Puppet struct {
 func (puppet *Puppet) Scan(row Scannable) *Puppet {
 	err := row.Scan(&puppet.JID, &puppet.Receiver, &puppet.Displayname, &puppet.Avatar)
 	if err != nil {
-		puppet.log.Fatalln("Database scan failed:", err)
+		if err != sql.ErrNoRows {
+			puppet.log.Fatalln("Database scan failed:", err)
+		}
+		return nil
 	}
 	return puppet
 }
@@ -88,6 +92,9 @@ func (puppet *Puppet) Scan(row Scannable) *Puppet {
 func (puppet *Puppet) Insert() error {
 	_, err := puppet.db.Exec("INSERT INTO puppet VALUES (?, ?, ?, ?)",
 		puppet.JID, puppet.Receiver, puppet.Displayname, puppet.Avatar)
+	if err != nil {
+		puppet.log.Errorln("Failed to insert %s->%s: %v", puppet.JID, puppet.Receiver, err)
+	}
 	return err
 }
 
@@ -95,5 +102,8 @@ func (puppet *Puppet) Update() error {
 	_, err := puppet.db.Exec("UPDATE puppet SET displayname=?, avatar=? WHERE jid=? AND receiver=?",
 		puppet.Displayname, puppet.Avatar,
 		puppet.JID, puppet.Receiver)
+	if err != nil {
+		puppet.log.Errorln("Failed to update %s->%s: %v", puppet.JID, puppet.Receiver, err)
+	}
 	return err
 }

@@ -21,13 +21,16 @@ import (
 	log "maunium.net/go/maulogger"
 	"fmt"
 	"maunium.net/go/mautrix-whatsapp/types"
+	"maunium.net/go/gomatrix"
+	"strings"
+	"maunium.net/go/mautrix-appservice"
 )
 
 func (user *User) GetPortalByMXID(mxid types.MatrixRoomID) *Portal {
 	portal, ok := user.portalsByMXID[mxid]
 	if !ok {
 		dbPortal := user.bridge.DB.Portal.GetByMXID(mxid)
-		if dbPortal == nil || dbPortal.Owner != user.UserID {
+		if dbPortal == nil || dbPortal.Owner != user.ID {
 			return nil
 		}
 		portal = user.NewPortal(dbPortal)
@@ -42,9 +45,12 @@ func (user *User) GetPortalByMXID(mxid types.MatrixRoomID) *Portal {
 func (user *User) GetPortalByJID(jid types.WhatsAppID) *Portal {
 	portal, ok := user.portalsByJID[jid]
 	if !ok {
-		dbPortal := user.bridge.DB.Portal.GetByJID(user.UserID, jid)
+		dbPortal := user.bridge.DB.Portal.GetByJID(user.ID, jid)
 		if dbPortal == nil {
-			return nil
+			dbPortal = user.bridge.DB.Portal.New()
+			dbPortal.JID = jid
+			dbPortal.Owner = user.ID
+			dbPortal.Insert()
 		}
 		portal = user.NewPortal(dbPortal)
 		user.portalsByJID[portal.JID] = portal
@@ -56,7 +62,7 @@ func (user *User) GetPortalByJID(jid types.WhatsAppID) *Portal {
 }
 
 func (user *User) GetAllPortals() []*Portal {
-	dbPortals := user.bridge.DB.Portal.GetAll(user.UserID)
+	dbPortals := user.bridge.DB.Portal.GetAll(user.ID)
 	output := make([]*Portal, len(dbPortals))
 	for index, dbPortal := range dbPortals {
 		portal, ok := user.portalsByJID[dbPortal.JID]
@@ -87,4 +93,49 @@ type Portal struct {
 	user   *User
 	bridge *Bridge
 	log    log.Logger
+}
+
+func (portal *Portal) CreateMatrixRoom() error {
+	if len(portal.MXID) > 0 {
+		return nil
+	}
+
+	name := portal.Name
+	topic := ""
+	isPrivateChat := false
+	if strings.HasSuffix(portal.JID, "s.whatsapp.net") {
+		puppet := portal.user.GetPuppetByJID(portal.JID)
+		name = puppet.Displayname
+		topic = "WhatsApp private chat"
+		isPrivateChat = true
+	}
+	resp, err := portal.MainIntent().CreateRoom(&gomatrix.ReqCreateRoom{
+		Visibility: "private",
+		Name:       name,
+		Topic:      topic,
+		Invite:     []string{portal.user.ID},
+		Preset:     "private_chat",
+		IsDirect:   isPrivateChat,
+	})
+	if err != nil {
+		return err
+	}
+	portal.MXID = resp.RoomID
+	portal.Update()
+	return nil
+}
+
+func (portal *Portal) IsPrivateChat() bool {
+	return strings.HasSuffix(portal.JID, puppetJIDStrippedSuffix)
+}
+
+func (portal *Portal) MainIntent() *appservice.IntentAPI {
+	if portal.IsPrivateChat() {
+		return portal.user.GetPuppetByJID(portal.JID).Intent()
+	}
+	return portal.bridge.AppService.BotIntent()
+}
+
+func (portal *Portal) HandleMessage(evt *gomatrix.Event) {
+	portal.log.Debugln("Received event:", evt)
 }

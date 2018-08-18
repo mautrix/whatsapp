@@ -20,11 +20,11 @@ import (
 	"maunium.net/go/mautrix-whatsapp/database"
 	"github.com/Rhymen/go-whatsapp"
 	"time"
-	"fmt"
-	"os"
 	"github.com/skip2/go-qrcode"
 	log "maunium.net/go/maulogger"
 	"maunium.net/go/mautrix-whatsapp/types"
+	"strings"
+	"encoding/json"
 )
 
 type User struct {
@@ -45,10 +45,14 @@ func (bridge *Bridge) GetUser(userID types.MatrixUserID) *User {
 		dbUser := bridge.DB.User.Get(userID)
 		if dbUser == nil {
 			dbUser = bridge.DB.User.New()
+			dbUser.ID = userID
 			dbUser.Insert()
 		}
 		user = bridge.NewUser(dbUser)
-		bridge.users[user.UserID] = user
+		bridge.users[user.ID] = user
+		if len(user.ManagementRoom) > 0 {
+			bridge.managementRooms[user.ManagementRoom] = user
+		}
 	}
 	return user
 }
@@ -57,57 +61,87 @@ func (bridge *Bridge) GetAllUsers() []*User {
 	dbUsers := bridge.DB.User.GetAll()
 	output := make([]*User, len(dbUsers))
 	for index, dbUser := range dbUsers {
-		user, ok := bridge.users[dbUser.UserID]
+		user, ok := bridge.users[dbUser.ID]
 		if !ok {
 			user = bridge.NewUser(dbUser)
-			bridge.users[user.UserID] = user
+			bridge.users[user.ID] = user
+			if len(user.ManagementRoom) > 0 {
+				bridge.managementRooms[user.ManagementRoom] = user
+			}
 		}
 		output[index] = user
 	}
 	return output
 }
 
-func (bridge *Bridge) InitWhatsApp() {
-	users := bridge.GetAllUsers()
-	for _, user := range users {
-		user.Connect()
-	}
-}
-
 func (bridge *Bridge) NewUser(dbUser *database.User) *User {
 	return &User{
-		User:   dbUser,
-		bridge: bridge,
-		log:    bridge.Log.Sub("User").Sub(dbUser.UserID),
+		User:          dbUser,
+		bridge:        bridge,
+		log:           bridge.Log.Sub("User").Sub(string(dbUser.ID)),
+		portalsByMXID: make(map[types.MatrixRoomID]*Portal),
+		portalsByJID:  make(map[types.WhatsAppID]*Portal),
+		puppets:       make(map[types.WhatsAppID]*Puppet),
 	}
 }
 
-func (user *User) Connect() {
+func (user *User) SetManagementRoom(roomID types.MatrixRoomID) {
+	existingUser, ok := user.bridge.managementRooms[roomID]
+	if ok {
+		existingUser.ManagementRoom = ""
+		existingUser.Update()
+	}
+
+	user.ManagementRoom = roomID
+	user.bridge.managementRooms[user.ManagementRoom] = user
+	user.Update()
+}
+
+func (user *User) SetSession(session *whatsapp.Session) {
+	user.Session = session
+	user.Update()
+}
+
+func (user *User) Start() {
+	if user.Connect(false) {
+		user.Sync()
+	}
+}
+
+func (user *User) Connect(evenIfNoSession bool) bool {
+	if user.Conn != nil {
+		return true
+	} else if !evenIfNoSession && user.Session == nil {
+		return false
+	}
+	user.log.Debugln("Connecting to WhatsApp")
 	var err error
 	user.Conn, err = whatsapp.NewConn(20 * time.Second)
 	if err != nil {
 		user.log.Errorln("Failed to connect to WhatsApp:", err)
-		return
+		return false
 	}
+	user.log.Debugln("WhatsApp connection successful")
 	user.Conn.AddHandler(user)
-	user.RestoreSession()
+	return user.RestoreSession()
 }
 
-func (user *User) RestoreSession() {
+func (user *User) RestoreSession() bool {
 	if user.Session != nil {
 		sess, err := user.Conn.RestoreSession(*user.Session)
 		if err != nil {
 			user.log.Errorln("Failed to restore session:", err)
-			user.Session = nil
-			return
+			//user.SetSession(nil)
+			return false
 		}
-		user.Session = &sess
-		user.log.Debugln("Session restored")
+		user.SetSession(&sess)
+		user.log.Debugln("Session restored successfully")
+		return true
 	}
-	return
+	return false
 }
 
-func (user *User) Login(roomID string) {
+func (user *User) Login(roomID types.MatrixRoomID) {
 	bot := user.bridge.AppService.BotClient()
 
 	qrChan := make(chan string, 2)
@@ -130,7 +164,7 @@ func (user *User) Login(roomID string) {
 			return
 		}
 
-		bot.SendImage(roomID, string(qrCode), resp.ContentURI)
+		bot.SendImage(roomID, string(code), resp.ContentURI)
 	}()
 	session, err := user.Conn.Login(qrChan)
 	if err != nil {
@@ -145,32 +179,79 @@ func (user *User) Login(roomID string) {
 	go user.Sync()
 }
 
-func (user *User) Sync() {
-	chats, err := user.Conn.Chats()
-	if err != nil {
-		user.log.Warnln("Failed to get chats")
-		return
+func (user *User) SyncPuppet(contact whatsapp.Contact) {
+	puppet := user.GetPuppetByJID(contact.Jid)
+	puppet.Intent().EnsureRegistered()
+
+	newName := user.bridge.Config.Bridge.FormatDisplayname(contact)
+	puppet.log.Debugln(puppet.Displayname, newName, contact.Name)
+	if puppet.Displayname != newName {
+		puppet.Displayname = newName
+		puppet.Update()
+		puppet.Intent().SetDisplayName(puppet.Displayname)
 	}
-	user.log.Debugln(chats)
+}
+
+func (user *User) SyncPortal(contact whatsapp.Contact) {
+	portal := user.GetPortalByJID(contact.Jid)
+
+	if len(portal.MXID) == 0 {
+		if !portal.IsPrivateChat() {
+			portal.Name = contact.Name
+		}
+		err := portal.CreateMatrixRoom()
+		if err != nil {
+			user.log.Errorln("Failed to create portal:", err)
+			return
+		}
+	}
+
+	if !portal.IsPrivateChat() && portal.Name != contact.Name {
+		portal.Name = contact.Name
+		portal.Update()
+		// TODO add SetRoomName function to intent API
+		portal.MainIntent().SendStateEvent(portal.MXID, "m.room.name", "", map[string]interface{}{
+			"name": portal.Name,
+		})
+	}
+}
+
+func (user *User) Sync() {
+	user.log.Debugln("Syncing...")
+	user.Conn.Contacts()
+	user.log.Debugln(user.Conn.Store.Contacts)
+	for jid, contact := range user.Conn.Store.Contacts {
+		dat, _ := json.Marshal(&contact)
+		user.log.Debugln(string(dat))
+		if strings.HasSuffix(jid, puppetJIDStrippedSuffix) {
+			user.SyncPuppet(contact)
+		}
+
+		if len(contact.Notify) == 0 && !strings.HasSuffix(jid, "@g.us") {
+			// Don't bridge yet
+			continue
+		}
+
+		user.SyncPortal(contact)
+	}
 }
 
 func (user *User) HandleError(err error) {
 	user.log.Errorln("WhatsApp error:", err)
-	fmt.Fprintf(os.Stderr, "%v", err)
 }
 
 func (user *User) HandleTextMessage(message whatsapp.TextMessage) {
-	fmt.Println(message)
+	user.log.Debugln("Text message:", message)
 }
 
 func (user *User) HandleImageMessage(message whatsapp.ImageMessage) {
-	fmt.Println(message)
+	user.log.Debugln("Image message:", message)
 }
 
 func (user *User) HandleVideoMessage(message whatsapp.VideoMessage) {
-	fmt.Println(message)
+	user.log.Debugln("Video message:", message)
 }
 
 func (user *User) HandleJsonMessage(message string) {
-	fmt.Println(message)
+	user.log.Debugln("JSON message:", message)
 }

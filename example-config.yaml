@@ -43,12 +43,14 @@ appservice:
 # Bridge config. Currently unused.
 bridge:
   # Localpart template of MXIDs for WhatsApp users.
-  # {{.receiver}} is replaced with the WhatsApp user ID of the Matrix user receiving messages.
-  # {{.userid}} is replaced with the user ID of the WhatsApp user.
+  # {{.Receiver}} is replaced with the WhatsApp user ID of the Matrix user receiving messages.
+  # {{.UserID}} is replaced with the user ID of the WhatsApp user.
   username_template: "whatsapp_{{.Receiver}}_{{.UserID}}"
   # Displayname template for WhatsApp users.
-  # {{.displayname}} is replaced with the display name of the WhatsApp user.
-  displayname_template: "{{.Displayname}}"
+  # {{.Name}}   - display name
+  # {{.Short}}  - short display name (usually first name)
+  # {{.Notify}} - nickname (set by the target WhatsApp user)
+  displayname_template: "{{if .Name}}{{.Name}}{{else if .Notify}}{{.Notify}}{{else if .Short}}{{.Short}}{{else}}Unnamed user{{end}}"
 
   # The prefix for commands. Only required in non-management rooms.
   command_prefix: "!wa"

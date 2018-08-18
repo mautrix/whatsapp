@@ -20,6 +20,7 @@ import (
 	log "maunium.net/go/maulogger"
 	"github.com/Rhymen/go-whatsapp"
 	"maunium.net/go/mautrix-whatsapp/types"
+	"database/sql"
 )
 
 type UserQuery struct {
@@ -45,8 +46,8 @@ func (uq *UserQuery) CreateTable() error {
 
 func (uq *UserQuery) New() *User {
 	return &User{
-		db:  uq.db,
-		log: uq.log,
+		db:     uq.db,
+		log:    uq.log,
 	}
 }
 
@@ -74,17 +75,20 @@ type User struct {
 	db  *Database
 	log log.Logger
 
-	UserID         types.MatrixUserID
+	ID             types.MatrixUserID
 	ManagementRoom types.MatrixRoomID
 	Session        *whatsapp.Session
 }
 
 func (user *User) Scan(row Scannable) *User {
 	sess := whatsapp.Session{}
-	err := row.Scan(&user.UserID, &user.ManagementRoom, &sess.ClientId, &sess.ClientToken, &sess.ServerToken,
+	err := row.Scan(&user.ID, &user.ManagementRoom, &sess.ClientId, &sess.ClientToken, &sess.ServerToken,
 		&sess.EncKey, &sess.MacKey, &sess.Wid)
 	if err != nil {
-		user.log.Fatalln("Database scan failed:", err)
+		if err != sql.ErrNoRows {
+			user.log.Fatalln("Database scan failed:", err)
+		}
+		return nil
 	}
 	if len(sess.ClientId) > 0 {
 		user.Session = &sess
@@ -99,7 +103,7 @@ func (user *User) Insert() error {
 	if user.Session != nil {
 		sess = *user.Session
 	}
-	_, err := user.db.Exec("INSERT INTO user VALUES (?, ?, ?, ?, ?, ?, ?, ?)", user.UserID, user.ManagementRoom,
+	_, err := user.db.Exec("INSERT INTO user VALUES (?, ?, ?, ?, ?, ?, ?, ?)", user.ID, user.ManagementRoom,
 		sess.ClientId, sess.ClientToken, sess.ServerToken, sess.EncKey, sess.MacKey, sess.Wid)
 	return err
 }
@@ -111,6 +115,6 @@ func (user *User) Update() error {
 	}
 	_, err := user.db.Exec("UPDATE user SET management_room=?, client_id=?, client_token=?, server_token=?, enc_key=?, mac_key=?, wid=? WHERE mxid=?",
 		user.ManagementRoom,
-		sess.ClientId, sess.ClientToken, sess.ServerToken, sess.EncKey, sess.MacKey, sess.Wid, user.UserID)
+		sess.ClientId, sess.ClientToken, sess.ServerToken, sess.EncKey, sess.MacKey, sess.Wid, user.ID)
 	return err
 }

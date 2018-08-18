@@ -22,6 +22,8 @@ import (
 	"maunium.net/go/mautrix-appservice"
 	"strings"
 	"strconv"
+	"github.com/Rhymen/go-whatsapp"
+	"maunium.net/go/mautrix-whatsapp/types"
 )
 
 type BridgeConfig struct {
@@ -62,16 +64,16 @@ type UsernameTemplateArgs struct {
 	UserID   string
 }
 
-func (bc BridgeConfig) FormatDisplayname(displayname string) string {
+func (bc BridgeConfig) FormatDisplayname(contact whatsapp.Contact) string {
 	var buf bytes.Buffer
-	bc.displaynameTemplate.Execute(&buf, DisplaynameTemplateArgs{
-		Displayname: displayname,
-	})
+	bc.displaynameTemplate.Execute(&buf, contact)
 	return buf.String()
 }
 
-func (bc BridgeConfig) FormatUsername(receiver, userID string) string {
+func (bc BridgeConfig) FormatUsername(receiver types.MatrixUserID, userID types.WhatsAppID) string {
 	var buf bytes.Buffer
+	receiver = strings.Replace(receiver, "@", "=40", 1)
+	receiver = strings.Replace(receiver, ":", "=3", 1)
 	bc.usernameTemplate.Execute(&buf, UsernameTemplateArgs{
 		Receiver: receiver,
 		UserID:   userID,
@@ -80,7 +82,12 @@ func (bc BridgeConfig) FormatUsername(receiver, userID string) string {
 }
 
 func (bc BridgeConfig) MarshalYAML() (interface{}, error) {
-	bc.DisplaynameTemplate = bc.FormatDisplayname("{{.Displayname}}")
+	bc.DisplaynameTemplate = bc.FormatDisplayname(whatsapp.Contact{
+		Jid: "{{.Jid}}",
+		Notify: "{{.Notify}}",
+		Name: "{{.Name}}",
+		Short: "{{.Short}}",
+	})
 	bc.UsernameTemplate = bc.FormatUsername("{{.Receiver}}", "{{.UserID}}")
 	return bc, nil
 }

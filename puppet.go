@@ -23,7 +23,10 @@ import (
 	"regexp"
 	"maunium.net/go/mautrix-whatsapp/types"
 	"strings"
+	"maunium.net/go/mautrix-appservice"
 )
+
+const puppetJIDStrippedSuffix = "@s.whatsapp.net"
 
 func (bridge *Bridge) ParsePuppetMXID(mxid types.MatrixUserID) (types.MatrixUserID, types.WhatsAppID, bool) {
 	userIDRegex, err := regexp.Compile(fmt.Sprintf("^@%s:%s$",
@@ -38,11 +41,12 @@ func (bridge *Bridge) ParsePuppetMXID(mxid types.MatrixUserID) (types.MatrixUser
 		return "", "", false
 	}
 
-	receiver := match[1]
+	receiver := types.MatrixUserID(match[1])
 	receiver = strings.Replace(receiver, "=40", "@", 1)
 	colonIndex := strings.LastIndex(receiver, "=3")
 	receiver = receiver[:colonIndex] + ":" + receiver[colonIndex+len("=3"):]
-	return types.MatrixUserID(receiver), types.WhatsAppID(match[2]), true
+	jid := types.WhatsAppID(match[2] + puppetJIDStrippedSuffix)
+	return receiver, jid, true
 }
 
 func (bridge *Bridge) GetPuppetByMXID(mxid types.MatrixUserID) *Puppet {
@@ -61,7 +65,7 @@ func (bridge *Bridge) GetPuppetByMXID(mxid types.MatrixUserID) *Puppet {
 
 func (user *User) GetPuppetByMXID(mxid types.MatrixUserID) *Puppet {
 	receiver, jid, ok := user.bridge.ParsePuppetMXID(mxid)
-	if !ok || receiver != user.UserID {
+	if !ok || receiver != user.ID {
 		return nil
 	}
 
@@ -71,9 +75,12 @@ func (user *User) GetPuppetByMXID(mxid types.MatrixUserID) *Puppet {
 func (user *User) GetPuppetByJID(jid types.WhatsAppID) *Puppet {
 	puppet, ok := user.puppets[jid]
 	if !ok {
-		dbPuppet := user.bridge.DB.Puppet.Get(jid, user.UserID)
+		dbPuppet := user.bridge.DB.Puppet.Get(jid, user.ID)
 		if dbPuppet == nil {
-			return nil
+			dbPuppet = user.bridge.DB.Puppet.New()
+			dbPuppet.JID = jid
+			dbPuppet.Receiver = user.ID
+			dbPuppet.Insert()
 		}
 		puppet = user.NewPuppet(dbPuppet)
 		user.puppets[puppet.JID] = puppet
@@ -82,7 +89,7 @@ func (user *User) GetPuppetByJID(jid types.WhatsAppID) *Puppet {
 }
 
 func (user *User) GetAllPuppets() []*Puppet {
-	dbPuppets := user.bridge.DB.Puppet.GetAll(user.UserID)
+	dbPuppets := user.bridge.DB.Puppet.GetAll(user.ID)
 	output := make([]*Puppet, len(dbPuppets))
 	for index, dbPuppet := range dbPuppets {
 		puppet, ok := user.puppets[dbPuppet.JID]
@@ -101,6 +108,14 @@ func (user *User) NewPuppet(dbPuppet *database.Puppet) *Puppet {
 		user:   user,
 		bridge: user.bridge,
 		log:    user.log.Sub(fmt.Sprintf("Puppet/%s", dbPuppet.JID)),
+
+		MXID: fmt.Sprintf("@%s:%s",
+			user.bridge.Config.Bridge.FormatUsername(
+				dbPuppet.Receiver,
+				strings.Replace(
+					dbPuppet.JID,
+					puppetJIDStrippedSuffix, "", 1)),
+			user.bridge.Config.Homeserver.Domain),
 	}
 }
 
@@ -110,4 +125,10 @@ type Puppet struct {
 	user   *User
 	bridge *Bridge
 	log    log.Logger
+
+	MXID types.MatrixUserID
+}
+
+func (puppet *Puppet) Intent() *appservice.IntentAPI {
+	return puppet.bridge.AppService.Intent(puppet.MXID)
 }

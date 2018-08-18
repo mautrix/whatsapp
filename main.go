@@ -26,7 +26,6 @@ import (
 	"maunium.net/go/mautrix-appservice"
 	log "maunium.net/go/maulogger"
 	"maunium.net/go/mautrix-whatsapp/database"
-	"maunium.net/go/gomatrix"
 	"maunium.net/go/mautrix-whatsapp/types"
 )
 
@@ -60,18 +59,21 @@ func (bridge *Bridge) GenerateRegistration() {
 type Bridge struct {
 	AppService     *appservice.AppService
 	EventProcessor *appservice.EventProcessor
+	MatrixHandler  *MatrixHandler
 	Config         *config.Config
 	DB             *database.Database
 	Log            log.Logger
 
 	StateStore *AutosavingStateStore
 
-	users map[types.MatrixUserID]*User
+	users           map[types.MatrixUserID]*User
+	managementRooms map[types.MatrixRoomID]*User
 }
 
 func NewBridge() *Bridge {
 	bridge := &Bridge{
-		users: make(map[types.MatrixUserID]*User),
+		users:           make(map[types.MatrixUserID]*User),
+		managementRooms: make(map[types.MatrixRoomID]*User),
 	}
 	var err error
 	bridge.Config, err = config.Load(*configPath)
@@ -111,23 +113,28 @@ func (bridge *Bridge) Init() {
 		os.Exit(13)
 	}
 
-	bridge.Log.Debugln("Initializing event processor")
+	bridge.Log.Debugln("Initializing Matrix event processor")
 	bridge.EventProcessor = appservice.NewEventProcessor(bridge.AppService)
-	bridge.EventProcessor.On(gomatrix.EventMessage, bridge.HandleMessage)
-	bridge.EventProcessor.On(gomatrix.StateMember, bridge.HandleMembership)
+	bridge.Log.Debugln("Initializing Matrix event handler")
+	bridge.MatrixHandler = NewMatrixHandler(bridge)
 }
 
 func (bridge *Bridge) Start() {
-	bridge.DB.CreateTables()
+	err := bridge.DB.CreateTables()
+	if err != nil {
+		bridge.Log.Fatalln("Failed to create database tables:", err)
+		os.Exit(14)
+	}
 	bridge.Log.Debugln("Starting application service HTTP server")
 	go bridge.AppService.Start()
 	bridge.Log.Debugln("Starting event processor")
 	go bridge.EventProcessor.Start()
-	bridge.Log.Debugln("Updating bot profile")
 	go bridge.UpdateBotProfile()
+	go bridge.StartUsers()
 }
 
 func (bridge *Bridge) UpdateBotProfile() {
+	bridge.Log.Debugln("Updating bot profile")
 	botConfig := bridge.Config.AppService.Bot
 
 	var err error
@@ -147,6 +154,12 @@ func (bridge *Bridge) UpdateBotProfile() {
 	}
 	if err != nil {
 		bridge.Log.Warnln("Failed to update bot displayname:", err)
+	}
+}
+
+func (bridge *Bridge) StartUsers() {
+	for _, user := range bridge.GetAllUsers() {
+		go user.Start()
 	}
 }
 

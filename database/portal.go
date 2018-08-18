@@ -19,6 +19,7 @@ package database
 import (
 	log "maunium.net/go/maulogger"
 	"maunium.net/go/mautrix-whatsapp/types"
+	"database/sql"
 )
 
 type PortalQuery struct {
@@ -33,7 +34,7 @@ func (pq *PortalQuery) CreateTable() error {
 		mxid  VARCHAR(255) NOT NULL UNIQUE,
 
 		PRIMARY KEY (jid, owner),
-		FOREIGN KEY owner REFERENCES user(mxid)
+		FOREIGN KEY (owner) REFERENCES user(mxid)
 	)`)
 	return err
 }
@@ -80,22 +81,34 @@ type Portal struct {
 	JID   types.WhatsAppID
 	MXID  types.MatrixRoomID
 	Owner types.MatrixUserID
+
+	Name   string
+	Avatar string
 }
 
 func (portal *Portal) Scan(row Scannable) *Portal {
 	err := row.Scan(&portal.JID, &portal.MXID, &portal.Owner)
 	if err != nil {
-		portal.log.Fatalln("Database scan failed:", err)
+		if err != sql.ErrNoRows {
+			portal.log.Fatalln("Database scan failed:", err)
+		}
+		return nil
 	}
 	return portal
 }
 
 func (portal *Portal) Insert() error {
 	_, err := portal.db.Exec("INSERT INTO portal VALUES (?, ?, ?)", portal.JID, portal.Owner, portal.MXID)
+	if err != nil {
+		portal.log.Warnfln("Failed to update %s->%s: %v", portal.JID, portal.Owner, err)
+	}
 	return err
 }
 
 func (portal *Portal) Update() error {
 	_, err := portal.db.Exec("UPDATE portal SET mxid=? WHERE jid=? AND owner=?", portal.MXID, portal.JID, portal.Owner)
+	if err != nil {
+		portal.log.Warnfln("Failed to update %s->%s: %v", portal.JID, portal.Owner, err)
+	}
 	return err
 }

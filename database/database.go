@@ -56,10 +56,20 @@ func New(file string) (*Database, error) {
 	return db, nil
 }
 
-func (db *Database) CreateTables() {
-	db.User.CreateTable()
-	db.Portal.CreateTable()
-	db.Puppet.CreateTable()
+func (db *Database) CreateTables() error {
+	err := db.User.CreateTable()
+	if err != nil {
+		return err
+	}
+	err = db.Portal.CreateTable()
+	if err != nil {
+		return err
+	}
+	err = db.Puppet.CreateTable()
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 type Scannable interface {
