@@ -112,6 +112,6 @@ func (mx *MatrixHandler) HandleMessage(evt *gomatrix.Event) {
 
 	portal := user.GetPortalByMXID(roomID)
 	if portal != nil {
-		portal.HandleMessage(evt)
+		portal.HandleMatrixMessage(evt)
 	}
 }

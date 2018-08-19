@@ -24,6 +24,7 @@ import (
 	"maunium.net/go/gomatrix"
 	"strings"
 	"maunium.net/go/mautrix-appservice"
+	"github.com/Rhymen/go-whatsapp"
 )
 
 func (user *User) GetPortalByMXID(mxid types.MatrixRoomID) *Portal {
@@ -95,6 +96,29 @@ type Portal struct {
 	log    log.Logger
 }
 
+func (portal *Portal) Sync(contact whatsapp.Contact) {
+
+	if len(portal.MXID) == 0 {
+		if !portal.IsPrivateChat() {
+			portal.Name = contact.Name
+		}
+		err := portal.CreateMatrixRoom()
+		if err != nil {
+			portal.log.Errorln("Failed to create portal room:", err)
+			return
+		}
+	}
+
+	if !portal.IsPrivateChat() && portal.Name != contact.Name {
+		portal.Name = contact.Name
+		portal.Update()
+		// TODO add SetRoomName function to intent API
+		portal.MainIntent().SendStateEvent(portal.MXID, "m.room.name", "", map[string]interface{}{
+			"name": portal.Name,
+		})
+	}
+}
+
 func (portal *Portal) CreateMatrixRoom() error {
 	if len(portal.MXID) > 0 {
 		return nil
@@ -136,6 +160,59 @@ func (portal *Portal) MainIntent() *appservice.IntentAPI {
 	return portal.bridge.AppService.BotIntent()
 }
 
-func (portal *Portal) HandleMessage(evt *gomatrix.Event) {
-	portal.log.Debugln("Received event:", evt)
+func (portal *Portal) HandleTextMessage(message whatsapp.TextMessage) {
+	portal.CreateMatrixRoom()
+	var intent *appservice.IntentAPI
+	if portal.IsPrivateChat() {
+		intent = portal.MainIntent()
+	} else {
+		portal.log.Debugln("Received group text message:", message)
+		return
+	}
+	resp, err := intent.SendText(portal.MXID, message.Text)
+	portal.log.Debugln("Handled message ", message, "->", resp, err)
+}
+
+func (portal *Portal) HandleMediaMessage(download func() ([]byte, error), msgID, mime, caption string) {
+	portal.CreateMatrixRoom()
+	var intent *appservice.IntentAPI
+	if portal.IsPrivateChat() {
+		intent = portal.MainIntent()
+	} else {
+		portal.log.Debugln("Received group media message:", msgID)
+		return
+	}
+	img, err := download()
+	if err != nil {
+		portal.log.Errorln("Failed to download media:", err)
+		return
+	}
+	uploaded, err := intent.UploadBytes(img, mime)
+	if err != nil {
+		portal.log.Errorln("Failed to upload media:", err)
+		return
+	}
+	resp, err := intent.SendImage(portal.MXID, caption, uploaded.ContentURI)
+	portal.log.Debugln("Handled message ", msgID, "->", resp, err)
+}
+
+func (portal *Portal) HandleMatrixMessage(evt *gomatrix.Event) {
+	var err error
+	switch evt.Content.MsgType {
+	case gomatrix.MsgText:
+		err = portal.user.Conn.Send(whatsapp.TextMessage{
+			Text: evt.Content.Body,
+			Info: whatsapp.MessageInfo{
+				RemoteJid: portal.JID,
+			},
+		})
+	default:
+		portal.log.Debugln("Unhandled Matrix event:", evt)
+		return
+	}
+	if err != nil {
+		portal.log.Errorln("Error handling Matrix event %s: %v", evt.ID, err)
+	} else {
+		portal.log.Debugln("Handled Matrix event:", evt)
+	}
 }

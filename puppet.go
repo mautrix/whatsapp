@@ -24,6 +24,7 @@ import (
 	"maunium.net/go/mautrix-whatsapp/types"
 	"strings"
 	"maunium.net/go/mautrix-appservice"
+	"github.com/Rhymen/go-whatsapp"
 )
 
 const puppetJIDStrippedSuffix = "@s.whatsapp.net"
@@ -131,4 +132,15 @@ type Puppet struct {
 
 func (puppet *Puppet) Intent() *appservice.IntentAPI {
 	return puppet.bridge.AppService.Intent(puppet.MXID)
+}
+
+func (puppet *Puppet) Sync(contact whatsapp.Contact) {
+	puppet.Intent().EnsureRegistered()
+
+	newName := puppet.bridge.Config.Bridge.FormatDisplayname(contact)
+	if puppet.Displayname != newName {
+		puppet.Displayname = newName
+		puppet.Update()
+		puppet.Intent().SetDisplayName(puppet.Displayname)
+	}
 }

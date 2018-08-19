@@ -179,43 +179,6 @@ func (user *User) Login(roomID types.MatrixRoomID) {
 	go user.Sync()
 }
 
-func (user *User) SyncPuppet(contact whatsapp.Contact) {
-	puppet := user.GetPuppetByJID(contact.Jid)
-	puppet.Intent().EnsureRegistered()
-
-	newName := user.bridge.Config.Bridge.FormatDisplayname(contact)
-	puppet.log.Debugln(puppet.Displayname, newName, contact.Name)
-	if puppet.Displayname != newName {
-		puppet.Displayname = newName
-		puppet.Update()
-		puppet.Intent().SetDisplayName(puppet.Displayname)
-	}
-}
-
-func (user *User) SyncPortal(contact whatsapp.Contact) {
-	portal := user.GetPortalByJID(contact.Jid)
-
-	if len(portal.MXID) == 0 {
-		if !portal.IsPrivateChat() {
-			portal.Name = contact.Name
-		}
-		err := portal.CreateMatrixRoom()
-		if err != nil {
-			user.log.Errorln("Failed to create portal:", err)
-			return
-		}
-	}
-
-	if !portal.IsPrivateChat() && portal.Name != contact.Name {
-		portal.Name = contact.Name
-		portal.Update()
-		// TODO add SetRoomName function to intent API
-		portal.MainIntent().SendStateEvent(portal.MXID, "m.room.name", "", map[string]interface{}{
-			"name": portal.Name,
-		})
-	}
-}
-
 func (user *User) Sync() {
 	user.log.Debugln("Syncing...")
 	user.Conn.Contacts()
@@ -224,7 +187,8 @@ func (user *User) Sync() {
 		dat, _ := json.Marshal(&contact)
 		user.log.Debugln(string(dat))
 		if strings.HasSuffix(jid, puppetJIDStrippedSuffix) {
-			user.SyncPuppet(contact)
+			puppet := user.GetPuppetByJID(contact.Jid)
+			puppet.Sync(contact)
 		}
 
 		if len(contact.Notify) == 0 && !strings.HasSuffix(jid, "@g.us") {
@@ -232,7 +196,8 @@ func (user *User) Sync() {
 			continue
 		}
 
-		user.SyncPortal(contact)
+		portal := user.GetPortalByJID(contact.Jid)
+		portal.Sync(contact)
 	}
 }
 
@@ -241,15 +206,21 @@ func (user *User) HandleError(err error) {
 }
 
 func (user *User) HandleTextMessage(message whatsapp.TextMessage) {
-	user.log.Debugln("Text message:", message)
+	user.log.Debugln("Received text message:", message)
+	portal := user.GetPortalByJID(message.Info.RemoteJid)
+	portal.HandleTextMessage(message)
 }
 
 func (user *User) HandleImageMessage(message whatsapp.ImageMessage) {
-	user.log.Debugln("Image message:", message)
+	user.log.Debugln("Received image message:", message)
+	portal := user.GetPortalByJID(message.Info.RemoteJid)
+	portal.HandleMediaMessage(message.Download, message.Info.Id, message.Type, message.Caption)
 }
 
 func (user *User) HandleVideoMessage(message whatsapp.VideoMessage) {
-	user.log.Debugln("Video message:", message)
+	user.log.Debugln("Received video message:", message)
+	portal := user.GetPortalByJID(message.Info.RemoteJid)
+	portal.HandleMediaMessage(message.Download, message.Info.Id, message.Type, message.Caption)
 }
 
 func (user *User) HandleJsonMessage(message string) {

@@ -87,7 +87,7 @@ type Portal struct {
 }
 
 func (portal *Portal) Scan(row Scannable) *Portal {
-	err := row.Scan(&portal.JID, &portal.MXID, &portal.Owner)
+	err := row.Scan(&portal.JID, &portal.Owner, &portal.MXID)
 	if err != nil {
 		if err != sql.ErrNoRows {
 			portal.log.Fatalln("Database scan failed:", err)
