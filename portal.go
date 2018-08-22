@@ -25,9 +25,14 @@ import (
 	"strings"
 	"maunium.net/go/mautrix-appservice"
 	"github.com/Rhymen/go-whatsapp"
+	"sync"
+	"net/http"
+	"maunium.net/go/mautrix-whatsapp/whatsapp-ext"
 )
 
 func (user *User) GetPortalByMXID(mxid types.MatrixRoomID) *Portal {
+	user.portalsLock.Lock()
+	defer user.portalsLock.Unlock()
 	portal, ok := user.portalsByMXID[mxid]
 	if !ok {
 		dbPortal := user.bridge.DB.Portal.GetByMXID(mxid)
@@ -44,6 +49,8 @@ func (user *User) GetPortalByMXID(mxid types.MatrixRoomID) *Portal {
 }
 
 func (user *User) GetPortalByJID(jid types.WhatsAppID) *Portal {
+	user.portalsLock.Lock()
+	defer user.portalsLock.Unlock()
 	portal, ok := user.portalsByJID[jid]
 	if !ok {
 		dbPortal := user.bridge.DB.Portal.GetByJID(user.ID, jid)
@@ -63,6 +70,8 @@ func (user *User) GetPortalByJID(jid types.WhatsAppID) *Portal {
 }
 
 func (user *User) GetAllPortals() []*Portal {
+	user.portalsLock.Lock()
+	defer user.portalsLock.Unlock()
 	dbPortals := user.bridge.DB.Portal.GetAll(user.ID)
 	output := make([]*Portal, len(dbPortals))
 	for index, dbPortal := range dbPortals {
@@ -94,10 +103,87 @@ type Portal struct {
 	user   *User
 	bridge *Bridge
 	log    log.Logger
+
+	roomCreateLock sync.Mutex
+}
+
+func (portal *Portal) SyncParticipants(metadata *whatsapp_ext.GroupInfo) {
+	for _, participant := range metadata.Participants {
+		intent := portal.user.GetPuppetByJID(participant.JID).Intent()
+		intent.EnsureJoined(portal.MXID)
+	}
+}
+
+func (portal *Portal) UpdateAvatar() bool {
+	avatar, err := portal.user.Conn.GetProfilePicThumb(portal.JID)
+	if err != nil {
+		portal.log.Errorln(err)
+		return false
+	}
+	if portal.Avatar == avatar.Tag {
+		return false
+	}
+
+	data, err := avatar.DownloadBytes()
+	if err != nil {
+		portal.log.Errorln("Failed to download avatar:", err)
+		return false
+	}
+
+	mime := http.DetectContentType(data)
+	resp, err := portal.MainIntent().UploadBytes(data, mime)
+	if err != nil {
+		portal.log.Errorln("Failed to upload avatar:", err)
+		return false
+	}
+
+	_, err = portal.MainIntent().SetRoomAvatar(portal.MXID, resp.ContentURI)
+	if err != nil {
+		portal.log.Warnln("Failed to set room topic:", err)
+		return false
+	}
+	portal.Avatar = avatar.Tag
+	return true
+}
+
+func (portal *Portal) UpdateName(metadata *whatsapp_ext.GroupInfo) bool {
+	if portal.Name != metadata.Name {
+		_, err := portal.MainIntent().SetRoomName(portal.MXID, metadata.Name)
+		if err == nil {
+			portal.Name = metadata.Name
+			return true
+		}
+		portal.log.Warnln("Failed to set room name:", err)
+	}
+	return false
+}
+
+func (portal *Portal) UpdateTopic(metadata *whatsapp_ext.GroupInfo) bool {
+	if portal.Topic != metadata.Topic {
+		_, err := portal.MainIntent().SetRoomTopic(portal.MXID, metadata.Topic)
+		if err == nil {
+			portal.Topic = metadata.Topic
+			return true
+		}
+		portal.log.Warnln("Failed to set room topic:", err)
+	}
+	return false
+}
+
+func (portal *Portal) UpdateMetadata() bool {
+	metadata, err := portal.user.Conn.GetGroupMetaData(portal.JID)
+	if err != nil {
+		portal.log.Errorln(err)
+		return false
+	}
+	portal.SyncParticipants(metadata)
+	update := false
+	update = portal.UpdateName(metadata) || update
+	update = portal.UpdateTopic(metadata) || update
+	return update
 }
 
 func (portal *Portal) Sync(contact whatsapp.Contact) {
-
 	if len(portal.MXID) == 0 {
 		if !portal.IsPrivateChat() {
 			portal.Name = contact.Name
@@ -109,23 +195,27 @@ func (portal *Portal) Sync(contact whatsapp.Contact) {
 		}
 	}
 
-	if !portal.IsPrivateChat() && portal.Name != contact.Name {
-		portal.Name = contact.Name
+	if portal.IsPrivateChat() {
+		return
+	}
+
+	update := false
+	update = portal.UpdateMetadata() || update
+	update = portal.UpdateAvatar() || update
+	if update {
 		portal.Update()
-		// TODO add SetRoomName function to intent API
-		portal.MainIntent().SendStateEvent(portal.MXID, "m.room.name", "", map[string]interface{}{
-			"name": portal.Name,
-		})
 	}
 }
 
 func (portal *Portal) CreateMatrixRoom() error {
+	portal.roomCreateLock.Lock()
+	defer portal.roomCreateLock.Unlock()
 	if len(portal.MXID) > 0 {
 		return nil
 	}
 
 	name := portal.Name
-	topic := ""
+	topic := portal.Topic
 	isPrivateChat := false
 	if strings.HasSuffix(portal.JID, "s.whatsapp.net") {
 		puppet := portal.user.GetPuppetByJID(portal.JID)
@@ -160,28 +250,67 @@ func (portal *Portal) MainIntent() *appservice.IntentAPI {
 	return portal.bridge.AppService.BotIntent()
 }
 
-func (portal *Portal) HandleTextMessage(message whatsapp.TextMessage) {
-	portal.CreateMatrixRoom()
-	var intent *appservice.IntentAPI
-	if portal.IsPrivateChat() {
-		intent = portal.MainIntent()
-	} else {
-		portal.log.Debugln("Received group text message:", message)
-		return
+func (portal *Portal) IsDuplicate(id types.WhatsAppMessageID) bool {
+	msg := portal.bridge.DB.Message.GetByJID(portal.Owner, id)
+	if msg != nil {
+		portal.log.Debugln("Ignoring duplicate message", id)
+		return true
 	}
-	resp, err := intent.SendText(portal.MXID, message.Text)
-	portal.log.Debugln("Handled message ", message, "->", resp, err)
+	return false
 }
 
-func (portal *Portal) HandleMediaMessage(download func() ([]byte, error), msgID, mime, caption string) {
-	portal.CreateMatrixRoom()
-	var intent *appservice.IntentAPI
-	if portal.IsPrivateChat() {
-		intent = portal.MainIntent()
-	} else {
-		portal.log.Debugln("Received group media message:", msgID)
+func (portal *Portal) MarkHandled(jid types.WhatsAppMessageID, mxid types.MatrixEventID) {
+	msg := portal.bridge.DB.Message.New()
+	msg.Owner = portal.Owner
+	msg.JID = jid
+	msg.MXID = mxid
+	msg.Insert()
+}
+
+func (portal *Portal) GetMessageIntent(info whatsapp.MessageInfo) *appservice.IntentAPI {
+	if info.FromMe {
+		portal.log.Debugln("Unhandled message from me:", info.Id)
+		return nil
+	} else if portal.IsPrivateChat() {
+		return portal.MainIntent()
+	}
+	puppet := portal.user.GetPuppetByJID(info.SenderJid)
+	return puppet.Intent()
+}
+
+func (portal *Portal) HandleTextMessage(message whatsapp.TextMessage) {
+	if portal.IsDuplicate(message.Info.Id) {
 		return
 	}
+
+	portal.CreateMatrixRoom()
+
+	intent := portal.GetMessageIntent(message.Info)
+	if intent == nil {
+		return
+	}
+
+	resp, err := intent.SendText(portal.MXID, message.Text)
+	if err != nil {
+		portal.log.Errorfln("Failed to handle message %s: %v", message.Info.Id, err)
+		return
+	}
+	portal.MarkHandled(message.Info.Id, resp.EventID)
+	portal.log.Debugln("Handled message", message.Info.Id, "->", resp.EventID)
+}
+
+func (portal *Portal) HandleMediaMessage(download func() ([]byte, error), info whatsapp.MessageInfo, mime, caption string) {
+	if portal.IsDuplicate(info.Id) {
+		return
+	}
+
+	portal.CreateMatrixRoom()
+
+	intent := portal.GetMessageIntent(info)
+	if intent == nil {
+		return
+	}
+
 	img, err := download()
 	if err != nil {
 		portal.log.Errorln("Failed to download media:", err)
@@ -193,7 +322,12 @@ func (portal *Portal) HandleMediaMessage(download func() ([]byte, error), msgID,
 		return
 	}
 	resp, err := intent.SendImage(portal.MXID, caption, uploaded.ContentURI)
-	portal.log.Debugln("Handled message ", msgID, "->", resp, err)
+	if err != nil {
+		portal.log.Errorfln("Failed to handle message %s: %v", info.Id, err)
+		return
+	}
+	portal.MarkHandled(info.Id, resp.EventID)
+	portal.log.Debugln("Handled message", info.Id, "->", resp.EventID)
 }
 
 func (portal *Portal) HandleMatrixMessage(evt *gomatrix.Event) {

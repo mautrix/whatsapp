@@ -31,7 +31,11 @@ func (pq *PortalQuery) CreateTable() error {
 	_, err := pq.db.Exec(`CREATE TABLE IF NOT EXISTS portal (
 		jid   VARCHAR(255),
 		owner VARCHAR(255),
-		mxid  VARCHAR(255) NOT NULL UNIQUE,
+		mxid  VARCHAR(255) UNIQUE,
+
+		name   VARCHAR(255),
+		topic  VARCHAR(255),
+		avatar VARCHAR(255),
 
 		PRIMARY KEY (jid, owner),
 		FOREIGN KEY (owner) REFERENCES user(mxid)
@@ -83,11 +87,12 @@ type Portal struct {
 	Owner types.MatrixUserID
 
 	Name   string
+	Topic  string
 	Avatar string
 }
 
 func (portal *Portal) Scan(row Scannable) *Portal {
-	err := row.Scan(&portal.JID, &portal.Owner, &portal.MXID)
+	err := row.Scan(&portal.JID, &portal.Owner, &portal.MXID, &portal.Name, &portal.Topic, &portal.Avatar)
 	if err != nil {
 		if err != sql.ErrNoRows {
 			portal.log.Fatalln("Database scan failed:", err)
@@ -98,15 +103,25 @@ func (portal *Portal) Scan(row Scannable) *Portal {
 }
 
 func (portal *Portal) Insert() error {
-	_, err := portal.db.Exec("INSERT INTO portal VALUES (?, ?, ?)", portal.JID, portal.Owner, portal.MXID)
+	var mxid *string
+	if len(portal.MXID) > 0 {
+		mxid = &portal.MXID
+	}
+	_, err := portal.db.Exec("INSERT INTO portal VALUES (?, ?, ?, ?, ?, ?)",
+		portal.JID, portal.Owner, mxid, portal.Name, portal.Topic, portal.Avatar)
 	if err != nil {
-		portal.log.Warnfln("Failed to update %s->%s: %v", portal.JID, portal.Owner, err)
+		portal.log.Warnfln("Failed to insert %s->%s: %v", portal.JID, portal.Owner, err)
 	}
 	return err
 }
 
 func (portal *Portal) Update() error {
-	_, err := portal.db.Exec("UPDATE portal SET mxid=? WHERE jid=? AND owner=?", portal.MXID, portal.JID, portal.Owner)
+	var mxid *string
+	if len(portal.MXID) > 0 {
+		mxid = &portal.MXID
+	}
+	_, err := portal.db.Exec("UPDATE portal SET mxid=?, name=?, topic=?, avatar=? WHERE jid=? AND owner=?",
+		mxid, portal.Name, portal.Topic, portal.Avatar, portal.JID, portal.Owner)
 	if err != nil {
 		portal.log.Warnfln("Failed to update %s->%s: %v", portal.JID, portal.Owner, err)
 	}

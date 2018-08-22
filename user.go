@@ -25,18 +25,22 @@ import (
 	"maunium.net/go/mautrix-whatsapp/types"
 	"strings"
 	"encoding/json"
+	"sync"
+	"maunium.net/go/mautrix-whatsapp/whatsapp-ext"
 )
 
 type User struct {
 	*database.User
-	Conn *whatsapp.Conn
+	Conn *whatsapp_ext.ExtendedConn
 
 	bridge *Bridge
 	log    log.Logger
 
 	portalsByMXID map[types.MatrixRoomID]*Portal
 	portalsByJID  map[types.WhatsAppID]*Portal
+	portalsLock   sync.Mutex
 	puppets       map[types.WhatsAppID]*Puppet
+	puppetsLock   sync.Mutex
 }
 
 func (bridge *Bridge) GetUser(userID types.MatrixUserID) *User {
@@ -115,12 +119,12 @@ func (user *User) Connect(evenIfNoSession bool) bool {
 		return false
 	}
 	user.log.Debugln("Connecting to WhatsApp")
-	var err error
-	user.Conn, err = whatsapp.NewConn(20 * time.Second)
+	conn, err := whatsapp.NewConn(20 * time.Second)
 	if err != nil {
 		user.log.Errorln("Failed to connect to WhatsApp:", err)
 		return false
 	}
+	user.Conn = whatsapp_ext.ExtendConn(conn)
 	user.log.Debugln("WhatsApp connection successful")
 	user.Conn.AddHandler(user)
 	return user.RestoreSession()
@@ -192,7 +196,7 @@ func (user *User) Sync() {
 		}
 
 		if len(contact.Notify) == 0 && !strings.HasSuffix(jid, "@g.us") {
-			// Don't bridge yet
+			// No messages sent -> don't bridge
 			continue
 		}
 
@@ -212,15 +216,15 @@ func (user *User) HandleTextMessage(message whatsapp.TextMessage) {
 }
 
 func (user *User) HandleImageMessage(message whatsapp.ImageMessage) {
-	user.log.Debugln("Received image message:", message)
+	// user.log.Debugln("Received image message:", message)
 	portal := user.GetPortalByJID(message.Info.RemoteJid)
-	portal.HandleMediaMessage(message.Download, message.Info.Id, message.Type, message.Caption)
+	portal.HandleMediaMessage(message.Download, message.Info, message.Type, message.Caption)
 }
 
 func (user *User) HandleVideoMessage(message whatsapp.VideoMessage) {
-	user.log.Debugln("Received video message:", message)
+	// user.log.Debugln("Received video message:", message)
 	portal := user.GetPortalByJID(message.Info.RemoteJid)
-	portal.HandleMediaMessage(message.Download, message.Info.Id, message.Type, message.Caption)
+	portal.HandleMediaMessage(message.Download, message.Info, message.Type, message.Caption)
 }
 
 func (user *User) HandleJsonMessage(message string) {

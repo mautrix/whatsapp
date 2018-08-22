@@ -25,6 +25,7 @@ import (
 	"strings"
 	"maunium.net/go/mautrix-appservice"
 	"github.com/Rhymen/go-whatsapp"
+	"net/http"
 )
 
 const puppetJIDStrippedSuffix = "@s.whatsapp.net"
@@ -74,6 +75,8 @@ func (user *User) GetPuppetByMXID(mxid types.MatrixUserID) *Puppet {
 }
 
 func (user *User) GetPuppetByJID(jid types.WhatsAppID) *Puppet {
+	user.puppetsLock.Lock()
+	defer user.puppetsLock.Unlock()
 	puppet, ok := user.puppets[jid]
 	if !ok {
 		dbPuppet := user.bridge.DB.Puppet.Get(jid, user.ID)
@@ -90,6 +93,8 @@ func (user *User) GetPuppetByJID(jid types.WhatsAppID) *Puppet {
 }
 
 func (user *User) GetAllPuppets() []*Puppet {
+	user.puppetsLock.Lock()
+	defer user.puppetsLock.Unlock()
 	dbPuppets := user.bridge.DB.Puppet.GetAll(user.ID)
 	output := make([]*Puppet, len(dbPuppets))
 	for index, dbPuppet := range dbPuppets {
@@ -134,13 +139,50 @@ func (puppet *Puppet) Intent() *appservice.IntentAPI {
 	return puppet.bridge.AppService.Intent(puppet.MXID)
 }
 
+func (puppet *Puppet) UpdateAvatar() bool {
+	avatar, err := puppet.user.Conn.GetProfilePicThumb(puppet.JID)
+	if err != nil {
+		puppet.log.Errorln(err)
+		return false
+	}
+
+	if avatar.Tag == puppet.Avatar {
+		return false
+	}
+
+	data, err := avatar.DownloadBytes()
+	if err != nil {
+		puppet.log.Errorln("Failed to download avatar:", err)
+		return false
+	}
+
+	mime := http.DetectContentType(data)
+	resp, err := puppet.Intent().UploadBytes(data, mime)
+	if err != nil {
+		puppet.log.Errorln("Failed to upload avatar:", err)
+		return false
+	}
+
+	puppet.Intent().SetAvatarURL(resp.ContentURI)
+	puppet.Avatar = avatar.Tag
+	return true
+}
+
 func (puppet *Puppet) Sync(contact whatsapp.Contact) {
 	puppet.Intent().EnsureRegistered()
 
 	newName := puppet.bridge.Config.Bridge.FormatDisplayname(contact)
 	if puppet.Displayname != newName {
-		puppet.Displayname = newName
+		err := puppet.Intent().SetDisplayName(newName)
+		if err == nil {
+			puppet.Displayname = newName
+			puppet.Update()
+		} else {
+			puppet.log.Warnln("Failed to set display name:", err)
+		}
+	}
+
+	if puppet.UpdateAvatar() {
 		puppet.Update()
-		puppet.Intent().SetDisplayName(puppet.Displayname)
 	}
 }

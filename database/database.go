@@ -26,9 +26,10 @@ type Database struct {
 	*sql.DB
 	log log.Logger
 
-	User   *UserQuery
-	Portal *PortalQuery
-	Puppet *PuppetQuery
+	User    *UserQuery
+	Portal  *PortalQuery
+	Puppet  *PuppetQuery
+	Message *MessageQuery
 }
 
 func New(file string) (*Database, error) {
@@ -53,6 +54,10 @@ func New(file string) (*Database, error) {
 		db:  db,
 		log: db.log.Sub("Puppet"),
 	}
+	db.Message = &MessageQuery{
+		db:  db,
+		log: db.log.Sub("Message"),
+	}
 	return db, nil
 }
 
@@ -66,6 +71,10 @@ func (db *Database) CreateTables() error {
 		return err
 	}
 	err = db.Puppet.CreateTable()
+	if err != nil {
+		return err
+	}
+	err = db.Message.CreateTable()
 	if err != nil {
 		return err
 	}
