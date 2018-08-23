@@ -28,6 +28,10 @@ import (
 	"sync"
 	"net/http"
 	"maunium.net/go/mautrix-whatsapp/whatsapp-ext"
+	"mime"
+	"image"
+	"bytes"
+	"maunium.net/go/gomatrix/format"
 )
 
 func (user *User) GetPortalByMXID(mxid types.MatrixRoomID) *Portal {
@@ -130,8 +134,8 @@ func (portal *Portal) UpdateAvatar() bool {
 		return false
 	}
 
-	mime := http.DetectContentType(data)
-	resp, err := portal.MainIntent().UploadBytes(data, mime)
+	mimeType := http.DetectContentType(data)
+	resp, err := portal.MainIntent().UploadBytes(data, mimeType)
 	if err != nil {
 		portal.log.Errorln("Failed to upload avatar:", err)
 		return false
@@ -278,6 +282,18 @@ func (portal *Portal) GetMessageIntent(info whatsapp.MessageInfo) *appservice.In
 	return puppet.Intent()
 }
 
+func (portal *Portal) GetRelations(info whatsapp.MessageInfo) (reply gomatrix.RelatesTo) {
+	if len(info.QuotedMessageID) == 0 {
+		return
+	}
+	message := portal.bridge.DB.Message.GetByJID(portal.Owner, info.QuotedMessageID)
+	if message != nil {
+		reply.InReplyTo.EventID = message.MXID
+	}
+	return
+
+}
+
 func (portal *Portal) HandleTextMessage(message whatsapp.TextMessage) {
 	if portal.IsDuplicate(message.Info.Id) {
 		return
@@ -290,7 +306,11 @@ func (portal *Portal) HandleTextMessage(message whatsapp.TextMessage) {
 		return
 	}
 
-	resp, err := intent.SendText(portal.MXID, message.Text)
+	resp, err := intent.SendMassagedMessageEvent(portal.MXID, gomatrix.EventMessage, gomatrix.Content{
+		Body:      message.Text,
+		MsgType:   gomatrix.MsgText,
+		RelatesTo: portal.GetRelations(message.Info),
+	}, int64(message.Info.Timestamp*1000))
 	if err != nil {
 		portal.log.Errorfln("Failed to handle message %s: %v", message.Info.Id, err)
 		return
@@ -299,7 +319,7 @@ func (portal *Portal) HandleTextMessage(message whatsapp.TextMessage) {
 	portal.log.Debugln("Handled message", message.Info.Id, "->", resp.EventID)
 }
 
-func (portal *Portal) HandleMediaMessage(download func() ([]byte, error), info whatsapp.MessageInfo, mime, caption string) {
+func (portal *Portal) HandleMediaMessage(download func() ([]byte, error), thumbnail []byte, info whatsapp.MessageInfo, mimeType, caption string) {
 	if portal.IsDuplicate(info.Id) {
 		return
 	}
@@ -311,17 +331,65 @@ func (portal *Portal) HandleMediaMessage(download func() ([]byte, error), info w
 		return
 	}
 
-	img, err := download()
+	data, err := download()
 	if err != nil {
 		portal.log.Errorln("Failed to download media:", err)
 		return
 	}
-	uploaded, err := intent.UploadBytes(img, mime)
+
+	uploaded, err := intent.UploadBytes(data, mimeType)
 	if err != nil {
 		portal.log.Errorln("Failed to upload media:", err)
 		return
 	}
-	resp, err := intent.SendImage(portal.MXID, caption, uploaded.ContentURI)
+	if len(caption) == 0 {
+		caption = info.Id
+		exts, _ := mime.ExtensionsByType(mimeType)
+		if exts != nil && len(exts) > 0 {
+			caption += exts[0]
+		}
+	}
+
+	content := gomatrix.Content{
+		Body: caption,
+		URL:  uploaded.ContentURI,
+		Info: gomatrix.FileInfo{
+			Size:     len(data),
+			MimeType: mimeType,
+		},
+		RelatesTo: portal.GetRelations(info),
+	}
+
+	if thumbnail != nil {
+		thumbnailMime := http.DetectContentType(thumbnail)
+		uploadedThumbnail, _ := intent.UploadBytes(thumbnail, thumbnailMime)
+		if uploadedThumbnail != nil {
+			content.Info.ThumbnailURL = uploadedThumbnail.ContentURI
+			cfg, _, _ := image.DecodeConfig(bytes.NewReader(data))
+			content.Info.ThumbnailInfo = &gomatrix.FileInfo{
+				Size:     len(thumbnail),
+				Width:    cfg.Width,
+				Height:   cfg.Height,
+				MimeType: thumbnailMime,
+			}
+		}
+	}
+
+	switch strings.ToLower(strings.Split(mimeType, "/")[0]) {
+	case "image":
+		content.MsgType = gomatrix.MsgImage
+		cfg, _, _ := image.DecodeConfig(bytes.NewReader(data))
+		content.Info.Width = cfg.Width
+		content.Info.Height = cfg.Height
+	case "video":
+		content.MsgType = gomatrix.MsgVideo
+	case "audio":
+		content.MsgType = gomatrix.MsgAudio
+	default:
+		content.MsgType = gomatrix.MsgFile
+	}
+
+	resp, err := intent.SendMassagedMessageEvent(portal.MXID, gomatrix.EventMessage, content, int64(info.Timestamp*1000))
 	if err != nil {
 		portal.log.Errorfln("Failed to handle message %s: %v", info.Id, err)
 		return
@@ -330,12 +398,40 @@ func (portal *Portal) HandleMediaMessage(download func() ([]byte, error), info w
 	portal.log.Debugln("Handled message", info.Id, "->", resp.EventID)
 }
 
+var htmlParser = format.HTMLParser{
+	TabsToSpaces: 4,
+	Newline:      "\n",
+
+	PillConverter: func(mxid, eventID string) string {
+		return mxid
+	},
+	BoldConverter: func(text string) string {
+		return fmt.Sprintf("*%s*", text)
+	},
+	ItalicConverter: func(text string) string {
+		return fmt.Sprintf("_%s_", text)
+	},
+	StrikethroughConverter: func(text string) string {
+		return fmt.Sprintf("~%s~", text)
+	},
+	MonospaceConverter: func(text string) string {
+		return fmt.Sprintf("```%s```", text)
+	},
+	MonospaceBlockConverter: func(text string) string {
+		return fmt.Sprintf("```%s```", text)
+	},
+}
+
 func (portal *Portal) HandleMatrixMessage(evt *gomatrix.Event) {
 	var err error
 	switch evt.Content.MsgType {
 	case gomatrix.MsgText:
+		text := evt.Content.Body
+		if evt.Content.Format == gomatrix.FormatHTML {
+			text = htmlParser.Parse(evt.Content.FormattedBody)
+		}
 		err = portal.user.Conn.Send(whatsapp.TextMessage{
-			Text: evt.Content.Body,
+			Text: text,
 			Info: whatsapp.MessageInfo{
 				RemoteJid: portal.JID,
 			},

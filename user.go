@@ -24,7 +24,6 @@ import (
 	log "maunium.net/go/maulogger"
 	"maunium.net/go/mautrix-whatsapp/types"
 	"strings"
-	"encoding/json"
 	"sync"
 	"maunium.net/go/mautrix-whatsapp/whatsapp-ext"
 )
@@ -186,10 +185,7 @@ func (user *User) Login(roomID types.MatrixRoomID) {
 func (user *User) Sync() {
 	user.log.Debugln("Syncing...")
 	user.Conn.Contacts()
-	user.log.Debugln(user.Conn.Store.Contacts)
 	for jid, contact := range user.Conn.Store.Contacts {
-		dat, _ := json.Marshal(&contact)
-		user.log.Debugln(string(dat))
 		if strings.HasSuffix(jid, puppetJIDStrippedSuffix) {
 			puppet := user.GetPuppetByJID(contact.Jid)
 			puppet.Sync(contact)
@@ -216,15 +212,23 @@ func (user *User) HandleTextMessage(message whatsapp.TextMessage) {
 }
 
 func (user *User) HandleImageMessage(message whatsapp.ImageMessage) {
-	// user.log.Debugln("Received image message:", message)
 	portal := user.GetPortalByJID(message.Info.RemoteJid)
-	portal.HandleMediaMessage(message.Download, message.Info, message.Type, message.Caption)
+	portal.HandleMediaMessage(message.Download, message.Thumbnail, message.Info, message.Type, message.Caption)
 }
 
 func (user *User) HandleVideoMessage(message whatsapp.VideoMessage) {
-	// user.log.Debugln("Received video message:", message)
 	portal := user.GetPortalByJID(message.Info.RemoteJid)
-	portal.HandleMediaMessage(message.Download, message.Info, message.Type, message.Caption)
+	portal.HandleMediaMessage(message.Download, message.Thumbnail, message.Info, message.Type, message.Caption)
+}
+
+func (user *User) HandleAudioMessage(message whatsapp.AudioMessage) {
+	portal := user.GetPortalByJID(message.Info.RemoteJid)
+	portal.HandleMediaMessage(message.Download, nil, message.Info, message.Type, "")
+}
+
+func (user *User) HandleDocumentMessage(message whatsapp.DocumentMessage) {
+	portal := user.GetPortalByJID(message.Info.RemoteJid)
+	portal.HandleMediaMessage(message.Download, message.Thumbnail, message.Info, message.Type, message.Title)
 }
 
 func (user *User) HandleJsonMessage(message string) {
