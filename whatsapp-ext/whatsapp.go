@@ -26,14 +26,23 @@ import (
 	"strings"
 )
 
+const (
+	OldUserSuffix = "@c.us"
+	NewUserSuffix = "@s.whatsapp.net"
+)
+
 type ExtendedConn struct {
 	*whatsapp.Conn
+
+	handlers []whatsapp.Handler
 }
 
 func ExtendConn(conn *whatsapp.Conn) *ExtendedConn {
-	return &ExtendedConn{
+	ext := &ExtendedConn{
 		Conn: conn,
 	}
+	ext.Conn.AddHandler(ext)
+	return ext
 }
 
 type GroupInfo struct {
@@ -64,7 +73,7 @@ func (ext *ExtendedConn) GetGroupMetaData(jid string) (*GroupInfo, error) {
 		return nil, fmt.Errorf("failed to get group metadata: %v", err)
 	}
 	content := <-data
-	fmt.Println("GROUP METADATA", content)
+
 	info := &GroupInfo{}
 	err = json.Unmarshal([]byte(content), info)
 	if err != nil {
@@ -72,7 +81,7 @@ func (ext *ExtendedConn) GetGroupMetaData(jid string) (*GroupInfo, error) {
 	}
 
 	for index, participant := range info.Participants {
-		info.Participants[index].JID = strings.Replace(participant.JID, "@c.us", "@s.whatsapp.net", 1)
+		info.Participants[index].JID = strings.Replace(participant.JID, OldUserSuffix, NewUserSuffix, 1)
 	}
 
 	return info, nil
