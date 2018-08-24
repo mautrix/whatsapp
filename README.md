@@ -4,5 +4,9 @@ implementation of the [sigalor/whatsapp-web-reveng](https://github.com/sigalor/w
 
 Somewhat works for very basic chatting.
 
+### [Wiki](https://github.com/tulir/mautrix-whatsapp/wiki)
+
+### [Features & Roadmap](https://github.com/tulir/mautrix-whatsapp/blob/master/ROADMAP.md)
+
 ## Discussion
 Matrix room: [#whatsapp:maunium.net](https://matrix.to/#/#whatsapp:maunium.net)
