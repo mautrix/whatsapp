@@ -59,7 +59,7 @@ func (mq *MessageQuery) GetAll(owner types.MatrixUserID) (messages []*Message) {
 }
 
 func (mq *MessageQuery) GetByJID(owner types.MatrixUserID, jid types.WhatsAppMessageID) *Message {
-	return mq.get("SELECT * FROM message WHERE jid=?", jid)
+	return mq.get("SELECT * FROM message WHERE owner=? AND jid=?", owner, jid)
 }
 
 func (mq *MessageQuery) GetByMXID(mxid types.MatrixEventID) *Message {

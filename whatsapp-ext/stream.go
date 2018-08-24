@@ -57,6 +57,6 @@ func (ext *ExtendedConn) handleMessageStream(message []json.RawMessage) {
 		if !ok {
 			continue
 		}
-		streamHandler.HandleStreamEvent(event)
+		go streamHandler.HandleStreamEvent(event)
 	}
 }

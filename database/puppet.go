@@ -93,7 +93,7 @@ func (puppet *Puppet) Insert() error {
 	_, err := puppet.db.Exec("INSERT INTO puppet VALUES (?, ?, ?, ?)",
 		puppet.JID, puppet.Receiver, puppet.Displayname, puppet.Avatar)
 	if err != nil {
-		puppet.log.Errorln("Failed to insert %s->%s: %v", puppet.JID, puppet.Receiver, err)
+		puppet.log.Errorfln("Failed to insert %s->%s: %v", puppet.JID, puppet.Receiver, err)
 	}
 	return err
 }
@@ -103,7 +103,7 @@ func (puppet *Puppet) Update() error {
 		puppet.Displayname, puppet.Avatar,
 		puppet.JID, puppet.Receiver)
 	if err != nil {
-		puppet.log.Errorln("Failed to update %s->%s: %v", puppet.JID, puppet.Receiver, err)
+		puppet.log.Errorfln("Failed to update %s->%s: %v", puppet.JID, puppet.Receiver, err)
 	}
 	return err
 }

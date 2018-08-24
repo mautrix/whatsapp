@@ -17,8 +17,9 @@
 package whatsapp_ext
 
 import (
-	"github.com/Rhymen/go-whatsapp"
 	"encoding/json"
+
+	"github.com/Rhymen/go-whatsapp"
 )
 
 type ConnInfo struct {
@@ -26,8 +27,8 @@ type ConnInfo struct {
 	BinaryVersion   int   `json:"binVersion"`
 	Phone           struct {
 		WhatsAppVersion    string `json:"wa_version"`
-		MCC                int    `json:"mcc"`
-		MNC                int    `json:"mnc"`
+		MCC                string `json:"mcc"`
+		MNC                string `json:"mnc"`
 		OSVersion          string `json:"os_version"`
 		DeviceManufacturer string `json:"device_manufacturer"`
 		DeviceModel        string `json:"device_model"`

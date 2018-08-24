@@ -28,7 +28,7 @@
   * [x] Avatars
   * [ ] Presence
   * [ ] Typing notifications
-  * [ ] Read receipts
+  * [x] Read receipts
   * [ ] Admin/superadmin status
   * [ ] Membership actions
     * [ ] Invite
