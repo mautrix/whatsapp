@@ -17,9 +17,10 @@
 package whatsapp_ext
 
 import (
-	"github.com/Rhymen/go-whatsapp"
 	"encoding/json"
 	"strings"
+
+	"github.com/Rhymen/go-whatsapp"
 )
 
 type PresenceType string
@@ -27,12 +28,15 @@ type PresenceType string
 const (
 	PresenceUnavailable PresenceType = "unavailable"
 	PresenceAvailable   PresenceType = "available"
+	PresenceComposing   PresenceType = "composing"
 )
 
 type Presence struct {
 	JID       string       `json:"id"`
+	SenderJID string       `json:"participant"`
 	Status    PresenceType `json:"type"`
 	Timestamp int64        `json:"t"`
+	Deny      bool         `json:"deny"`
 }
 
 type PresenceHandler interface {
@@ -48,6 +52,11 @@ func (ext *ExtendedConn) handleMessagePresence(message []byte) {
 		return
 	}
 	event.JID = strings.Replace(event.JID, OldUserSuffix, NewUserSuffix, 1)
+	if len(event.SenderJID) == 0 {
+		event.SenderJID = event.JID
+	} else {
+		event.SenderJID = strings.Replace(event.SenderJID, OldUserSuffix, NewUserSuffix, 1)
+	}
 	for _, handler := range ext.handlers {
 		presenceHandler, ok := handler.(PresenceHandler)
 		if !ok {

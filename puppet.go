@@ -132,6 +132,8 @@ type Puppet struct {
 	bridge *Bridge
 	log    log.Logger
 
+	typingIn types.MatrixRoomID
+
 	MXID types.MatrixUserID
 }
 
