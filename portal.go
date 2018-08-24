@@ -20,10 +20,12 @@ import (
 	"bytes"
 	"encoding/hex"
 	"fmt"
+	"html"
 	"image"
 	"math/rand"
 	"mime"
 	"net/http"
+	"regexp"
 	"strings"
 	"sync"
 
@@ -299,7 +301,26 @@ func (portal *Portal) SetReply(content *gomatrix.Content, info whatsapp.MessageI
 		content.SetReply(event)
 	}
 	return
+}
 
+var codeBlockRegex = regexp.MustCompile("```((?:.|\n)+?)```")
+var italicRegex = regexp.MustCompile("([\\s>~*]|^)_(.+?)_([^a-zA-Z\\d]|$)")
+var boldRegex = regexp.MustCompile("([\\s>_~]|^)\\*(.+?)\\*([^a-zA-Z\\d]|$)")
+var strikethroughRegex = regexp.MustCompile("([\\s>_*]|^)~(.+?)~([^a-zA-Z\\d]|$)")
+
+var whatsAppFormat = map[*regexp.Regexp]string{
+	codeBlockRegex: "<pre>$1</pre>",
+	italicRegex: "$1<em>$2</em>$3",
+	boldRegex: "$1<strong>$2</strong>$3",
+	strikethroughRegex: "$1<del>$2</del>$3",
+}
+
+func (portal *Portal) ParseWhatsAppFormat(input string) string {
+	output := html.EscapeString(input)
+	for regex, replacement := range whatsAppFormat {
+		output = regex.ReplaceAllString(output, replacement)
+	}
+	return output
 }
 
 func (portal *Portal) HandleTextMessage(message whatsapp.TextMessage) {
@@ -322,8 +343,15 @@ func (portal *Portal) HandleTextMessage(message whatsapp.TextMessage) {
 		Body:    message.Text,
 		MsgType: gomatrix.MsgText,
 	}
+
+	htmlBody := portal.ParseWhatsAppFormat(message.Text)
+	if htmlBody != message.Text {
+		content.FormattedBody = htmlBody
+		content.Format = gomatrix.FormatHTML
+	}
 	portal.SetReply(&content, message.Info)
 
+	intent.UserTyping(portal.MXID, false, 0)
 	resp, err := intent.SendMassagedMessageEvent(portal.MXID, gomatrix.EventMessage, content, int64(message.Info.Timestamp*1000))
 	if err != nil {
 		portal.log.Errorfln("Failed to handle message %s: %v", message.Info.Id, err)
@@ -407,6 +435,7 @@ func (portal *Portal) HandleMediaMessage(download func() ([]byte, error), thumbn
 		content.MsgType = gomatrix.MsgFile
 	}
 
+	intent.UserTyping(portal.MXID, false, 0)
 	resp, err := intent.SendMassagedMessageEvent(portal.MXID, gomatrix.EventMessage, content, int64(info.Timestamp*1000))
 	if err != nil {
 		portal.log.Errorfln("Failed to handle message %s: %v", info.Id, err)
