@@ -17,18 +17,18 @@
 package main
 
 import (
-	"maunium.net/go/mautrix-whatsapp/database"
-	log "maunium.net/go/maulogger"
 	"fmt"
-	"regexp"
-	"maunium.net/go/mautrix-whatsapp/types"
-	"strings"
-	"maunium.net/go/mautrix-appservice"
-	"github.com/Rhymen/go-whatsapp"
 	"net/http"
-)
+	"regexp"
+	"strings"
 
-const puppetJIDStrippedSuffix = "@s.whatsapp.net"
+	"github.com/Rhymen/go-whatsapp"
+	log "maunium.net/go/maulogger"
+	"maunium.net/go/mautrix-appservice"
+	"maunium.net/go/mautrix-whatsapp/database"
+	"maunium.net/go/mautrix-whatsapp/types"
+	"maunium.net/go/mautrix-whatsapp/whatsapp-ext"
+)
 
 func (bridge *Bridge) ParsePuppetMXID(mxid types.MatrixUserID) (types.MatrixUserID, types.WhatsAppID, bool) {
 	userIDRegex, err := regexp.Compile(fmt.Sprintf("^@%s:%s$",
@@ -47,7 +47,7 @@ func (bridge *Bridge) ParsePuppetMXID(mxid types.MatrixUserID) (types.MatrixUser
 	receiver = strings.Replace(receiver, "=40", "@", 1)
 	colonIndex := strings.LastIndex(receiver, "=3")
 	receiver = receiver[:colonIndex] + ":" + receiver[colonIndex+len("=3"):]
-	jid := types.WhatsAppID(match[2] + puppetJIDStrippedSuffix)
+	jid := types.WhatsAppID(match[2] + whatsapp_ext.NewUserSuffix)
 	return receiver, jid, true
 }
 
@@ -120,7 +120,7 @@ func (user *User) NewPuppet(dbPuppet *database.Puppet) *Puppet {
 				dbPuppet.Receiver,
 				strings.Replace(
 					dbPuppet.JID,
-					puppetJIDStrippedSuffix, "", 1)),
+					whatsapp_ext.NewUserSuffix, "", 1)),
 			user.bridge.Config.Homeserver.Domain),
 	}
 }

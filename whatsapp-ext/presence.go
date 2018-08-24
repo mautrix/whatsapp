@@ -53,6 +53,6 @@ func (ext *ExtendedConn) handleMessagePresence(message []byte) {
 		if !ok {
 			continue
 		}
-		presenceHandler.HandlePresence(event)
+		go presenceHandler.HandlePresence(event)
 	}
 }

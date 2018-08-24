@@ -17,14 +17,16 @@
 package main
 
 import (
-	"maunium.net/go/mautrix-whatsapp/database"
-	"github.com/Rhymen/go-whatsapp"
-	"time"
-	"github.com/skip2/go-qrcode"
-	log "maunium.net/go/maulogger"
-	"maunium.net/go/mautrix-whatsapp/types"
+	"fmt"
 	"strings"
 	"sync"
+	"time"
+
+	"github.com/Rhymen/go-whatsapp"
+	"github.com/skip2/go-qrcode"
+	log "maunium.net/go/maulogger"
+	"maunium.net/go/mautrix-whatsapp/database"
+	"maunium.net/go/mautrix-whatsapp/types"
 	"maunium.net/go/mautrix-whatsapp/whatsapp-ext"
 )
 
@@ -186,7 +188,7 @@ func (user *User) Sync() {
 	user.log.Debugln("Syncing...")
 	user.Conn.Contacts()
 	for jid, contact := range user.Conn.Store.Contacts {
-		if strings.HasSuffix(jid, puppetJIDStrippedSuffix) {
+		if strings.HasSuffix(jid, whatsapp_ext.NewUserSuffix) {
 			puppet := user.GetPuppetByJID(contact.Jid)
 			puppet.Sync(contact)
 		}
@@ -203,6 +205,10 @@ func (user *User) Sync() {
 
 func (user *User) HandleError(err error) {
 	user.log.Errorln("WhatsApp error:", err)
+}
+
+func (user *User) HandleJSONParseError(err error) {
+	user.log.Errorln("WhatsApp JSON parse error:", err)
 }
 
 func (user *User) HandleTextMessage(message whatsapp.TextMessage) {
@@ -229,6 +235,52 @@ func (user *User) HandleAudioMessage(message whatsapp.AudioMessage) {
 func (user *User) HandleDocumentMessage(message whatsapp.DocumentMessage) {
 	portal := user.GetPortalByJID(message.Info.RemoteJid)
 	portal.HandleMediaMessage(message.Download, message.Thumbnail, message.Info, message.Type, message.Title)
+}
+
+func (user *User) HandleStreamEvent(stream whatsapp_ext.StreamEvent) {
+	if len(user.ManagementRoom) == 0 {
+		return
+	}
+	switch stream.Type {
+	case whatsapp_ext.StreamSleep:
+		user.bridge.AppService.BotIntent().SendNotice(user.ManagementRoom, "WhatsApp client disconnected.")
+	case whatsapp_ext.StreamUpdate:
+		if user.Conn.Info != nil && user.Conn.Info.Phone != nil {
+			user.bridge.AppService.BotIntent().SendNotice(user.ManagementRoom,
+				fmt.Sprintf("WhatsApp v%s client connected from %s %s (OS v%s).",
+					user.Conn.Info.Phone.WaVersion, user.Conn.Info.Phone.DeviceManufacturer, user.Conn.Info.Phone.DeviceModel, user.Conn.Info.Phone.OsVersion))
+		}
+	}
+}
+
+func (user *User) HandleConnInfo(info whatsapp_ext.ConnInfo) {
+	if len(user.ManagementRoom) > 0 && len(info.ProtocolVersion) > 0 {
+		user.bridge.AppService.BotIntent().SendNotice(user.ManagementRoom,
+			fmt.Sprintf("WhatsApp v%s client connected from %s %s (OS v%s).",
+				info.Phone.WhatsAppVersion, info.Phone.DeviceManufacturer, info.Phone.DeviceModel, info.Phone.OSVersion))
+	}
+}
+
+func (user *User) HandleMsgInfo(info whatsapp_ext.MsgInfo) {
+	if (info.Command == whatsapp_ext.MsgInfoCommandAck || info.Command == whatsapp_ext.MsgInfoCommandAcks) && info.Acknowledgement == whatsapp_ext.AckMessageRead {
+		portal := user.GetPortalByJID(info.ToJID)
+		if len(portal.MXID) == 0 {
+			return
+		}
+
+		intent := user.GetPuppetByJID(info.SenderJID).Intent()
+		user.log.Debugln(info.IDs)
+		for _, id := range info.IDs {
+			msg := user.bridge.DB.Message.GetByJID(user.ID, id)
+			if msg == nil {
+				continue
+			}
+			err := intent.MarkRead(portal.MXID, msg.MXID)
+			if err != nil {
+				user.log.Warnln("Failed to mark message %s as read by %s: %v", msg.MXID, info.SenderJID, err)
+			}
+		}
+	}
 }
 
 func (user *User) HandleJsonMessage(message string) {

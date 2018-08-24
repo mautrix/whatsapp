@@ -17,25 +17,49 @@
 package whatsapp_ext
 
 import (
-	"github.com/Rhymen/go-whatsapp"
 	"encoding/json"
 	"strings"
+
+	"github.com/Rhymen/go-whatsapp"
 )
 
 type MsgInfoCommand string
 
 const (
-	MsgInfoCommandAcknowledge MsgInfoCommand = "ack"
+	MsgInfoCommandAck  MsgInfoCommand = "ack"
+	MsgInfoCommandAcks MsgInfoCommand = "acks"
 )
 
+type Acknowledgement int
+
+const (
+	AckMessageSent      Acknowledgement = 1
+	AckMessageDelivered Acknowledgement = 2
+	AckMessageRead      Acknowledgement = 3
+)
+
+type JSONStringOrArray []string
+
+func (jsoa *JSONStringOrArray) UnmarshalJSON(data []byte) error {
+	var str string
+	if json.Unmarshal(data, &str) == nil {
+		*jsoa = []string{str}
+		return nil
+	}
+	var strs []string
+	json.Unmarshal(data, &strs)
+	*jsoa = strs
+	return nil
+}
+
 type MsgInfo struct {
-	Command         MsgInfoCommand `json:"cmd"`
-	ID              string         `json:"id"`
-	Acknowledgement int            `json:"ack"`
-	MessageFromJID  string         `json:"from"`
-	SenderJID       string         `json:"participant"`
-	ToJID           string         `json:"to"`
-	Timestamp       int64          `json:"t"`
+	Command         MsgInfoCommand    `json:"cmd"`
+	IDs             JSONStringOrArray `json:"id"`
+	Acknowledgement Acknowledgement   `json:"ack"`
+	MessageFromJID  string            `json:"from"`
+	SenderJID       string            `json:"participant"`
+	ToJID           string            `json:"to"`
+	Timestamp       int64             `json:"t"`
 }
 
 type MsgInfoHandler interface {
@@ -43,7 +67,7 @@ type MsgInfoHandler interface {
 	HandleMsgInfo(MsgInfo)
 }
 
-func (ext *ExtendedConn) handleMessageMsgInfo(message []byte) {
+func (ext *ExtendedConn) handleMessageMsgInfo(msgType JSONMessageType, message []byte) {
 	var event MsgInfo
 	err := json.Unmarshal(message, &event)
 	if err != nil {
@@ -53,11 +77,14 @@ func (ext *ExtendedConn) handleMessageMsgInfo(message []byte) {
 	event.MessageFromJID = strings.Replace(event.MessageFromJID, OldUserSuffix, NewUserSuffix, 1)
 	event.SenderJID = strings.Replace(event.SenderJID, OldUserSuffix, NewUserSuffix, 1)
 	event.ToJID = strings.Replace(event.ToJID, OldUserSuffix, NewUserSuffix, 1)
+	if msgType == MessageMsg {
+		event.SenderJID = event.MessageFromJID
+	}
 	for _, handler := range ext.handlers {
 		msgInfoHandler, ok := handler.(MsgInfoHandler)
 		if !ok {
 			continue
 		}
-		msgInfoHandler.HandleMsgInfo(event)
+		go msgInfoHandler.HandleMsgInfo(event)
 	}
 }

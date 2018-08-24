@@ -62,6 +62,6 @@ func (ext *ExtendedConn) handleMessageProps(message []byte) {
 		if !ok {
 			continue
 		}
-		protocolPropsHandler.HandleProtocolProps(event)
+		go protocolPropsHandler.HandleProtocolProps(event)
 	}
 }

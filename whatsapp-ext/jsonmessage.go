@@ -18,6 +18,7 @@ package whatsapp_ext
 
 import (
 	"encoding/json"
+
 	"github.com/Rhymen/go-whatsapp"
 )
 
@@ -27,6 +28,7 @@ type JSONMessageType string
 
 const (
 	MessageMsgInfo  JSONMessageType = "MsgInfo"
+	MessageMsg      JSONMessageType = "Msg"
 	MessagePresence JSONMessageType = "Presence"
 	MessageStream   JSONMessageType = "Stream"
 	MessageConn     JSONMessageType = "Conn"
@@ -76,11 +78,11 @@ func (ext *ExtendedConn) HandleJsonMessage(message string) {
 	case MessageStream:
 		ext.handleMessageStream(msg[1:])
 	case MessageConn:
-		ext.handleMessageProps(msg[1])
+		ext.handleMessageConn(msg[1])
 	case MessageProps:
 		ext.handleMessageProps(msg[1])
-	case MessageMsgInfo:
-		ext.handleMessageMsgInfo(msg[1])
+	case MessageMsgInfo, MessageMsg:
+		ext.handleMessageMsgInfo(msgType, msg[1])
 	default:
 		for _, handler := range ext.handlers {
 			ujmHandler, ok := handler.(UnhandledJSONMessageHandler)

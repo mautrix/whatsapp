@@ -17,21 +17,24 @@
 package main
 
 import (
-	"maunium.net/go/mautrix-whatsapp/database"
-	log "maunium.net/go/maulogger"
-	"fmt"
-	"maunium.net/go/mautrix-whatsapp/types"
-	"maunium.net/go/gomatrix"
-	"strings"
-	"maunium.net/go/mautrix-appservice"
-	"github.com/Rhymen/go-whatsapp"
-	"sync"
-	"net/http"
-	"maunium.net/go/mautrix-whatsapp/whatsapp-ext"
-	"mime"
-	"image"
 	"bytes"
+	"encoding/hex"
+	"fmt"
+	"image"
+	"math/rand"
+	"mime"
+	"net/http"
+	"strings"
+	"sync"
+
+	"github.com/Rhymen/go-whatsapp"
+	"maunium.net/go/gomatrix"
 	"maunium.net/go/gomatrix/format"
+	log "maunium.net/go/maulogger"
+	"maunium.net/go/mautrix-appservice"
+	"maunium.net/go/mautrix-whatsapp/database"
+	"maunium.net/go/mautrix-whatsapp/types"
+	"maunium.net/go/mautrix-whatsapp/whatsapp-ext"
 )
 
 func (user *User) GetPortalByMXID(mxid types.MatrixRoomID) *Portal {
@@ -221,7 +224,7 @@ func (portal *Portal) CreateMatrixRoom() error {
 	name := portal.Name
 	topic := portal.Topic
 	isPrivateChat := false
-	if strings.HasSuffix(portal.JID, "s.whatsapp.net") {
+	if strings.HasSuffix(portal.JID, whatsapp_ext.NewUserSuffix) {
 		puppet := portal.user.GetPuppetByJID(portal.JID)
 		name = puppet.Displayname
 		topic = "WhatsApp private chat"
@@ -244,7 +247,7 @@ func (portal *Portal) CreateMatrixRoom() error {
 }
 
 func (portal *Portal) IsPrivateChat() bool {
-	return strings.HasSuffix(portal.JID, puppetJIDStrippedSuffix)
+	return strings.HasSuffix(portal.JID, whatsapp_ext.NewUserSuffix)
 }
 
 func (portal *Portal) MainIntent() *appservice.IntentAPI {
@@ -282,13 +285,18 @@ func (portal *Portal) GetMessageIntent(info whatsapp.MessageInfo) *appservice.In
 	return puppet.Intent()
 }
 
-func (portal *Portal) GetRelations(info whatsapp.MessageInfo) (reply gomatrix.RelatesTo) {
+func (portal *Portal) SetReply(content *gomatrix.Content, info whatsapp.MessageInfo) {
 	if len(info.QuotedMessageID) == 0 {
 		return
 	}
 	message := portal.bridge.DB.Message.GetByJID(portal.Owner, info.QuotedMessageID)
 	if message != nil {
-		reply.InReplyTo.EventID = message.MXID
+		event, err := portal.MainIntent().GetEvent(portal.MXID, message.MXID)
+		if err != nil {
+			portal.log.Warnln("Failed to get reply target:", err)
+			return
+		}
+		content.SetReply(event)
 	}
 	return
 
@@ -299,18 +307,24 @@ func (portal *Portal) HandleTextMessage(message whatsapp.TextMessage) {
 		return
 	}
 
-	portal.CreateMatrixRoom()
+	err := portal.CreateMatrixRoom()
+	if err != nil {
+		portal.log.Errorln("Failed to create portal room:", err)
+		return
+	}
 
 	intent := portal.GetMessageIntent(message.Info)
 	if intent == nil {
 		return
 	}
 
-	resp, err := intent.SendMassagedMessageEvent(portal.MXID, gomatrix.EventMessage, gomatrix.Content{
-		Body:      message.Text,
-		MsgType:   gomatrix.MsgText,
-		RelatesTo: portal.GetRelations(message.Info),
-	}, int64(message.Info.Timestamp*1000))
+	content := gomatrix.Content{
+		Body:    message.Text,
+		MsgType: gomatrix.MsgText,
+	}
+	portal.SetReply(&content, message.Info)
+
+	resp, err := intent.SendMassagedMessageEvent(portal.MXID, gomatrix.EventMessage, content, int64(message.Info.Timestamp*1000))
 	if err != nil {
 		portal.log.Errorfln("Failed to handle message %s: %v", message.Info.Id, err)
 		return
@@ -324,7 +338,11 @@ func (portal *Portal) HandleMediaMessage(download func() ([]byte, error), thumbn
 		return
 	}
 
-	portal.CreateMatrixRoom()
+	err := portal.CreateMatrixRoom()
+	if err != nil {
+		portal.log.Errorln("Failed to create portal room:", err)
+		return
+	}
 
 	intent := portal.GetMessageIntent(info)
 	if intent == nil {
@@ -353,12 +371,12 @@ func (portal *Portal) HandleMediaMessage(download func() ([]byte, error), thumbn
 	content := gomatrix.Content{
 		Body: caption,
 		URL:  uploaded.ContentURI,
-		Info: gomatrix.FileInfo{
+		Info: &gomatrix.FileInfo{
 			Size:     len(data),
 			MimeType: mimeType,
 		},
-		RelatesTo: portal.GetRelations(info),
 	}
+	portal.SetReply(&content, info)
 
 	if thumbnail != nil {
 		thumbnailMime := http.DetectContentType(thumbnail)
@@ -422,6 +440,12 @@ var htmlParser = format.HTMLParser{
 	},
 }
 
+func makeMessageID() string {
+	b := make([]byte, 10)
+	rand.Read(b)
+	return strings.ToUpper(hex.EncodeToString(b))
+}
+
 func (portal *Portal) HandleMatrixMessage(evt *gomatrix.Event) {
 	var err error
 	switch evt.Content.MsgType {
@@ -430,18 +454,21 @@ func (portal *Portal) HandleMatrixMessage(evt *gomatrix.Event) {
 		if evt.Content.Format == gomatrix.FormatHTML {
 			text = htmlParser.Parse(evt.Content.FormattedBody)
 		}
+		id := makeMessageID()
 		err = portal.user.Conn.Send(whatsapp.TextMessage{
 			Text: text,
 			Info: whatsapp.MessageInfo{
+				Id: id,
 				RemoteJid: portal.JID,
 			},
 		})
+		portal.MarkHandled(id, evt.ID)
 	default:
 		portal.log.Debugln("Unhandled Matrix event:", evt)
 		return
 	}
 	if err != nil {
-		portal.log.Errorln("Error handling Matrix event %s: %v", evt.ID, err)
+		portal.log.Errorfln("Error handling Matrix event %s: %v", evt.ID, err)
 	} else {
 		portal.log.Debugln("Handled Matrix event:", evt)
 	}
