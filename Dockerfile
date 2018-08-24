@@ -1,6 +1,6 @@
 FROM golang:1-alpine AS builder
 
-RUN apk add --no-cache git ca-certificates
+RUN apk add --no-cache git ca-certificates build-base
 COPY . /go/src/maunium.net/go/mautrix-whatsapp
 WORKDIR /go/src/maunium.net/go/mautrix-whatsapp
 RUN go get -u maunium.net/go/mautrix-whatsapp && go build -o /usr/bin/mautrix-whatsapp
