@@ -267,15 +267,17 @@ func (user *User) HandlePresence(info whatsapp_ext.Presence) {
 	case whatsapp_ext.PresenceUnavailable:
 		puppet.Intent().SetPresence("offline")
 	case whatsapp_ext.PresenceAvailable:
-		if len(puppet.typingIn) > 0 {
+		if len(puppet.typingIn) > 0 && puppet.typingAt + 15 > time.Now().Unix() {
 			puppet.Intent().UserTyping(puppet.typingIn, false, 0)
 			puppet.typingIn = ""
+			puppet.typingAt = 0
 		} else {
 			puppet.Intent().SetPresence("online")
 		}
 	case whatsapp_ext.PresenceComposing:
 		portal := user.GetPortalByJID(info.JID)
 		puppet.typingIn = portal.MXID
+		puppet.typingAt = time.Now().Unix()
 		puppet.Intent().UserTyping(portal.MXID, true, 15 * 1000)
 	}
 }
