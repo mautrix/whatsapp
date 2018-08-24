@@ -133,6 +133,7 @@ type Puppet struct {
 	log    log.Logger
 
 	typingIn types.MatrixRoomID
+	typingAt int64
 
 	MXID types.MatrixUserID
 }
