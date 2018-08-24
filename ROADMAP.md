@@ -26,8 +26,8 @@
     * [x] Media/files
   * [ ] Message deletions
   * [x] Avatars
-  * [ ] Presence
-  * [ ] Typing notifications
+  * [x] Presence
+  * [x] Typing notifications
   * [x] Read receipts
   * [ ] Admin/superadmin status
   * [ ] Membership actions

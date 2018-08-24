@@ -261,6 +261,25 @@ func (user *User) HandleConnInfo(info whatsapp_ext.ConnInfo) {
 	}
 }
 
+func (user *User) HandlePresence(info whatsapp_ext.Presence) {
+	puppet := user.GetPuppetByJID(info.SenderJID)
+	switch info.Status {
+	case whatsapp_ext.PresenceUnavailable:
+		puppet.Intent().SetPresence("offline")
+	case whatsapp_ext.PresenceAvailable:
+		if len(puppet.typingIn) > 0 {
+			puppet.Intent().UserTyping(puppet.typingIn, false, 0)
+			puppet.typingIn = ""
+		} else {
+			puppet.Intent().SetPresence("online")
+		}
+	case whatsapp_ext.PresenceComposing:
+		portal := user.GetPortalByJID(info.JID)
+		puppet.typingIn = portal.MXID
+		puppet.Intent().UserTyping(portal.MXID, true, 15 * 1000)
+	}
+}
+
 func (user *User) HandleMsgInfo(info whatsapp_ext.MsgInfo) {
 	if (info.Command == whatsapp_ext.MsgInfoCommandAck || info.Command == whatsapp_ext.MsgInfoCommandAcks) && info.Acknowledgement == whatsapp_ext.AckMessageRead {
 		portal := user.GetPortalByJID(info.ToJID)
