@@ -227,9 +227,9 @@ func (portal *Portal) CreateMatrixRoom() error {
 	name := portal.Name
 	topic := portal.Topic
 	isPrivateChat := false
-	if strings.HasSuffix(portal.JID, whatsapp_ext.NewUserSuffix) {
-		puppet := portal.user.GetPuppetByJID(portal.JID)
-		name = puppet.Displayname
+	invite := []string{portal.user.ID}
+	if portal.IsPrivateChat() {
+		name = ""
 		topic = "WhatsApp private chat"
 		isPrivateChat = true
 	}
@@ -237,7 +237,7 @@ func (portal *Portal) CreateMatrixRoom() error {
 		Visibility: "private",
 		Name:       name,
 		Topic:      topic,
-		Invite:     []string{portal.user.ID},
+		Invite:     invite,
 		Preset:     "private_chat",
 		IsDirect:   isPrivateChat,
 	})
