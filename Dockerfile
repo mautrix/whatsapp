@@ -3,7 +3,7 @@ FROM golang:1-alpine AS builder
 RUN apk add --no-cache git ca-certificates
 COPY . /go/src/maunium.net/go/mautrix-whatsapp
 WORKDIR /go/src/maunium.net/go/mautrix-whatsapp
-RUN CGO_ENABLED=0 go get -u maunium.net/go/mautrix-whatsapp && CGO_ENABLED=0 go build -o /usr/bin/mautrix-whatsapp
+RUN go get -u maunium.net/go/mautrix-whatsapp && go build -o /usr/bin/mautrix-whatsapp
 
 FROM alpine:latest
 
