@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"html"
 	"image"
+	"io"
 	"math/rand"
 	"mime"
 	"net/http"
@@ -309,9 +310,9 @@ var boldRegex = regexp.MustCompile("([\\s>_~]|^)\\*(.+?)\\*([^a-zA-Z\\d]|$)")
 var strikethroughRegex = regexp.MustCompile("([\\s>_*]|^)~(.+?)~([^a-zA-Z\\d]|$)")
 
 var whatsAppFormat = map[*regexp.Regexp]string{
-	codeBlockRegex: "<pre>$1</pre>",
-	italicRegex: "$1<em>$2</em>$3",
-	boldRegex: "$1<strong>$2</strong>$3",
+	codeBlockRegex:     "<pre>$1</pre>",
+	italicRegex:        "$1<em>$2</em>$3",
+	boldRegex:          "$1<strong>$2</strong>$3",
 	strikethroughRegex: "$1<del>$2</del>$3",
 }
 
@@ -475,27 +476,96 @@ func makeMessageID() string {
 	return strings.ToUpper(hex.EncodeToString(b))
 }
 
+func (portal *Portal) PreprocessMatrixMedia(evt *gomatrix.Event) (string, io.ReadCloser, []byte) {
+	if evt.Content.Info == nil {
+		evt.Content.Info = &gomatrix.FileInfo{}
+	}
+	caption := evt.Content.Body
+	exts, err := mime.ExtensionsByType(evt.Content.Info.MimeType)
+	for _, ext := range exts {
+		if strings.HasSuffix(caption, ext) {
+			caption = ""
+			break
+		}
+	}
+	content, err := portal.MainIntent().Download(evt.Content.URL)
+	if err != nil {
+		portal.log.Errorln("Failed to download media in %s: %v", evt.ID, err)
+		return "", nil, nil
+	}
+	thumbnail, err := portal.MainIntent().DownloadBytes(evt.Content.Info.ThumbnailURL)
+	return caption, content, thumbnail
+}
+
 func (portal *Portal) HandleMatrixMessage(evt *gomatrix.Event) {
+	info := whatsapp.MessageInfo{
+		Id:        makeMessageID(),
+		RemoteJid: portal.JID,
+	}
 	var err error
 	switch evt.Content.MsgType {
-	case gomatrix.MsgText:
+	case gomatrix.MsgText, gomatrix.MsgEmote:
 		text := evt.Content.Body
 		if evt.Content.Format == gomatrix.FormatHTML {
 			text = htmlParser.Parse(evt.Content.FormattedBody)
 		}
-		id := makeMessageID()
+		if evt.Content.MsgType == gomatrix.MsgEmote {
+			text = "/me " + text
+		}
 		err = portal.user.Conn.Send(whatsapp.TextMessage{
 			Text: text,
-			Info: whatsapp.MessageInfo{
-				Id: id,
-				RemoteJid: portal.JID,
-			},
+			Info: info,
 		})
-		portal.MarkHandled(id, evt.ID)
+	case gomatrix.MsgImage:
+		caption, content, thumbnail := portal.PreprocessMatrixMedia(evt)
+		if content == nil {
+			return
+		}
+		err = portal.user.Conn.Send(whatsapp.ImageMessage{
+			Caption:   caption,
+			Content:   content,
+			Thumbnail: thumbnail,
+			Type:      evt.Content.Info.MimeType,
+			Info:      info,
+		})
+	case gomatrix.MsgVideo:
+		caption, content, thumbnail := portal.PreprocessMatrixMedia(evt)
+		if content == nil {
+			return
+		}
+		err = portal.user.Conn.Send(whatsapp.VideoMessage{
+			Caption:   caption,
+			Content:   content,
+			Thumbnail: thumbnail,
+			Type:      evt.Content.Info.MimeType,
+			Info:      info,
+		})
+	case gomatrix.MsgAudio:
+		_, content, _ := portal.PreprocessMatrixMedia(evt)
+		if content == nil {
+			return
+		}
+		err = portal.user.Conn.Send(whatsapp.AudioMessage{
+			Content: content,
+			Type:    evt.Content.Info.MimeType,
+			Info:    info,
+		})
+	case gomatrix.MsgFile:
+		_, content, thumbnail := portal.PreprocessMatrixMedia(evt)
+		if content == nil {
+			return
+		}
+		err = portal.user.Conn.Send(whatsapp.DocumentMessage{
+			Content:   content,
+			Thumbnail: thumbnail,
+			Type:      evt.Content.Info.MimeType,
+			Info:      info,
+		})
 	default:
 		portal.log.Debugln("Unhandled Matrix event:", evt)
 		return
 	}
+	portal.MarkHandled(info.Id, evt.ID)
 	if err != nil {
 		portal.log.Errorfln("Error handling Matrix event %s: %v", evt.ID, err)
 	} else {

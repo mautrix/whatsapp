@@ -1,9 +1,9 @@
 # Features & roadmap
 * Matrix → WhatsApp
-  * [ ] Message content
+  * [x] Message content
     * [x] Plain text
     * [x] Formatted messages
-    * [ ] Media/files
+    * [x] Media/files
   * [ ] Message redactions
   * [ ] Presence
   * [ ] Typing notifications
