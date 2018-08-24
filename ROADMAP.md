@@ -20,9 +20,9 @@
     * [ ] Topic
   * [ ] Initial room metadata
 * WhatsApp → Matrix
-  * [ ] Message content
+  * [x] Message content
     * [x] Plain text
-    * [ ] Formatted messages
+    * [x] Formatted messages
     * [x] Media/files
   * [ ] Message deletions
   * [x] Avatars
