@@ -78,7 +78,7 @@ func (ext *ExtendedConn) handleMessageMsgInfo(msgType JSONMessageType, message [
 	event.SenderJID = strings.Replace(event.SenderJID, OldUserSuffix, NewUserSuffix, 1)
 	event.ToJID = strings.Replace(event.ToJID, OldUserSuffix, NewUserSuffix, 1)
 	if msgType == MessageMsg {
-		event.SenderJID = event.MessageFromJID
+		event.SenderJID = event.ToJID
 	}
 	for _, handler := range ext.handlers {
 		msgInfoHandler, ok := handler.(MsgInfoHandler)
