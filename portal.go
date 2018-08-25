@@ -22,17 +22,18 @@ import (
 	"fmt"
 	"html"
 	"image"
-	"io"
+	"image/gif"
+	"image/jpeg"
+	"image/png"
 	"math/rand"
 	"mime"
 	"net/http"
-	"regexp"
 	"strings"
 	"sync"
 
 	"github.com/Rhymen/go-whatsapp"
+	waProto "github.com/Rhymen/go-whatsapp/binary/proto"
 	"maunium.net/go/gomatrix"
-	"maunium.net/go/gomatrix/format"
 	log "maunium.net/go/maulogger"
 	"maunium.net/go/mautrix-appservice"
 	"maunium.net/go/mautrix-whatsapp/database"
@@ -278,13 +279,11 @@ func (portal *Portal) MarkHandled(jid types.WhatsAppMessageID, mxid types.Matrix
 
 func (portal *Portal) GetMessageIntent(info whatsapp.MessageInfo) *appservice.IntentAPI {
 	if info.FromMe {
-		portal.log.Debugln("Unhandled message from me:", info.Id)
-		return nil
+		return portal.user.GetPuppetByJID(portal.user.JID()).Intent()
 	} else if portal.IsPrivateChat() {
 		return portal.MainIntent()
 	}
-	puppet := portal.user.GetPuppetByJID(info.SenderJid)
-	return puppet.Intent()
+	return portal.user.GetPuppetByJID(info.SenderJid).Intent()
 }
 
 func (portal *Portal) SetReply(content *gomatrix.Content, info whatsapp.MessageInfo) {
@@ -303,29 +302,14 @@ func (portal *Portal) SetReply(content *gomatrix.Content, info whatsapp.MessageI
 	return
 }
 
-var codeBlockRegex = regexp.MustCompile("```((?:.|\n)+?)```")
-var italicRegex = regexp.MustCompile("([\\s>~*]|^)_(.+?)_([^a-zA-Z\\d]|$)")
-var boldRegex = regexp.MustCompile("([\\s>_~]|^)\\*(.+?)\\*([^a-zA-Z\\d]|$)")
-var strikethroughRegex = regexp.MustCompile("([\\s>_*]|^)~(.+?)~([^a-zA-Z\\d]|$)")
-
-var whatsAppFormat = map[*regexp.Regexp]string{
-	italicRegex:        "$1<em>$2</em>$3",
-	boldRegex:          "$1<strong>$2</strong>$3",
-	strikethroughRegex: "$1<del>$2</del>$3",
-}
-
 func (portal *Portal) ParseWhatsAppFormat(input string) string {
 	output := html.EscapeString(input)
-	for regex, replacement := range whatsAppFormat {
+	for regex, replacement := range portal.user.waReplString {
 		output = regex.ReplaceAllString(output, replacement)
 	}
-	output = codeBlockRegex.ReplaceAllStringFunc(output, func(str string) string {
-		str = str[3 : len(str)-3]
-		if strings.ContainsRune(str, '\n') {
-			return fmt.Sprintf("<pre><code>%s</code></pre>", str)
-		}
-		return fmt.Sprintf("<code>%s</code>", str)
-	})
+	for regex, replacer := range portal.user.waReplFunc {
+		output = regex.ReplaceAllStringFunc(output, replacer)
+	}
 	return output
 }
 
@@ -451,37 +435,47 @@ func (portal *Portal) HandleMediaMessage(download func() ([]byte, error), thumbn
 	portal.log.Debugln("Handled message", info.Id, "->", resp.EventID)
 }
 
-var htmlParser = format.HTMLParser{
-	TabsToSpaces: 4,
-	Newline:      "\n",
-
-	PillConverter: func(mxid, eventID string) string {
-		return mxid
-	},
-	BoldConverter: func(text string) string {
-		return fmt.Sprintf("*%s*", text)
-	},
-	ItalicConverter: func(text string) string {
-		return fmt.Sprintf("_%s_", text)
-	},
-	StrikethroughConverter: func(text string) string {
-		return fmt.Sprintf("~%s~", text)
-	},
-	MonospaceConverter: func(text string) string {
-		return fmt.Sprintf("```%s```", text)
-	},
-	MonospaceBlockConverter: func(text string) string {
-		return fmt.Sprintf("```%s```", text)
-	},
-}
-
-func makeMessageID() string {
+func makeMessageID() *string {
 	b := make([]byte, 10)
 	rand.Read(b)
-	return strings.ToUpper(hex.EncodeToString(b))
+	str := strings.ToUpper(hex.EncodeToString(b))
+	return &str
 }
 
-func (portal *Portal) PreprocessMatrixMedia(evt *gomatrix.Event) (string, io.ReadCloser, []byte) {
+func (portal *Portal) downloadThumbnail(evt *gomatrix.Event) []byte {
+	if evt.Content.Info == nil || len(evt.Content.Info.ThumbnailURL) == 0 {
+		return nil
+	}
+
+	thumbnail, err := portal.MainIntent().DownloadBytes(evt.Content.Info.ThumbnailURL)
+	if err != nil {
+		portal.log.Errorln("Failed to download thumbnail in %s: %v", evt.ID, err)
+		return nil
+	}
+	thumbnailType := http.DetectContentType(thumbnail)
+	var img image.Image
+	switch thumbnailType {
+	case "image/png":
+		img, err = png.Decode(bytes.NewReader(thumbnail))
+	case "image/gif":
+		img, err = gif.Decode(bytes.NewReader(thumbnail))
+	case "image/jpeg":
+		return thumbnail
+	default:
+		return nil
+	}
+	var buf bytes.Buffer
+	err = jpeg.Encode(&buf, img, &jpeg.Options{
+		Quality: jpeg.DefaultQuality,
+	})
+	if err != nil {
+		portal.log.Errorln("Failed to re-encode thumbnail in %s: %v", evt.ID, err)
+		return nil
+	}
+	return buf.Bytes()
+}
+
+func (portal *Portal) preprocessMatrixMedia(evt *gomatrix.Event, mediaType whatsapp.MediaType) *MediaUpload {
 	if evt.Content.Info == nil {
 		evt.Content.Info = &gomatrix.FileInfo{}
 	}
@@ -493,84 +487,184 @@ func (portal *Portal) PreprocessMatrixMedia(evt *gomatrix.Event) (string, io.Rea
 			break
 		}
 	}
-	content, err := portal.MainIntent().Download(evt.Content.URL)
+	content, err := portal.MainIntent().DownloadBytes(evt.Content.URL)
 	if err != nil {
 		portal.log.Errorln("Failed to download media in %s: %v", evt.ID, err)
-		return "", nil, nil
+		return nil
 	}
-	thumbnail, err := portal.MainIntent().DownloadBytes(evt.Content.Info.ThumbnailURL)
-	return caption, content, thumbnail
+
+	url, mediaKey, fileEncSHA256, fileSHA256, fileLength, err := portal.user.Conn.Upload(bytes.NewReader(content), mediaType)
+	if err != nil {
+		portal.log.Error("Failed to upload media in %s: %v", evt.ID, err)
+		return nil
+	}
+
+	return &MediaUpload{
+		Caption:       caption,
+		URL:           url,
+		MediaKey:      mediaKey,
+		FileEncSHA256: fileEncSHA256,
+		FileSHA256:    fileSHA256,
+		FileLength:    fileLength,
+		Thumbnail:     portal.downloadThumbnail(evt),
+	}
+}
+
+type MediaUpload struct {
+	Caption       string
+	URL           string
+	MediaKey      []byte
+	FileEncSHA256 []byte
+	FileSHA256    []byte
+	FileLength    uint64
+	Thumbnail     []byte
+}
+
+func (portal *Portal) GetMessage(jid types.WhatsAppMessageID) *waProto.WebMessageInfo {
+	node, err := portal.user.Conn.LoadMessagesBefore(portal.JID, jid, 1)
+	if err != nil {
+		return nil
+	}
+	msgs, ok := node.Content.([]interface{})
+	if !ok {
+		return nil
+	}
+	msg, ok := msgs[0].(*waProto.WebMessageInfo)
+	if !ok {
+		return nil
+	}
+	node, err = portal.user.Conn.LoadMessagesAfter(portal.JID, msg.GetKey().GetId(), 1)
+	if err != nil {
+		return nil
+	}
+	msgs, ok = node.Content.([]interface{})
+	if !ok {
+		return nil
+	}
+	msg, _ = msgs[0].(*waProto.WebMessageInfo)
+	return msg
 }
 
 func (portal *Portal) HandleMatrixMessage(evt *gomatrix.Event) {
-	info := whatsapp.MessageInfo{
-		Id:        makeMessageID(),
-		RemoteJid: portal.JID,
+	ts := uint64(evt.Timestamp / 1000)
+	status := waProto.WebMessageInfo_ERROR
+	fromMe := true
+	info := &waProto.WebMessageInfo{
+		Key: &waProto.MessageKey{
+			FromMe:    &fromMe,
+			Id:        makeMessageID(),
+			RemoteJid: &portal.JID,
+		},
+		MessageTimestamp: &ts,
+		Message:          &waProto.Message{},
+		Status:           &status,
+	}
+	ctxInfo := &waProto.ContextInfo{}
+	replyToID := evt.Content.GetReplyTo()
+	if len(replyToID) > 0 {
+		evt.Content.RemoveReplyFallback()
+		msg := portal.bridge.DB.Message.GetByMXID(replyToID)
+		if msg != nil {
+			origMsg := portal.GetMessage(msg.JID)
+			if origMsg != nil {
+				ctxInfo.StanzaId = &msg.JID
+				replyMsgSender := origMsg.GetParticipant()
+				if origMsg.GetKey().GetFromMe() {
+					replyMsgSender = portal.user.JID()
+				}
+				ctxInfo.Participant = &replyMsgSender
+				ctxInfo.QuotedMessage = []*waProto.Message{origMsg.Message}
+			}
+		}
 	}
 	var err error
 	switch evt.Content.MsgType {
 	case gomatrix.MsgText, gomatrix.MsgEmote:
 		text := evt.Content.Body
 		if evt.Content.Format == gomatrix.FormatHTML {
-			text = htmlParser.Parse(evt.Content.FormattedBody)
+			text = portal.user.htmlParser.Parse(evt.Content.FormattedBody)
 		}
 		if evt.Content.MsgType == gomatrix.MsgEmote {
 			text = "/me " + text
 		}
-		err = portal.user.Conn.Send(whatsapp.TextMessage{
-			Text: text,
-			Info: info,
-		})
+		ctxInfo.MentionedJid = mentionRegex.FindAllString(text, -1)
+		for index, mention := range ctxInfo.MentionedJid {
+			ctxInfo.MentionedJid[index] = mention[1:] + whatsapp_ext.NewUserSuffix
+		}
+		if ctxInfo.StanzaId != nil || ctxInfo.MentionedJid != nil {
+			info.Message.ExtendedTextMessage = &waProto.ExtendedTextMessage{
+				Text:        &text,
+				ContextInfo: ctxInfo,
+			}
+		} else {
+			info.Message.Conversation = &text
+		}
 	case gomatrix.MsgImage:
-		caption, content, thumbnail := portal.PreprocessMatrixMedia(evt)
-		if content == nil {
+		media := portal.preprocessMatrixMedia(evt, whatsapp.MediaImage)
+		if media == nil {
 			return
 		}
-		err = portal.user.Conn.Send(whatsapp.ImageMessage{
-			Caption:   caption,
-			Content:   content,
-			Thumbnail: thumbnail,
-			Type:      evt.Content.Info.MimeType,
-			Info:      info,
-		})
+		info.Message.ImageMessage = &waProto.ImageMessage{
+			Caption:       &media.Caption,
+			JpegThumbnail: media.Thumbnail,
+			Url:           &media.URL,
+			MediaKey:      media.MediaKey,
+			Mimetype:      &evt.Content.GetInfo().MimeType,
+			FileEncSha256: media.FileEncSHA256,
+			FileSha256:    media.FileSHA256,
+			FileLength:    &media.FileLength,
+		}
 	case gomatrix.MsgVideo:
-		caption, content, thumbnail := portal.PreprocessMatrixMedia(evt)
-		if content == nil {
+		media := portal.preprocessMatrixMedia(evt, whatsapp.MediaVideo)
+		if media == nil {
 			return
 		}
-		err = portal.user.Conn.Send(whatsapp.VideoMessage{
-			Caption:   caption,
-			Content:   content,
-			Thumbnail: thumbnail,
-			Type:      evt.Content.Info.MimeType,
-			Info:      info,
-		})
+		duration := uint32(evt.Content.GetInfo().Duration)
+		info.Message.VideoMessage = &waProto.VideoMessage{
+			Caption:       &media.Caption,
+			JpegThumbnail: media.Thumbnail,
+			Url:           &media.URL,
+			MediaKey:      media.MediaKey,
+			Mimetype:      &evt.Content.GetInfo().MimeType,
+			Seconds:       &duration,
+			FileEncSha256: media.FileEncSHA256,
+			FileSha256:    media.FileSHA256,
+			FileLength:    &media.FileLength,
+		}
 	case gomatrix.MsgAudio:
-		_, content, _ := portal.PreprocessMatrixMedia(evt)
-		if content == nil {
+		media := portal.preprocessMatrixMedia(evt, whatsapp.MediaAudio)
+		if media == nil {
 			return
 		}
-		err = portal.user.Conn.Send(whatsapp.AudioMessage{
-			Content: content,
-			Type:    evt.Content.Info.MimeType,
-			Info:    info,
-		})
+		duration := uint32(evt.Content.GetInfo().Duration)
+		info.Message.AudioMessage = &waProto.AudioMessage{
+			Url:           &media.URL,
+			MediaKey:      media.MediaKey,
+			Mimetype:      &evt.Content.GetInfo().MimeType,
+			Seconds:       &duration,
+			FileEncSha256: media.FileEncSHA256,
+			FileSha256:    media.FileSHA256,
+			FileLength:    &media.FileLength,
+		}
 	case gomatrix.MsgFile:
-		_, content, thumbnail := portal.PreprocessMatrixMedia(evt)
-		if content == nil {
+		media := portal.preprocessMatrixMedia(evt, whatsapp.MediaDocument)
+		if media == nil {
 			return
 		}
-		err = portal.user.Conn.Send(whatsapp.DocumentMessage{
-			Content:   content,
-			Thumbnail: thumbnail,
-			Type:      evt.Content.Info.MimeType,
-			Info:      info,
-		})
+		info.Message.DocumentMessage = &waProto.DocumentMessage{
+			Url:           &media.URL,
+			MediaKey:      media.MediaKey,
+			Mimetype:      &evt.Content.GetInfo().MimeType,
+			FileEncSha256: media.FileEncSHA256,
+			FileSha256:    media.FileSHA256,
+			FileLength:    &media.FileLength,
+		}
 	default:
 		portal.log.Debugln("Unhandled Matrix event:", evt)
 		return
 	}
-	portal.MarkHandled(info.Id, evt.ID)
+	err = portal.user.Conn.Send(info)
+	portal.MarkHandled(info.GetKey().GetId(), evt.ID)
 	if err != nil {
 		portal.log.Errorfln("Error handling Matrix event %s: %v", evt.ID, err)
 	} else {
