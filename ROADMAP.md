@@ -4,6 +4,7 @@
     * [x] Plain text
     * [x] Formatted messages
     * [x] Media/files
+    * [x] Replies
   * [ ] Message redactions
   * [ ] Presence
   * [ ] Typing notifications
@@ -24,6 +25,7 @@
     * [x] Plain text
     * [x] Formatted messages
     * [x] Media/files
+    * [x] Replies
   * [ ] Message deletions
   * [x] Avatars
   * [x] Presence

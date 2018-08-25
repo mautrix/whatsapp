@@ -17,12 +17,14 @@
 package main
 
 import (
+	"regexp"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/Rhymen/go-whatsapp"
 	"github.com/skip2/go-qrcode"
+	"maunium.net/go/gomatrix/format"
 	log "maunium.net/go/maulogger"
 	"maunium.net/go/mautrix-whatsapp/database"
 	"maunium.net/go/mautrix-whatsapp/types"
@@ -41,6 +43,11 @@ type User struct {
 	portalsLock   sync.Mutex
 	puppets       map[types.WhatsAppID]*Puppet
 	puppetsLock   sync.Mutex
+
+	htmlParser *format.HTMLParser
+
+	waReplString map[*regexp.Regexp]string
+	waReplFunc   map[*regexp.Regexp]func(string) string
 }
 
 func (bridge *Bridge) GetUser(userID types.MatrixUserID) *User {
@@ -79,7 +86,7 @@ func (bridge *Bridge) GetAllUsers() []*User {
 }
 
 func (bridge *Bridge) NewUser(dbUser *database.User) *User {
-	return &User{
+	user := &User{
 		User:          dbUser,
 		bridge:        bridge,
 		log:           bridge.Log.Sub("User").Sub(string(dbUser.ID)),
@@ -87,6 +94,9 @@ func (bridge *Bridge) NewUser(dbUser *database.User) *User {
 		portalsByJID:  make(map[types.WhatsAppID]*Portal),
 		puppets:       make(map[types.WhatsAppID]*Puppet),
 	}
+	user.htmlParser = user.newHTMLParser()
+	user.waReplString, user.waReplFunc = user.newWhatsAppFormatMaps()
+	return user
 }
 
 func (user *User) SetManagementRoom(roomID types.MatrixRoomID) {
@@ -183,6 +193,10 @@ func (user *User) Login(roomID types.MatrixRoomID) {
 	go user.Sync()
 }
 
+func (user *User) JID() string {
+	return strings.Replace(user.Conn.Info.Wid, whatsapp_ext.OldUserSuffix, whatsapp_ext.NewUserSuffix, 1)
+}
+
 func (user *User) Sync() {
 	user.log.Debugln("Syncing...")
 	user.Conn.Contacts()
@@ -241,7 +255,7 @@ func (user *User) HandlePresence(info whatsapp_ext.Presence) {
 	case whatsapp_ext.PresenceUnavailable:
 		puppet.Intent().SetPresence("offline")
 	case whatsapp_ext.PresenceAvailable:
-		if len(puppet.typingIn) > 0 && puppet.typingAt + 15 > time.Now().Unix() {
+		if len(puppet.typingIn) > 0 && puppet.typingAt+15 > time.Now().Unix() {
 			puppet.Intent().UserTyping(puppet.typingIn, false, 0)
 			puppet.typingIn = ""
 			puppet.typingAt = 0
@@ -252,7 +266,7 @@ func (user *User) HandlePresence(info whatsapp_ext.Presence) {
 		portal := user.GetPortalByJID(info.JID)
 		puppet.typingIn = portal.MXID
 		puppet.typingAt = time.Now().Unix()
-		puppet.Intent().UserTyping(portal.MXID, true, 15 * 1000)
+		puppet.Intent().UserTyping(portal.MXID, true, 15*1000)
 	}
 }
 

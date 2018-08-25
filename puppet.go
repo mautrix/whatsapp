@@ -32,7 +32,7 @@ import (
 
 func (bridge *Bridge) ParsePuppetMXID(mxid types.MatrixUserID) (types.MatrixUserID, types.WhatsAppID, bool) {
 	userIDRegex, err := regexp.Compile(fmt.Sprintf("^@%s:%s$",
-		bridge.Config.Bridge.FormatUsername("([0-9]+)", "([0-9]+)"),
+		bridge.Config.Bridge.FormatUsername("(.+)", "([0-9]+)"),
 		bridge.Config.Homeserver.Domain))
 	if err != nil {
 		bridge.Log.Warnln("Failed to compile puppet user ID regex:", err)
@@ -136,6 +136,10 @@ type Puppet struct {
 	typingAt int64
 
 	MXID types.MatrixUserID
+}
+
+func (puppet *Puppet) PhoneNumber() string {
+	return strings.Replace(puppet.JID, whatsapp_ext.NewUserSuffix, "", 1)
 }
 
 func (puppet *Puppet) Intent() *appservice.IntentAPI {
