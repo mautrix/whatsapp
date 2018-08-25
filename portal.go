@@ -309,7 +309,6 @@ var boldRegex = regexp.MustCompile("([\\s>_~]|^)\\*(.+?)\\*([^a-zA-Z\\d]|$)")
 var strikethroughRegex = regexp.MustCompile("([\\s>_*]|^)~(.+?)~([^a-zA-Z\\d]|$)")
 
 var whatsAppFormat = map[*regexp.Regexp]string{
-	codeBlockRegex:     "<pre>$1</pre>",
 	italicRegex:        "$1<em>$2</em>$3",
 	boldRegex:          "$1<strong>$2</strong>$3",
 	strikethroughRegex: "$1<del>$2</del>$3",
@@ -320,6 +319,13 @@ func (portal *Portal) ParseWhatsAppFormat(input string) string {
 	for regex, replacement := range whatsAppFormat {
 		output = regex.ReplaceAllString(output, replacement)
 	}
+	output = codeBlockRegex.ReplaceAllStringFunc(output, func(str string) string {
+		str = str[3 : len(str)-3]
+		if strings.ContainsRune(str, '\n') {
+			return fmt.Sprintf("<pre><code>%s</code></pre>", str)
+		}
+		return fmt.Sprintf("<code>%s</code>", str)
+	})
 	return output
 }
 
