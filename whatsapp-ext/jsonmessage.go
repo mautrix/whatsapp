@@ -33,6 +33,7 @@ const (
 	MessageStream   JSONMessageType = "Stream"
 	MessageConn     JSONMessageType = "Conn"
 	MessageProps    JSONMessageType = "Props"
+	MessageCmd      JSONMessageType = "Cmd"
 )
 
 func (ext *ExtendedConn) AddHandler(handler whatsapp.Handler) {
@@ -83,6 +84,8 @@ func (ext *ExtendedConn) HandleJsonMessage(message string) {
 		ext.handleMessageProps(msg[1])
 	case MessageMsgInfo, MessageMsg:
 		ext.handleMessageMsgInfo(msgType, msg[1])
+	case MessageCmd:
+		ext.handleMessageCommand(msgType, msg[1])
 	default:
 		for _, handler := range ext.handlers {
 			ujmHandler, ok := handler.(UnhandledJSONMessageHandler)

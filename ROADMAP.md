@@ -42,7 +42,12 @@
     * [ ] Avatar
     * [ ] Description
   * [x] Initial group metadata
-  * [x] User metadata (displayname/avatar)
+  * [ ] User metadata changes
+    * [ ] Display name
+    * [x] Avatar
+  * [x] Initial user metadata
+    * [x] Display name
+    * [x] Avatar
 * Misc
   * [x] Automatic portal creation
     * [x] At startup
