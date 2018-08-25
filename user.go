@@ -17,7 +17,6 @@
 package main
 
 import (
-	"fmt"
 	"strings"
 	"sync"
 	"time"
@@ -212,7 +211,6 @@ func (user *User) HandleJSONParseError(err error) {
 }
 
 func (user *User) HandleTextMessage(message whatsapp.TextMessage) {
-	user.log.Debugln("Received text message:", message)
 	portal := user.GetPortalByJID(message.Info.RemoteJid)
 	portal.HandleTextMessage(message)
 }
@@ -235,30 +233,6 @@ func (user *User) HandleAudioMessage(message whatsapp.AudioMessage) {
 func (user *User) HandleDocumentMessage(message whatsapp.DocumentMessage) {
 	portal := user.GetPortalByJID(message.Info.RemoteJid)
 	portal.HandleMediaMessage(message.Download, message.Thumbnail, message.Info, message.Type, message.Title)
-}
-
-func (user *User) HandleStreamEvent(stream whatsapp_ext.StreamEvent) {
-	if len(user.ManagementRoom) == 0 {
-		return
-	}
-	switch stream.Type {
-	case whatsapp_ext.StreamSleep:
-		user.bridge.AppService.BotIntent().SendNotice(user.ManagementRoom, "WhatsApp client disconnected.")
-	case whatsapp_ext.StreamUpdate:
-		if user.Conn.Info != nil && user.Conn.Info.Phone != nil {
-			user.bridge.AppService.BotIntent().SendNotice(user.ManagementRoom,
-				fmt.Sprintf("WhatsApp v%s client connected from %s %s (OS v%s).",
-					user.Conn.Info.Phone.WaVersion, user.Conn.Info.Phone.DeviceManufacturer, user.Conn.Info.Phone.DeviceModel, user.Conn.Info.Phone.OsVersion))
-		}
-	}
-}
-
-func (user *User) HandleConnInfo(info whatsapp_ext.ConnInfo) {
-	if len(user.ManagementRoom) > 0 && len(info.ProtocolVersion) > 0 {
-		user.bridge.AppService.BotIntent().SendNotice(user.ManagementRoom,
-			fmt.Sprintf("WhatsApp v%s client connected from %s %s (OS v%s).",
-				info.Phone.WhatsAppVersion, info.Phone.DeviceManufacturer, info.Phone.DeviceModel, info.Phone.OSVersion))
-	}
 }
 
 func (user *User) HandlePresence(info whatsapp_ext.Presence) {
@@ -290,7 +264,6 @@ func (user *User) HandleMsgInfo(info whatsapp_ext.MsgInfo) {
 		}
 
 		intent := user.GetPuppetByJID(info.SenderJID).Intent()
-		user.log.Debugln(info.IDs)
 		for _, id := range info.IDs {
 			msg := user.bridge.DB.Message.GetByJID(user.ID, id)
 			if msg == nil {

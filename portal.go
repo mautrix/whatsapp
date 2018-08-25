@@ -263,7 +263,6 @@ func (portal *Portal) MainIntent() *appservice.IntentAPI {
 func (portal *Portal) IsDuplicate(id types.WhatsAppMessageID) bool {
 	msg := portal.bridge.DB.Message.GetByJID(portal.Owner, id)
 	if msg != nil {
-		portal.log.Debugln("Ignoring duplicate message", id)
 		return true
 	}
 	return false
