@@ -78,7 +78,7 @@ func (user *User) newWhatsAppFormatMaps() (map[*regexp.Regexp]string, map[*regex
 			return fmt.Sprintf("<code>%s</code>", str)
 		},
 		mentionRegex: func(str string) string {
-			jid := str[1:] + whatsapp_ext.NewUserSuffix
+			jid := str[1:] + whatsappExt.NewUserSuffix
 			puppet := user.GetPuppetByJID(jid)
 			return fmt.Sprintf(`<a href="https://matrix.to/#/%s">%s</a>`, puppet.MXID, puppet.Displayname)
 		},

@@ -47,7 +47,7 @@ func (bridge *Bridge) ParsePuppetMXID(mxid types.MatrixUserID) (types.MatrixUser
 	receiver = strings.Replace(receiver, "=40", "@", 1)
 	colonIndex := strings.LastIndex(receiver, "=3")
 	receiver = receiver[:colonIndex] + ":" + receiver[colonIndex+len("=3"):]
-	jid := types.WhatsAppID(match[2] + whatsapp_ext.NewUserSuffix)
+	jid := types.WhatsAppID(match[2] + whatsappExt.NewUserSuffix)
 	return receiver, jid, true
 }
 
@@ -120,7 +120,7 @@ func (user *User) NewPuppet(dbPuppet *database.Puppet) *Puppet {
 				dbPuppet.Receiver,
 				strings.Replace(
 					dbPuppet.JID,
-					whatsapp_ext.NewUserSuffix, "", 1)),
+					whatsappExt.NewUserSuffix, "", 1)),
 			user.bridge.Config.Homeserver.Domain),
 	}
 }
@@ -139,14 +139,14 @@ type Puppet struct {
 }
 
 func (puppet *Puppet) PhoneNumber() string {
-	return strings.Replace(puppet.JID, whatsapp_ext.NewUserSuffix, "", 1)
+	return strings.Replace(puppet.JID, whatsappExt.NewUserSuffix, "", 1)
 }
 
 func (puppet *Puppet) Intent() *appservice.IntentAPI {
 	return puppet.bridge.AppService.Intent(puppet.MXID)
 }
 
-func (puppet *Puppet) UpdateAvatar(avatar *whatsapp_ext.ProfilePicInfo) bool {
+func (puppet *Puppet) UpdateAvatar(avatar *whatsappExt.ProfilePicInfo) bool {
 	if avatar == nil {
 		var err error
 		avatar, err = puppet.user.Conn.GetProfilePicThumb(puppet.JID)

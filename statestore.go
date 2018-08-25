@@ -17,6 +17,7 @@
 package main
 
 import (
+	"maunium.net/go/gomatrix"
 	"maunium.net/go/mautrix-appservice"
 	"encoding/json"
 	"io/ioutil"
@@ -63,5 +64,10 @@ func (store *AutosavingStateStore) MarkRegistered(userID string) {
 
 func (store *AutosavingStateStore) SetMembership(roomID, userID, membership string) {
 	store.BasicStateStore.SetMembership(roomID, userID, membership)
+	store.Save()
+}
+
+func (store *AutosavingStateStore) SetPowerLevels(roomID string, levels gomatrix.PowerLevels) {
+	store.BasicStateStore.SetPowerLevels(roomID, levels)
 	store.Save()
 }

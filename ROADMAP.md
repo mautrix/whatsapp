@@ -37,10 +37,10 @@
     * [ ] Join
     * [ ] Leave
     * [ ] Kick
-  * [ ] Group metadata changes
-    * [ ] Title
-    * [ ] Avatar
-    * [ ] Description
+  * [x] Group metadata changes
+    * [x] Title
+    * [x] Avatar
+    * [x] Description
   * [x] Initial group metadata
   * [ ] User metadata changes
     * [ ] Display name

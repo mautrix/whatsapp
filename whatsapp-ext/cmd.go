@@ -14,7 +14,7 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-package whatsapp_ext
+package whatsappExt
 
 import (
 	"encoding/json"
@@ -41,7 +41,7 @@ type CommandHandler interface {
 	HandleCommand(Command)
 }
 
-func (ext *ExtendedConn) handleMessageCommand(msgType JSONMessageType, message []byte) {
+func (ext *ExtendedConn) handleMessageCommand(message []byte) {
 	var event Command
 	err := json.Unmarshal(message, &event)
 	if err != nil {

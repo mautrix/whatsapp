@@ -33,9 +33,9 @@ func (pq *PortalQuery) CreateTable() error {
 		owner VARCHAR(255),
 		mxid  VARCHAR(255) UNIQUE,
 
-		name   VARCHAR(255),
-		topic  VARCHAR(255),
-		avatar VARCHAR(255),
+		name   VARCHAR(255) NOT NULL,
+		topic  VARCHAR(255) NOT NULL,
+		avatar VARCHAR(255) NOT NULL,
 
 		PRIMARY KEY (jid, owner),
 		FOREIGN KEY (owner) REFERENCES user(mxid)
@@ -95,7 +95,7 @@ func (portal *Portal) Scan(row Scannable) *Portal {
 	err := row.Scan(&portal.JID, &portal.Owner, &portal.MXID, &portal.Name, &portal.Topic, &portal.Avatar)
 	if err != nil {
 		if err != sql.ErrNoRows {
-			portal.log.Fatalln("Database scan failed:", err)
+			portal.log.Errorln("Database scan failed:", err)
 		}
 		return nil
 	}

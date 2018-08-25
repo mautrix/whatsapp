@@ -118,19 +118,24 @@ type Portal struct {
 	roomCreateLock sync.Mutex
 }
 
-func (portal *Portal) SyncParticipants(metadata *whatsapp_ext.GroupInfo) {
+func (portal *Portal) SyncParticipants(metadata *whatsappExt.GroupInfo) {
 	for _, participant := range metadata.Participants {
 		intent := portal.user.GetPuppetByJID(participant.JID).Intent()
 		intent.EnsureJoined(portal.MXID)
+		// TODO set power levels
 	}
 }
 
-func (portal *Portal) UpdateAvatar() bool {
-	avatar, err := portal.user.Conn.GetProfilePicThumb(portal.JID)
-	if err != nil {
-		portal.log.Errorln(err)
-		return false
+func (portal *Portal) UpdateAvatar(avatar *whatsappExt.ProfilePicInfo) bool {
+	if avatar == nil {
+		var err error
+		avatar, err = portal.user.Conn.GetProfilePicThumb(portal.JID)
+		if err != nil {
+			portal.log.Errorln(err)
+			return false
+		}
 	}
+
 	if portal.Avatar == avatar.Tag {
 		return false
 	}
@@ -157,11 +162,12 @@ func (portal *Portal) UpdateAvatar() bool {
 	return true
 }
 
-func (portal *Portal) UpdateName(metadata *whatsapp_ext.GroupInfo) bool {
-	if portal.Name != metadata.Name {
-		_, err := portal.MainIntent().SetRoomName(portal.MXID, metadata.Name)
+func (portal *Portal) UpdateName(name string, setBy types.WhatsAppID) bool {
+	if portal.Name != name {
+		intent := portal.user.GetPuppetByJID(setBy).Intent()
+		_, err := intent.SetRoomName(portal.MXID, name)
 		if err == nil {
-			portal.Name = metadata.Name
+			portal.Name = name
 			return true
 		}
 		portal.log.Warnln("Failed to set room name:", err)
@@ -169,11 +175,12 @@ func (portal *Portal) UpdateName(metadata *whatsapp_ext.GroupInfo) bool {
 	return false
 }
 
-func (portal *Portal) UpdateTopic(metadata *whatsapp_ext.GroupInfo) bool {
-	if portal.Topic != metadata.Topic {
-		_, err := portal.MainIntent().SetRoomTopic(portal.MXID, metadata.Topic)
+func (portal *Portal) UpdateTopic(topic string, setBy types.WhatsAppID) bool {
+	if portal.Topic != topic {
+		intent := portal.user.GetPuppetByJID(setBy).Intent()
+		_, err := intent.SetRoomTopic(portal.MXID, topic)
 		if err == nil {
-			portal.Topic = metadata.Topic
+			portal.Topic = topic
 			return true
 		}
 		portal.log.Warnln("Failed to set room topic:", err)
@@ -189,8 +196,8 @@ func (portal *Portal) UpdateMetadata() bool {
 	}
 	portal.SyncParticipants(metadata)
 	update := false
-	update = portal.UpdateName(metadata) || update
-	update = portal.UpdateTopic(metadata) || update
+	update = portal.UpdateName(metadata.Name, metadata.NameSetBy) || update
+	update = portal.UpdateTopic(metadata.Topic, metadata.TopicSetBy) || update
 	return update
 }
 
@@ -212,7 +219,7 @@ func (portal *Portal) Sync(contact whatsapp.Contact) {
 
 	update := false
 	update = portal.UpdateMetadata() || update
-	update = portal.UpdateAvatar() || update
+	update = portal.UpdateAvatar(nil) || update
 	if update {
 		portal.Update()
 	}
@@ -251,7 +258,7 @@ func (portal *Portal) CreateMatrixRoom() error {
 }
 
 func (portal *Portal) IsPrivateChat() bool {
-	return strings.HasSuffix(portal.JID, whatsapp_ext.NewUserSuffix)
+	return strings.HasSuffix(portal.JID, whatsappExt.NewUserSuffix)
 }
 
 func (portal *Portal) MainIntent() *appservice.IntentAPI {
@@ -589,7 +596,7 @@ func (portal *Portal) HandleMatrixMessage(evt *gomatrix.Event) {
 		}
 		ctxInfo.MentionedJid = mentionRegex.FindAllString(text, -1)
 		for index, mention := range ctxInfo.MentionedJid {
-			ctxInfo.MentionedJid[index] = mention[1:] + whatsapp_ext.NewUserSuffix
+			ctxInfo.MentionedJid[index] = mention[1:] + whatsappExt.NewUserSuffix
 		}
 		if ctxInfo.StanzaId != nil || ctxInfo.MentionedJid != nil {
 			info.Message.ExtendedTextMessage = &waProto.ExtendedTextMessage{

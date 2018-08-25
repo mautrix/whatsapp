@@ -14,7 +14,7 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-package whatsapp_ext
+package whatsappExt
 
 import (
 	"encoding/json"
@@ -34,6 +34,7 @@ const (
 	MessageConn     JSONMessageType = "Conn"
 	MessageProps    JSONMessageType = "Props"
 	MessageCmd      JSONMessageType = "Cmd"
+	MessageChat     JSONMessageType = "Chat"
 )
 
 func (ext *ExtendedConn) AddHandler(handler whatsapp.Handler) {
@@ -85,7 +86,9 @@ func (ext *ExtendedConn) HandleJsonMessage(message string) {
 	case MessageMsgInfo, MessageMsg:
 		ext.handleMessageMsgInfo(msgType, msg[1])
 	case MessageCmd:
-		ext.handleMessageCommand(msgType, msg[1])
+		ext.handleMessageCommand(msg[1])
+	case MessageChat:
+		ext.handleMessageChatUpdate(msg[1])
 	default:
 		for _, handler := range ext.handlers {
 			ujmHandler, ok := handler.(UnhandledJSONMessageHandler)

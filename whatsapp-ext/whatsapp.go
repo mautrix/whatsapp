@@ -14,7 +14,7 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-package whatsapp_ext
+package whatsappExt
 
 import (
 	"fmt"
@@ -83,6 +83,8 @@ func (ext *ExtendedConn) GetGroupMetaData(jid string) (*GroupInfo, error) {
 	for index, participant := range info.Participants {
 		info.Participants[index].JID = strings.Replace(participant.JID, OldUserSuffix, NewUserSuffix, 1)
 	}
+	info.NameSetBy = strings.Replace(info.NameSetBy, OldUserSuffix, NewUserSuffix, 1)
+	info.TopicSetBy = strings.Replace(info.TopicSetBy, OldUserSuffix, NewUserSuffix, 1)
 
 	return info, nil
 }
