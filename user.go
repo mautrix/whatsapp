@@ -291,6 +291,14 @@ func (user *User) HandleMsgInfo(info whatsapp_ext.MsgInfo) {
 	}
 }
 
+func (user *User) HandleCommand(cmd whatsapp_ext.Command) {
+	switch cmd.Type {
+	case whatsapp_ext.CommandPicture:
+		puppet := user.GetPuppetByJID(cmd.JID)
+		puppet.UpdateAvatar(cmd.ProfilePicInfo)
+	}
+}
+
 func (user *User) HandleJsonMessage(message string) {
 	user.log.Debugln("JSON message:", message)
 }

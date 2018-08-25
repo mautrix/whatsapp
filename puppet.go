@@ -146,15 +146,24 @@ func (puppet *Puppet) Intent() *appservice.IntentAPI {
 	return puppet.bridge.AppService.Intent(puppet.MXID)
 }
 
-func (puppet *Puppet) UpdateAvatar() bool {
-	avatar, err := puppet.user.Conn.GetProfilePicThumb(puppet.JID)
-	if err != nil {
-		puppet.log.Errorln(err)
-		return false
+func (puppet *Puppet) UpdateAvatar(avatar *whatsapp_ext.ProfilePicInfo) bool {
+	if avatar == nil {
+		var err error
+		avatar, err = puppet.user.Conn.GetProfilePicThumb(puppet.JID)
+		if err != nil {
+			puppet.log.Errorln(err)
+			return false
+		}
 	}
 
 	if avatar.Tag == puppet.Avatar {
 		return false
+	}
+
+	if len(avatar.URL) == 0 {
+		puppet.Intent().SetAvatarURL("")
+		puppet.Avatar = avatar.Tag
+		return true
 	}
 
 	data, err := avatar.DownloadBytes()
@@ -189,7 +198,7 @@ func (puppet *Puppet) Sync(contact whatsapp.Contact) {
 		}
 	}
 
-	if puppet.UpdateAvatar() {
+	if puppet.UpdateAvatar(nil) {
 		puppet.Update()
 	}
 }
