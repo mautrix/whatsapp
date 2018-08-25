@@ -33,7 +33,7 @@ import (
 
 type User struct {
 	*database.User
-	Conn *whatsapp_ext.ExtendedConn
+	Conn *whatsappExt.ExtendedConn
 
 	bridge *Bridge
 	log    log.Logger
@@ -134,7 +134,7 @@ func (user *User) Connect(evenIfNoSession bool) bool {
 		user.log.Errorln("Failed to connect to WhatsApp:", err)
 		return false
 	}
-	user.Conn = whatsapp_ext.ExtendConn(conn)
+	user.Conn = whatsappExt.ExtendConn(conn)
 	user.log.Debugln("WhatsApp connection successful")
 	user.Conn.AddHandler(user)
 	return user.RestoreSession()
@@ -194,14 +194,14 @@ func (user *User) Login(roomID types.MatrixRoomID) {
 }
 
 func (user *User) JID() string {
-	return strings.Replace(user.Conn.Info.Wid, whatsapp_ext.OldUserSuffix, whatsapp_ext.NewUserSuffix, 1)
+	return strings.Replace(user.Conn.Info.Wid, whatsappExt.OldUserSuffix, whatsappExt.NewUserSuffix, 1)
 }
 
 func (user *User) Sync() {
 	user.log.Debugln("Syncing...")
 	user.Conn.Contacts()
 	for jid, contact := range user.Conn.Store.Contacts {
-		if strings.HasSuffix(jid, whatsapp_ext.NewUserSuffix) {
+		if strings.HasSuffix(jid, whatsappExt.NewUserSuffix) {
 			puppet := user.GetPuppetByJID(contact.Jid)
 			puppet.Sync(contact)
 		}
@@ -249,12 +249,12 @@ func (user *User) HandleDocumentMessage(message whatsapp.DocumentMessage) {
 	portal.HandleMediaMessage(message.Download, message.Thumbnail, message.Info, message.Type, message.Title)
 }
 
-func (user *User) HandlePresence(info whatsapp_ext.Presence) {
+func (user *User) HandlePresence(info whatsappExt.Presence) {
 	puppet := user.GetPuppetByJID(info.SenderJID)
 	switch info.Status {
-	case whatsapp_ext.PresenceUnavailable:
+	case whatsappExt.PresenceUnavailable:
 		puppet.Intent().SetPresence("offline")
-	case whatsapp_ext.PresenceAvailable:
+	case whatsappExt.PresenceAvailable:
 		if len(puppet.typingIn) > 0 && puppet.typingAt+15 > time.Now().Unix() {
 			puppet.Intent().UserTyping(puppet.typingIn, false, 0)
 			puppet.typingIn = ""
@@ -262,7 +262,7 @@ func (user *User) HandlePresence(info whatsapp_ext.Presence) {
 		} else {
 			puppet.Intent().SetPresence("online")
 		}
-	case whatsapp_ext.PresenceComposing:
+	case whatsappExt.PresenceComposing:
 		portal := user.GetPortalByJID(info.JID)
 		puppet.typingIn = portal.MXID
 		puppet.typingAt = time.Now().Unix()
@@ -270,8 +270,8 @@ func (user *User) HandlePresence(info whatsapp_ext.Presence) {
 	}
 }
 
-func (user *User) HandleMsgInfo(info whatsapp_ext.MsgInfo) {
-	if (info.Command == whatsapp_ext.MsgInfoCommandAck || info.Command == whatsapp_ext.MsgInfoCommandAcks) && info.Acknowledgement == whatsapp_ext.AckMessageRead {
+func (user *User) HandleMsgInfo(info whatsappExt.MsgInfo) {
+	if (info.Command == whatsappExt.MsgInfoCommandAck || info.Command == whatsappExt.MsgInfoCommandAcks) && info.Acknowledgement == whatsappExt.AckMessageRead {
 		portal := user.GetPortalByJID(info.ToJID)
 		if len(portal.MXID) == 0 {
 			return
@@ -291,11 +291,37 @@ func (user *User) HandleMsgInfo(info whatsapp_ext.MsgInfo) {
 	}
 }
 
-func (user *User) HandleCommand(cmd whatsapp_ext.Command) {
+func (user *User) HandleCommand(cmd whatsappExt.Command) {
 	switch cmd.Type {
-	case whatsapp_ext.CommandPicture:
-		puppet := user.GetPuppetByJID(cmd.JID)
-		puppet.UpdateAvatar(cmd.ProfilePicInfo)
+	case whatsappExt.CommandPicture:
+		if strings.HasSuffix(cmd.JID, whatsappExt.NewUserSuffix) {
+			puppet := user.GetPuppetByJID(cmd.JID)
+			puppet.UpdateAvatar(cmd.ProfilePicInfo)
+		} else {
+			portal := user.GetPortalByJID(cmd.JID)
+			portal.UpdateAvatar(cmd.ProfilePicInfo)
+		}
+	}
+}
+
+func (user *User) HandleChatUpdate(cmd whatsappExt.ChatUpdate) {
+	if cmd.Command != whatsappExt.ChatUpdateCommandAction {
+		return
+	}
+
+	portal := user.GetPortalByJID(cmd.JID)
+	if len(portal.MXID) == 0 {
+		return
+	}
+
+	switch cmd.Data.Action {
+	case whatsappExt.ChatActionNameChange:
+		portal.UpdateName(cmd.Data.NameChange.Name, cmd.Data.SenderJID)
+	case whatsappExt.ChatActionAddTopic:
+		portal.UpdateTopic(cmd.Data.AddTopic.Topic, cmd.Data.SenderJID)
+	case whatsappExt.ChatActionRemoveTopic:
+		portal.UpdateTopic("", cmd.Data.SenderJID)
+	// TODO power level updates
 	}
 }
 

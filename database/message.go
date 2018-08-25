@@ -87,7 +87,7 @@ func (msg *Message) Scan(row Scannable) *Message {
 	err := row.Scan(&msg.Owner, &msg.JID, &msg.MXID)
 	if err != nil {
 		if err != sql.ErrNoRows {
-			msg.log.Fatalln("Database scan failed:", err)
+			msg.log.Errorln("Database scan failed:", err)
 		}
 		return nil
 	}

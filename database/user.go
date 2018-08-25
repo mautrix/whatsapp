@@ -86,7 +86,7 @@ func (user *User) Scan(row Scannable) *User {
 		&sess.EncKey, &sess.MacKey, &sess.Wid)
 	if err != nil {
 		if err != sql.ErrNoRows {
-			user.log.Fatalln("Database scan failed:", err)
+			user.log.Errorln("Database scan failed:", err)
 		}
 		return nil
 	}

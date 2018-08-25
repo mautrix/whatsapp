@@ -82,7 +82,7 @@ func (puppet *Puppet) Scan(row Scannable) *Puppet {
 	err := row.Scan(&puppet.JID, &puppet.Receiver, &puppet.Displayname, &puppet.Avatar)
 	if err != nil {
 		if err != sql.ErrNoRows {
-			puppet.log.Fatalln("Database scan failed:", err)
+			puppet.log.Errorln("Database scan failed:", err)
 		}
 		return nil
 	}
