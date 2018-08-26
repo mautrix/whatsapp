@@ -19,12 +19,13 @@ package main
 import (
 	"fmt"
 	"os"
-	"maunium.net/go/mautrix-whatsapp/config"
-	flag "maunium.net/go/mauflag"
 	"os/signal"
 	"syscall"
-	"maunium.net/go/mautrix-appservice"
+
+	flag "maunium.net/go/mauflag"
 	log "maunium.net/go/maulogger"
+	"maunium.net/go/mautrix-appservice"
+	"maunium.net/go/mautrix-whatsapp/config"
 	"maunium.net/go/mautrix-whatsapp/database"
 	"maunium.net/go/mautrix-whatsapp/types"
 )

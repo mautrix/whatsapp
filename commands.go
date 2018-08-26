@@ -17,10 +17,11 @@
 package main
 
 import (
-	"maunium.net/go/mautrix-whatsapp/types"
 	"strings"
-	"maunium.net/go/mautrix-appservice"
+
 	"maunium.net/go/maulogger"
+	"maunium.net/go/mautrix-appservice"
+	"maunium.net/go/mautrix-whatsapp/types"
 )
 
 type CommandHandler struct {

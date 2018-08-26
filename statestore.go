@@ -17,11 +17,12 @@
 package main
 
 import (
-	"maunium.net/go/gomatrix"
-	"maunium.net/go/mautrix-appservice"
 	"encoding/json"
 	"io/ioutil"
 	"os"
+
+	"maunium.net/go/gomatrix"
+	"maunium.net/go/mautrix-appservice"
 )
 
 type AutosavingStateStore struct {

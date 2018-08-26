@@ -17,10 +17,11 @@
 package database
 
 import (
-	log "maunium.net/go/maulogger"
-	"github.com/Rhymen/go-whatsapp"
-	"maunium.net/go/mautrix-whatsapp/types"
 	"database/sql"
+
+	"github.com/Rhymen/go-whatsapp"
+	log "maunium.net/go/maulogger"
+	"maunium.net/go/mautrix-whatsapp/types"
 )
 
 type UserQuery struct {
@@ -46,8 +47,8 @@ func (uq *UserQuery) CreateTable() error {
 
 func (uq *UserQuery) New() *User {
 	return &User{
-		db:     uq.db,
-		log:    uq.log,
+		db:  uq.db,
+		log: uq.log,
 	}
 }
 

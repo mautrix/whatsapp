@@ -17,8 +17,9 @@
 package whatsappExt
 
 import (
-	"github.com/Rhymen/go-whatsapp"
 	"encoding/json"
+
+	"github.com/Rhymen/go-whatsapp"
 )
 
 type ProtocolProps struct {

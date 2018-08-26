@@ -18,11 +18,12 @@ package config
 
 import (
 	"bytes"
-	"text/template"
-	"maunium.net/go/mautrix-appservice"
-	"strings"
 	"strconv"
+	"strings"
+	"text/template"
+
 	"github.com/Rhymen/go-whatsapp"
+	"maunium.net/go/mautrix-appservice"
 	"maunium.net/go/mautrix-whatsapp/types"
 )
 
@@ -86,10 +87,10 @@ func (bc BridgeConfig) FormatUsername(receiver types.MatrixUserID, userID types.
 
 func (bc BridgeConfig) MarshalYAML() (interface{}, error) {
 	bc.DisplaynameTemplate = bc.FormatDisplayname(whatsapp.Contact{
-		Jid: "{{.Jid}}",
+		Jid:    "{{.Jid}}",
 		Notify: "{{.Notify}}",
-		Name: "{{.Name}}",
-		Short: "{{.Short}}",
+		Name:   "{{.Name}}",
+		Short:  "{{.Short}}",
 	})
 	bc.UsernameTemplate = bc.FormatUsername("{{.Receiver}}", "{{.UserID}}")
 	return bc, nil
