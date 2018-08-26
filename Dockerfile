@@ -1,9 +1,15 @@
 FROM golang:1-alpine AS builder
 
 RUN apk add --no-cache git ca-certificates build-base
-COPY . /go/src/maunium.net/go/mautrix-whatsapp
+RUN wget -qO /usr/local/bin/dep https://github.com/golang/dep/releases/download/v0.5.0/dep-linux-amd64
+RUN chmod +x /usr/local/bin/dep
+
+COPY Gopkg.lock Gopkg.toml /go/src/maunium.net/go/mautrix-whatsapp/
 WORKDIR /go/src/maunium.net/go/mautrix-whatsapp
-RUN go get -u maunium.net/go/mautrix-whatsapp && go build -o /usr/bin/mautrix-whatsapp
+RUN dep ensure -vendor-only
+
+COPY . /go/src/maunium.net/go/mautrix-whatsapp
+RUN go build -o /usr/bin/mautrix-whatsapp
 
 FROM alpine:latest
 
