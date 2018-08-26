@@ -395,6 +395,8 @@ func (portal *Portal) GetMessageIntent(info whatsapp.MessageInfo) *appservice.In
 		return portal.user.GetPuppetByJID(portal.user.JID()).Intent()
 	} else if portal.IsPrivateChat() {
 		return portal.MainIntent()
+	} else if len(info.SenderJid) == 0 {
+		return nil
 	}
 	return portal.user.GetPuppetByJID(info.SenderJid).Intent()
 }
@@ -602,13 +604,13 @@ func (portal *Portal) preprocessMatrixMedia(evt *gomatrix.Event, mediaType whats
 	}
 	content, err := portal.MainIntent().DownloadBytes(evt.Content.URL)
 	if err != nil {
-		portal.log.Errorln("Failed to download media in %s: %v", evt.ID, err)
+		portal.log.Errorfln("Failed to download media in %s: %v", evt.ID, err)
 		return nil
 	}
 
 	url, mediaKey, fileEncSHA256, fileSHA256, fileLength, err := portal.user.Conn.Upload(bytes.NewReader(content), mediaType)
 	if err != nil {
-		portal.log.Error("Failed to upload media in %s: %v", evt.ID, err)
+		portal.log.Errorfln("Failed to upload media in %s: %v", evt.ID, err)
 		return nil
 	}
 
