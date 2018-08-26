@@ -17,11 +17,12 @@
 package main
 
 import (
-	"maunium.net/go/gomatrix"
-	"maunium.net/go/mautrix-whatsapp/types"
-	"maunium.net/go/mautrix-appservice"
-	"maunium.net/go/maulogger"
 	"strings"
+
+	"maunium.net/go/gomatrix"
+	"maunium.net/go/maulogger"
+	"maunium.net/go/mautrix-appservice"
+	"maunium.net/go/mautrix-whatsapp/types"
 )
 
 type MatrixHandler struct {
@@ -40,6 +41,9 @@ func NewMatrixHandler(bridge *Bridge) *MatrixHandler {
 	}
 	bridge.EventProcessor.On(gomatrix.EventMessage, handler.HandleMessage)
 	bridge.EventProcessor.On(gomatrix.StateMember, handler.HandleMembership)
+	bridge.EventProcessor.On(gomatrix.StateRoomName, handler.HandleRoomMetadata)
+	bridge.EventProcessor.On(gomatrix.StateRoomAvatar, handler.HandleRoomMetadata)
+	bridge.EventProcessor.On(gomatrix.StateTopic, handler.HandleRoomMetadata)
 	return handler
 }
 
@@ -91,6 +95,35 @@ func (mx *MatrixHandler) HandleMembership(evt *gomatrix.Event) {
 	mx.log.Debugln(evt.Content, evt.Content.Membership, evt.GetStateKey())
 	if evt.Content.Membership == "invite" && evt.GetStateKey() == mx.as.BotMXID() {
 		mx.HandleBotInvite(evt)
+	}
+}
+
+func (mx *MatrixHandler) HandleRoomMetadata(evt *gomatrix.Event) {
+	user := mx.bridge.GetUser(types.MatrixUserID(evt.Sender))
+	if user == nil {
+		return
+	}
+
+	portal := user.GetPortalByMXID(evt.RoomID)
+	if portal == nil || portal.IsPrivateChat() {
+		return
+	}
+
+	var resp <-chan string
+	var err error
+	switch evt.Type {
+	case gomatrix.StateRoomName:
+		resp, err = user.Conn.UpdateGroupSubject(evt.Content.Name, portal.JID)
+	case gomatrix.StateRoomAvatar:
+		return
+	case gomatrix.StateTopic:
+		return
+	}
+	if err != nil {
+		mx.log.Errorln(err)
+	} else {
+		out := <-resp
+		mx.log.Infoln(out)
 	}
 }
 

@@ -347,7 +347,7 @@ func (portal *Portal) CreateMatrixRoom() error {
 		InitialState: []*gomatrix.Event{{
 			Type: gomatrix.StatePowerLevels,
 			Content: gomatrix.Content{
-				PowerLevels: portal.GetBasePowerLevels(),
+				PowerLevels: *portal.GetBasePowerLevels(),
 			},
 		}},
 	})

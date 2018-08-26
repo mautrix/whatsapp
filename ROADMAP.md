@@ -16,7 +16,7 @@
     * [ ] Leave
     * [ ] Kick
   * [ ] Room metadata changes
-    * [ ] Name
+    * [x] Name
     * [ ] Avatar
     * [ ] Topic
   * [ ] Initial room metadata
