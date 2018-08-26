@@ -396,7 +396,11 @@ func (portal *Portal) GetMessageIntent(info whatsapp.MessageInfo) *appservice.In
 	} else if portal.IsPrivateChat() {
 		return portal.MainIntent()
 	} else if len(info.SenderJid) == 0 {
-		return nil
+		if len(info.Source.GetParticipant()) != 0 {
+			info.SenderJid = info.Source.GetParticipant()
+		} else {
+			return nil
+		}
 	}
 	return portal.user.GetPuppetByJID(info.SenderJid).Intent()
 }
