@@ -31,7 +31,7 @@
   * [x] Presence
   * [x] Typing notifications
   * [x] Read receipts
-  * [ ] Admin/superadmin status
+  * [x] Admin/superadmin status
   * [ ] Membership actions
     * [ ] Invite
     * [ ] Join

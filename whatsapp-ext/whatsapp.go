@@ -17,13 +17,14 @@
 package whatsappExt
 
 import (
-	"fmt"
 	"encoding/json"
-	"github.com/Rhymen/go-whatsapp"
-	"net/http"
-	"io/ioutil"
+	"fmt"
 	"io"
+	"io/ioutil"
+	"net/http"
 	"strings"
+
+	"github.com/Rhymen/go-whatsapp"
 )
 
 const (

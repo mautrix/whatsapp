@@ -119,10 +119,29 @@ type Portal struct {
 }
 
 func (portal *Portal) SyncParticipants(metadata *whatsappExt.GroupInfo) {
+	changed := false
+	levels, err := portal.MainIntent().PowerLevels(portal.MXID)
+	if err != nil {
+		levels = portal.GetBasePowerLevels()
+		changed = true
+	}
 	for _, participant := range metadata.Participants {
-		intent := portal.user.GetPuppetByJID(participant.JID).Intent()
-		intent.EnsureJoined(portal.MXID)
-		// TODO set power levels
+		puppet := portal.user.GetPuppetByJID(participant.JID)
+		puppet.Intent().EnsureJoined(portal.MXID)
+		level := levels.GetUserLevel(puppet.MXID)
+		expectedLevel := 0
+		if participant.IsSuperAdmin {
+			expectedLevel = 95
+		} else if participant.IsAdmin {
+			expectedLevel = 50
+		}
+		if level != expectedLevel {
+			levels.SetUserLevel(puppet.MXID, expectedLevel)
+			changed = true
+		}
+	}
+	if changed {
+		portal.MainIntent().SetPowerLevels(portal.MXID, levels)
 	}
 }
 
@@ -225,6 +244,77 @@ func (portal *Portal) Sync(contact whatsapp.Contact) {
 	}
 }
 
+func (portal *Portal) GetBasePowerLevels() *gomatrix.PowerLevels {
+	anyone := 0
+	nope := 99
+	return &gomatrix.PowerLevels{
+		UsersDefault:    anyone,
+		EventsDefault:   anyone,
+		RedactPtr:       &anyone,
+		StateDefaultPtr: &nope,
+		BanPtr:          &nope,
+		InvitePtr:       &nope,
+		Users: map[string]int{
+			portal.MainIntent().UserID: 100,
+		},
+		Events: map[gomatrix.EventType]int{
+			gomatrix.StateRoomName:   anyone,
+			gomatrix.StateRoomAvatar: anyone,
+			gomatrix.StateTopic:      anyone,
+		},
+	}
+}
+
+func (portal *Portal) ChangeAdminStatus(jids []string, setAdmin bool) {
+	levels, err := portal.MainIntent().PowerLevels(portal.MXID)
+	if err != nil {
+		levels = portal.GetBasePowerLevels()
+	}
+	newLevel := 0
+	if setAdmin {
+		newLevel = 50
+	}
+	changed := false
+	for _, jid := range jids {
+		puppet := portal.user.GetPuppetByJID(jid)
+		changed = levels.EnsureUserLevel(puppet.MXID, newLevel) || changed
+	}
+	if changed {
+		portal.MainIntent().SetPowerLevels(portal.MXID, levels)
+	}
+}
+
+func (portal *Portal) RestrictMessageSending(restrict bool) {
+	levels, err := portal.MainIntent().PowerLevels(portal.MXID)
+	if err != nil {
+		levels = portal.GetBasePowerLevels()
+	}
+	if restrict {
+		levels.EventsDefault = 50
+	} else {
+		levels.EventsDefault = 0
+	}
+	portal.MainIntent().SetPowerLevels(portal.MXID, levels)
+}
+
+func (portal *Portal) RestrictMetadataChanges(restrict bool) {
+	levels, err := portal.MainIntent().PowerLevels(portal.MXID)
+	if err != nil {
+		levels = portal.GetBasePowerLevels()
+	}
+	newLevel := 0
+	if restrict {
+		newLevel = 50
+	}
+	changed := false
+	changed = levels.EnsureEventLevel(gomatrix.StateRoomName, true, newLevel) || changed
+	changed = levels.EnsureEventLevel(gomatrix.StateRoomAvatar, true, newLevel) || changed
+	changed = levels.EnsureEventLevel(gomatrix.StateTopic, true, newLevel) || changed
+	if changed {
+		portal.MainIntent().SetPowerLevels(portal.MXID, levels)
+	}
+}
+
 func (portal *Portal) CreateMatrixRoom() error {
 	portal.roomCreateLock.Lock()
 	defer portal.roomCreateLock.Unlock()
@@ -241,6 +331,7 @@ func (portal *Portal) CreateMatrixRoom() error {
 		topic = "WhatsApp private chat"
 		isPrivateChat = true
 	}
+
 	resp, err := portal.MainIntent().CreateRoom(&gomatrix.ReqCreateRoom{
 		Visibility: "private",
 		Name:       name,
@@ -248,6 +339,12 @@ func (portal *Portal) CreateMatrixRoom() error {
 		Invite:     invite,
 		Preset:     "private_chat",
 		IsDirect:   isPrivateChat,
+		InitialState: []*gomatrix.Event{{
+			Type: gomatrix.StatePowerLevels,
+			Content: gomatrix.Content{
+				PowerLevels: portal.GetBasePowerLevels(),
+			},
+		}},
 	})
 	if err != nil {
 		return err

@@ -67,7 +67,7 @@ func (store *AutosavingStateStore) SetMembership(roomID, userID, membership stri
 	store.Save()
 }
 
-func (store *AutosavingStateStore) SetPowerLevels(roomID string, levels gomatrix.PowerLevels) {
+func (store *AutosavingStateStore) SetPowerLevels(roomID string, levels *gomatrix.PowerLevels) {
 	store.BasicStateStore.SetPowerLevels(roomID, levels)
 	store.Save()
 }
