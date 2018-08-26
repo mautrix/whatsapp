@@ -38,6 +38,9 @@ type User struct {
 	bridge *Bridge
 	log    log.Logger
 
+	Admin       bool
+	Whitelisted bool
+
 	portalsByMXID map[types.MatrixRoomID]*Portal
 	portalsByJID  map[types.WhatsAppID]*Portal
 	portalsLock   sync.Mutex
@@ -94,6 +97,8 @@ func (bridge *Bridge) NewUser(dbUser *database.User) *User {
 		portalsByJID:  make(map[types.WhatsAppID]*Portal),
 		puppets:       make(map[types.WhatsAppID]*Puppet),
 	}
+	user.Whitelisted = user.bridge.Config.Bridge.Permissions.IsWhitelisted(user.ID)
+	user.Admin = user.bridge.Config.Bridge.Permissions.IsAdmin(user.ID)
 	user.htmlParser = user.newHTMLParser()
 	user.waReplString, user.waReplFunc = user.newWhatsAppFormatMaps()
 	return user
