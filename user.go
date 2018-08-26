@@ -321,7 +321,14 @@ func (user *User) HandleChatUpdate(cmd whatsappExt.ChatUpdate) {
 		portal.UpdateTopic(cmd.Data.AddTopic.Topic, cmd.Data.SenderJID)
 	case whatsappExt.ChatActionRemoveTopic:
 		portal.UpdateTopic("", cmd.Data.SenderJID)
-	// TODO power level updates
+	case whatsappExt.ChatActionPromote:
+		portal.ChangeAdminStatus(cmd.Data.PermissionChange.JIDs, true)
+	case whatsappExt.ChatActionDemote:
+		portal.ChangeAdminStatus(cmd.Data.PermissionChange.JIDs, false)
+	case whatsappExt.ChatActionAnnounce:
+		portal.RestrictMessageSending(cmd.Data.Announce)
+	case whatsappExt.ChatActionRestrict:
+		portal.RestrictMetadataChanges(cmd.Data.Restrict)
 	}
 }
 
