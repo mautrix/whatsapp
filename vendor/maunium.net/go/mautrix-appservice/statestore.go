@@ -113,8 +113,12 @@ func (store *BasicStateStore) GetRoomMemberships(roomID string) map[string]strin
 
 func (store *BasicStateStore) GetMembership(roomID, userID string) string {
 	store.membershipsLock.RLock()
-	membership, ok := store.GetRoomMemberships(roomID)[userID]
-	store.membershipsLock.RUnlock()
+	defer store.membershipsLock.RUnlock()
+	memberships, ok := store.Memberships[roomID]
+	if !ok {
+		return "leave"
+	}
+	membership, ok := memberships[userID]
 	if !ok {
 		return "leave"
 	}
