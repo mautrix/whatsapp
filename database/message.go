@@ -17,9 +17,10 @@
 package database
 
 import (
+	"database/sql"
+
 	log "maunium.net/go/maulogger"
 	"maunium.net/go/mautrix-whatsapp/types"
-	"database/sql"
 )
 
 type MessageQuery struct {

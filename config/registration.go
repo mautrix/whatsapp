@@ -17,9 +17,10 @@
 package config
 
 import (
-	"maunium.net/go/mautrix-appservice"
-	"regexp"
 	"fmt"
+	"regexp"
+
+	"maunium.net/go/mautrix-appservice"
 )
 
 func (config *Config) NewRegistration() (*appservice.Registration, error) {

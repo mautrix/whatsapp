@@ -17,9 +17,10 @@
 package config
 
 import (
-	"maunium.net/go/mautrix-appservice"
 	"io/ioutil"
+
 	"gopkg.in/yaml.v2"
+	"maunium.net/go/mautrix-appservice"
 )
 
 type Config struct {
