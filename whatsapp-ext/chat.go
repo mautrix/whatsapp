@@ -118,6 +118,9 @@ func (cud *ChatUpdateData) UnmarshalJSON(data []byte) error {
 		return err
 	}
 	cud.NameChange.SetBy = strings.Replace(cud.NameChange.SetBy, OldUserSuffix, NewUserSuffix, 1)
+	for index, jid := range cud.PermissionChange.JIDs {
+		cud.PermissionChange.JIDs[index] = strings.Replace(jid, OldUserSuffix, NewUserSuffix, 1)
+	}
 	return nil
 }
 

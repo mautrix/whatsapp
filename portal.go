@@ -128,16 +128,17 @@ func (portal *Portal) SyncParticipants(metadata *whatsappExt.GroupInfo) {
 	for _, participant := range metadata.Participants {
 		puppet := portal.user.GetPuppetByJID(participant.JID)
 		puppet.Intent().EnsureJoined(portal.MXID)
-		level := levels.GetUserLevel(puppet.MXID)
+
 		expectedLevel := 0
 		if participant.IsSuperAdmin {
 			expectedLevel = 95
 		} else if participant.IsAdmin {
 			expectedLevel = 50
 		}
-		if level != expectedLevel {
-			levels.SetUserLevel(puppet.MXID, expectedLevel)
-			changed = true
+		changed = levels.EnsureUserLevel(puppet.MXID, expectedLevel) || changed
+
+		if participant.JID == portal.user.JID() {
+			changed = levels.EnsureUserLevel(portal.user.ID, expectedLevel) || changed
 		}
 	}
 	if changed {
@@ -278,6 +279,10 @@ func (portal *Portal) ChangeAdminStatus(jids []string, setAdmin bool) {
 	for _, jid := range jids {
 		puppet := portal.user.GetPuppetByJID(jid)
 		changed = levels.EnsureUserLevel(puppet.MXID, newLevel) || changed
+
+		if jid == portal.user.JID() {
+			changed = levels.EnsureUserLevel(portal.user.ID, newLevel) || changed
+		}
 	}
 	if changed {
 		portal.MainIntent().SetPowerLevels(portal.MXID, levels)
