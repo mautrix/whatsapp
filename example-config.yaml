@@ -49,8 +49,9 @@ bridge:
   # Displayname template for WhatsApp users.
   # {{.Name}}   - display name
   # {{.Short}}  - short display name (usually first name)
-  # {{.Notify}} - nickname (set by the target WhatsApp user)
-  displayname_template: "{{if .Name}}{{.Name}}{{else if .Notify}}{{.Notify}}{{else if .Short}}{{.Short}}{{else}}Unnamed user{{end}}"
+  # {{.Notify}} - nickname (maybe set by the target WhatsApp user)
+  # {{.Jid}}    - phone number (international format)
+  displayname_template: "{{if .Name}}{{.Name}}{{else if .Notify}}{{.Notify}}{{else if .Short}}{{.Short}}{{else}}{{.Jid}}{{end}}"
 
   # The prefix for commands. Only required in non-management rooms.
   command_prefix: "!wa"
