@@ -677,6 +677,7 @@ func (cli *Client) Upload(content io.Reader, contentType string, contentLength i
 	}
 	req.Header.Set("Content-Type", contentType)
 	req.ContentLength = contentLength
+	cli.LogRequest(req, fmt.Sprintf("%d bytes", contentLength))
 	res, err := cli.Client.Do(req)
 	if res != nil {
 		defer res.Body.Close()
