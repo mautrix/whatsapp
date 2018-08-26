@@ -50,6 +50,11 @@ func NewMatrixHandler(bridge *Bridge) *MatrixHandler {
 func (mx *MatrixHandler) HandleBotInvite(evt *gomatrix.Event) {
 	intent := mx.as.BotIntent()
 
+	user := mx.bridge.GetUser(evt.Sender)
+	if user == nil {
+		return
+	}
+
 	resp, err := intent.JoinRoom(evt.RoomID, "", nil)
 	if err != nil {
 		mx.log.Debugln("Failed to join room", evt.RoomID, "with invite from", evt.Sender)
@@ -65,6 +70,13 @@ func (mx *MatrixHandler) HandleBotInvite(evt *gomatrix.Event) {
 
 	if len(members.Joined) < 2 {
 		mx.log.Debugln("Leaving empty room", resp.RoomID, "after accepting invite from", evt.Sender)
+		intent.LeaveRoom(resp.RoomID)
+		return
+	}
+
+	if !user.Whitelisted {
+		intent.SendNotice(resp.RoomID, "You are not whitelisted to use this bridge.\n"+
+			"If you're the owner of this bridge, see the bridge.permissions section in your config file.")
 		intent.LeaveRoom(resp.RoomID)
 		return
 	}
@@ -92,7 +104,6 @@ func (mx *MatrixHandler) HandleBotInvite(evt *gomatrix.Event) {
 }
 
 func (mx *MatrixHandler) HandleMembership(evt *gomatrix.Event) {
-	mx.log.Debugln(evt.Content, evt.Content.Membership, evt.GetStateKey())
 	if evt.Content.Membership == "invite" && evt.GetStateKey() == mx.as.BotMXID() {
 		mx.HandleBotInvite(evt)
 	}
@@ -100,7 +111,7 @@ func (mx *MatrixHandler) HandleMembership(evt *gomatrix.Event) {
 
 func (mx *MatrixHandler) HandleRoomMetadata(evt *gomatrix.Event) {
 	user := mx.bridge.GetUser(types.MatrixUserID(evt.Sender))
-	if user == nil {
+	if user == nil || !user.Whitelisted {
 		return
 	}
 
@@ -130,6 +141,10 @@ func (mx *MatrixHandler) HandleRoomMetadata(evt *gomatrix.Event) {
 func (mx *MatrixHandler) HandleMessage(evt *gomatrix.Event) {
 	roomID := types.MatrixRoomID(evt.RoomID)
 	user := mx.bridge.GetUser(types.MatrixUserID(evt.Sender))
+
+	if !user.Whitelisted {
+		return
+	}
 
 	if evt.Content.MsgType == gomatrix.MsgText {
 		commandPrefix := mx.bridge.Config.Bridge.CommandPrefix
