@@ -388,6 +388,10 @@ func (portal *Portal) MarkHandled(jid types.WhatsAppMessageID, mxid types.Matrix
 
 func (portal *Portal) GetMessageIntent(info whatsapp.MessageInfo) *appservice.IntentAPI {
 	if info.FromMe {
+		if portal.IsPrivateChat() {
+			// TODO handle own messages in private chats properly
+			return nil
+		}
 		return portal.user.GetPuppetByJID(portal.user.JID()).Intent()
 	} else if portal.IsPrivateChat() {
 		return portal.MainIntent()

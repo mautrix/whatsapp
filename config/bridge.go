@@ -66,6 +66,9 @@ type UsernameTemplateArgs struct {
 
 func (bc BridgeConfig) FormatDisplayname(contact whatsapp.Contact) string {
 	var buf bytes.Buffer
+	if index := strings.IndexRune(contact.Jid, '@'); index > 0 {
+		contact.Jid = "+" + contact.Jid[:index]
+	}
 	bc.displaynameTemplate.Execute(&buf, contact)
 	return buf.String()
 }

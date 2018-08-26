@@ -187,6 +187,9 @@ func (puppet *Puppet) UpdateAvatar(avatar *whatsappExt.ProfilePicInfo) bool {
 func (puppet *Puppet) Sync(contact whatsapp.Contact) {
 	puppet.Intent().EnsureRegistered()
 
+	if contact.Jid == puppet.user.JID() {
+		contact.Notify = puppet.user.Conn.Info.Pushname
+	}
 	newName := puppet.bridge.Config.Bridge.FormatDisplayname(contact)
 	if puppet.Displayname != newName {
 		err := puppet.Intent().SetDisplayName(newName)
