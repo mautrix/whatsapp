@@ -150,6 +150,21 @@ func (intent *IntentAPI) SetPowerLevel(roomID, userID string, level int) (*gomat
 	return nil, nil
 }
 
+func (intent *IntentAPI) UserTyping(roomID string, typing bool, timeout int64) (resp *gomatrix.RespTyping, err error) {
+	if intent.as.StateStore.IsTyping(roomID, intent.UserID) == typing {
+		return
+	}
+	resp, err = intent.Client.UserTyping(roomID, typing, timeout)
+	if err != nil {
+		return
+	}
+	if !typing {
+		timeout = -1
+	}
+	intent.as.StateStore.SetTyping(roomID, intent.UserID, timeout)
+	return
+}
+
 func (intent *IntentAPI) SendText(roomID, text string) (*gomatrix.RespSendEvent, error) {
 	if err := intent.EnsureJoined(roomID); err != nil {
 		return nil, err

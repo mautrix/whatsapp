@@ -231,8 +231,8 @@ func (pl *PowerLevels) StateDefault() int {
 
 func (pl *PowerLevels) GetUserLevel(userID string) int {
 	pl.usersLock.RLock()
+	defer pl.usersLock.RUnlock()
 	level, ok := pl.Users[userID]
-	pl.usersLock.RUnlock()
 	if !ok {
 		return pl.UsersDefault
 	}
@@ -241,12 +241,12 @@ func (pl *PowerLevels) GetUserLevel(userID string) int {
 
 func (pl *PowerLevels) SetUserLevel(userID string, level int) {
 	pl.usersLock.Lock()
+	defer pl.usersLock.Unlock()
 	if level == pl.UsersDefault {
 		delete(pl.Users, userID)
 	} else {
 		pl.Users[userID] = level
 	}
-	pl.usersLock.Unlock()
 }
 
 func (pl *PowerLevels) EnsureUserLevel(userID string, level int) bool {
@@ -260,8 +260,8 @@ func (pl *PowerLevels) EnsureUserLevel(userID string, level int) bool {
 
 func (pl *PowerLevels) GetEventLevel(eventType EventType, isState bool) int {
 	pl.eventsLock.RLock()
+	defer pl.eventsLock.RUnlock()
 	level, ok := pl.Events[eventType]
-	pl.eventsLock.RUnlock()
 	if !ok {
 		if isState {
 			return pl.StateDefault()
@@ -273,12 +273,12 @@ func (pl *PowerLevels) GetEventLevel(eventType EventType, isState bool) int {
 
 func (pl *PowerLevels) SetEventLevel(eventType EventType, isState bool, level int) {
 	pl.eventsLock.Lock()
+	defer pl.eventsLock.Unlock()
 	if (isState && level == pl.StateDefault()) || (!isState && level == pl.EventsDefault) {
 		delete(pl.Events, eventType)
 	} else {
 		pl.Events[eventType] = level
 	}
-	pl.eventsLock.Unlock()
 }
 
 func (pl *PowerLevels) EnsureEventLevel(eventType EventType, isState bool, level int) bool {

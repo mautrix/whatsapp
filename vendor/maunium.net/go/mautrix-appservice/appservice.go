@@ -24,7 +24,7 @@ func Create() *AppService {
 		LogConfig:  CreateLogConfig(),
 		clients:    make(map[string]*gomatrix.Client),
 		intents:    make(map[string]*IntentAPI),
-		StateStore: &BasicStateStore{},
+		StateStore: NewBasicStateStore(),
 	}
 }
 

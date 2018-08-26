@@ -26,19 +26,19 @@ import (
 )
 
 type AutosavingStateStore struct {
-	*appservice.BasicStateStore
+	appservice.StateStore
 	Path string
 }
 
 func NewAutosavingStateStore(path string) *AutosavingStateStore {
 	return &AutosavingStateStore{
-		BasicStateStore: appservice.NewBasicStateStore(),
-		Path:            path,
+		StateStore: appservice.NewBasicStateStore(),
+		Path:       path,
 	}
 }
 
 func (store *AutosavingStateStore) Save() error {
-	data, err := json.Marshal(store.BasicStateStore)
+	data, err := json.Marshal(store.StateStore)
 	if err != nil {
 		return err
 	}
@@ -55,20 +55,20 @@ func (store *AutosavingStateStore) Load() error {
 		return err
 	}
 
-	return json.Unmarshal(data, store.BasicStateStore)
+	return json.Unmarshal(data, store.StateStore)
 }
 
 func (store *AutosavingStateStore) MarkRegistered(userID string) {
-	store.BasicStateStore.MarkRegistered(userID)
+	store.StateStore.MarkRegistered(userID)
 	store.Save()
 }
 
 func (store *AutosavingStateStore) SetMembership(roomID, userID, membership string) {
-	store.BasicStateStore.SetMembership(roomID, userID, membership)
+	store.StateStore.SetMembership(roomID, userID, membership)
 	store.Save()
 }
 
 func (store *AutosavingStateStore) SetPowerLevels(roomID string, levels *gomatrix.PowerLevels) {
-	store.BasicStateStore.SetPowerLevels(roomID, levels)
+	store.StateStore.SetPowerLevels(roomID, levels)
 	store.Save()
 }
