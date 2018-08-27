@@ -497,23 +497,22 @@ func (portal *Portal) HandleMediaMessage(download func() ([]byte, error), thumbn
 		portal.log.Errorln("Failed to upload media:", err)
 		return
 	}
-	if len(caption) == 0 {
-		caption = info.Id
-		exts, _ := mime.ExtensionsByType(mimeType)
-		if exts != nil && len(exts) > 0 {
-			caption += exts[0]
-		}
+
+	fileName := info.Id
+	exts, _ := mime.ExtensionsByType(mimeType)
+	if exts != nil && len(exts) > 0 {
+		fileName += exts[0]
 	}
 
-	content := gomatrix.Content{
-		Body: caption,
+	content := &gomatrix.Content{
+		Body: fileName,
 		URL:  uploaded.ContentURI,
 		Info: &gomatrix.FileInfo{
 			Size:     len(data),
 			MimeType: mimeType,
 		},
 	}
-	portal.SetReply(&content, info)
+	portal.SetReply(content, info)
 
 	if thumbnail != nil {
 		thumbnailMime := http.DetectContentType(thumbnail)
@@ -545,11 +544,32 @@ func (portal *Portal) HandleMediaMessage(download func() ([]byte, error), thumbn
 	}
 
 	intent.UserTyping(portal.MXID, false, 0)
-	resp, err := intent.SendMassagedMessageEvent(portal.MXID, gomatrix.EventMessage, content, int64(info.Timestamp*1000))
+	ts := int64(info.Timestamp * 1000)
+	resp, err := intent.SendMassagedMessageEvent(portal.MXID, gomatrix.EventMessage, content, ts)
 	if err != nil {
 		portal.log.Errorfln("Failed to handle message %s: %v", info.Id, err)
 		return
 	}
+
+	if len(caption) > 0 {
+		captionContent := &gomatrix.Content{
+			Body:    caption,
+			MsgType: gomatrix.MsgNotice,
+		}
+
+		htmlBody := portal.ParseWhatsAppFormat(captionContent.Body)
+		if htmlBody != captionContent.Body {
+			captionContent.FormattedBody = htmlBody
+			captionContent.Format = gomatrix.FormatHTML
+		}
+
+		_, err := intent.SendMassagedMessageEvent(portal.MXID, gomatrix.EventMessage, captionContent, ts)
+		if err != nil {
+			portal.log.Warnfln("Failed to handle caption of message %s: %v", info.Id, err)
+		}
+		// TODO store caption mxid?
+	}
+
 	portal.MarkHandled(info.Id, resp.EventID)
 	portal.log.Debugln("Handled message", info.Id, "->", resp.EventID)
 }

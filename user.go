@@ -40,6 +40,7 @@ type User struct {
 
 	Admin       bool
 	Whitelisted bool
+	jid         string
 
 	portalsByMXID map[types.MatrixRoomID]*Portal
 	portalsByJID  map[types.WhatsAppID]*Portal
@@ -199,7 +200,13 @@ func (user *User) Login(roomID types.MatrixRoomID) {
 }
 
 func (user *User) JID() string {
-	return strings.Replace(user.Conn.Info.Wid, whatsappExt.OldUserSuffix, whatsappExt.NewUserSuffix, 1)
+	if user.Conn == nil {
+		return ""
+	}
+	if len(user.jid) == 0 {
+		user.jid = strings.Replace(user.Conn.Info.Wid, whatsappExt.OldUserSuffix, whatsappExt.NewUserSuffix, 1)
+	}
+	return user.jid
 }
 
 func (user *User) Sync() {
