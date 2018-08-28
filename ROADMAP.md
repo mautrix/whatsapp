@@ -26,6 +26,10 @@
     * [x] Formatted messages
     * [x] Media/files
     * [x] Replies
+  * [ ] Chat types
+    * [x] Private chat
+    * [x] Group chat
+    * [ ] Broadcast list
   * [ ] Message deletions
   * [x] Avatars
   * [x] Presence
@@ -55,3 +59,4 @@
     * [x] When receiving message
   * [ ] Private chat creation by inviting Matrix puppet of WhatsApp user to new room
   * [ ] Option to use own Matrix account for messages sent from WhatsApp mobile/other web clients
+  * [ ] Shared group chat portals
