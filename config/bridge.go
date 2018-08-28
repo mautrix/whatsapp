@@ -56,12 +56,7 @@ func (bc *BridgeConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	return err
 }
 
-type DisplaynameTemplateArgs struct {
-	Displayname string
-}
-
 type UsernameTemplateArgs struct {
-	Receiver string
 	UserID   string
 }
 
@@ -74,14 +69,9 @@ func (bc BridgeConfig) FormatDisplayname(contact whatsapp.Contact) string {
 	return buf.String()
 }
 
-func (bc BridgeConfig) FormatUsername(receiver types.MatrixUserID, userID types.WhatsAppID) string {
+func (bc BridgeConfig) FormatUsername(userID types.WhatsAppID) string {
 	var buf bytes.Buffer
-	receiver = strings.Replace(receiver, "@", "=40", 1)
-	receiver = strings.Replace(receiver, ":", "=3", 1)
-	bc.usernameTemplate.Execute(&buf, UsernameTemplateArgs{
-		Receiver: receiver,
-		UserID:   userID,
-	})
+	bc.usernameTemplate.Execute(&buf, userID)
 	return buf.String()
 }
 
@@ -92,7 +82,7 @@ func (bc BridgeConfig) MarshalYAML() (interface{}, error) {
 		Name:   "{{.Name}}",
 		Short:  "{{.Short}}",
 	})
-	bc.UsernameTemplate = bc.FormatUsername("{{.Receiver}}", "{{.UserID}}")
+	bc.UsernameTemplate = bc.FormatUsername("{{.}}")
 	return bc, nil
 }
 

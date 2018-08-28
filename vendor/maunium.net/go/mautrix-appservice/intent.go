@@ -201,19 +201,19 @@ func (intent *IntentAPI) RedactEvent(roomID, eventID string, req *gomatrix.ReqRe
 }
 
 func (intent *IntentAPI) SetRoomName(roomID, roomName string) (*gomatrix.RespSendEvent, error) {
-	return intent.SendStateEvent(roomID, "m.room.name", "", map[string]interface{}{
+	return intent.SendStateEvent(roomID, gomatrix.StateRoomName, "", map[string]interface{}{
 		"name": roomName,
 	})
 }
 
 func (intent *IntentAPI) SetRoomAvatar(roomID, avatarURL string) (*gomatrix.RespSendEvent, error) {
-	return intent.SendStateEvent(roomID, "m.room.avatar", "", map[string]interface{}{
+	return intent.SendStateEvent(roomID, gomatrix.StateRoomAvatar, "", map[string]interface{}{
 		"url": avatarURL,
 	})
 }
 
 func (intent *IntentAPI) SetRoomTopic(roomID, topic string) (*gomatrix.RespSendEvent, error) {
-	return intent.SendStateEvent(roomID, "m.room.topic", "", map[string]interface{}{
+	return intent.SendStateEvent(roomID, gomatrix.StateTopic, "", map[string]interface{}{
 		"topic": topic,
 	})
 }

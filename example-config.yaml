@@ -21,7 +21,6 @@ appservice:
     type: sqlite3
     # The database URI. Usually file name. https://github.com/mattn/go-sqlite3#connection-string
     uri: mautrix-whatsapp.db
-
   # Path to the Matrix room state store.
   state_store_path: ./mx-state.json
 
@@ -43,15 +42,15 @@ appservice:
 # Bridge config. Currently unused.
 bridge:
   # Localpart template of MXIDs for WhatsApp users.
-  # {{.Receiver}} is replaced with the WhatsApp user ID of the Matrix user receiving messages.
-  # {{.UserID}} is replaced with the user ID of the WhatsApp user.
-  username_template: "whatsapp_{{.Receiver}}_{{.UserID}}"
+  # {{.}} is replaced with the phone number of the WhatsApp user.
+  username_template: whatsapp_{{.}}
   # Displayname template for WhatsApp users.
-  # {{.Name}}   - display name
-  # {{.Short}}  - short display name (usually first name)
-  # {{.Notify}} - nickname (maybe set by the target WhatsApp user)
+  # {{.Notify}} - nickname set by the WhatsApp user
   # {{.Jid}}    - phone number (international format)
-  displayname_template: "{{if .Name}}{{.Name}}{{else if .Notify}}{{.Notify}}{{else if .Short}}{{.Short}}{{else}}{{.Jid}}{{end}}"
+  # The following variables are also available, but will cause problems on multi-user instances:
+  # {{.Name}}   - display name from contact list
+  # {{.Short}}  - short display name from contact list
+  displayname_template: "{{if .Notify}}{{.Notify}}{{else}}{{.Jid}}{{end}} (WA)"
 
   # The prefix for commands. Only required in non-management rooms.
   command_prefix: "!wa"
@@ -72,8 +71,8 @@ bridge:
 logging:
   # The directory for log files. Will be created if not found.
   directory: ./logs
-  # Available variables: .date for the file date and .index for different log files on the same day.
-  file_name_format: "{{.date}}-{{.index}.log"
+  # Available variables: .Date for the file date and .Index for different log files on the same day.
+  file_name_format: "{{.Date}}-{{.Index}}.log"
   # Date format for file names in the Go time format: https://golang.org/pkg/time/#pkg-constants
   file_date_format: 2006-01-02
   # Log file permissions.

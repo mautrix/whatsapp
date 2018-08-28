@@ -30,105 +30,83 @@ import (
 	"maunium.net/go/mautrix-whatsapp/whatsapp-ext"
 )
 
-func (bridge *Bridge) ParsePuppetMXID(mxid types.MatrixUserID) (types.MatrixUserID, types.WhatsAppID, bool) {
+func (bridge *Bridge) ParsePuppetMXID(mxid types.MatrixUserID) (types.WhatsAppID, bool) {
 	userIDRegex, err := regexp.Compile(fmt.Sprintf("^@%s:%s$",
-		bridge.Config.Bridge.FormatUsername("(.+)", "([0-9]+)"),
+		bridge.Config.Bridge.FormatUsername("([0-9]+)"),
 		bridge.Config.Homeserver.Domain))
 	if err != nil {
 		bridge.Log.Warnln("Failed to compile puppet user ID regex:", err)
-		return "", "", false
+		return "", false
 	}
 	match := userIDRegex.FindStringSubmatch(string(mxid))
-	if match == nil || len(match) != 3 {
-		return "", "", false
+	if match == nil || len(match) != 2 {
+		return "", false
 	}
 
-	receiver := types.MatrixUserID(match[1])
-	receiver = strings.Replace(receiver, "=40", "@", 1)
-	colonIndex := strings.LastIndex(receiver, "=3")
-	receiver = receiver[:colonIndex] + ":" + receiver[colonIndex+len("=3"):]
 	jid := types.WhatsAppID(match[2] + whatsappExt.NewUserSuffix)
-	return receiver, jid, true
+	return jid, true
 }
 
 func (bridge *Bridge) GetPuppetByMXID(mxid types.MatrixUserID) *Puppet {
-	receiver, jid, ok := bridge.ParsePuppetMXID(mxid)
+	jid, ok := bridge.ParsePuppetMXID(mxid)
 	if !ok {
 		return nil
 	}
 
-	user := bridge.GetUser(receiver)
-	if user == nil {
-		return nil
-	}
-
-	return user.GetPuppetByJID(jid)
+	return bridge.GetPuppetByJID(jid)
 }
 
-func (user *User) GetPuppetByMXID(mxid types.MatrixUserID) *Puppet {
-	receiver, jid, ok := user.bridge.ParsePuppetMXID(mxid)
-	if !ok || receiver != user.ID {
-		return nil
-	}
-
-	return user.GetPuppetByJID(jid)
-}
-
-func (user *User) GetPuppetByJID(jid types.WhatsAppID) *Puppet {
-	user.puppetsLock.Lock()
-	defer user.puppetsLock.Unlock()
-	puppet, ok := user.puppets[jid]
+func (bridge *Bridge) GetPuppetByJID(jid types.WhatsAppID) *Puppet {
+	bridge.puppetsLock.Lock()
+	defer bridge.puppetsLock.Unlock()
+	puppet, ok := bridge.puppets[jid]
 	if !ok {
-		dbPuppet := user.bridge.DB.Puppet.Get(jid, user.ID)
+		dbPuppet := bridge.DB.Puppet.Get(jid)
 		if dbPuppet == nil {
-			dbPuppet = user.bridge.DB.Puppet.New()
+			dbPuppet = bridge.DB.Puppet.New()
 			dbPuppet.JID = jid
-			dbPuppet.Receiver = user.ID
 			dbPuppet.Insert()
 		}
-		puppet = user.NewPuppet(dbPuppet)
-		user.puppets[puppet.JID] = puppet
+		puppet = bridge.NewPuppet(dbPuppet)
+		bridge.puppets[puppet.JID] = puppet
 	}
 	return puppet
 }
 
-func (user *User) GetAllPuppets() []*Puppet {
-	user.puppetsLock.Lock()
-	defer user.puppetsLock.Unlock()
-	dbPuppets := user.bridge.DB.Puppet.GetAll(user.ID)
+func (bridge *Bridge) GetAllPuppets() []*Puppet {
+	bridge.puppetsLock.Lock()
+	defer bridge.puppetsLock.Unlock()
+	dbPuppets := bridge.DB.Puppet.GetAll()
 	output := make([]*Puppet, len(dbPuppets))
 	for index, dbPuppet := range dbPuppets {
-		puppet, ok := user.puppets[dbPuppet.JID]
+		puppet, ok := bridge.puppets[dbPuppet.JID]
 		if !ok {
-			puppet = user.NewPuppet(dbPuppet)
-			user.puppets[dbPuppet.JID] = puppet
+			puppet = bridge.NewPuppet(dbPuppet)
+			bridge.puppets[dbPuppet.JID] = puppet
 		}
 		output[index] = puppet
 	}
 	return output
 }
 
-func (user *User) NewPuppet(dbPuppet *database.Puppet) *Puppet {
+func (bridge *Bridge) NewPuppet(dbPuppet *database.Puppet) *Puppet {
 	return &Puppet{
 		Puppet: dbPuppet,
-		user:   user,
-		bridge: user.bridge,
-		log:    user.log.Sub(fmt.Sprintf("Puppet/%s", dbPuppet.JID)),
+		bridge: bridge,
+		log:    bridge.Log.Sub(fmt.Sprintf("Puppet/%s", dbPuppet.JID)),
 
 		MXID: fmt.Sprintf("@%s:%s",
-			user.bridge.Config.Bridge.FormatUsername(
-				dbPuppet.Receiver,
+			bridge.Config.Bridge.FormatUsername(
 				strings.Replace(
 					dbPuppet.JID,
 					whatsappExt.NewUserSuffix, "", 1)),
-			user.bridge.Config.Homeserver.Domain),
+			bridge.Config.Homeserver.Domain),
 	}
 }
 
 type Puppet struct {
 	*database.Puppet
 
-	user   *User
 	bridge *Bridge
 	log    log.Logger
 
@@ -143,13 +121,13 @@ func (puppet *Puppet) PhoneNumber() string {
 }
 
 func (puppet *Puppet) Intent() *appservice.IntentAPI {
-	return puppet.bridge.AppService.Intent(puppet.MXID)
+	return puppet.bridge.AS.Intent(puppet.MXID)
 }
 
-func (puppet *Puppet) UpdateAvatar(avatar *whatsappExt.ProfilePicInfo) bool {
+func (puppet *Puppet) UpdateAvatar(source *User, avatar *whatsappExt.ProfilePicInfo) bool {
 	if avatar == nil {
 		var err error
-		avatar, err = puppet.user.Conn.GetProfilePicThumb(puppet.JID)
+		avatar, err = source.Conn.GetProfilePicThumb(puppet.JID)
 		if err != nil {
 			puppet.log.Errorln(err)
 			return false
@@ -184,11 +162,11 @@ func (puppet *Puppet) UpdateAvatar(avatar *whatsappExt.ProfilePicInfo) bool {
 	return true
 }
 
-func (puppet *Puppet) Sync(contact whatsapp.Contact) {
+func (puppet *Puppet) Sync(source *User, contact whatsapp.Contact) {
 	puppet.Intent().EnsureRegistered()
 
-	if contact.Jid == puppet.user.JID() {
-		contact.Notify = puppet.user.Conn.Info.Pushname
+	if contact.Jid == source.JID {
+		contact.Notify = source.Conn.Info.Pushname
 	}
 	newName := puppet.bridge.Config.Bridge.FormatDisplayname(contact)
 	if puppet.Displayname != newName {
@@ -201,7 +179,7 @@ func (puppet *Puppet) Sync(contact whatsapp.Contact) {
 		}
 	}
 
-	if puppet.UpdateAvatar(nil) {
+	if puppet.UpdateAvatar(source, nil) {
 		puppet.Update()
 	}
 }

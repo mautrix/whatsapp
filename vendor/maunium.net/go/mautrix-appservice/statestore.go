@@ -15,13 +15,15 @@ type StateStore interface {
 	SetTyping(roomID, userID string, timeout int64)
 
 	IsInRoom(roomID, userID string) bool
+	IsInvited(roomID, userID string) bool
+	IsMembership(roomID, userID string, allowedMemberships ...string) bool
 	SetMembership(roomID, userID, membership string)
 
 	SetPowerLevels(roomID string, levels *gomatrix.PowerLevels)
 	GetPowerLevels(roomID string) *gomatrix.PowerLevels
 	GetPowerLevel(roomID, userID string) int
-	GetPowerLevelRequirement(roomID string, eventType gomatrix.EventType, isState bool) int
-	HasPowerLevel(roomID, userID string, eventType gomatrix.EventType, isState bool) bool
+	GetPowerLevelRequirement(roomID string, eventType gomatrix.EventType) int
+	HasPowerLevel(roomID, userID string, eventType gomatrix.EventType) bool
 }
 
 func (as *AppService) UpdateState(evt *gomatrix.Event) {
@@ -126,7 +128,21 @@ func (store *BasicStateStore) GetMembership(roomID, userID string) string {
 }
 
 func (store *BasicStateStore) IsInRoom(roomID, userID string) bool {
-	return store.GetMembership(roomID, userID) == "join"
+	return store.IsMembership(roomID, userID, "join")
+}
+
+func (store *BasicStateStore) IsInvited(roomID, userID string) bool {
+	return store.IsMembership(roomID, userID, "join", "invite")
+}
+
+func (store *BasicStateStore) IsMembership(roomID, userID string, allowedMemberships ...string) bool {
+	membership := store.GetMembership(roomID, userID)
+	for _, allowedMembership := range allowedMemberships {
+		if allowedMembership == membership {
+			return true
+		}
+	}
+	return false
 }
 
 func (store *BasicStateStore) SetMembership(roomID, userID, membership string) {
@@ -160,19 +176,10 @@ func (store *BasicStateStore) GetPowerLevel(roomID, userID string) int {
 	return store.GetPowerLevels(roomID).GetUserLevel(userID)
 }
 
-func (store *BasicStateStore) GetPowerLevelRequirement(roomID string, eventType gomatrix.EventType, isState bool) int {
-	levels := store.GetPowerLevels(roomID)
-	switch eventType {
-	case "kick":
-		return levels.Kick()
-	case "invite":
-		return levels.Invite()
-	case "redact":
-		return levels.Redact()
-	}
-	return levels.GetEventLevel(eventType, isState)
+func (store *BasicStateStore) GetPowerLevelRequirement(roomID string, eventType gomatrix.EventType) int {
+	return store.GetPowerLevels(roomID).GetEventLevel(eventType)
 }
 
-func (store *BasicStateStore) HasPowerLevel(roomID, userID string, eventType gomatrix.EventType, isState bool) bool {
-	return store.GetPowerLevel(roomID, userID) >= store.GetPowerLevelRequirement(roomID, eventType, isState)
+func (store *BasicStateStore) HasPowerLevel(roomID, userID string, eventType gomatrix.EventType) bool {
+	return store.GetPowerLevel(roomID, userID) >= store.GetPowerLevelRequirement(roomID, eventType)
 }

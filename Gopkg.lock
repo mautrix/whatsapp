@@ -123,7 +123,7 @@
     ".",
     "format"
   ]
-  revision = "ead1f970c8f56d1854cb9eb4a54c03aa6dafd753"
+  revision = "42a3133c4980e4b1ea5fb52329d977f592d67cf0"
 
 [[projects]]
   branch = "master"
@@ -141,7 +141,7 @@
   branch = "master"
   name = "maunium.net/go/mautrix-appservice"
   packages = ["."]
-  revision = "269f2ab602126a2de94bc86a457392426cce1ab2"
+  revision = "37d4449056015cea5d0a4420bba595c61ad32007"
 
 [solve-meta]
   analyzer-name = "dep"

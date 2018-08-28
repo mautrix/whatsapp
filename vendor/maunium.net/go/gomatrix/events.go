@@ -5,28 +5,44 @@ import (
 	"sync"
 )
 
-type EventType string
+type EventType struct {
+	Type    string
+	IsState bool
+}
+
+func (et *EventType) UnmarshalJSON(data []byte) error {
+	return json.Unmarshal(data, &et.Type)
+}
+
+func (et *EventType) MarshalJSON() ([]byte, error) {
+	return json.Marshal(&et.Type)
+}
+
+func (et *EventType) String() string {
+	return et.Type
+}
+
 type MessageType string
 
 // State events
-const (
-	StateAliases        EventType = "m.room.aliases"
-	StateCanonicalAlias           = "m.room.canonical_alias"
-	StateCreate                   = "m.room.create"
-	StateJoinRules                = "m.room.join_rules"
-	StateMember                   = "m.room.member"
-	StatePowerLevels              = "m.room.power_levels"
-	StateRoomName                 = "m.room.name"
-	StateTopic                    = "m.room.topic"
-	StateRoomAvatar               = "m.room.avatar"
-	StatePinnedEvents             = "m.room.pinned_events"
+var (
+	StateAliases        = EventType{"m.room.aliases", true}
+	StateCanonicalAlias = EventType{"m.room.canonical_alias", true}
+	StateCreate         = EventType{"m.room.create", true}
+	StateJoinRules      = EventType{"m.room.join_rules", true}
+	StateMember         = EventType{"m.room.member", true}
+	StatePowerLevels    = EventType{"m.room.power_levels", true}
+	StateRoomName       = EventType{"m.room.name", true}
+	StateTopic          = EventType{"m.room.topic", true}
+	StateRoomAvatar     = EventType{"m.room.avatar", true}
+	StatePinnedEvents   = EventType{"m.room.pinned_events", true}
 )
 
 // Message events
-const (
-	EventRedaction EventType = "m.room.redaction"
-	EventMessage             = "m.room.message"
-	EventSticker             = "m.sticker"
+var (
+	EventRedaction = EventType{"m.room.redaction", false}
+	EventMessage   = EventType{"m.room.message", false}
+	EventSticker   = EventType{"m.sticker", false}
 )
 
 // Msgtypes
@@ -258,12 +274,12 @@ func (pl *PowerLevels) EnsureUserLevel(userID string, level int) bool {
 	return false
 }
 
-func (pl *PowerLevels) GetEventLevel(eventType EventType, isState bool) int {
+func (pl *PowerLevels) GetEventLevel(eventType EventType) int {
 	pl.eventsLock.RLock()
 	defer pl.eventsLock.RUnlock()
 	level, ok := pl.Events[eventType]
 	if !ok {
-		if isState {
+		if eventType.IsState {
 			return pl.StateDefault()
 		}
 		return pl.EventsDefault
@@ -271,20 +287,20 @@ func (pl *PowerLevels) GetEventLevel(eventType EventType, isState bool) int {
 	return level
 }
 
-func (pl *PowerLevels) SetEventLevel(eventType EventType, isState bool, level int) {
+func (pl *PowerLevels) SetEventLevel(eventType EventType, level int) {
 	pl.eventsLock.Lock()
 	defer pl.eventsLock.Unlock()
-	if (isState && level == pl.StateDefault()) || (!isState && level == pl.EventsDefault) {
+	if (eventType.IsState && level == pl.StateDefault()) || (!eventType.IsState && level == pl.EventsDefault) {
 		delete(pl.Events, eventType)
 	} else {
 		pl.Events[eventType] = level
 	}
 }
 
-func (pl *PowerLevels) EnsureEventLevel(eventType EventType, isState bool, level int) bool {
-	existingLevel := pl.GetEventLevel(eventType, isState)
+func (pl *PowerLevels) EnsureEventLevel(eventType EventType, level int) bool {
+	existingLevel := pl.GetEventLevel(eventType)
 	if existingLevel != level {
-		pl.SetEventLevel(eventType, isState, level)
+		pl.SetEventLevel(eventType, level)
 		return true
 	}
 	return false

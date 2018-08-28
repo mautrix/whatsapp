@@ -17,14 +17,11 @@
 package main
 
 import (
-	"regexp"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/Rhymen/go-whatsapp"
 	"github.com/skip2/go-qrcode"
-	"maunium.net/go/gomatrix/format"
 	log "maunium.net/go/maulogger"
 	"maunium.net/go/mautrix-whatsapp/database"
 	"maunium.net/go/mautrix-whatsapp/types"
@@ -41,31 +38,42 @@ type User struct {
 	Admin       bool
 	Whitelisted bool
 	jid         string
-
-	portalsByMXID map[types.MatrixRoomID]*Portal
-	portalsByJID  map[types.WhatsAppID]*Portal
-	portalsLock   sync.Mutex
-	puppets       map[types.WhatsAppID]*Puppet
-	puppetsLock   sync.Mutex
-
-	htmlParser *format.HTMLParser
-
-	waReplString   map[*regexp.Regexp]string
-	waReplFunc     map[*regexp.Regexp]func(string) string
-	waReplFuncText map[*regexp.Regexp]func(string) string
 }
 
-func (bridge *Bridge) GetUser(userID types.MatrixUserID) *User {
-	user, ok := bridge.users[userID]
+func (bridge *Bridge) GetUserByMXID(userID types.MatrixUserID) *User {
+	bridge.usersLock.Lock()
+	defer bridge.usersLock.Unlock()
+	user, ok := bridge.usersByMXID[userID]
 	if !ok {
-		dbUser := bridge.DB.User.Get(userID)
+		dbUser := bridge.DB.User.GetByMXID(userID)
 		if dbUser == nil {
 			dbUser = bridge.DB.User.New()
-			dbUser.ID = userID
+			dbUser.MXID = userID
 			dbUser.Insert()
 		}
 		user = bridge.NewUser(dbUser)
-		bridge.users[user.ID] = user
+		bridge.usersByMXID[user.MXID] = user
+		if len(user.ManagementRoom) > 0 {
+			bridge.managementRooms[user.ManagementRoom] = user
+		}
+	}
+	return user
+}
+
+
+func (bridge *Bridge) GetUserByJID(userID types.WhatsAppID) *User {
+	bridge.usersLock.Lock()
+	defer bridge.usersLock.Unlock()
+	user, ok := bridge.usersByJID[userID]
+	if !ok {
+		dbUser := bridge.DB.User.GetByMXID(userID)
+		if dbUser == nil {
+			dbUser = bridge.DB.User.New()
+			dbUser.MXID = userID
+			dbUser.Insert()
+		}
+		user = bridge.NewUser(dbUser)
+		bridge.usersByJID[user.JID] = user
 		if len(user.ManagementRoom) > 0 {
 			bridge.managementRooms[user.ManagementRoom] = user
 		}
@@ -74,13 +82,15 @@ func (bridge *Bridge) GetUser(userID types.MatrixUserID) *User {
 }
 
 func (bridge *Bridge) GetAllUsers() []*User {
+	bridge.usersLock.Lock()
+	defer bridge.usersLock.Unlock()
 	dbUsers := bridge.DB.User.GetAll()
 	output := make([]*User, len(dbUsers))
 	for index, dbUser := range dbUsers {
-		user, ok := bridge.users[dbUser.ID]
+		user, ok := bridge.usersByMXID[dbUser.MXID]
 		if !ok {
 			user = bridge.NewUser(dbUser)
-			bridge.users[user.ID] = user
+			bridge.usersByMXID[user.MXID] = user
 			if len(user.ManagementRoom) > 0 {
 				bridge.managementRooms[user.ManagementRoom] = user
 			}
@@ -94,15 +104,10 @@ func (bridge *Bridge) NewUser(dbUser *database.User) *User {
 	user := &User{
 		User:          dbUser,
 		bridge:        bridge,
-		log:           bridge.Log.Sub("User").Sub(string(dbUser.ID)),
-		portalsByMXID: make(map[types.MatrixRoomID]*Portal),
-		portalsByJID:  make(map[types.WhatsAppID]*Portal),
-		puppets:       make(map[types.WhatsAppID]*Puppet),
+		log:           bridge.Log.Sub("User").Sub(string(dbUser.MXID)),
 	}
-	user.Whitelisted = user.bridge.Config.Bridge.Permissions.IsWhitelisted(user.ID)
-	user.Admin = user.bridge.Config.Bridge.Permissions.IsAdmin(user.ID)
-	user.htmlParser = user.newHTMLParser()
-	user.waReplString, user.waReplFunc, user.waReplFuncText = user.newWhatsAppFormatMaps()
+	user.Whitelisted = user.bridge.Config.Bridge.Permissions.IsWhitelisted(user.MXID)
+	user.Admin = user.bridge.Config.Bridge.Permissions.IsAdmin(user.MXID)
 	return user
 }
 
@@ -152,7 +157,6 @@ func (user *User) RestoreSession() bool {
 		sess, err := user.Conn.RestoreSession(*user.Session)
 		if err != nil {
 			user.log.Errorln("Failed to restore session:", err)
-			//user.SetSession(nil)
 			return false
 		}
 		user.SetSession(&sess)
@@ -162,8 +166,12 @@ func (user *User) RestoreSession() bool {
 	return false
 }
 
+func (user *User) IsLoggedIn() bool {
+	return user.Conn != nil
+}
+
 func (user *User) Login(roomID types.MatrixRoomID) {
-	bot := user.bridge.AppService.BotClient()
+	bot := user.bridge.AS.BotClient()
 
 	qrChan := make(chan string, 2)
 	go func() {
@@ -194,20 +202,11 @@ func (user *User) Login(roomID types.MatrixRoomID) {
 		qrChan <- "error"
 		return
 	}
+	user.JID = strings.Replace(user.Conn.Info.Wid, whatsappExt.OldUserSuffix, whatsappExt.NewUserSuffix, 1)
 	user.Session = &session
 	user.Update()
 	bot.SendNotice(roomID, "Successfully logged in. Synchronizing chats...")
 	go user.Sync()
-}
-
-func (user *User) JID() string {
-	if user.Conn == nil {
-		return ""
-	}
-	if len(user.jid) == 0 {
-		user.jid = strings.Replace(user.Conn.Info.Wid, whatsappExt.OldUserSuffix, whatsappExt.NewUserSuffix, 1)
-	}
-	return user.jid
 }
 
 func (user *User) Sync() {
@@ -215,17 +214,12 @@ func (user *User) Sync() {
 	user.Conn.Contacts()
 	for jid, contact := range user.Conn.Store.Contacts {
 		if strings.HasSuffix(jid, whatsappExt.NewUserSuffix) {
-			puppet := user.GetPuppetByJID(contact.Jid)
-			puppet.Sync(contact)
+			puppet := user.bridge.GetPuppetByJID(contact.Jid)
+			puppet.Sync(user, contact)
+		} else {
+			portal := user.bridge.GetPortalByJID(database.GroupPortalKey(contact.Jid))
+			portal.Sync(user, contact)
 		}
-
-		if len(contact.Notify) == 0 && !strings.HasSuffix(jid, "@g.us") {
-			// No messages sent -> don't bridge
-			continue
-		}
-
-		portal := user.GetPortalByJID(contact.Jid)
-		portal.Sync(contact)
 	}
 }
 
@@ -237,33 +231,41 @@ func (user *User) HandleJSONParseError(err error) {
 	user.log.Errorln("WhatsApp JSON parse error:", err)
 }
 
+func (user *User) PortalKey(jid types.WhatsAppID) database.PortalKey {
+	return database.NewPortalKey(jid, user.JID)
+}
+
+func (user *User) GetPortalByJID(jid types.WhatsAppID) *Portal {
+	return user.bridge.GetPortalByJID(user.PortalKey(jid))
+}
+
 func (user *User) HandleTextMessage(message whatsapp.TextMessage) {
 	portal := user.GetPortalByJID(message.Info.RemoteJid)
-	portal.HandleTextMessage(message)
+	portal.HandleTextMessage(user, message)
 }
 
 func (user *User) HandleImageMessage(message whatsapp.ImageMessage) {
 	portal := user.GetPortalByJID(message.Info.RemoteJid)
-	portal.HandleMediaMessage(message.Download, message.Thumbnail, message.Info, message.Type, message.Caption)
+	portal.HandleMediaMessage(user, message.Download, message.Thumbnail, message.Info, message.Type, message.Caption)
 }
 
 func (user *User) HandleVideoMessage(message whatsapp.VideoMessage) {
 	portal := user.GetPortalByJID(message.Info.RemoteJid)
-	portal.HandleMediaMessage(message.Download, message.Thumbnail, message.Info, message.Type, message.Caption)
+	portal.HandleMediaMessage(user, message.Download, message.Thumbnail, message.Info, message.Type, message.Caption)
 }
 
 func (user *User) HandleAudioMessage(message whatsapp.AudioMessage) {
 	portal := user.GetPortalByJID(message.Info.RemoteJid)
-	portal.HandleMediaMessage(message.Download, nil, message.Info, message.Type, "")
+	portal.HandleMediaMessage(user, message.Download, nil, message.Info, message.Type, "")
 }
 
 func (user *User) HandleDocumentMessage(message whatsapp.DocumentMessage) {
 	portal := user.GetPortalByJID(message.Info.RemoteJid)
-	portal.HandleMediaMessage(message.Download, message.Thumbnail, message.Info, message.Type, message.Title)
+	portal.HandleMediaMessage(user, message.Download, message.Thumbnail, message.Info, message.Type, message.Title)
 }
 
 func (user *User) HandlePresence(info whatsappExt.Presence) {
-	puppet := user.GetPuppetByJID(info.SenderJID)
+	puppet := user.bridge.GetPuppetByJID(info.SenderJID)
 	switch info.Status {
 	case whatsappExt.PresenceUnavailable:
 		puppet.Intent().SetPresence("offline")
@@ -277,6 +279,12 @@ func (user *User) HandlePresence(info whatsappExt.Presence) {
 		}
 	case whatsappExt.PresenceComposing:
 		portal := user.GetPortalByJID(info.JID)
+		if len(puppet.typingIn) > 0 && puppet.typingAt+15 > time.Now().Unix() {
+			if puppet.typingIn == portal.MXID {
+				return
+			}
+			puppet.Intent().UserTyping(puppet.typingIn, false, 0)
+		}
 		puppet.typingIn = portal.MXID
 		puppet.typingAt = time.Now().Unix()
 		puppet.Intent().UserTyping(portal.MXID, true, 15*1000)
@@ -290,9 +298,9 @@ func (user *User) HandleMsgInfo(info whatsappExt.MsgInfo) {
 			return
 		}
 
-		intent := user.GetPuppetByJID(info.SenderJID).Intent()
+		intent := user.bridge.GetPuppetByJID(info.SenderJID).Intent()
 		for _, id := range info.IDs {
-			msg := user.bridge.DB.Message.GetByJID(user.ID, id)
+			msg := user.bridge.DB.Message.GetByJID(portal.Key, id)
 			if msg == nil {
 				continue
 			}
@@ -308,11 +316,11 @@ func (user *User) HandleCommand(cmd whatsappExt.Command) {
 	switch cmd.Type {
 	case whatsappExt.CommandPicture:
 		if strings.HasSuffix(cmd.JID, whatsappExt.NewUserSuffix) {
-			puppet := user.GetPuppetByJID(cmd.JID)
-			puppet.UpdateAvatar(cmd.ProfilePicInfo)
+			puppet := user.bridge.GetPuppetByJID(cmd.JID)
+			puppet.UpdateAvatar(user, cmd.ProfilePicInfo)
 		} else {
 			portal := user.GetPortalByJID(cmd.JID)
-			portal.UpdateAvatar(cmd.ProfilePicInfo)
+			portal.UpdateAvatar(user, cmd.ProfilePicInfo)
 		}
 	}
 }
