@@ -50,8 +50,9 @@ type User struct {
 
 	htmlParser *format.HTMLParser
 
-	waReplString map[*regexp.Regexp]string
-	waReplFunc   map[*regexp.Regexp]func(string) string
+	waReplString   map[*regexp.Regexp]string
+	waReplFunc     map[*regexp.Regexp]func(string) string
+	waReplFuncText map[*regexp.Regexp]func(string) string
 }
 
 func (bridge *Bridge) GetUser(userID types.MatrixUserID) *User {
@@ -101,7 +102,7 @@ func (bridge *Bridge) NewUser(dbUser *database.User) *User {
 	user.Whitelisted = user.bridge.Config.Bridge.Permissions.IsWhitelisted(user.ID)
 	user.Admin = user.bridge.Config.Bridge.Permissions.IsAdmin(user.ID)
 	user.htmlParser = user.newHTMLParser()
-	user.waReplString, user.waReplFunc = user.newWhatsAppFormatMaps()
+	user.waReplString, user.waReplFunc, user.waReplFuncText = user.newWhatsAppFormatMaps()
 	return user
 }
 

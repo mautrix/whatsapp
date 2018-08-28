@@ -64,7 +64,7 @@ var strikethroughRegex = regexp.MustCompile("([\\s>_*]|^)~(.+?)~([^a-zA-Z\\d]|$)
 var codeBlockRegex = regexp.MustCompile("```(?:.|\n)+?```")
 var mentionRegex = regexp.MustCompile("@[0-9]+")
 
-func (user *User) newWhatsAppFormatMaps() (map[*regexp.Regexp]string, map[*regexp.Regexp]func(string) string) {
+func (user *User) newWhatsAppFormatMaps() (map[*regexp.Regexp]string, map[*regexp.Regexp]func(string) string, map[*regexp.Regexp]func(string) string) {
 	return map[*regexp.Regexp]string{
 		italicRegex:        "$1<em>$2</em>$3",
 		boldRegex:          "$1<strong>$2</strong>$3",
@@ -85,6 +85,11 @@ func (user *User) newWhatsAppFormatMaps() (map[*regexp.Regexp]string, map[*regex
 				mxid = user.ID
 			}
 			return fmt.Sprintf(`<a href="https://matrix.to/#/%s">%s</a>`, mxid, puppet.Displayname)
+		},
+	}, map[*regexp.Regexp]func(string)string {
+		mentionRegex: func(str string) string {
+			puppet := user.GetPuppetByJID(str[1:] + whatsappExt.NewUserSuffix)
+			return puppet.Displayname
 		},
 	}
 }

@@ -421,15 +421,21 @@ func (portal *Portal) SetReply(content *gomatrix.Content, info whatsapp.MessageI
 	return
 }
 
-func (portal *Portal) ParseWhatsAppFormat(input string) string {
-	output := html.EscapeString(input)
+func (portal *Portal) FormatWhatsAppMessage(content *gomatrix.Content) {
+	output := html.EscapeString(content.Body)
 	for regex, replacement := range portal.user.waReplString {
 		output = regex.ReplaceAllString(output, replacement)
 	}
 	for regex, replacer := range portal.user.waReplFunc {
 		output = regex.ReplaceAllStringFunc(output, replacer)
 	}
-	return output
+	if output != content.Body {
+		content.FormattedBody = output
+		content.Format = gomatrix.FormatHTML
+		for regex, replacer := range portal.user.waReplFuncText {
+			content.Body = regex.ReplaceAllStringFunc(content.Body, replacer)
+		}
+	}
 }
 
 func (portal *Portal) HandleTextMessage(message whatsapp.TextMessage) {
@@ -448,17 +454,13 @@ func (portal *Portal) HandleTextMessage(message whatsapp.TextMessage) {
 		return
 	}
 
-	content := gomatrix.Content{
+	content := &gomatrix.Content{
 		Body:    message.Text,
 		MsgType: gomatrix.MsgText,
 	}
 
-	htmlBody := portal.ParseWhatsAppFormat(message.Text)
-	if htmlBody != message.Text {
-		content.FormattedBody = htmlBody
-		content.Format = gomatrix.FormatHTML
-	}
-	portal.SetReply(&content, message.Info)
+	portal.FormatWhatsAppMessage(content)
+	portal.SetReply(content, message.Info)
 
 	intent.UserTyping(portal.MXID, false, 0)
 	resp, err := intent.SendMassagedMessageEvent(portal.MXID, gomatrix.EventMessage, content, int64(message.Info.Timestamp*1000))
@@ -557,11 +559,7 @@ func (portal *Portal) HandleMediaMessage(download func() ([]byte, error), thumbn
 			MsgType: gomatrix.MsgNotice,
 		}
 
-		htmlBody := portal.ParseWhatsAppFormat(captionContent.Body)
-		if htmlBody != captionContent.Body {
-			captionContent.FormattedBody = htmlBody
-			captionContent.Format = gomatrix.FormatHTML
-		}
+		portal.FormatWhatsAppMessage(captionContent)
 
 		_, err := intent.SendMassagedMessageEvent(portal.MXID, gomatrix.EventMessage, captionContent, ts)
 		if err != nil {
