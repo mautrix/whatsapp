@@ -32,6 +32,7 @@ type UserQuery struct {
 func (uq *UserQuery) CreateTable() error {
 	_, err := uq.db.Exec(`CREATE TABLE IF NOT EXISTS user (
 		mxid VARCHAR(255) PRIMARY KEY,
+		jid  VARCHAR(25)  UNIQUE,
 
 		management_room VARCHAR(255),
 
@@ -64,8 +65,16 @@ func (uq *UserQuery) GetAll() (users []*User) {
 	return
 }
 
-func (uq *UserQuery) Get(userID types.MatrixUserID) *User {
+func (uq *UserQuery) GetByMXID(userID types.MatrixUserID) *User {
 	row := uq.db.QueryRow("SELECT * FROM user WHERE mxid=?", userID)
+	if row == nil {
+		return nil
+	}
+	return uq.New().Scan(row)
+}
+
+func (uq *UserQuery) GetByJID(userID types.WhatsAppID) *User {
+	row := uq.db.QueryRow("SELECT * FROM user WHERE jid=?", userID)
 	if row == nil {
 		return nil
 	}
@@ -76,14 +85,15 @@ type User struct {
 	db  *Database
 	log log.Logger
 
-	ID             types.MatrixUserID
+	MXID           types.MatrixUserID
+	JID            types.WhatsAppID
 	ManagementRoom types.MatrixRoomID
 	Session        *whatsapp.Session
 }
 
 func (user *User) Scan(row Scannable) *User {
 	sess := whatsapp.Session{}
-	err := row.Scan(&user.ID, &user.ManagementRoom, &sess.ClientId, &sess.ClientToken, &sess.ServerToken,
+	err := row.Scan(&user.MXID, &user.JID, &user.ManagementRoom, &sess.ClientId, &sess.ClientToken, &sess.ServerToken,
 		&sess.EncKey, &sess.MacKey, &sess.Wid)
 	if err != nil {
 		if err != sql.ErrNoRows {
@@ -99,23 +109,32 @@ func (user *User) Scan(row Scannable) *User {
 	return user
 }
 
-func (user *User) Insert() error {
-	var sess whatsapp.Session
+func (user *User) jidPtr() *string {
+	if len(user.JID) > 0 {
+		return &user.JID
+	}
+	return nil
+}
+
+func (user *User) sessionUnptr() (sess whatsapp.Session) {
 	if user.Session != nil {
 		sess = *user.Session
 	}
-	_, err := user.db.Exec("INSERT INTO user VALUES (?, ?, ?, ?, ?, ?, ?, ?)", user.ID, user.ManagementRoom,
+	return
+}
+
+func (user *User) Insert() error {
+	sess := user.sessionUnptr()
+	_, err := user.db.Exec("INSERT INTO user VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", user.MXID, user.jidPtr(), user.ManagementRoom,
 		sess.ClientId, sess.ClientToken, sess.ServerToken, sess.EncKey, sess.MacKey, sess.Wid)
 	return err
 }
 
 func (user *User) Update() error {
-	var sess whatsapp.Session
-	if user.Session != nil {
-		sess = *user.Session
-	}
-	_, err := user.db.Exec("UPDATE user SET management_room=?, client_id=?, client_token=?, server_token=?, enc_key=?, mac_key=?, wid=? WHERE mxid=?",
-		user.ManagementRoom,
-		sess.ClientId, sess.ClientToken, sess.ServerToken, sess.EncKey, sess.MacKey, sess.Wid, user.ID)
+	sess := user.sessionUnptr()
+	_, err := user.db.Exec("UPDATE user SET jid=?, management_room=?, client_id=?, client_token=?, server_token=?, enc_key=?, mac_key=?, wid=? WHERE mxid=?",
+		user.jidPtr(), user.ManagementRoom,
+		sess.ClientId, sess.ClientToken, sess.ServerToken, sess.EncKey, sess.MacKey, sess.Wid,
+		user.MXID)
 	return err
 }

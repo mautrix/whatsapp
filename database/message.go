@@ -30,12 +30,13 @@ type MessageQuery struct {
 
 func (mq *MessageQuery) CreateTable() error {
 	_, err := mq.db.Exec(`CREATE TABLE IF NOT EXISTS message (
-		owner VARCHAR(255),
-		jid   VARCHAR(255),
-		mxid  VARCHAR(255) NOT NULL UNIQUE,
+		chat_jid      VARCHAR(25) NOT NULL,
+		chat_receiver VARCHAR(25) NOT NULL,
+		jid  VARCHAR(255) NOT NULL,
+		mxid VARCHAR(255) NOT NULL UNIQUE,
 
-		PRIMARY KEY (owner, jid),
-		FOREIGN KEY (owner) REFERENCES user(mxid)
+		PRIMARY KEY (chat_jid, jid),
+		FOREIGN KEY (chat_jid, chat_receiver) REFERENCES portal(jid, receiver)
 	)`)
 	return err
 }
@@ -47,8 +48,8 @@ func (mq *MessageQuery) New() *Message {
 	}
 }
 
-func (mq *MessageQuery) GetAll(owner types.MatrixUserID) (messages []*Message) {
-	rows, err := mq.db.Query("SELECT * FROM message WHERE owner=?", owner)
+func (mq *MessageQuery) GetAll(chat PortalKey) (messages []*Message) {
+	rows, err := mq.db.Query("SELECT * FROM message WHERE chat_jid=? AND chat_receiver=?", chat.JID, chat.Receiver)
 	if err != nil || rows == nil {
 		return nil
 	}
@@ -59,8 +60,8 @@ func (mq *MessageQuery) GetAll(owner types.MatrixUserID) (messages []*Message) {
 	return
 }
 
-func (mq *MessageQuery) GetByJID(owner types.MatrixUserID, jid types.WhatsAppMessageID) *Message {
-	return mq.get("SELECT * FROM message WHERE owner=? AND jid=?", owner, jid)
+func (mq *MessageQuery) GetByJID(chat PortalKey, jid types.WhatsAppMessageID) *Message {
+	return mq.get("SELECT * FROM message WHERE chat_jid=? AND chat_receiver=? AND jid=?", chat.JID, chat.Receiver, jid)
 }
 
 func (mq *MessageQuery) GetByMXID(mxid types.MatrixEventID) *Message {
@@ -79,13 +80,13 @@ type Message struct {
 	db  *Database
 	log log.Logger
 
-	Owner types.MatrixUserID
-	JID   types.WhatsAppMessageID
-	MXID  types.MatrixEventID
+	Chat PortalKey
+	JID     types.WhatsAppMessageID
+	MXID    types.MatrixEventID
 }
 
 func (msg *Message) Scan(row Scannable) *Message {
-	err := row.Scan(&msg.Owner, &msg.JID, &msg.MXID)
+	err := row.Scan(&msg.Chat.JID, &msg.Chat.Receiver, &msg.JID, &msg.MXID)
 	if err != nil {
 		if err != sql.ErrNoRows {
 			msg.log.Errorln("Database scan failed:", err)
@@ -96,17 +97,17 @@ func (msg *Message) Scan(row Scannable) *Message {
 }
 
 func (msg *Message) Insert() error {
-	_, err := msg.db.Exec("INSERT INTO message VALUES (?, ?, ?)", msg.Owner, msg.JID, msg.MXID)
+	_, err := msg.db.Exec("INSERT INTO message VALUES (?, ?, ?)", msg.Chat.JID, msg.Chat.Receiver, msg.JID, msg.MXID)
 	if err != nil {
-		msg.log.Warnfln("Failed to update %s->%s: %v", msg.Owner, msg.JID, err)
+		msg.log.Warnfln("Failed to update %s: %v", msg.Chat, msg.JID, err)
 	}
 	return err
 }
 
 func (msg *Message) Update() error {
-	_, err := msg.db.Exec("UPDATE portal SET mxid=? WHERE owner=? AND jid=?", msg.MXID, msg.Owner, msg.JID)
+	_, err := msg.db.Exec("UPDATE portal SET mxid=? WHERE chat_jid=? AND chat_receiver=? AND jid=?", msg.MXID, msg.Chat.JID, msg.Chat.Receiver, msg.JID)
 	if err != nil {
-		msg.log.Warnfln("Failed to update %s->%s: %v", msg.Owner, msg.JID, err)
+		msg.log.Warnfln("Failed to update %s: %v", msg.Chat, msg.JID, err)
 	}
 	return err
 }

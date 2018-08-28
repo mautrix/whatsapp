@@ -6,3 +6,4 @@
 *.session
 *.json
 *.db
+*.log
