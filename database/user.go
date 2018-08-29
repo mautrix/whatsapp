@@ -18,10 +18,12 @@ package database
 
 import (
 	"database/sql"
+	"strings"
 
 	"github.com/Rhymen/go-whatsapp"
 	log "maunium.net/go/maulogger"
 	"maunium.net/go/mautrix-whatsapp/types"
+	"maunium.net/go/mautrix-whatsapp/whatsapp-ext"
 )
 
 type UserQuery struct {
@@ -40,8 +42,7 @@ func (uq *UserQuery) CreateTable() error {
 		client_token VARCHAR(255),
 		server_token VARCHAR(255),
 		enc_key      BLOB,
-		mac_key      BLOB,
-		wid          VARCHAR(255)
+		mac_key      BLOB
 	)`)
 	return err
 }
@@ -74,7 +75,7 @@ func (uq *UserQuery) GetByMXID(userID types.MatrixUserID) *User {
 }
 
 func (uq *UserQuery) GetByJID(userID types.WhatsAppID) *User {
-	row := uq.db.QueryRow("SELECT * FROM user WHERE jid=?", userID)
+	row := uq.db.QueryRow("SELECT * FROM user WHERE jid=?", stripSuffix(userID))
 	if row == nil {
 		return nil
 	}
@@ -92,28 +93,42 @@ type User struct {
 }
 
 func (user *User) Scan(row Scannable) *User {
-	sess := whatsapp.Session{}
-	err := row.Scan(&user.MXID, &user.JID, &user.ManagementRoom, &sess.ClientId, &sess.ClientToken, &sess.ServerToken,
-		&sess.EncKey, &sess.MacKey, &sess.Wid)
+	var managementRoom, clientID, clientToken, serverToken, jid sql.NullString
+	var encKey, macKey []byte
+	err := row.Scan(&user.MXID, &jid, &managementRoom, &clientID, &clientToken, &serverToken, &encKey, &macKey)
 	if err != nil {
 		if err != sql.ErrNoRows {
 			user.log.Errorln("Database scan failed:", err)
 		}
 		return nil
 	}
-	if len(sess.ClientId) > 0 {
-		user.Session = &sess
+	if len(jid.String) > 0 && len(clientID.String) > 0 {
+		user.JID = jid.String + whatsappExt.NewUserSuffix
+		user.Session = &whatsapp.Session{
+			ClientId:    clientID.String,
+			ClientToken: clientToken.String,
+			ServerToken: serverToken.String,
+			EncKey:      encKey,
+			MacKey:      macKey,
+			Wid:         jid.String + whatsappExt.OldUserSuffix,
+		}
 	} else {
 		user.Session = nil
 	}
 	return user
 }
 
-func (user *User) jidPtr() *string {
-	if len(user.JID) > 0 {
-		return &user.JID
+func stripSuffix(jid types.WhatsAppID) string {
+	if len(jid) == 0 {
+		return jid
 	}
-	return nil
+
+	index := strings.IndexRune(jid, '@')
+	if index < 0 {
+		return jid
+	}
+
+	return jid[:index]
 }
 
 func (user *User) sessionUnptr() (sess whatsapp.Session) {
@@ -125,16 +140,17 @@ func (user *User) sessionUnptr() (sess whatsapp.Session) {
 
 func (user *User) Insert() error {
 	sess := user.sessionUnptr()
-	_, err := user.db.Exec("INSERT INTO user VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", user.MXID, user.jidPtr(), user.ManagementRoom,
-		sess.ClientId, sess.ClientToken, sess.ServerToken, sess.EncKey, sess.MacKey, sess.Wid)
+	_, err := user.db.Exec("INSERT INTO user VALUES (?, ?, ?, ?, ?, ?, ?, ?)", user.MXID, stripSuffix(user.JID),
+		user.ManagementRoom,
+		sess.ClientId, sess.ClientToken, sess.ServerToken, sess.EncKey, sess.MacKey)
 	return err
 }
 
 func (user *User) Update() error {
 	sess := user.sessionUnptr()
-	_, err := user.db.Exec("UPDATE user SET jid=?, management_room=?, client_id=?, client_token=?, server_token=?, enc_key=?, mac_key=?, wid=? WHERE mxid=?",
-		user.jidPtr(), user.ManagementRoom,
-		sess.ClientId, sess.ClientToken, sess.ServerToken, sess.EncKey, sess.MacKey, sess.Wid,
+	_, err := user.db.Exec("UPDATE user SET jid=?, management_room=?, client_id=?, client_token=?, server_token=?, enc_key=?, mac_key=? WHERE mxid=?",
+		stripSuffix(user.JID), user.ManagementRoom,
+		sess.ClientId, sess.ClientToken, sess.ServerToken, sess.EncKey, sess.MacKey,
 		user.MXID)
 	return err
 }

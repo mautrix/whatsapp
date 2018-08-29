@@ -24,6 +24,7 @@ import (
 
 	"maunium.net/go/gomatrix"
 	"maunium.net/go/gomatrix/format"
+	"maunium.net/go/mautrix-whatsapp/types"
 	"maunium.net/go/mautrix-whatsapp/whatsapp-ext"
 )
 
@@ -104,7 +105,7 @@ func NewFormatter(bridge *Bridge) *Formatter {
 	return formatter
 }
 
-func (formatter *Formatter) getMatrixInfoByJID(jid string) (mxid, displayname string) {
+func (formatter *Formatter) getMatrixInfoByJID(jid types.WhatsAppID) (mxid, displayname string) {
 	if user := formatter.bridge.GetUserByJID(jid); user != nil {
 		mxid = user.MXID
 		displayname = user.MXID

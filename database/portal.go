@@ -122,13 +122,15 @@ type Portal struct {
 }
 
 func (portal *Portal) Scan(row Scannable) *Portal {
-	err := row.Scan(&portal.Key.JID, &portal.Key.Receiver, &portal.MXID, &portal.Name, &portal.Topic, &portal.Avatar)
+	var mxid sql.NullString
+	err := row.Scan(&portal.Key.JID, &portal.Key.Receiver, &mxid, &portal.Name, &portal.Topic, &portal.Avatar)
 	if err != nil {
 		if err != sql.ErrNoRows {
 			portal.log.Errorln("Database scan failed:", err)
 		}
 		return nil
 	}
+	portal.MXID = mxid.String
 	return portal
 }
 

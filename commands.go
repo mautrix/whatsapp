@@ -56,7 +56,7 @@ func (handler *CommandHandler) Handle(roomID types.MatrixRoomID, user *User, mes
 	args := strings.Split(message, " ")
 	cmd := strings.ToLower(args[0])
 	ce := &CommandEvent{
-		Bot:     handler.bridge.AS.BotIntent(),
+		Bot:     handler.bridge.Bot,
 		Bridge:  handler.bridge,
 		Handler: handler,
 		RoomID:  roomID,
