@@ -91,16 +91,12 @@ func NewBridge() *Bridge {
 		portalsByJID:    make(map[database.PortalKey]*Portal),
 		puppets:         make(map[types.WhatsAppID]*Puppet),
 	}
-	err := config.Update(*configPath, *baseConfigPath)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "Failed to update config:", err)
-		os.Exit(10)
-	}
 
+	var err error
 	bridge.Config, err = config.Load(*configPath)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "Failed to load config:", err)
-		os.Exit(11)
+		os.Exit(10)
 	}
 	return bridge
 }
@@ -111,7 +107,7 @@ func (bridge *Bridge) Init() {
 	bridge.AS, err = bridge.Config.MakeAppService()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "Failed to initialize AppService:", err)
-		os.Exit(12)
+		os.Exit(11)
 	}
 	bridge.AS.Init()
 	bridge.Bot = bridge.AS.BotIntent()
@@ -122,7 +118,7 @@ func (bridge *Bridge) Init() {
 	err = log.OpenFile()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "Failed to open log file:", err)
-		os.Exit(13)
+		os.Exit(12)
 	}
 	bridge.AS.Log = log.Sub("Matrix")
 
@@ -131,7 +127,7 @@ func (bridge *Bridge) Init() {
 	err = bridge.StateStore.Load()
 	if err != nil {
 		bridge.Log.Fatalln("Failed to load state store:", err)
-		os.Exit(14)
+		os.Exit(13)
 	}
 	bridge.AS.StateStore = bridge.StateStore
 
@@ -139,7 +135,7 @@ func (bridge *Bridge) Init() {
 	bridge.DB, err = database.New(bridge.Config.AppService.Database.URI)
 	if err != nil {
 		bridge.Log.Fatalln("Failed to initialize database:", err)
-		os.Exit(15)
+		os.Exit(14)
 	}
 
 	bridge.Log.Debugln("Initializing Matrix event processor")
@@ -153,7 +149,7 @@ func (bridge *Bridge) Start() {
 	err := bridge.DB.CreateTables()
 	if err != nil {
 		bridge.Log.Fatalln("Failed to create database tables:", err)
-		os.Exit(16)
+		os.Exit(15)
 	}
 	bridge.Log.Debugln("Starting application service HTTP server")
 	go bridge.AS.Start()
