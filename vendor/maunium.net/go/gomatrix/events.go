@@ -11,7 +11,19 @@ type EventType struct {
 }
 
 func (et *EventType) UnmarshalJSON(data []byte) error {
-	return json.Unmarshal(data, &et.Type)
+	err := json.Unmarshal(data, &et.Type)
+	if err != nil {
+		return err
+	}
+
+	switch et.Type {
+	case StateAliases.Type, StateCanonicalAlias.Type, StateCreate.Type, StateJoinRules.Type, StateMember.Type,
+		StatePowerLevels.Type, StateRoomName.Type, StateRoomAvatar.Type, StateTopic.Type, StatePinnedEvents.Type:
+		et.IsState = true
+	default:
+		et.IsState = false
+	}
+	return nil
 }
 
 func (et *EventType) MarshalJSON() ([]byte, error) {
@@ -199,7 +211,7 @@ type PowerLevels struct {
 	UsersDefault int            `json:"users_default,omitempty"`
 
 	eventsLock    sync.RWMutex      `json:"-"`
-	Events        map[EventType]int `json:"events,omitempty"`
+	Events        map[string]int `json:"events,omitempty"`
 	EventsDefault int               `json:"events_default,omitempty"`
 
 	StateDefaultPtr *int `json:"state_default,omitempty"`
@@ -277,7 +289,7 @@ func (pl *PowerLevels) EnsureUserLevel(userID string, level int) bool {
 func (pl *PowerLevels) GetEventLevel(eventType EventType) int {
 	pl.eventsLock.RLock()
 	defer pl.eventsLock.RUnlock()
-	level, ok := pl.Events[eventType]
+	level, ok := pl.Events[eventType.String()]
 	if !ok {
 		if eventType.IsState {
 			return pl.StateDefault()
@@ -291,9 +303,9 @@ func (pl *PowerLevels) SetEventLevel(eventType EventType, level int) {
 	pl.eventsLock.Lock()
 	defer pl.eventsLock.Unlock()
 	if (eventType.IsState && level == pl.StateDefault()) || (!eventType.IsState && level == pl.EventsDefault) {
-		delete(pl.Events, eventType)
+		delete(pl.Events, eventType.String())
 	} else {
-		pl.Events[eventType] = level
+		pl.Events[eventType.String()] = level
 	}
 }
 

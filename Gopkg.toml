@@ -26,7 +26,7 @@
 
 
 [[constraint]]
-  branch = "master"
+  branch = "develop"
   name = "github.com/Rhymen/go-whatsapp"
   source = "github.com/tulir/go-whatsapp"
 
