@@ -2,7 +2,7 @@
 
 
 [[projects]]
-  branch = "master"
+  branch = "develop"
   name = "github.com/Rhymen/go-whatsapp"
   packages = [
     ".",
@@ -13,7 +13,7 @@
     "crypto/curve25519",
     "crypto/hkdf"
   ]
-  revision = "82b902133ab6093f864dfc11fb9c5648f82f0ee9"
+  revision = "00ef431f94f17f125f842d0c7d4e9b68294c6559"
   source = "github.com/tulir/go-whatsapp"
 
 [[projects]]
@@ -123,7 +123,7 @@
     ".",
     "format"
   ]
-  revision = "42a3133c4980e4b1ea5fb52329d977f592d67cf0"
+  revision = "b018830e10612c04065723de7aa49f35b37864a6"
 
 [[projects]]
   branch = "master"
@@ -146,6 +146,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "8b494649cb598fd6a3862d4de5946f464288424b6e6e561e2b32c8d0ea1cb634"
+  inputs-digest = "16c945243c327e861a6dc4fa2b43010d00453b8ee71427b95fb5dfcc6cb6ebee"
   solver-name = "gps-cdcl"
   solver-version = 1
