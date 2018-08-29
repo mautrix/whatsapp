@@ -74,13 +74,16 @@ type Puppet struct {
 }
 
 func (puppet *Puppet) Scan(row Scannable) *Puppet {
-	err := row.Scan(&puppet.JID, &puppet.Displayname, &puppet.Avatar)
+	var displayname, avatar sql.NullString
+	err := row.Scan(&puppet.JID, &displayname, &avatar)
 	if err != nil {
 		if err != sql.ErrNoRows {
 			puppet.log.Errorln("Database scan failed:", err)
 		}
 		return nil
 	}
+	puppet.Displayname = displayname.String
+	puppet.Avatar = avatar.String
 	return puppet
 }
 

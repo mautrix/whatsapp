@@ -30,12 +30,12 @@ type MessageQuery struct {
 
 func (mq *MessageQuery) CreateTable() error {
 	_, err := mq.db.Exec(`CREATE TABLE IF NOT EXISTS message (
-		chat_jid      VARCHAR(25) NOT NULL,
-		chat_receiver VARCHAR(25) NOT NULL,
-		jid  VARCHAR(255) NOT NULL,
+		chat_jid      VARCHAR(25),
+		chat_receiver VARCHAR(25),
+		jid  VARCHAR(255),
 		mxid VARCHAR(255) NOT NULL UNIQUE,
 
-		PRIMARY KEY (chat_jid, jid),
+		PRIMARY KEY (chat_jid, chat_receiver, jid),
 		FOREIGN KEY (chat_jid, chat_receiver) REFERENCES portal(jid, receiver)
 	)`)
 	return err
@@ -97,9 +97,9 @@ func (msg *Message) Scan(row Scannable) *Message {
 }
 
 func (msg *Message) Insert() error {
-	_, err := msg.db.Exec("INSERT INTO message VALUES (?, ?, ?)", msg.Chat.JID, msg.Chat.Receiver, msg.JID, msg.MXID)
+	_, err := msg.db.Exec("INSERT INTO message VALUES (?, ?, ?, ?)", msg.Chat.JID, msg.Chat.Receiver, msg.JID, msg.MXID)
 	if err != nil {
-		msg.log.Warnfln("Failed to update %s: %v", msg.Chat, msg.JID, err)
+		msg.log.Warnfln("Failed to insert %s: %v", msg.Chat, msg.JID, err)
 	}
 	return err
 }

@@ -37,7 +37,6 @@ type User struct {
 
 	Admin       bool
 	Whitelisted bool
-	jid         string
 }
 
 func (bridge *Bridge) GetUserByMXID(userID types.MatrixUserID) *User {
@@ -53,6 +52,9 @@ func (bridge *Bridge) GetUserByMXID(userID types.MatrixUserID) *User {
 		}
 		user = bridge.NewUser(dbUser)
 		bridge.usersByMXID[user.MXID] = user
+		if len(user.JID) > 0 {
+			bridge.usersByJID[user.JID] = user
+		}
 		if len(user.ManagementRoom) > 0 {
 			bridge.managementRooms[user.ManagementRoom] = user
 		}
@@ -66,13 +68,12 @@ func (bridge *Bridge) GetUserByJID(userID types.WhatsAppID) *User {
 	defer bridge.usersLock.Unlock()
 	user, ok := bridge.usersByJID[userID]
 	if !ok {
-		dbUser := bridge.DB.User.GetByMXID(userID)
+		dbUser := bridge.DB.User.GetByJID(userID)
 		if dbUser == nil {
-			dbUser = bridge.DB.User.New()
-			dbUser.MXID = userID
-			dbUser.Insert()
+			return nil
 		}
 		user = bridge.NewUser(dbUser)
+		bridge.usersByMXID[user.MXID] = user
 		bridge.usersByJID[user.JID] = user
 		if len(user.ManagementRoom) > 0 {
 			bridge.managementRooms[user.ManagementRoom] = user
@@ -91,6 +92,9 @@ func (bridge *Bridge) GetAllUsers() []*User {
 		if !ok {
 			user = bridge.NewUser(dbUser)
 			bridge.usersByMXID[user.MXID] = user
+			if len(user.JID) > 0 {
+				bridge.usersByJID[user.JID] = user
+			}
 			if len(user.ManagementRoom) > 0 {
 				bridge.managementRooms[user.ManagementRoom] = user
 			}
@@ -147,6 +151,7 @@ func (user *User) Connect(evenIfNoSession bool) bool {
 		return false
 	}
 	user.Conn = whatsappExt.ExtendConn(conn)
+	user.Conn.SetClientName("Mautrix-WhatsApp bridge", "mx-wa")
 	user.log.Debugln("WhatsApp connection successful")
 	user.Conn.AddHandler(user)
 	return user.RestoreSession()

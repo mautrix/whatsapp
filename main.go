@@ -165,18 +165,18 @@ func (bridge *Bridge) UpdateBotProfile() {
 
 	var err error
 	if botConfig.Avatar == "remove" {
-		err = bridge.AS.BotIntent().SetAvatarURL("")
+		err = bridge.Bot.SetAvatarURL("")
 	} else if len(botConfig.Avatar) > 0 {
-		err = bridge.AS.BotIntent().SetAvatarURL(botConfig.Avatar)
+		err = bridge.Bot.SetAvatarURL(botConfig.Avatar)
 	}
 	if err != nil {
 		bridge.Log.Warnln("Failed to update bot avatar:", err)
 	}
 
 	if botConfig.Displayname == "remove" {
-		err = bridge.AS.BotIntent().SetDisplayName("")
+		err = bridge.Bot.SetDisplayName("")
 	} else if len(botConfig.Avatar) > 0 {
-		err = bridge.AS.BotIntent().SetDisplayName(botConfig.Displayname)
+		err = bridge.Bot.SetDisplayName(botConfig.Displayname)
 	}
 	if err != nil {
 		bridge.Log.Warnln("Failed to update bot displayname:", err)

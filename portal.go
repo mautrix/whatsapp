@@ -126,7 +126,7 @@ func (portal *Portal) SyncParticipants(metadata *whatsappExt.GroupInfo) {
 		puppet.Intent().EnsureJoined(portal.MXID)
 
 		user := portal.bridge.GetUserByJID(participant.JID)
-		if !portal.bridge.AS.StateStore.IsInvited(portal.MXID, user.MXID) {
+		if user != nil && !portal.bridge.AS.StateStore.IsInvited(portal.MXID, user.MXID) {
 			portal.MainIntent().InviteUser(portal.MXID, &gomatrix.ReqInviteUser{
 				UserID: user.MXID,
 			})
@@ -144,7 +144,10 @@ func (portal *Portal) SyncParticipants(metadata *whatsappExt.GroupInfo) {
 		}
 	}
 	if changed {
-		portal.MainIntent().SetPowerLevels(portal.MXID, levels)
+		_, err = portal.MainIntent().SetPowerLevels(portal.MXID, levels)
+		if err != nil {
+			portal.log.Errorln("Failed to change power levels:", err)
+		}
 	}
 }
 
@@ -258,10 +261,10 @@ func (portal *Portal) GetBasePowerLevels() *gomatrix.PowerLevels {
 		Users: map[string]int{
 			portal.MainIntent().UserID: 100,
 		},
-		Events: map[gomatrix.EventType]int{
-			gomatrix.StateRoomName:   anyone,
-			gomatrix.StateRoomAvatar: anyone,
-			gomatrix.StateTopic:      anyone,
+		Events: map[string]int{
+			gomatrix.StateRoomName.Type:   anyone,
+			gomatrix.StateRoomAvatar.Type: anyone,
+			gomatrix.StateTopic.Type:      anyone,
 		},
 	}
 }
@@ -286,7 +289,10 @@ func (portal *Portal) ChangeAdminStatus(jids []string, setAdmin bool) {
 		}
 	}
 	if changed {
-		portal.MainIntent().SetPowerLevels(portal.MXID, levels)
+		_, err = portal.MainIntent().SetPowerLevels(portal.MXID, levels)
+		if err != nil {
+			portal.log.Errorln("Failed to change power levels:", err)
+		}
 	}
 }
 
@@ -300,7 +306,10 @@ func (portal *Portal) RestrictMessageSending(restrict bool) {
 	} else {
 		levels.EventsDefault = 0
 	}
-	portal.MainIntent().SetPowerLevels(portal.MXID, levels)
+	_, err = portal.MainIntent().SetPowerLevels(portal.MXID, levels)
+	if err != nil {
+		portal.log.Errorln("Failed to change power levels:", err)
+	}
 }
 
 func (portal *Portal) RestrictMetadataChanges(restrict bool) {
@@ -317,7 +326,10 @@ func (portal *Portal) RestrictMetadataChanges(restrict bool) {
 	changed = levels.EnsureEventLevel(gomatrix.StateRoomAvatar, newLevel) || changed
 	changed = levels.EnsureEventLevel(gomatrix.StateTopic, newLevel) || changed
 	if changed {
-		portal.MainIntent().SetPowerLevels(portal.MXID, levels)
+		_, err = portal.MainIntent().SetPowerLevels(portal.MXID, levels)
+		if err != nil {
+			portal.log.Errorln("Failed to change power levels:", err)
+		}
 	}
 }
 
@@ -367,7 +379,7 @@ func (portal *Portal) MainIntent() *appservice.IntentAPI {
 	if portal.IsPrivateChat() {
 		return portal.bridge.GetPuppetByJID(portal.Key.JID).Intent()
 	}
-	return portal.bridge.AS.BotIntent()
+	return portal.bridge.Bot
 }
 
 func (portal *Portal) IsDuplicate(id types.WhatsAppMessageID) bool {
@@ -386,13 +398,13 @@ func (portal *Portal) MarkHandled(jid types.WhatsAppMessageID, mxid types.Matrix
 	msg.Insert()
 }
 
-func (portal *Portal) GetMessageIntent(info whatsapp.MessageInfo) *appservice.IntentAPI {
+func (portal *Portal) GetMessageIntent(user *User, info whatsapp.MessageInfo) *appservice.IntentAPI {
 	if info.FromMe {
 		if portal.IsPrivateChat() {
 			// TODO handle own messages in private chats properly
 			return nil
 		}
-		return portal.bridge.GetPuppetByJID(portal.Key.Receiver).Intent()
+		return portal.bridge.GetPuppetByJID(user.JID).Intent()
 	} else if portal.IsPrivateChat() {
 		return portal.MainIntent()
 	} else if len(info.SenderJid) == 0 {
@@ -432,7 +444,7 @@ func (portal *Portal) HandleTextMessage(source *User, message whatsapp.TextMessa
 		return
 	}
 
-	intent := portal.GetMessageIntent(message.Info)
+	intent := portal.GetMessageIntent(source, message.Info)
 	if intent == nil {
 		return
 	}
@@ -466,7 +478,7 @@ func (portal *Portal) HandleMediaMessage(source *User, download func() ([]byte, 
 		return
 	}
 
-	intent := portal.GetMessageIntent(info)
+	intent := portal.GetMessageIntent(source, info)
 	if intent == nil {
 		return
 	}
