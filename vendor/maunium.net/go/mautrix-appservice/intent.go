@@ -231,3 +231,13 @@ func (intent *IntentAPI) SetAvatarURL(avatarURL string) error {
 	}
 	return intent.Client.SetAvatarURL(avatarURL)
 }
+
+func (intent *IntentAPI) EnsureInvited(roomID, userID string) error {
+	if !intent.as.StateStore.IsInvited(roomID, userID) {
+		_, err := intent.Client.InviteUser(roomID, &gomatrix.ReqInviteUser{
+			UserID: userID,
+		})
+		return err
+	}
+	return nil
+}

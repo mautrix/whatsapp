@@ -30,6 +30,8 @@ func (as *AppService) UpdateState(evt *gomatrix.Event) {
 	switch evt.Type {
 	case gomatrix.StateMember:
 		as.StateStore.SetMembership(evt.RoomID, evt.GetStateKey(), evt.Content.Membership)
+	case gomatrix.StatePowerLevels:
+		as.StateStore.SetPowerLevels(evt.RoomID, &evt.Content.PowerLevels)
 	}
 }
 
