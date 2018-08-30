@@ -64,7 +64,7 @@ bridge:
   #   domain - All users on that homeserver
   #     mxid - Specific user
   permissions:
-    "example.com": full
+    "example.com": user
     "@admin:example.com": admin
 
 # Logging config.

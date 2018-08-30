@@ -87,7 +87,7 @@
     "curve25519",
     "hkdf"
   ]
-  revision = "614d502a4dac94afa3a6ce146bd1736da82514c6"
+  revision = "182538f80094b6a8efaade63a8fd8e0d9d5843dd"
 
 [[projects]]
   branch = "master"
@@ -102,7 +102,7 @@
   branch = "master"
   name = "golang.org/x/sys"
   packages = ["unix"]
-  revision = "d99a578cf41bfccdeaf48b0845c823a4b8b0ad5e"
+  revision = "49385e6e15226593f68b26af201feec29d5bba22"
 
 [[projects]]
   name = "gopkg.in/russross/blackfriday.v2"
@@ -141,7 +141,7 @@
   branch = "master"
   name = "maunium.net/go/mautrix-appservice"
   packages = ["."]
-  revision = "37d4449056015cea5d0a4420bba595c61ad32007"
+  revision = "fb756247f82716de7698b8200f28f16b4fd04a6b"
 
 [solve-meta]
   analyzer-name = "dep"
