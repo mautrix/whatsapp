@@ -2,7 +2,7 @@
 
 
 [[projects]]
-  branch = "develop"
+  branch = "master"
   name = "github.com/Rhymen/go-whatsapp"
   packages = [
     ".",
@@ -13,8 +13,7 @@
     "crypto/curve25519",
     "crypto/hkdf"
   ]
-  revision = "00ef431f94f17f125f842d0c7d4e9b68294c6559"
-  source = "github.com/tulir/go-whatsapp"
+  revision = "c31092027237441cffba1b9cb148eadf7c83c3d2"
 
 [[projects]]
   name = "github.com/fatih/color"
@@ -55,8 +54,8 @@
 [[projects]]
   name = "github.com/mattn/go-isatty"
   packages = ["."]
-  revision = "0360b2af4f38e8d38c7fce2a9f4e702702d73a39"
-  version = "v0.0.3"
+  revision = "6ca4dbf54d38eea1a992b3c722a76a5d1c4cb25c"
+  version = "v0.0.4"
 
 [[projects]]
   name = "github.com/mattn/go-sqlite3"
@@ -146,6 +145,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "16c945243c327e861a6dc4fa2b43010d00453b8ee71427b95fb5dfcc6cb6ebee"
+  inputs-digest = "9158f20cc827fadd5ed71302b767c938595986ef9e0623496eddfb4f95f75c76"
   solver-name = "gps-cdcl"
   solver-version = 1
