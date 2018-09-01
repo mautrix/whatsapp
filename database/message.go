@@ -17,8 +17,11 @@
 package database
 
 import (
+	"bytes"
 	"database/sql"
+	"encoding/json"
 
+	waProto "github.com/Rhymen/go-whatsapp/binary/proto"
 	log "maunium.net/go/maulogger"
 	"maunium.net/go/mautrix-whatsapp/types"
 )
@@ -32,8 +35,10 @@ func (mq *MessageQuery) CreateTable() error {
 	_, err := mq.db.Exec(`CREATE TABLE IF NOT EXISTS message (
 		chat_jid      VARCHAR(25),
 		chat_receiver VARCHAR(25),
-		jid  VARCHAR(255),
-		mxid VARCHAR(255) NOT NULL UNIQUE,
+		jid           VARCHAR(255),
+		mxid          VARCHAR(255) NOT NULL UNIQUE,
+		sender        VARCHAR(25)  NOT NULL,
+		content       BLOB         NOT NULL,
 
 		PRIMARY KEY (chat_jid, chat_receiver, jid),
 		FOREIGN KEY (chat_jid, chat_receiver) REFERENCES portal(jid, receiver)
@@ -80,34 +85,54 @@ type Message struct {
 	db  *Database
 	log log.Logger
 
-	Chat PortalKey
+	Chat    PortalKey
 	JID     types.WhatsAppMessageID
 	MXID    types.MatrixEventID
+	Sender  types.WhatsAppID
+	Content *waProto.Message
 }
 
 func (msg *Message) Scan(row Scannable) *Message {
-	err := row.Scan(&msg.Chat.JID, &msg.Chat.Receiver, &msg.JID, &msg.MXID)
+	var content []byte
+	err := row.Scan(&msg.Chat.JID, &msg.Chat.Receiver, &msg.JID, &msg.MXID, &msg.Sender, &content)
 	if err != nil {
 		if err != sql.ErrNoRows {
 			msg.log.Errorln("Database scan failed:", err)
 		}
 		return nil
 	}
+
+	msg.parseBinaryContent(content)
+
 	return msg
 }
 
-func (msg *Message) Insert() error {
-	_, err := msg.db.Exec("INSERT INTO message VALUES (?, ?, ?, ?)", msg.Chat.JID, msg.Chat.Receiver, msg.JID, msg.MXID)
+func (msg *Message) parseBinaryContent(content []byte) {
+	msg.Content = &waProto.Message{}
+	reader := bytes.NewReader(content)
+	// dec := gob.NewDecoder(reader)
+	dec := json.NewDecoder(reader)
+	err := dec.Decode(msg.Content)
 	if err != nil {
-		msg.log.Warnfln("Failed to insert %s: %v", msg.Chat, msg.JID, err)
+		msg.log.Warnln("Failed to decode message content:", err)
 	}
-	return err
 }
 
-func (msg *Message) Update() error {
-	_, err := msg.db.Exec("UPDATE portal SET mxid=? WHERE chat_jid=? AND chat_receiver=? AND jid=?", msg.MXID, msg.Chat.JID, msg.Chat.Receiver, msg.JID)
+func (msg *Message) binaryContent() []byte {
+	var buf bytes.Buffer
+	//enc := gob.NewEncoder(&buf)
+	enc := json.NewEncoder(&buf)
+	err := enc.Encode(msg.Content)
 	if err != nil {
-		msg.log.Warnfln("Failed to update %s: %v", msg.Chat, msg.JID, err)
+		msg.log.Warnln("Failed to encode message content:", err)
+	}
+	return buf.Bytes()
+}
+
+func (msg *Message) Insert() error {
+	_, err := msg.db.Exec("INSERT INTO message VALUES (?, ?, ?, ?, ?, ?)", msg.Chat.JID, msg.Chat.Receiver, msg.JID, msg.MXID, msg.Sender, msg.binaryContent())
+	if err != nil {
+		msg.log.Warnfln("Failed to insert %s@%s: %v", msg.Chat, msg.JID, err)
 	}
 	return err
 }

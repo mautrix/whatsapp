@@ -2,8 +2,8 @@ package appservice
 
 import (
 	"encoding/json"
-	"net/http"
 	"maunium.net/go/gomatrix"
+	"net/http"
 )
 
 // EventList contains a list of events.

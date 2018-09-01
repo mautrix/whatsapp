@@ -18,6 +18,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/gob"
 	"encoding/hex"
 	"fmt"
 	"image"
@@ -121,6 +122,8 @@ type Portal struct {
 	recentlyHandled      [20]types.WhatsAppMessageID
 	recentlyHandledLock  sync.Mutex
 	recentlyHandledIndex uint8
+
+	isPrivate *bool
 }
 
 func (portal *Portal) getMessageLock(messageID types.WhatsAppMessageID) sync.Mutex {
@@ -157,18 +160,33 @@ func (portal *Portal) isDuplicate(id types.WhatsAppMessageID) bool {
 	return false
 }
 
-func (portal *Portal) markHandled(jid types.WhatsAppMessageID, mxid types.MatrixEventID) {
+func init() {
+	gob.Register(&waProto.Message{})
+}
+
+func (portal *Portal) markHandled(source *User, message *waProto.WebMessageInfo, mxid types.MatrixEventID) {
 	msg := portal.bridge.DB.Message.New()
 	msg.Chat = portal.Key
-	msg.JID = jid
+	msg.JID = message.GetKey().GetId()
 	msg.MXID = mxid
+	if message.GetKey().GetFromMe() {
+		msg.Sender = source.JID
+	} else if portal.IsPrivateChat() {
+		msg.Sender = portal.Key.JID
+	} else {
+		msg.Sender = message.GetKey().GetParticipant()
+		if len(msg.Sender) == 0 {
+			msg.Sender = message.GetParticipant()
+		}
+	}
+	msg.Content = message.Message
 	msg.Insert()
 
 	portal.recentlyHandledLock.Lock()
 	index := portal.recentlyHandledIndex
 	portal.recentlyHandledIndex = (portal.recentlyHandledIndex + 1) % 20
 	portal.recentlyHandledLock.Unlock()
-	portal.recentlyHandled[index] = jid
+	portal.recentlyHandled[index] = msg.JID
 }
 
 func (portal *Portal) startHandling(id types.WhatsAppMessageID) (*sync.Mutex, bool) {
@@ -184,8 +202,9 @@ func (portal *Portal) startHandling(id types.WhatsAppMessageID) (*sync.Mutex, bo
 	return &lock, true
 }
 
-func (portal *Portal) finishHandling(id types.WhatsAppMessageID, mxid types.MatrixEventID) {
-	portal.markHandled(id, mxid)
+func (portal *Portal) finishHandling(source *User, message *waProto.WebMessageInfo, mxid types.MatrixEventID) {
+	portal.markHandled(source, message, mxid)
+	id := message.GetKey().GetId()
 	portal.deleteMessageLock(id)
 	portal.log.Debugln("Handled message", id, "->", mxid)
 }
@@ -450,7 +469,11 @@ func (portal *Portal) CreateMatrixRoom(invite []string) error {
 }
 
 func (portal *Portal) IsPrivateChat() bool {
-	return strings.HasSuffix(portal.Key.JID, whatsappExt.NewUserSuffix)
+	if portal.isPrivate == nil {
+		val := strings.HasSuffix(portal.Key.JID, whatsappExt.NewUserSuffix)
+		portal.isPrivate = &val
+	}
+	return *portal.isPrivate
 }
 
 func (portal *Portal) MainIntent() *appservice.IntentAPI {
@@ -527,7 +550,7 @@ func (portal *Portal) HandleTextMessage(source *User, message whatsapp.TextMessa
 		portal.log.Errorfln("Failed to handle message %s: %v", message.Info.Id, err)
 		return
 	}
-	portal.finishHandling(message.Info.Id, resp.EventID)
+	portal.finishHandling(source, message.Info.Source, resp.EventID)
 }
 
 func (portal *Portal) HandleMediaMessage(source *User, download func() ([]byte, error), thumbnail []byte, info whatsapp.MessageInfo, mimeType, caption string) {
@@ -628,7 +651,7 @@ func (portal *Portal) HandleMediaMessage(source *User, download func() ([]byte, 
 		// TODO store caption mxid?
 	}
 
-	portal.finishHandling(info.Id, resp.EventID)
+	portal.finishHandling(source, info.Source, resp.EventID)
 }
 
 func makeMessageID() *string {
@@ -716,31 +739,6 @@ type MediaUpload struct {
 	Thumbnail     []byte
 }
 
-func (portal *Portal) GetMessage(user *User, jid types.WhatsAppMessageID) *waProto.WebMessageInfo {
-	node, err := user.Conn.LoadMessagesBefore(portal.Key.JID, jid, 1)
-	if err != nil {
-		return nil
-	}
-	msgs, ok := node.Content.([]interface{})
-	if !ok {
-		return nil
-	}
-	msg, ok := msgs[0].(*waProto.WebMessageInfo)
-	if !ok {
-		return nil
-	}
-	node, err = user.Conn.LoadMessagesAfter(portal.Key.JID, msg.GetKey().GetId(), 1)
-	if err != nil {
-		return nil
-	}
-	msgs, ok = node.Content.([]interface{})
-	if !ok {
-		return nil
-	}
-	msg, _ = msgs[0].(*waProto.WebMessageInfo)
-	return msg
-}
-
 func (portal *Portal) HandleMatrixMessage(sender *User, evt *gomatrix.Event) {
 	if portal.IsPrivateChat() && sender.JID != portal.Key.Receiver {
 		return
@@ -764,17 +762,10 @@ func (portal *Portal) HandleMatrixMessage(sender *User, evt *gomatrix.Event) {
 	if len(replyToID) > 0 {
 		evt.Content.RemoveReplyFallback()
 		msg := portal.bridge.DB.Message.GetByMXID(replyToID)
-		if msg != nil {
-			origMsg := portal.GetMessage(sender, msg.JID)
-			if origMsg != nil {
-				ctxInfo.StanzaId = &msg.JID
-				replyMsgSender := origMsg.GetParticipant()
-				if origMsg.GetKey().GetFromMe() {
-					replyMsgSender = sender.JID
-				}
-				ctxInfo.Participant = &replyMsgSender
-				ctxInfo.QuotedMessage = []*waProto.Message{origMsg.Message}
-			}
+		if msg != nil && msg.Content != nil {
+			ctxInfo.StanzaId = &msg.JID
+			ctxInfo.Participant = &msg.Sender
+			ctxInfo.QuotedMessage = []*waProto.Message{msg.Content}
 		}
 	}
 	var err error
@@ -863,7 +854,7 @@ func (portal *Portal) HandleMatrixMessage(sender *User, evt *gomatrix.Event) {
 		portal.log.Debugln("Unhandled Matrix event:", evt)
 		return
 	}
-	portal.markHandled(info.GetKey().GetId(), evt.ID)
+	portal.markHandled(sender, info, evt.ID)
 	err = sender.Conn.Send(info)
 	if err != nil {
 		portal.log.Errorfln("Error handling Matrix event %s: %v", evt.ID, err)
