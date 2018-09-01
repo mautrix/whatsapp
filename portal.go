@@ -105,9 +105,11 @@ func (bridge *Bridge) NewPortal(dbPortal *database.Portal) *Portal {
 		log:    bridge.Log.Sub(fmt.Sprintf("Portal/%s", dbPortal.Key)),
 
 		messageLocks:    make(map[types.WhatsAppMessageID]sync.Mutex),
-		recentlyHandled: [20]types.WhatsAppMessageID{},
+		recentlyHandled: [recentlyHandledLength]types.WhatsAppMessageID{},
 	}
 }
+
+const recentlyHandledLength = 100
 
 type Portal struct {
 	*database.Portal
@@ -119,7 +121,7 @@ type Portal struct {
 	messageLocksLock sync.Mutex
 	messageLocks     map[types.WhatsAppMessageID]sync.Mutex
 
-	recentlyHandled      [20]types.WhatsAppMessageID
+	recentlyHandled      [recentlyHandledLength]types.WhatsAppMessageID
 	recentlyHandledLock  sync.Mutex
 	recentlyHandledIndex uint8
 
@@ -144,7 +146,7 @@ func (portal *Portal) deleteMessageLock(messageID types.WhatsAppMessageID) {
 
 func (portal *Portal) isRecentlyHandled(id types.WhatsAppMessageID) bool {
 	start := portal.recentlyHandledIndex
-	for i := start; i != start; i = (i - 1) % 20 {
+	for i := start; i != start; i = (i - 1) % recentlyHandledLength {
 		if portal.recentlyHandled[i] == id {
 			return true
 		}
@@ -184,7 +186,7 @@ func (portal *Portal) markHandled(source *User, message *waProto.WebMessageInfo,
 
 	portal.recentlyHandledLock.Lock()
 	index := portal.recentlyHandledIndex
-	portal.recentlyHandledIndex = (portal.recentlyHandledIndex + 1) % 20
+	portal.recentlyHandledIndex = (portal.recentlyHandledIndex + 1) % recentlyHandledLength
 	portal.recentlyHandledLock.Unlock()
 	portal.recentlyHandled[index] = msg.JID
 }
