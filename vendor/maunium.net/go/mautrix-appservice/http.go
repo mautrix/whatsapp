@@ -1,11 +1,11 @@
 package appservice
 
 import (
+	"context"
 	"encoding/json"
+	"github.com/gorilla/mux"
 	"io/ioutil"
 	"net/http"
-	"github.com/gorilla/mux"
-	"context"
 	"time"
 )
 
@@ -106,7 +106,6 @@ func (as *AppService) PutTransaction(w http.ResponseWriter, r *http.Request) {
 	}
 
 	for _, event := range eventList.Events {
-		as.Log.Debugln("Received event", event.ID)
 		as.UpdateState(event)
 		as.Events <- event
 	}

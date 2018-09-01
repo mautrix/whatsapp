@@ -28,7 +28,8 @@
 [[constraint]]
   branch = "master"
   name = "github.com/Rhymen/go-whatsapp"
-  source = "github.com/tulir/go-whatsapp"
+#  branch = "develop"
+#  source = "github.com/tulir/go-whatsapp"
 
 [[constraint]]
   name = "github.com/mattn/go-sqlite3"

@@ -48,7 +48,7 @@ type CommandEvent struct {
 func (ce *CommandEvent) Reply(msg string) {
 	_, err := ce.Bot.SendNotice(string(ce.RoomID), msg)
 	if err != nil {
-		ce.Handler.log.Warnfln("Failed to reply to command from %s: %v", ce.User.ID, err)
+		ce.Handler.log.Warnfln("Failed to reply to command from %s: %v", ce.User.MXID, err)
 	}
 }
 
@@ -56,7 +56,7 @@ func (handler *CommandHandler) Handle(roomID types.MatrixRoomID, user *User, mes
 	args := strings.Split(message, " ")
 	cmd := strings.ToLower(args[0])
 	ce := &CommandEvent{
-		Bot:     handler.bridge.AppService.BotIntent(),
+		Bot:     handler.bridge.Bot,
 		Bridge:  handler.bridge,
 		Handler: handler,
 		RoomID:  roomID,
