@@ -463,7 +463,7 @@ func (cli *Client) SetAvatarURL(url string) (err error) {
 // contentJSON should be a pointer to something that can be encoded as JSON using json.Marshal.
 func (cli *Client) SendMessageEvent(roomID string, eventType EventType, contentJSON interface{}) (resp *RespSendEvent, err error) {
 	txnID := txnID()
-	urlPath := cli.BuildURL("rooms", roomID, "send", string(eventType), txnID)
+	urlPath := cli.BuildURL("rooms", roomID, "send", eventType.String(), txnID)
 	_, err = cli.MakeRequest("PUT", urlPath, contentJSON, &resp)
 	return
 }
@@ -472,7 +472,7 @@ func (cli *Client) SendMessageEvent(roomID string, eventType EventType, contentJ
 // contentJSON should be a pointer to something that can be encoded as JSON using json.Marshal.
 func (cli *Client) SendMassagedMessageEvent(roomID string, eventType EventType, contentJSON interface{}, ts int64) (resp *RespSendEvent, err error) {
 	txnID := txnID()
-	urlPath := cli.BuildURLWithQuery([]string{"rooms", roomID, "send", string(eventType), txnID}, map[string]string{
+	urlPath := cli.BuildURLWithQuery([]string{"rooms", roomID, "send", eventType.String(), txnID}, map[string]string{
 		"ts": strconv.FormatInt(ts, 10),
 	})
 	_, err = cli.MakeRequest("PUT", urlPath, contentJSON, &resp)
@@ -482,7 +482,7 @@ func (cli *Client) SendMassagedMessageEvent(roomID string, eventType EventType, 
 // SendStateEvent sends a state event into a room. See http://matrix.org/docs/spec/client_server/r0.2.0.html#put-matrix-client-r0-rooms-roomid-state-eventtype-statekey
 // contentJSON should be a pointer to something that can be encoded as JSON using json.Marshal.
 func (cli *Client) SendStateEvent(roomID string, eventType EventType, stateKey string, contentJSON interface{}) (resp *RespSendEvent, err error) {
-	urlPath := cli.BuildURL("rooms", roomID, "state", string(eventType), stateKey)
+	urlPath := cli.BuildURL("rooms", roomID, "state", eventType.String(), stateKey)
 	_, err = cli.MakeRequest("PUT", urlPath, contentJSON, &resp)
 	return
 }
@@ -490,7 +490,7 @@ func (cli *Client) SendStateEvent(roomID string, eventType EventType, stateKey s
 // SendStateEvent sends a state event into a room. See http://matrix.org/docs/spec/client_server/r0.2.0.html#put-matrix-client-r0-rooms-roomid-state-eventtype-statekey
 // contentJSON should be a pointer to something that can be encoded as JSON using json.Marshal.
 func (cli *Client) SendMassagedStateEvent(roomID string, eventType EventType, stateKey string, contentJSON interface{}, ts int64) (resp *RespSendEvent, err error) {
-	urlPath := cli.BuildURLWithQuery([]string{"rooms", roomID, "state", string(eventType), stateKey}, map[string]string{
+	urlPath := cli.BuildURLWithQuery([]string{"rooms", roomID, "state", eventType.String(), stateKey}, map[string]string{
 		"ts": strconv.FormatInt(ts, 10),
 	})
 	_, err = cli.MakeRequest("PUT", urlPath, contentJSON, &resp)
@@ -500,7 +500,7 @@ func (cli *Client) SendMassagedStateEvent(roomID string, eventType EventType, st
 // SendText sends an m.room.message event into the given room with a msgtype of m.text
 // See http://matrix.org/docs/spec/client_server/r0.2.0.html#m-text
 func (cli *Client) SendText(roomID, text string) (*RespSendEvent, error) {
-	return cli.SendMessageEvent(roomID, "m.room.message", Content{
+	return cli.SendMessageEvent(roomID, EventMessage, Content{
 		MsgType: MsgText,
 		Body:    text,
 	})
@@ -509,7 +509,7 @@ func (cli *Client) SendText(roomID, text string) (*RespSendEvent, error) {
 // SendImage sends an m.room.message event into the given room with a msgtype of m.image
 // See https://matrix.org/docs/spec/client_server/r0.2.0.html#m-image
 func (cli *Client) SendImage(roomID, body, url string) (*RespSendEvent, error) {
-	return cli.SendMessageEvent(roomID, "m.room.message", Content{
+	return cli.SendMessageEvent(roomID, EventMessage, Content{
 		MsgType: MsgImage,
 		Body:    body,
 		URL:     url,
@@ -519,7 +519,7 @@ func (cli *Client) SendImage(roomID, body, url string) (*RespSendEvent, error) {
 // SendVideo sends an m.room.message event into the given room with a msgtype of m.video
 // See https://matrix.org/docs/spec/client_server/r0.2.0.html#m-video
 func (cli *Client) SendVideo(roomID, body, url string) (*RespSendEvent, error) {
-	return cli.SendMessageEvent(roomID, "m.room.message", Content{
+	return cli.SendMessageEvent(roomID, EventMessage, Content{
 		MsgType: MsgVideo,
 		Body:    body,
 		URL:     url,
@@ -529,7 +529,7 @@ func (cli *Client) SendVideo(roomID, body, url string) (*RespSendEvent, error) {
 // SendNotice sends an m.room.message event into the given room with a msgtype of m.notice
 // See http://matrix.org/docs/spec/client_server/r0.2.0.html#m-notice
 func (cli *Client) SendNotice(roomID, text string) (*RespSendEvent, error) {
-	return cli.SendMessageEvent(roomID, "m.room.message", Content{
+	return cli.SendMessageEvent(roomID, EventMessage, Content{
 		MsgType: MsgNotice,
 		Body:    text,
 	})
@@ -622,7 +622,7 @@ func (cli *Client) SetPresence(status string) (err error) {
 // the HTTP response body, or return an error.
 // See http://matrix.org/docs/spec/client_server/r0.2.0.html#get-matrix-client-r0-rooms-roomid-state-eventtype-statekey
 func (cli *Client) StateEvent(roomID string, eventType EventType, stateKey string, outContent interface{}) (err error) {
-	u := cli.BuildURL("rooms", roomID, "state", string(eventType), stateKey)
+	u := cli.BuildURL("rooms", roomID, "state", eventType.String(), stateKey)
 	_, err = cli.MakeRequest("GET", u, nil, outContent)
 	return
 }

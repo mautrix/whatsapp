@@ -78,7 +78,6 @@ func (config *Config) Save(path string) error {
 
 func (config *Config) MakeAppService() (*appservice.AppService, error) {
 	as := appservice.Create()
-	as.LogConfig = config.Logging
 	as.HomeserverDomain = config.Homeserver.Domain
 	as.HomeserverURL = config.Homeserver.Address
 	as.Host.Hostname = config.AppService.Hostname

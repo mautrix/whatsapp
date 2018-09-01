@@ -35,7 +35,7 @@ type MatrixHandler struct {
 func NewMatrixHandler(bridge *Bridge) *MatrixHandler {
 	handler := &MatrixHandler{
 		bridge: bridge,
-		as:     bridge.AppService,
+		as:     bridge.AS,
 		log:    bridge.Log.Sub("Matrix"),
 		cmd:    NewCommandHandler(bridge),
 	}
@@ -50,7 +50,7 @@ func NewMatrixHandler(bridge *Bridge) *MatrixHandler {
 func (mx *MatrixHandler) HandleBotInvite(evt *gomatrix.Event) {
 	intent := mx.as.BotIntent()
 
-	user := mx.bridge.GetUser(evt.Sender)
+	user := mx.bridge.GetUserByMXID(evt.Sender)
 	if user == nil {
 		return
 	}
@@ -85,7 +85,7 @@ func (mx *MatrixHandler) HandleBotInvite(evt *gomatrix.Event) {
 	for mxid, _ := range members.Joined {
 		if mxid == intent.UserID || mxid == evt.Sender {
 			continue
-		} else if _, _, ok := mx.bridge.ParsePuppetMXID(types.MatrixUserID(mxid)); ok {
+		} else if _, ok := mx.bridge.ParsePuppetMXID(types.MatrixUserID(mxid)); ok {
 			hasPuppets = true
 			continue
 		}
@@ -96,7 +96,7 @@ func (mx *MatrixHandler) HandleBotInvite(evt *gomatrix.Event) {
 	}
 
 	if !hasPuppets {
-		user := mx.bridge.GetUser(types.MatrixUserID(evt.Sender))
+		user := mx.bridge.GetUserByMXID(types.MatrixUserID(evt.Sender))
 		user.SetManagementRoom(types.MatrixRoomID(resp.RoomID))
 		intent.SendNotice(string(user.ManagementRoom), "This room has been registered as your bridge management/status room.")
 		mx.log.Debugln(resp.RoomID, "registered as a management room with", evt.Sender)
@@ -110,12 +110,12 @@ func (mx *MatrixHandler) HandleMembership(evt *gomatrix.Event) {
 }
 
 func (mx *MatrixHandler) HandleRoomMetadata(evt *gomatrix.Event) {
-	user := mx.bridge.GetUser(types.MatrixUserID(evt.Sender))
-	if user == nil || !user.Whitelisted {
+	user := mx.bridge.GetUserByMXID(types.MatrixUserID(evt.Sender))
+	if user == nil || !user.Whitelisted || !user.IsLoggedIn() {
 		return
 	}
 
-	portal := user.GetPortalByMXID(evt.RoomID)
+	portal := mx.bridge.GetPortalByMXID(evt.RoomID)
 	if portal == nil || portal.IsPrivateChat() {
 		return
 	}
@@ -124,7 +124,7 @@ func (mx *MatrixHandler) HandleRoomMetadata(evt *gomatrix.Event) {
 	var err error
 	switch evt.Type {
 	case gomatrix.StateRoomName:
-		resp, err = user.Conn.UpdateGroupSubject(evt.Content.Name, portal.JID)
+		resp, err = user.Conn.UpdateGroupSubject(evt.Content.Name, portal.Key.JID)
 	case gomatrix.StateRoomAvatar:
 		return
 	case gomatrix.StateTopic:
@@ -139,8 +139,12 @@ func (mx *MatrixHandler) HandleRoomMetadata(evt *gomatrix.Event) {
 }
 
 func (mx *MatrixHandler) HandleMessage(evt *gomatrix.Event) {
+	if _, isPuppet := mx.bridge.ParsePuppetMXID(evt.Sender); evt.Sender == mx.bridge.Bot.UserID || isPuppet {
+		return
+	}
+
 	roomID := types.MatrixRoomID(evt.RoomID)
-	user := mx.bridge.GetUser(types.MatrixUserID(evt.Sender))
+	user := mx.bridge.GetUserByMXID(types.MatrixUserID(evt.Sender))
 
 	if !user.Whitelisted {
 		return
@@ -158,8 +162,12 @@ func (mx *MatrixHandler) HandleMessage(evt *gomatrix.Event) {
 		}
 	}
 
-	portal := user.GetPortalByMXID(roomID)
+	if !user.IsLoggedIn() {
+		return
+	}
+
+	portal := mx.bridge.GetPortalByMXID(roomID)
 	if portal != nil {
-		portal.HandleMatrixMessage(evt)
+		portal.HandleMatrixMessage(user, evt)
 	}
 }

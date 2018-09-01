@@ -2,17 +2,19 @@ package appservice
 
 import (
 	"fmt"
+	"html/template"
 	"io/ioutil"
 	"os"
+	"path/filepath"
 
 	"gopkg.in/yaml.v2"
 
-	"maunium.net/go/maulogger"
-	"strings"
-	"net/http"
 	"errors"
 	"maunium.net/go/gomatrix"
+	"maunium.net/go/maulogger"
+	"net/http"
 	"regexp"
+	"strings"
 )
 
 // EventChannelSize is the size for the Events channel in Appservice instances.
@@ -263,15 +265,24 @@ func CreateLogConfig() LogConfig {
 	}
 }
 
+type FileFormatData struct {
+	Date string
+	Index int
+}
+
 // GetFileFormat returns a mauLogger-compatible logger file format based on the data in the struct.
 func (lc LogConfig) GetFileFormat() maulogger.LoggerFileFormat {
-	path := lc.FileNameFormat
-	if len(lc.Directory) > 0 {
-		path = lc.Directory + "/" + path
-	}
+	os.MkdirAll(lc.Directory, 0700)
+	path := filepath.Join(lc.Directory, lc.FileNameFormat)
+	tpl, _ := template.New("fileformat").Parse(path)
 
 	return func(now string, i int) string {
-		return fmt.Sprintf(path, now, i)
+		var buf strings.Builder
+		tpl.Execute(&buf, FileFormatData{
+			Date: now,
+			Index: i,
+		})
+		return buf.String()
 	}
 }
 

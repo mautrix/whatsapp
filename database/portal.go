@@ -18,10 +18,40 @@ package database
 
 import (
 	"database/sql"
+	"strings"
 
 	log "maunium.net/go/maulogger"
 	"maunium.net/go/mautrix-whatsapp/types"
 )
+
+type PortalKey struct {
+	JID      types.WhatsAppID
+	Receiver types.WhatsAppID
+}
+
+func GroupPortalKey(jid types.WhatsAppID) PortalKey {
+	return PortalKey{
+		JID:      jid,
+		Receiver: jid,
+	}
+}
+
+func NewPortalKey(jid, receiver types.WhatsAppID) PortalKey {
+	if strings.HasSuffix(jid, "@g.us") {
+		receiver = jid
+	}
+	return PortalKey{
+		JID: jid,
+		Receiver: receiver,
+	}
+}
+
+func (key PortalKey) String() string {
+	if key.Receiver == key.JID {
+		return key.JID
+	}
+	return key.JID + "-" + key.Receiver
+}
 
 type PortalQuery struct {
 	db  *Database
@@ -30,16 +60,16 @@ type PortalQuery struct {
 
 func (pq *PortalQuery) CreateTable() error {
 	_, err := pq.db.Exec(`CREATE TABLE IF NOT EXISTS portal (
-		jid   VARCHAR(255),
-		owner VARCHAR(255),
-		mxid  VARCHAR(255) UNIQUE,
+		jid      VARCHAR(25),
+		receiver VARCHAR(25),
+		mxid     VARCHAR(255) UNIQUE,
 
 		name   VARCHAR(255) NOT NULL,
 		topic  VARCHAR(255) NOT NULL,
 		avatar VARCHAR(255) NOT NULL,
 
-		PRIMARY KEY (jid, owner),
-		FOREIGN KEY (owner) REFERENCES user(mxid)
+		PRIMARY KEY (jid, receiver),
+		FOREIGN KEY (receiver) REFERENCES user(mxid)
 	)`)
 	return err
 }
@@ -51,8 +81,8 @@ func (pq *PortalQuery) New() *Portal {
 	}
 }
 
-func (pq *PortalQuery) GetAll(owner types.MatrixUserID) (portals []*Portal) {
-	rows, err := pq.db.Query("SELECT * FROM portal WHERE owner=?", owner)
+func (pq *PortalQuery) GetAll() (portals []*Portal) {
+	rows, err := pq.db.Query("SELECT * FROM portal")
 	if err != nil || rows == nil {
 		return nil
 	}
@@ -63,8 +93,8 @@ func (pq *PortalQuery) GetAll(owner types.MatrixUserID) (portals []*Portal) {
 	return
 }
 
-func (pq *PortalQuery) GetByJID(owner types.MatrixUserID, jid types.WhatsAppID) *Portal {
-	return pq.get("SELECT * FROM portal WHERE jid=? AND owner=?", jid, owner)
+func (pq *PortalQuery) GetByJID(key PortalKey) *Portal {
+	return pq.get("SELECT * FROM portal WHERE jid=? AND receiver=?", key.JID, key.Receiver)
 }
 
 func (pq *PortalQuery) GetByMXID(mxid types.MatrixRoomID) *Portal {
@@ -83,9 +113,8 @@ type Portal struct {
 	db  *Database
 	log log.Logger
 
-	JID   types.WhatsAppID
-	MXID  types.MatrixRoomID
-	Owner types.MatrixUserID
+	Key  PortalKey
+	MXID types.MatrixRoomID
 
 	Name   string
 	Topic  string
@@ -93,25 +122,30 @@ type Portal struct {
 }
 
 func (portal *Portal) Scan(row Scannable) *Portal {
-	err := row.Scan(&portal.JID, &portal.Owner, &portal.MXID, &portal.Name, &portal.Topic, &portal.Avatar)
+	var mxid sql.NullString
+	err := row.Scan(&portal.Key.JID, &portal.Key.Receiver, &mxid, &portal.Name, &portal.Topic, &portal.Avatar)
 	if err != nil {
 		if err != sql.ErrNoRows {
 			portal.log.Errorln("Database scan failed:", err)
 		}
 		return nil
 	}
+	portal.MXID = mxid.String
 	return portal
 }
 
-func (portal *Portal) Insert() error {
-	var mxid *string
+func (portal *Portal) mxidPtr() *string {
 	if len(portal.MXID) > 0 {
-		mxid = &portal.MXID
+		return &portal.MXID
 	}
+	return nil
+}
+
+func (portal *Portal) Insert() error {
 	_, err := portal.db.Exec("INSERT INTO portal VALUES (?, ?, ?, ?, ?, ?)",
-		portal.JID, portal.Owner, mxid, portal.Name, portal.Topic, portal.Avatar)
+		portal.Key.JID, portal.Key.Receiver, portal.mxidPtr(), portal.Name, portal.Topic, portal.Avatar)
 	if err != nil {
-		portal.log.Warnfln("Failed to insert %s->%s: %v", portal.JID, portal.Owner, err)
+		portal.log.Warnfln("Failed to insert %s: %v", portal.Key, err)
 	}
 	return err
 }
@@ -121,10 +155,10 @@ func (portal *Portal) Update() error {
 	if len(portal.MXID) > 0 {
 		mxid = &portal.MXID
 	}
-	_, err := portal.db.Exec("UPDATE portal SET mxid=?, name=?, topic=?, avatar=? WHERE jid=? AND owner=?",
-		mxid, portal.Name, portal.Topic, portal.Avatar, portal.JID, portal.Owner)
+	_, err := portal.db.Exec("UPDATE portal SET mxid=?, name=?, topic=?, avatar=? WHERE jid=? AND receiver=?",
+		mxid, portal.Name, portal.Topic, portal.Avatar, portal.Key.JID, portal.Key.Receiver)
 	if err != nil {
-		portal.log.Warnfln("Failed to update %s->%s: %v", portal.JID, portal.Owner, err)
+		portal.log.Warnfln("Failed to update %s: %v", portal.Key, err)
 	}
 	return err
 }

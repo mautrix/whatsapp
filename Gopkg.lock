@@ -13,8 +13,7 @@
     "crypto/curve25519",
     "crypto/hkdf"
   ]
-  revision = "82b902133ab6093f864dfc11fb9c5648f82f0ee9"
-  source = "github.com/tulir/go-whatsapp"
+  revision = "c31092027237441cffba1b9cb148eadf7c83c3d2"
 
 [[projects]]
   name = "github.com/fatih/color"
@@ -55,8 +54,8 @@
 [[projects]]
   name = "github.com/mattn/go-isatty"
   packages = ["."]
-  revision = "0360b2af4f38e8d38c7fce2a9f4e702702d73a39"
-  version = "v0.0.3"
+  revision = "6ca4dbf54d38eea1a992b3c722a76a5d1c4cb25c"
+  version = "v0.0.4"
 
 [[projects]]
   name = "github.com/mattn/go-sqlite3"
@@ -87,7 +86,7 @@
     "curve25519",
     "hkdf"
   ]
-  revision = "614d502a4dac94afa3a6ce146bd1736da82514c6"
+  revision = "182538f80094b6a8efaade63a8fd8e0d9d5843dd"
 
 [[projects]]
   branch = "master"
@@ -102,7 +101,7 @@
   branch = "master"
   name = "golang.org/x/sys"
   packages = ["unix"]
-  revision = "d99a578cf41bfccdeaf48b0845c823a4b8b0ad5e"
+  revision = "fa5fdf94c78965f1aa8423f0cc50b8b8d728b05a"
 
 [[projects]]
   name = "gopkg.in/russross/blackfriday.v2"
@@ -123,7 +122,7 @@
     ".",
     "format"
   ]
-  revision = "ead1f970c8f56d1854cb9eb4a54c03aa6dafd753"
+  revision = "b018830e10612c04065723de7aa49f35b37864a6"
 
 [[projects]]
   branch = "master"
@@ -141,11 +140,11 @@
   branch = "master"
   name = "maunium.net/go/mautrix-appservice"
   packages = ["."]
-  revision = "269f2ab602126a2de94bc86a457392426cce1ab2"
+  revision = "4e24d1dd7bd9d89f946ec56cb4350ce777d17bfe"
 
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "8b494649cb598fd6a3862d4de5946f464288424b6e6e561e2b32c8d0ea1cb634"
+  inputs-digest = "9158f20cc827fadd5ed71302b767c938595986ef9e0623496eddfb4f95f75c76"
   solver-name = "gps-cdcl"
   solver-version = 1

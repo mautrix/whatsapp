@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 
 	flag "maunium.net/go/mauflag"
@@ -31,6 +32,7 @@ import (
 )
 
 var configPath = flag.MakeFull("c", "config", "The path to your config file.", "config.yaml").String()
+var baseConfigPath = flag.MakeFull("b", "base-config", "The path to the example config file.", "example-config.yaml").String()
 var registrationPath = flag.MakeFull("r", "registration", "The path where to save the appservice registration.", "registration.yaml").String()
 var generateRegistration = flag.MakeFull("g", "generate-registration", "Generate registration and quit.", "false").Bool()
 var wantHelp, _ = flag.MakeHelpFlag()
@@ -58,24 +60,38 @@ func (bridge *Bridge) GenerateRegistration() {
 }
 
 type Bridge struct {
-	AppService     *appservice.AppService
+	AS             *appservice.AppService
 	EventProcessor *appservice.EventProcessor
 	MatrixHandler  *MatrixHandler
 	Config         *config.Config
 	DB             *database.Database
 	Log            log.Logger
+	StateStore     *AutosavingStateStore
+	Bot            *appservice.IntentAPI
+	Formatter      *Formatter
 
-	StateStore *AutosavingStateStore
-
-	users           map[types.MatrixUserID]*User
-	managementRooms map[types.MatrixRoomID]*User
+	usersByMXID         map[types.MatrixUserID]*User
+	usersByJID          map[types.WhatsAppID]*User
+	usersLock           sync.Mutex
+	managementRooms     map[types.MatrixRoomID]*User
+	managementRoomsLock sync.Mutex
+	portalsByMXID       map[types.MatrixRoomID]*Portal
+	portalsByJID        map[database.PortalKey]*Portal
+	portalsLock         sync.Mutex
+	puppets             map[types.WhatsAppID]*Puppet
+	puppetsLock         sync.Mutex
 }
 
 func NewBridge() *Bridge {
 	bridge := &Bridge{
-		users:           make(map[types.MatrixUserID]*User),
+		usersByMXID:     make(map[types.MatrixUserID]*User),
+		usersByJID:      make(map[types.WhatsAppID]*User),
 		managementRooms: make(map[types.MatrixRoomID]*User),
+		portalsByMXID:   make(map[types.MatrixRoomID]*Portal),
+		portalsByJID:    make(map[database.PortalKey]*Portal),
+		puppets:         make(map[types.WhatsAppID]*Puppet),
 	}
+
 	var err error
 	bridge.Config, err = config.Load(*configPath)
 	if err != nil {
@@ -88,46 +104,55 @@ func NewBridge() *Bridge {
 func (bridge *Bridge) Init() {
 	var err error
 
-	bridge.AppService, err = bridge.Config.MakeAppService()
+	bridge.AS, err = bridge.Config.MakeAppService()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "Failed to initialize AppService:", err)
 		os.Exit(11)
 	}
-	bridge.AppService.Init()
-	bridge.Log = bridge.AppService.Log
+	bridge.AS.Init()
+	bridge.Bot = bridge.AS.BotIntent()
+
+	bridge.Log = log.Create()
+	bridge.Config.Logging.Configure(bridge.Log)
 	log.DefaultLogger = bridge.Log.(*log.BasicLogger)
-	bridge.AppService.Log = log.Sub("Matrix")
+	err = log.OpenFile()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "Failed to open log file:", err)
+		os.Exit(12)
+	}
+	bridge.AS.Log = log.Sub("Matrix")
 
 	bridge.Log.Debugln("Initializing state store")
 	bridge.StateStore = NewAutosavingStateStore(bridge.Config.AppService.StateStore)
 	err = bridge.StateStore.Load()
 	if err != nil {
 		bridge.Log.Fatalln("Failed to load state store:", err)
-		os.Exit(12)
+		os.Exit(13)
 	}
-	bridge.AppService.StateStore = bridge.StateStore
+	bridge.AS.StateStore = bridge.StateStore
 
 	bridge.Log.Debugln("Initializing database")
 	bridge.DB, err = database.New(bridge.Config.AppService.Database.URI)
 	if err != nil {
 		bridge.Log.Fatalln("Failed to initialize database:", err)
-		os.Exit(13)
+		os.Exit(14)
 	}
 
 	bridge.Log.Debugln("Initializing Matrix event processor")
-	bridge.EventProcessor = appservice.NewEventProcessor(bridge.AppService)
+	bridge.EventProcessor = appservice.NewEventProcessor(bridge.AS)
 	bridge.Log.Debugln("Initializing Matrix event handler")
 	bridge.MatrixHandler = NewMatrixHandler(bridge)
+	bridge.Formatter = NewFormatter(bridge)
 }
 
 func (bridge *Bridge) Start() {
 	err := bridge.DB.CreateTables()
 	if err != nil {
 		bridge.Log.Fatalln("Failed to create database tables:", err)
-		os.Exit(14)
+		os.Exit(15)
 	}
 	bridge.Log.Debugln("Starting application service HTTP server")
-	go bridge.AppService.Start()
+	go bridge.AS.Start()
 	bridge.Log.Debugln("Starting event processor")
 	go bridge.EventProcessor.Start()
 	go bridge.UpdateBotProfile()
@@ -140,18 +165,18 @@ func (bridge *Bridge) UpdateBotProfile() {
 
 	var err error
 	if botConfig.Avatar == "remove" {
-		err = bridge.AppService.BotIntent().SetAvatarURL("")
+		err = bridge.Bot.SetAvatarURL("")
 	} else if len(botConfig.Avatar) > 0 {
-		err = bridge.AppService.BotIntent().SetAvatarURL(botConfig.Avatar)
+		err = bridge.Bot.SetAvatarURL(botConfig.Avatar)
 	}
 	if err != nil {
 		bridge.Log.Warnln("Failed to update bot avatar:", err)
 	}
 
 	if botConfig.Displayname == "remove" {
-		err = bridge.AppService.BotIntent().SetDisplayName("")
+		err = bridge.Bot.SetDisplayName("")
 	} else if len(botConfig.Avatar) > 0 {
-		err = bridge.AppService.BotIntent().SetDisplayName(botConfig.Displayname)
+		err = bridge.Bot.SetDisplayName(botConfig.Displayname)
 	}
 	if err != nil {
 		bridge.Log.Warnln("Failed to update bot displayname:", err)
@@ -165,7 +190,7 @@ func (bridge *Bridge) StartUsers() {
 }
 
 func (bridge *Bridge) Stop() {
-	bridge.AppService.Stop()
+	bridge.AS.Stop()
 	bridge.EventProcessor.Stop()
 	err := bridge.StateStore.Save()
 	if err != nil {
