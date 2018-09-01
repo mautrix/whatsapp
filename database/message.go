@@ -102,15 +102,14 @@ func (msg *Message) Scan(row Scannable) *Message {
 		return nil
 	}
 
-	msg.parseBinaryContent(content)
+	msg.decodeBinaryContent(content)
 
 	return msg
 }
 
-func (msg *Message) parseBinaryContent(content []byte) {
+func (msg *Message) decodeBinaryContent(content []byte) {
 	msg.Content = &waProto.Message{}
 	reader := bytes.NewReader(content)
-	// dec := gob.NewDecoder(reader)
 	dec := json.NewDecoder(reader)
 	err := dec.Decode(msg.Content)
 	if err != nil {
@@ -118,9 +117,8 @@ func (msg *Message) parseBinaryContent(content []byte) {
 	}
 }
 
-func (msg *Message) binaryContent() []byte {
+func (msg *Message) encodeBinaryContent() []byte {
 	var buf bytes.Buffer
-	//enc := gob.NewEncoder(&buf)
 	enc := json.NewEncoder(&buf)
 	err := enc.Encode(msg.Content)
 	if err != nil {
@@ -130,7 +128,7 @@ func (msg *Message) binaryContent() []byte {
 }
 
 func (msg *Message) Insert() error {
-	_, err := msg.db.Exec("INSERT INTO message VALUES (?, ?, ?, ?, ?, ?)", msg.Chat.JID, msg.Chat.Receiver, msg.JID, msg.MXID, msg.Sender, msg.binaryContent())
+	_, err := msg.db.Exec("INSERT INTO message VALUES (?, ?, ?, ?, ?, ?)", msg.Chat.JID, msg.Chat.Receiver, msg.JID, msg.MXID, msg.Sender, msg.encodeBinaryContent())
 	if err != nil {
 		msg.log.Warnfln("Failed to insert %s@%s: %v", msg.Chat, msg.JID, err)
 	}
