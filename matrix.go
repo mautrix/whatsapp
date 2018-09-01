@@ -139,6 +139,10 @@ func (mx *MatrixHandler) HandleRoomMetadata(evt *gomatrix.Event) {
 }
 
 func (mx *MatrixHandler) HandleMessage(evt *gomatrix.Event) {
+	if _, isPuppet := mx.bridge.ParsePuppetMXID(evt.Sender); evt.Sender == mx.bridge.Bot.UserID || isPuppet {
+		return
+	}
+
 	roomID := types.MatrixRoomID(evt.RoomID)
 	user := mx.bridge.GetUserByMXID(types.MatrixUserID(evt.Sender))
 

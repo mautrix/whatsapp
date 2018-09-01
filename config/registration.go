@@ -24,7 +24,7 @@ import (
 )
 
 func (config *Config) NewRegistration() (*appservice.Registration, error) {
-	registration := appservice.CreateRegistration("mautrix-whatsapp")
+	registration := appservice.CreateRegistration()
 
 	err := config.copyToRegistration(registration)
 	if err != nil {
@@ -37,7 +37,7 @@ func (config *Config) NewRegistration() (*appservice.Registration, error) {
 }
 
 func (config *Config) GetRegistration() (*appservice.Registration, error) {
-	registration := appservice.CreateRegistration("mautrix-whatsapp")
+	registration := appservice.CreateRegistration()
 
 	err := config.copyToRegistration(registration)
 	if err != nil {

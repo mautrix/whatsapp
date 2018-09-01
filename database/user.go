@@ -131,6 +131,14 @@ func stripSuffix(jid types.WhatsAppID) string {
 	return jid[:index]
 }
 
+func (user *User) jidPtr() *string {
+	if len(user.JID) > 0 {
+		str := stripSuffix(user.JID)
+		return &str
+	}
+	return nil
+}
+
 func (user *User) sessionUnptr() (sess whatsapp.Session) {
 	if user.Session != nil {
 		sess = *user.Session
@@ -140,17 +148,23 @@ func (user *User) sessionUnptr() (sess whatsapp.Session) {
 
 func (user *User) Insert() error {
 	sess := user.sessionUnptr()
-	_, err := user.db.Exec("INSERT INTO user VALUES (?, ?, ?, ?, ?, ?, ?, ?)", user.MXID, stripSuffix(user.JID),
+	_, err := user.db.Exec("INSERT INTO user VALUES (?, ?, ?, ?, ?, ?, ?, ?)", user.MXID, user.jidPtr(),
 		user.ManagementRoom,
 		sess.ClientId, sess.ClientToken, sess.ServerToken, sess.EncKey, sess.MacKey)
+	if err != nil {
+		user.log.Warnfln("Failed to insert %s: %v", user.MXID, err)
+	}
 	return err
 }
 
 func (user *User) Update() error {
 	sess := user.sessionUnptr()
 	_, err := user.db.Exec("UPDATE user SET jid=?, management_room=?, client_id=?, client_token=?, server_token=?, enc_key=?, mac_key=? WHERE mxid=?",
-		stripSuffix(user.JID), user.ManagementRoom,
+		user.jidPtr(), user.ManagementRoom,
 		sess.ClientId, sess.ClientToken, sess.ServerToken, sess.EncKey, sess.MacKey,
 		user.MXID)
+	if err != nil {
+		user.log.Warnfln("Failed to update %s: %v", user.MXID, err)
+	}
 	return err
 }

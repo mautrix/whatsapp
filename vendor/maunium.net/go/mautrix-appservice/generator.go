@@ -44,14 +44,16 @@ func GenerateRegistration(asName, botName string, reserveRooms, reserveUsers boo
 	boldCyan.Println("Generating appservice config and registration.")
 	reader := bufio.NewReader(os.Stdin)
 
+	registration := CreateRegistration()
+	config := Create()
+	registration.RateLimited = false
+
 	name, err := readString(reader, "Enter name for appservice", asName)
 	if err != nil {
 		fmt.Println("Failed to read user Input:", err)
 		return
 	}
-	registration := CreateRegistration(name)
-	config := Create()
-	registration.RateLimited = false
+	registration.ID = name
 
 	registration.SenderLocalpart, err = readString(reader, "Enter bot username", botName)
 	if err != nil {

@@ -43,7 +43,7 @@ func (bridge *Bridge) ParsePuppetMXID(mxid types.MatrixUserID) (types.WhatsAppID
 		return "", false
 	}
 
-	jid := types.WhatsAppID(match[2] + whatsappExt.NewUserSuffix)
+	jid := types.WhatsAppID(match[1] + whatsappExt.NewUserSuffix)
 	return jid, true
 }
 
@@ -168,11 +168,12 @@ func (puppet *Puppet) Sync(source *User, contact whatsapp.Contact) {
 	if contact.Jid == source.JID {
 		contact.Notify = source.Conn.Info.Pushname
 	}
-	newName := puppet.bridge.Config.Bridge.FormatDisplayname(contact)
-	if puppet.Displayname != newName {
+	newName, quality := puppet.bridge.Config.Bridge.FormatDisplayname(contact)
+	if puppet.Displayname != newName && quality >= puppet.NameQuality {
 		err := puppet.Intent().SetDisplayName(newName)
 		if err == nil {
 			puppet.Displayname = newName
+			puppet.NameQuality = quality
 			puppet.Update()
 		} else {
 			puppet.log.Warnln("Failed to set display name:", err)

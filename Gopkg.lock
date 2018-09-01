@@ -101,7 +101,7 @@
   branch = "master"
   name = "golang.org/x/sys"
   packages = ["unix"]
-  revision = "49385e6e15226593f68b26af201feec29d5bba22"
+  revision = "fa5fdf94c78965f1aa8423f0cc50b8b8d728b05a"
 
 [[projects]]
   name = "gopkg.in/russross/blackfriday.v2"
@@ -140,7 +140,7 @@
   branch = "master"
   name = "maunium.net/go/mautrix-appservice"
   packages = ["."]
-  revision = "fb756247f82716de7698b8200f28f16b4fd04a6b"
+  revision = "4e24d1dd7bd9d89f946ec56cb4350ce777d17bfe"
 
 [solve-meta]
   analyzer-name = "dep"

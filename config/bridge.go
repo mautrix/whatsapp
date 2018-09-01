@@ -60,13 +60,24 @@ type UsernameTemplateArgs struct {
 	UserID   string
 }
 
-func (bc BridgeConfig) FormatDisplayname(contact whatsapp.Contact) string {
+func (bc BridgeConfig) FormatDisplayname(contact whatsapp.Contact) (string, int8) {
 	var buf bytes.Buffer
 	if index := strings.IndexRune(contact.Jid, '@'); index > 0 {
 		contact.Jid = "+" + contact.Jid[:index]
 	}
 	bc.displaynameTemplate.Execute(&buf, contact)
-	return buf.String()
+	var quality int8
+	switch {
+	case len(contact.Notify) > 0:
+		quality = 3
+	case len(contact.Name) > 0 || len(contact.Short) > 0:
+		quality = 2
+	case len(contact.Jid) > 0:
+		quality = 1
+	default:
+		quality = 0
+	}
+	return buf.String(), quality
 }
 
 func (bc BridgeConfig) FormatUsername(userID types.WhatsAppID) string {
@@ -76,7 +87,7 @@ func (bc BridgeConfig) FormatUsername(userID types.WhatsAppID) string {
 }
 
 func (bc BridgeConfig) MarshalYAML() (interface{}, error) {
-	bc.DisplaynameTemplate = bc.FormatDisplayname(whatsapp.Contact{
+	bc.DisplaynameTemplate, _ = bc.FormatDisplayname(whatsapp.Contact{
 		Jid:    "{{.Jid}}",
 		Notify: "{{.Notify}}",
 		Name:   "{{.Name}}",
