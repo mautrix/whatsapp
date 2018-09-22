@@ -2,7 +2,6 @@ package appservice
 
 import (
 	"maunium.net/go/gomatrix"
-	"strings"
 	"sync"
 	"time"
 )
@@ -16,8 +15,8 @@ type StateStore interface {
 
 	IsInRoom(roomID, userID string) bool
 	IsInvited(roomID, userID string) bool
-	IsMembership(roomID, userID string, allowedMemberships ...string) bool
-	SetMembership(roomID, userID, membership string)
+	IsMembership(roomID, userID string, allowedMemberships ...gomatrix.Membership) bool
+	SetMembership(roomID, userID string, membership gomatrix.Membership)
 
 	SetPowerLevels(roomID string, levels *gomatrix.PowerLevels)
 	GetPowerLevels(roomID string) *gomatrix.PowerLevels
@@ -36,12 +35,12 @@ func (as *AppService) UpdateState(evt *gomatrix.Event) {
 }
 
 type BasicStateStore struct {
-	registrationsLock sync.RWMutex                     `json:"-"`
-	Registrations     map[string]bool                  `json:"registrations"`
-	membershipsLock   sync.RWMutex                     `json:"-"`
-	Memberships       map[string]map[string]string     `json:"memberships"`
-	powerLevelsLock   sync.RWMutex                     `json:"-"`
-	PowerLevels       map[string]*gomatrix.PowerLevels `json:"power_levels"`
+	registrationsLock sync.RWMutex                              `json:"-"`
+	Registrations     map[string]bool                           `json:"registrations"`
+	membershipsLock   sync.RWMutex                              `json:"-"`
+	Memberships       map[string]map[string]gomatrix.Membership `json:"memberships"`
+	powerLevelsLock   sync.RWMutex                              `json:"-"`
+	PowerLevels       map[string]*gomatrix.PowerLevels          `json:"power_levels"`
 
 	Typing     map[string]map[string]int64 `json:"-"`
 	typingLock sync.RWMutex                `json:"-"`
@@ -50,7 +49,7 @@ type BasicStateStore struct {
 func NewBasicStateStore() StateStore {
 	return &BasicStateStore{
 		Registrations: make(map[string]bool),
-		Memberships:   make(map[string]map[string]string),
+		Memberships:   make(map[string]map[string]gomatrix.Membership),
 		PowerLevels:   make(map[string]*gomatrix.PowerLevels),
 		Typing:        make(map[string]map[string]int64),
 	}
@@ -102,12 +101,12 @@ func (store *BasicStateStore) SetTyping(roomID, userID string, timeout int64) {
 	store.Typing[roomID] = roomTyping
 }
 
-func (store *BasicStateStore) GetRoomMemberships(roomID string) map[string]string {
+func (store *BasicStateStore) GetRoomMemberships(roomID string) map[string]gomatrix.Membership {
 	store.membershipsLock.RLock()
 	memberships, ok := store.Memberships[roomID]
 	store.membershipsLock.RUnlock()
 	if !ok {
-		memberships = make(map[string]string)
+		memberships = make(map[string]gomatrix.Membership)
 		store.membershipsLock.Lock()
 		store.Memberships[roomID] = memberships
 		store.membershipsLock.Unlock()
@@ -115,16 +114,16 @@ func (store *BasicStateStore) GetRoomMemberships(roomID string) map[string]strin
 	return memberships
 }
 
-func (store *BasicStateStore) GetMembership(roomID, userID string) string {
+func (store *BasicStateStore) GetMembership(roomID, userID string) gomatrix.Membership {
 	store.membershipsLock.RLock()
 	defer store.membershipsLock.RUnlock()
 	memberships, ok := store.Memberships[roomID]
 	if !ok {
-		return "leave"
+		return gomatrix.MembershipLeave
 	}
 	membership, ok := memberships[userID]
 	if !ok {
-		return "leave"
+		return gomatrix.MembershipLeave
 	}
 	return membership
 }
@@ -137,7 +136,7 @@ func (store *BasicStateStore) IsInvited(roomID, userID string) bool {
 	return store.IsMembership(roomID, userID, "join", "invite")
 }
 
-func (store *BasicStateStore) IsMembership(roomID, userID string, allowedMemberships ...string) bool {
+func (store *BasicStateStore) IsMembership(roomID, userID string, allowedMemberships ...gomatrix.Membership) bool {
 	membership := store.GetMembership(roomID, userID)
 	for _, allowedMembership := range allowedMemberships {
 		if allowedMembership == membership {
@@ -147,15 +146,15 @@ func (store *BasicStateStore) IsMembership(roomID, userID string, allowedMembers
 	return false
 }
 
-func (store *BasicStateStore) SetMembership(roomID, userID, membership string) {
+func (store *BasicStateStore) SetMembership(roomID, userID string, membership gomatrix.Membership) {
 	store.membershipsLock.Lock()
 	memberships, ok := store.Memberships[roomID]
 	if !ok {
-		memberships = map[string]string{
-			userID: strings.ToLower(membership),
+		memberships = map[string]gomatrix.Membership{
+			userID: membership,
 		}
 	} else {
-		memberships[userID] = strings.ToLower(membership)
+		memberships[userID] = membership
 	}
 	store.Memberships[roomID] = memberships
 	store.membershipsLock.Unlock()

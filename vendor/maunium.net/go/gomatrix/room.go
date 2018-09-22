@@ -25,8 +25,8 @@ func (room Room) GetStateEvent(eventType EventType, stateKey string) *Event {
 
 // GetMembershipState returns the membership state of the given user ID in this room. If there is
 // no entry for this member, 'leave' is returned for consistency with left users.
-func (room Room) GetMembershipState(userID string) string {
-	state := "leave"
+func (room Room) GetMembershipState(userID string) Membership {
+	state := MembershipLeave
 	event := room.GetStateEvent(StateMember, userID)
 	if event != nil {
 		state = event.Content.Membership

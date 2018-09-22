@@ -2,8 +2,8 @@ package format
 
 import (
 	"gopkg.in/russross/blackfriday.v2"
-	"strings"
 	"maunium.net/go/gomatrix"
+	"strings"
 )
 
 func RenderMarkdown(text string) gomatrix.Content {
