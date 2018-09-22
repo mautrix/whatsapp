@@ -13,7 +13,7 @@
     "crypto/curve25519",
     "crypto/hkdf"
   ]
-  revision = "c31092027237441cffba1b9cb148eadf7c83c3d2"
+  revision = "92ffb4c11a14df04cc0fd8b285b8ef2efb023d54"
 
 [[projects]]
   name = "github.com/fatih/color"
@@ -42,8 +42,8 @@
 [[projects]]
   name = "github.com/gorilla/websocket"
   packages = ["."]
-  revision = "3ff3320c2a1756a3691521efc290b4701575147c"
-  version = "v1.3.0"
+  revision = "66b9c49e59c6c48f0ffce28c2d8b8a5678502c6d"
+  version = "v1.4.0"
 
 [[projects]]
   name = "github.com/mattn/go-colorable"
@@ -86,7 +86,7 @@
     "curve25519",
     "hkdf"
   ]
-  revision = "182538f80094b6a8efaade63a8fd8e0d9d5843dd"
+  revision = "0e37d006457bf46f9e6692014ba72ef82c33022c"
 
 [[projects]]
   branch = "master"
@@ -95,13 +95,13 @@
     "html",
     "html/atom"
   ]
-  revision = "8a410e7b638dca158bf9e766925842f6651ff828"
+  revision = "2f5d2388922f370f4355f327fcf4cfe9f5583908"
 
 [[projects]]
   branch = "master"
   name = "golang.org/x/sys"
   packages = ["unix"]
-  revision = "fa5fdf94c78965f1aa8423f0cc50b8b8d728b05a"
+  revision = "d47a0f3392421c5624713c9a19fe781f651f8a50"
 
 [[projects]]
   name = "gopkg.in/russross/blackfriday.v2"
@@ -122,7 +122,7 @@
     ".",
     "format"
   ]
-  revision = "b018830e10612c04065723de7aa49f35b37864a6"
+  revision = "920b154a410aeb5a55200d7b21363732abff3502"
 
 [[projects]]
   branch = "master"
@@ -140,7 +140,7 @@
   branch = "master"
   name = "maunium.net/go/mautrix-appservice"
   packages = ["."]
-  revision = "4e24d1dd7bd9d89f946ec56cb4350ce777d17bfe"
+  revision = "c432f77c754b761a8f67bc0bb2d18cfb600341ad"
 
 [solve-meta]
   analyzer-name = "dep"

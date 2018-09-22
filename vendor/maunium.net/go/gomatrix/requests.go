@@ -31,7 +31,7 @@ type ReqCreateRoom struct {
 	Invite          []string               `json:"invite,omitempty"`
 	Invite3PID      []ReqInvite3PID        `json:"invite_3pid,omitempty"`
 	CreationContent map[string]interface{} `json:"creation_content,omitempty"`
-	InitialState    []*Event                `json:"initial_state,omitempty"`
+	InitialState    []*Event               `json:"initial_state,omitempty"`
 	Preset          string                 `json:"preset,omitempty"`
 	IsDirect        bool                   `json:"is_direct,omitempty"`
 }

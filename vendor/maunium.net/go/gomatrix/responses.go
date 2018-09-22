@@ -63,9 +63,9 @@ type RespJoinedMembers struct {
 
 // RespMessages is the JSON response for https://matrix.org/docs/spec/client_server/r0.2.0.html#get-matrix-client-r0-rooms-roomid-messages
 type RespMessages struct {
-	Start string  `json:"start"`
-	Chunk []Event `json:"chunk"`
-	End   string  `json:"end"`
+	Start string   `json:"start"`
+	Chunk []*Event `json:"chunk"`
+	End   string   `json:"end"`
 }
 
 // RespSendEvent is the JSON response for http://matrix.org/docs/spec/client_server/r0.2.0.html#put-matrix-client-r0-rooms-roomid-send-eventtype-txnid
@@ -146,8 +146,8 @@ type RespSync struct {
 			} `json:"state"`
 			Timeline struct {
 				Events    []*Event `json:"events"`
-				Limited   bool    `json:"limited"`
-				PrevBatch string  `json:"prev_batch"`
+				Limited   bool     `json:"limited"`
+				PrevBatch string   `json:"prev_batch"`
 			} `json:"timeline"`
 		} `json:"leave"`
 		Join map[string]struct {
@@ -156,14 +156,14 @@ type RespSync struct {
 			} `json:"state"`
 			Timeline struct {
 				Events    []*Event `json:"events"`
-				Limited   bool    `json:"limited"`
-				PrevBatch string  `json:"prev_batch"`
+				Limited   bool     `json:"limited"`
+				PrevBatch string   `json:"prev_batch"`
 			} `json:"timeline"`
 			Ephemeral struct {
-				Events    []*Event `json:"events"`
+				Events []*Event `json:"events"`
 			} `json:"ephemeral"`
 			AccountData struct {
-				Events    []*Event `json:"events"`
+				Events []*Event `json:"events"`
 			} `json:"account_data"`
 		} `json:"join"`
 		Invite map[string]struct {

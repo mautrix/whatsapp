@@ -63,7 +63,7 @@ func (store *AutosavingStateStore) MarkRegistered(userID string) {
 	store.Save()
 }
 
-func (store *AutosavingStateStore) SetMembership(roomID, userID, membership string) {
+func (store *AutosavingStateStore) SetMembership(roomID, userID string, membership gomatrix.Membership) {
 	store.StateStore.SetMembership(roomID, userID, membership)
 	store.Save()
 }
