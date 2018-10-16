@@ -29,6 +29,7 @@ type CommandHandler struct {
 	log    maulogger.Logger
 }
 
+// NewCommandHandler creates a CommandHandler
 func NewCommandHandler(bridge *Bridge) *CommandHandler {
 	return &CommandHandler{
 		bridge: bridge,
@@ -36,6 +37,7 @@ func NewCommandHandler(bridge *Bridge) *CommandHandler {
 	}
 }
 
+// CommandEvent stores all data which might be used to handle commands
 type CommandEvent struct {
 	Bot     *appservice.IntentAPI
 	Bridge  *Bridge
@@ -45,6 +47,7 @@ type CommandEvent struct {
 	Args    []string
 }
 
+// Reply sends a reply to command as notice
 func (ce *CommandEvent) Reply(msg string) {
 	_, err := ce.Bot.SendNotice(string(ce.RoomID), msg)
 	if err != nil {
@@ -52,6 +55,7 @@ func (ce *CommandEvent) Reply(msg string) {
 	}
 }
 
+// Handle handles messages to the bridge
 func (handler *CommandHandler) Handle(roomID types.MatrixRoomID, user *User, message string) {
 	args := strings.Split(message, " ")
 	cmd := strings.ToLower(args[0])
@@ -77,6 +81,7 @@ func (handler *CommandHandler) Handle(roomID types.MatrixRoomID, user *User, mes
 
 const cmdLoginHelp = `login - Authenticate this Bridge as WhatsApp Web Client`
 
+// CommandLogin handles login command
 func (handler *CommandHandler) CommandLogin(ce *CommandEvent) {
 	if ce.User.Session != nil {
 		ce.Reply("You're already logged in.")
@@ -89,6 +94,7 @@ func (handler *CommandHandler) CommandLogin(ce *CommandEvent) {
 
 const cmdLogoutHelp = `logout - Logout from WhatsApp`
 
+// CommandLogout handles !logout command
 func (handler *CommandHandler) CommandLogout(ce *CommandEvent) {
 	if ce.User.Session == nil {
 		ce.Reply("You're not logged in.")
@@ -108,7 +114,7 @@ func (handler *CommandHandler) CommandLogout(ce *CommandEvent) {
 
 const cmdHelpHelp = `help - Prints this help`
 
-// CommandHelp handles !help command
+// CommandHelp handles help command
 func (handler *CommandHandler) CommandHelp(ce *CommandEvent) {
 	cmdPrefix := handler.bridge.Config.Bridge.CommandPrefix + " "
 	ce.Reply(strings.Join([]string{
