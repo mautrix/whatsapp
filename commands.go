@@ -70,10 +70,12 @@ func (handler *CommandHandler) Handle(roomID types.MatrixRoomID, user *User, mes
 		handler.CommandLogout(ce)
 	case "help":
 		handler.CommandHelp(ce)
+	default:
+		ce.Reply("Unknown Command")
 	}
 }
 
-const cmdLoginHelp = `!login - Authenticate this Bridge as WhatsApp Web Client`
+const cmdLoginHelp = `login - Authenticate this Bridge as WhatsApp Web Client`
 
 func (handler *CommandHandler) CommandLogin(ce *CommandEvent) {
 	if ce.User.Session != nil {
@@ -85,7 +87,7 @@ func (handler *CommandHandler) CommandLogin(ce *CommandEvent) {
 	ce.User.Login(ce.RoomID)
 }
 
-const cmdLogoutHelp = `!logout - Logout from WhatsApp`
+const cmdLogoutHelp = `logout - Logout from WhatsApp`
 
 func (handler *CommandHandler) CommandLogout(ce *CommandEvent) {
 	if ce.User.Session == nil {
@@ -104,10 +106,14 @@ func (handler *CommandHandler) CommandLogout(ce *CommandEvent) {
 	ce.Reply("Logged out successfully.")
 }
 
+const cmdHelpHelp = `help - Prints this help`
+
 // CommandHelp handles !help command
 func (handler *CommandHandler) CommandHelp(ce *CommandEvent) {
+	cmdPrefix := handler.bridge.Config.Bridge.CommandPrefix + " "
 	ce.Reply(strings.Join([]string{
-		cmdLoginHelp,
-		cmdLogoutHelp,
+		cmdPrefix + cmdHelpHelp,
+		cmdPrefix + cmdLoginHelp,
+		cmdPrefix + cmdLogoutHelp,
 	}, "\n"))
 }
