@@ -93,9 +93,9 @@ type User struct {
 }
 
 func (user *User) Scan(row Scannable) *User {
-	var managementRoom, clientID, clientToken, serverToken, jid sql.NullString
+	var jid, clientID, clientToken, serverToken sql.NullString
 	var encKey, macKey []byte
-	err := row.Scan(&user.MXID, &jid, &managementRoom, &clientID, &clientToken, &serverToken, &encKey, &macKey)
+	err := row.Scan(&user.MXID, &jid, &user.ManagementRoom, &clientID, &clientToken, &serverToken, &encKey, &macKey)
 	if err != nil {
 		if err != sql.ErrNoRows {
 			user.log.Errorln("Database scan failed:", err)
