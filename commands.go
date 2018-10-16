@@ -73,6 +73,8 @@ func (handler *CommandHandler) Handle(roomID types.MatrixRoomID, user *User, mes
 	}
 }
 
+const cmdLoginHelp = `!login - Authenticate this Bridge as WhatsApp Web Client`
+
 func (handler *CommandHandler) CommandLogin(ce *CommandEvent) {
 	if ce.User.Session != nil {
 		ce.Reply("You're already logged in.")
@@ -82,6 +84,8 @@ func (handler *CommandHandler) CommandLogin(ce *CommandEvent) {
 	ce.User.Connect(true)
 	ce.User.Login(ce.RoomID)
 }
+
+const cmdLogoutHelp = `!logout - Logout from WhatsApp`
 
 func (handler *CommandHandler) CommandLogout(ce *CommandEvent) {
 	if ce.User.Session == nil {
@@ -100,6 +104,10 @@ func (handler *CommandHandler) CommandLogout(ce *CommandEvent) {
 	ce.Reply("Logged out successfully.")
 }
 
+// CommandHelp handles !help command
 func (handler *CommandHandler) CommandHelp(ce *CommandEvent) {
-	ce.Reply("Help is not yet implemented 3:")
+	ce.Reply(strings.Join([]string{
+		cmdLoginHelp,
+		cmdLogoutHelp,
+	}, "\n"))
 }
