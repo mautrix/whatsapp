@@ -86,17 +86,6 @@ func (bc BridgeConfig) FormatUsername(userID types.WhatsAppID) string {
 	return buf.String()
 }
 
-func (bc BridgeConfig) MarshalYAML() (interface{}, error) {
-	bc.DisplaynameTemplate, _ = bc.FormatDisplayname(whatsapp.Contact{
-		Jid:    "{{.Jid}}",
-		Notify: "{{.Notify}}",
-		Name:   "{{.Name}}",
-		Short:  "{{.Short}}",
-	})
-	bc.UsernameTemplate = bc.FormatUsername("{{.}}")
-	return bc, nil
-}
-
 type PermissionConfig map[string]PermissionLevel
 
 type PermissionLevel int
