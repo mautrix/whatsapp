@@ -1,5 +1,10 @@
 #!/bin/sh
 
+# Define functions.
+function fixperms {
+	chown -R $UID:$GID /data /opt/mautrix-whatsapp
+}
+
 if [ ! -f /data/config.yaml ]; then
 	cp /opt/mautrix-whatsapp/example-config.yaml /data/config.yaml
 	echo "Didn't find a config file."
@@ -18,4 +23,5 @@ if [ ! -f /data/registration.yaml ]; then
 fi
 
 cd /data
-/usr/bin/mautrix-whatsapp
+fixperms
+exec su-exec $UID:$GID /usr/bin/mautrix-whatsapp
