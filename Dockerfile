@@ -13,6 +13,12 @@ RUN go build -o /usr/bin/mautrix-whatsapp
 
 FROM alpine:latest
 
+ENV UID=1337 \
+    GID=1337
+
+RUN apk add --no-cache \
+      su-exec
+
 COPY --from=builder /usr/bin/mautrix-whatsapp /usr/bin/mautrix-whatsapp
 COPY --from=builder /etc/ssl/certs/ /etc/ssl/certs
 COPY --from=builder /go/src/maunium.net/go/mautrix-whatsapp/example-config.yaml /opt/mautrix-whatsapp/example-config.yaml
