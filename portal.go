@@ -455,6 +455,11 @@ func (portal *Portal) CreateMatrixRoom(invite []string) error {
 		return nil
 	}
 
+	intent := portal.MainIntent()
+	if err := intent.EnsureRegistered(); err != nil {
+		return err
+	}
+
 	name := portal.Name
 	topic := portal.Topic
 	isPrivateChat := false
@@ -464,7 +469,7 @@ func (portal *Portal) CreateMatrixRoom(invite []string) error {
 		isPrivateChat = true
 	}
 
-	resp, err := portal.MainIntent().CreateRoom(&gomatrix.ReqCreateRoom{
+	resp, err := intent.CreateRoom(&gomatrix.ReqCreateRoom{
 		Visibility: "private",
 		Name:       name,
 		Topic:      topic,
