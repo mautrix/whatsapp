@@ -258,6 +258,12 @@ func (portal *Portal) UpdateAvatar(user *User, avatar *whatsappExt.ProfilePicInf
 		}
 	}
 
+	if avatar.Status != 0 {
+		// 401: ???
+		// 404: ???
+		return false
+	}
+
 	if portal.Avatar == avatar.Tag {
 		return false
 	}
