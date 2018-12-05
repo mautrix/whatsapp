@@ -316,6 +316,16 @@ func (portal *Portal) UpdateMetadata(user *User) bool {
 		portal.log.Errorln(err)
 		return false
 	}
+	if metadata.Status != 0 {
+		// 401: access denied
+		// 404: group does (no longer) exist
+		// 500: ??? happens with status@broadcast
+
+		// TODO: update the room, e.g. change priority level
+		//   to send messages to moderator
+		return false
+	}
+
 	portal.SyncParticipants(metadata)
 	update := false
 	update = portal.UpdateName(metadata.Name, metadata.NameSetBy) || update

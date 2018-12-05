@@ -61,6 +61,8 @@ type GroupInfo struct {
 
 	GroupCreated int64 `json:"creation"`
 
+	Status int16 `json:"status"`
+
 	Participants []struct {
 		JID          string `json:"id"`
 		IsAdmin      bool   `json:"isAdmin"`
