@@ -95,6 +95,8 @@ func (ext *ExtendedConn) GetGroupMetaData(jid string) (*GroupInfo, error) {
 type ProfilePicInfo struct {
 	URL string `json:"eurl"`
 	Tag string `json:"tag"`
+
+	Status int16 `json:"status"`
 }
 
 func (ppi *ProfilePicInfo) Download() (io.ReadCloser, error) {
