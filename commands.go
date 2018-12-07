@@ -52,7 +52,7 @@ type CommandEvent struct {
 
 // Reply sends a reply to command as notice
 func (ce *CommandEvent) Reply(msg string) {
-	_, err := ce.Bot.SendNotice(string(ce.RoomID), msg)
+	_, err := ce.Bot.SendNotice(string(ce.User.ManagementRoom), msg)
 	if err != nil {
 		ce.Handler.log.Warnfln("Failed to reply to command from %s: %v", ce.User.MXID, err)
 	}
