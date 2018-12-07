@@ -68,6 +68,7 @@ func (ext *ExtendedConn) HandleJsonMessage(message string) {
 	msg := JSONMessage{}
 	err := json.Unmarshal([]byte(message), &msg)
 	if err != nil || len(msg) < 2 {
+		ext.jsonParseError(err)
 		return
 	}
 

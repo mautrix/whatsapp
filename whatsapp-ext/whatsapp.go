@@ -61,6 +61,8 @@ type GroupInfo struct {
 
 	GroupCreated int64 `json:"creation"`
 
+	Status int16 `json:"status"`
+
 	Participants []struct {
 		JID          string `json:"id"`
 		IsAdmin      bool   `json:"isAdmin"`
@@ -93,6 +95,8 @@ func (ext *ExtendedConn) GetGroupMetaData(jid string) (*GroupInfo, error) {
 type ProfilePicInfo struct {
 	URL string `json:"eurl"`
 	Tag string `json:"tag"`
+
+	Status int16 `json:"status"`
 }
 
 func (ppi *ProfilePicInfo) Download() (io.ReadCloser, error) {
