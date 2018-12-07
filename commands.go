@@ -134,12 +134,17 @@ func (handler *CommandHandler) CommandHelp(ce *CommandEvent) {
 	}, "\n"))
 }
 
-const cmdImportHelp = `import JID|contacts - Open up a room for JID or for each WhatsApp contact`
+const cmdImportHelp = `import <jid>|contacts - Open up a room for JID or for each WhatsApp contact`
 
 // CommandImport handles import command
 func (handler *CommandHandler) CommandImport(ce *CommandEvent) {
 	// ensure all messages go to the management room
 	ce.RoomID = ce.User.ManagementRoom
+
+	if len(ce.Args) == 0 {
+		ce.Reply("Usage: import <jid>|contacts")
+		return
+	}
 
 	user := ce.User
 
