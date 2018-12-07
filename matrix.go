@@ -98,7 +98,7 @@ func (mx *MatrixHandler) HandleBotInvite(evt *gomatrix.Event) {
 	if !hasPuppets {
 		user := mx.bridge.GetUserByMXID(types.MatrixUserID(evt.Sender))
 		user.SetManagementRoom(types.MatrixRoomID(resp.RoomID))
-		intent.SendNotice(string(user.ManagementRoom), "This room has been registered as your bridge management/status room.")
+		intent.SendNotice(string(user.ManagementRoom), "This room has been registered as your bridge management/status room. Send `help` to get a list of commands.")
 		mx.log.Debugln(resp.RoomID, "registered as a management room with", evt.Sender)
 	}
 }

@@ -185,7 +185,7 @@ func (bridge *Bridge) UpdateBotProfile() {
 
 func (bridge *Bridge) StartUsers() {
 	for _, user := range bridge.GetAllUsers() {
-		go user.Start()
+		go user.Connect(false)
 	}
 }
 
