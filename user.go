@@ -132,12 +132,6 @@ func (user *User) SetSession(session *whatsapp.Session) {
 	user.Update()
 }
 
-func (user *User) Start() {
-	if user.Connect(false) {
-		user.Sync()
-	}
-}
-
 func (user *User) Connect(evenIfNoSession bool) bool {
 	if user.Conn != nil {
 		return true
@@ -210,22 +204,7 @@ func (user *User) Login(roomID types.MatrixRoomID) {
 	user.JID = strings.Replace(user.Conn.Info.Wid, whatsappExt.OldUserSuffix, whatsappExt.NewUserSuffix, 1)
 	user.Session = &session
 	user.Update()
-	bot.SendNotice(roomID, "Successfully logged in. Synchronizing chats...")
-	go user.Sync()
-}
-
-func (user *User) Sync() {
-	user.log.Debugln("Syncing...")
-	user.Conn.Contacts()
-	for jid, contact := range user.Conn.Store.Contacts {
-		if strings.HasSuffix(jid, whatsappExt.NewUserSuffix) {
-			puppet := user.bridge.GetPuppetByJID(contact.Jid)
-			puppet.Sync(user, contact)
-		} else {
-			portal := user.bridge.GetPortalByJID(database.GroupPortalKey(contact.Jid))
-			portal.Sync(user, contact)
-		}
-	}
+	bot.SendNotice(roomID, "Successfully logged in. Now, you may ask for `import contacts`.")
 }
 
 func (user *User) HandleError(err error) {

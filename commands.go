@@ -19,9 +19,12 @@ package main
 import (
 	"strings"
 
+	"github.com/Rhymen/go-whatsapp"
 	"maunium.net/go/maulogger"
 	"maunium.net/go/mautrix-appservice"
+	"maunium.net/go/mautrix-whatsapp/database"
 	"maunium.net/go/mautrix-whatsapp/types"
+	"maunium.net/go/mautrix-whatsapp/whatsapp-ext"
 )
 
 type CommandHandler struct {
@@ -74,6 +77,8 @@ func (handler *CommandHandler) Handle(roomID types.MatrixRoomID, user *User, mes
 		handler.CommandLogout(ce)
 	case "help":
 		handler.CommandHelp(ce)
+	case "import":
+		handler.CommandImport(ce)
 	default:
 		ce.Reply("Unknown Command")
 	}
@@ -121,5 +126,44 @@ func (handler *CommandHandler) CommandHelp(ce *CommandEvent) {
 		cmdPrefix + cmdHelpHelp,
 		cmdPrefix + cmdLoginHelp,
 		cmdPrefix + cmdLogoutHelp,
+		cmdPrefix + cmdImportHelp,
 	}, "\n"))
+}
+
+const cmdImportHelp = `import JID|contacts - Open up a room for JID or for each WhatsApp contact`
+
+// CommandImport handles import command
+func (handler *CommandHandler) CommandImport(ce *CommandEvent) {
+	// ensure all messages go to the management room
+	ce.RoomID = ce.User.ManagementRoom
+
+	user := ce.User
+
+	if ce.Args[0] == "contacts" {
+		handler.log.Debugln("Importing all contacts of", user)
+		_, err := user.Conn.Contacts()
+		if err != nil {
+			handler.log.Errorln("Error on update of contacts of user", user, ":", err)
+			return
+		}
+
+		for jid, contact := range user.Conn.Store.Contacts {
+			if strings.HasSuffix(jid, whatsappExt.NewUserSuffix) {
+				puppet := user.bridge.GetPuppetByJID(contact.Jid)
+				puppet.Sync(user, contact)
+			} else {
+				portal := user.bridge.GetPortalByJID(database.GroupPortalKey(contact.Jid))
+				portal.Sync(user, contact)
+			}
+		}
+
+		ce.Reply("Importing all contacts done")
+	} else {
+		jid := ce.Args[0] + whatsappExt.NewUserSuffix
+		handler.log.Debugln("Importing", jid, "for", user)
+		puppet := user.bridge.GetPuppetByJID(jid)
+
+		contact := whatsapp.Contact { Jid: jid }
+		puppet.Sync(user, contact)
+	}
 }
