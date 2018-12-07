@@ -121,7 +121,11 @@ const cmdHelpHelp = `help - Prints this help`
 
 // CommandHelp handles help command
 func (handler *CommandHandler) CommandHelp(ce *CommandEvent) {
-	cmdPrefix := handler.bridge.Config.Bridge.CommandPrefix + " "
+	cmdPrefix := ""
+	if ce.User.ManagementRoom != ce.RoomID {
+		cmdPrefix = handler.bridge.Config.Bridge.CommandPrefix + " "
+	}
+
 	ce.Reply(strings.Join([]string{
 		cmdPrefix + cmdHelpHelp,
 		cmdPrefix + cmdLoginHelp,
