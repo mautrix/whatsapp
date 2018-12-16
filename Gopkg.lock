@@ -3,6 +3,7 @@
 
 [[projects]]
   branch = "master"
+  digest = "1:a61c18c5d4f7dc36969d6dd360102075358afda537677d384de9bc981632e206"
   name = "github.com/Rhymen/go-whatsapp"
   packages = [
     ".",
@@ -11,140 +12,190 @@
     "binary/token",
     "crypto/cbc",
     "crypto/curve25519",
-    "crypto/hkdf"
+    "crypto/hkdf",
   ]
-  revision = "92ffb4c11a14df04cc0fd8b285b8ef2efb023d54"
+  pruneopts = "UT"
+  revision = "fd35ed50821362de2c766c451dfb1a11e12b5c4e"
 
 [[projects]]
+  digest = "1:865079840386857c809b72ce300be7580cb50d3d3129ce11bf9aa6ca2bc1934a"
   name = "github.com/fatih/color"
   packages = ["."]
+  pruneopts = "UT"
   revision = "5b77d2a35fb0ede96d138fc9a99f5c9b6aef11b4"
   version = "v1.7.0"
 
 [[projects]]
+  digest = "1:97df918963298c287643883209a2c3f642e6593379f97ab400c2a2e219ab647d"
   name = "github.com/golang/protobuf"
   packages = ["proto"]
+  pruneopts = "UT"
   revision = "aa810b61a9c79d51363740d207bb46cf8e620ed5"
   version = "v1.2.0"
 
 [[projects]]
+  digest = "1:c79fb010be38a59d657c48c6ba1d003a8aa651fa56b579d959d74573b7dff8e1"
   name = "github.com/gorilla/context"
   packages = ["."]
+  pruneopts = "UT"
   revision = "08b5f424b9271eedf6f9f0ce86cb9396ed337a42"
   version = "v1.1.1"
 
 [[projects]]
+  digest = "1:e73f5b0152105f18bc131fba127d9949305c8693f8a762588a82a48f61756f5f"
   name = "github.com/gorilla/mux"
   packages = ["."]
+  pruneopts = "UT"
   revision = "e3702bed27f0d39777b0b37b664b6280e8ef8fbf"
   version = "v1.6.2"
 
 [[projects]]
+  digest = "1:7b5c6e2eeaa9ae5907c391a91c132abfd5c9e8a784a341b5625e750c67e6825d"
   name = "github.com/gorilla/websocket"
   packages = ["."]
+  pruneopts = "UT"
   revision = "66b9c49e59c6c48f0ffce28c2d8b8a5678502c6d"
   version = "v1.4.0"
 
 [[projects]]
+  digest = "1:c658e84ad3916da105a761660dcaeb01e63416c8ec7bc62256a9b411a05fcd67"
   name = "github.com/mattn/go-colorable"
   packages = ["."]
+  pruneopts = "UT"
   revision = "167de6bfdfba052fa6b2d3664c8f5272e23c9072"
   version = "v0.0.9"
 
 [[projects]]
+  digest = "1:0981502f9816113c9c8c4ac301583841855c8cf4da8c72f696b3ebedf6d0e4e5"
   name = "github.com/mattn/go-isatty"
   packages = ["."]
+  pruneopts = "UT"
   revision = "6ca4dbf54d38eea1a992b3c722a76a5d1c4cb25c"
   version = "v0.0.4"
 
 [[projects]]
+  digest = "1:4a49346ca45376a2bba679ca0e83bec949d780d4e927931317904bad482943ec"
   name = "github.com/mattn/go-sqlite3"
   packages = ["."]
-  revision = "25ecb14adfc7543176f7d85291ec7dba82c6f7e4"
-  version = "v1.9.0"
+  pruneopts = "UT"
+  revision = "c7c4067b79cc51e6dfdcef5c702e74b1e0fa7c75"
+  version = "v1.10.0"
 
 [[projects]]
   branch = "master"
+  digest = "1:def689e73e9252f6f7fe66834a76751a41b767e03daab299e607e7226c58a855"
   name = "github.com/shurcooL/sanitized_anchor_name"
   packages = ["."]
+  pruneopts = "UT"
   revision = "86672fcb3f950f35f2e675df2240550f2a50762f"
 
 [[projects]]
   branch = "master"
+  digest = "1:bf1cb2d456a753d515d90e43c4b05afa4837e75d7808d1752607b91007ce25bb"
   name = "github.com/skip2/go-qrcode"
   packages = [
     ".",
     "bitset",
-    "reedsolomon"
+    "reedsolomon",
   ]
+  pruneopts = "UT"
   revision = "cf5f9fa2f0d847edb8e038db7ed975e239095e1a"
 
 [[projects]]
   branch = "master"
+  digest = "1:969079c35a5f96673cb14543c49a03c3dae91e7219147eca0cfced9f82fbabf3"
   name = "golang.org/x/crypto"
   packages = [
     "curve25519",
-    "hkdf"
+    "hkdf",
   ]
-  revision = "0e37d006457bf46f9e6692014ba72ef82c33022c"
+  pruneopts = "UT"
+  revision = "505ab145d0a99da450461ae2c1a9f6cd10d1f447"
 
 [[projects]]
   branch = "master"
+  digest = "1:1a1ecfa7b54ca3f7a0115ab5c578d7d6a5d8b605839c549e80260468c42f8be7"
   name = "golang.org/x/net"
   packages = [
     "html",
-    "html/atom"
+    "html/atom",
   ]
-  revision = "2f5d2388922f370f4355f327fcf4cfe9f5583908"
+  pruneopts = "UT"
+  revision = "891ebc4b82d6e74f468c533b06f983c7be918a96"
 
 [[projects]]
   branch = "master"
+  digest = "1:48a949ee15f5f03524b792547822221b07f828dd26522b5e08688f25a10d14c1"
   name = "golang.org/x/sys"
   packages = ["unix"]
-  revision = "d47a0f3392421c5624713c9a19fe781f651f8a50"
+  pruneopts = "UT"
+  revision = "4d1cda033e0619309c606fc686de3adcf599539e"
 
 [[projects]]
+  digest = "1:2ee0f15eb0fb04f918db7c2dcf39745f40d69f798ef171610a730e8a56aaa4fd"
   name = "gopkg.in/russross/blackfriday.v2"
   packages = ["."]
-  revision = "cadec560ec52d93835bf2f15bd794700d3a2473b"
-  version = "v2.0.0"
+  pruneopts = "UT"
+  revision = "d3b5b032dc8e8927d31a5071b56e14c89f045135"
+  version = "v2.0.1"
 
 [[projects]]
+  digest = "1:4d2e5a73dc1500038e504a8d78b986630e3626dc027bc030ba5c75da257cdb96"
   name = "gopkg.in/yaml.v2"
   packages = ["."]
-  revision = "5420a8b6744d3b0345ab293f6fcba19c978f1183"
-  version = "v2.2.1"
+  pruneopts = "UT"
+  revision = "51d6538a90f86fe93ac480b35f37b2be17fef232"
+  version = "v2.2.2"
 
 [[projects]]
   branch = "master"
+  digest = "1:96b43c61e79c3513e19b056f4e4bf5549277e788cc712ae209165e00cb03125f"
   name = "maunium.net/go/gomatrix"
   packages = [
     ".",
-    "format"
+    "format",
   ]
-  revision = "920b154a410aeb5a55200d7b21363732abff3502"
+  pruneopts = "UT"
+  revision = "de42b317fe25aa9aaebb5219afae90c92b8a3ea8"
 
 [[projects]]
   branch = "master"
+  digest = "1:184639f9d6556e9afb2549cab03863a1496039b2d9b184ab368e6b32ae106097"
   name = "maunium.net/go/mauflag"
   packages = ["."]
+  pruneopts = "UT"
   revision = "8337821952ba5e919673bd62c502d43474e5e71d"
 
 [[projects]]
   branch = "master"
+  digest = "1:4954a951a4e89b8c42c75a5c0caab7baff4cf36eab7e9a01274c7c3011445dbd"
   name = "maunium.net/go/maulogger"
   packages = ["."]
+  pruneopts = "UT"
   revision = "ed98745dedb5f9296c1b2a0ed9424d7347d7e7d4"
 
 [[projects]]
   branch = "master"
+  digest = "1:1489e76c1885bcc75a591b50ed055e435f081e8c959c350833787011240174dc"
   name = "maunium.net/go/mautrix-appservice"
   packages = ["."]
-  revision = "c432f77c754b761a8f67bc0bb2d18cfb600341ad"
+  pruneopts = "UT"
+  revision = "edcf9d415342721a03cda9ba0bac0b84dd221b34"
 
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "9158f20cc827fadd5ed71302b767c938595986ef9e0623496eddfb4f95f75c76"
+  input-imports = [
+    "github.com/Rhymen/go-whatsapp",
+    "github.com/Rhymen/go-whatsapp/binary/proto",
+    "github.com/mattn/go-sqlite3",
+    "github.com/skip2/go-qrcode",
+    "gopkg.in/yaml.v2",
+    "maunium.net/go/gomatrix",
+    "maunium.net/go/gomatrix/format",
+    "maunium.net/go/mauflag",
+    "maunium.net/go/maulogger",
+    "maunium.net/go/mautrix-appservice",
+  ]
   solver-name = "gps-cdcl"
   solver-version = 1
