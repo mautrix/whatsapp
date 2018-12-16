@@ -23,6 +23,11 @@ type StateStore interface {
 	GetPowerLevel(roomID, userID string) int
 	GetPowerLevelRequirement(roomID string, eventType gomatrix.EventType) int
 	HasPowerLevel(roomID, userID string, eventType gomatrix.EventType) bool
+
+	Lock()
+	Unlock()
+	RLock()
+	RUnlock()
 }
 
 func (as *AppService) UpdateState(evt *gomatrix.Event) {
@@ -35,6 +40,8 @@ func (as *AppService) UpdateState(evt *gomatrix.Event) {
 }
 
 type BasicStateStore struct {
+	globalLock sync.RWMutex `json:"-"`
+
 	registrationsLock sync.RWMutex                              `json:"-"`
 	Registrations     map[string]bool                           `json:"registrations"`
 	membershipsLock   sync.RWMutex                              `json:"-"`
@@ -53,6 +60,34 @@ func NewBasicStateStore() StateStore {
 		PowerLevels:   make(map[string]*gomatrix.PowerLevels),
 		Typing:        make(map[string]map[string]int64),
 	}
+}
+
+func (store *BasicStateStore) RLock() {
+	store.registrationsLock.RLock()
+	store.membershipsLock.RLock()
+	store.powerLevelsLock.RLock()
+	store.typingLock.RLock()
+}
+
+func (store *BasicStateStore) RUnlock() {
+	store.typingLock.RUnlock()
+	store.powerLevelsLock.RUnlock()
+	store.membershipsLock.RUnlock()
+	store.registrationsLock.RUnlock()
+}
+
+func (store *BasicStateStore) Lock() {
+	store.registrationsLock.Lock()
+	store.membershipsLock.Lock()
+	store.powerLevelsLock.Lock()
+	store.typingLock.Lock()
+}
+
+func (store *BasicStateStore) Unlock() {
+	store.typingLock.Unlock()
+	store.powerLevelsLock.Unlock()
+	store.membershipsLock.Unlock()
+	store.registrationsLock.Unlock()
 }
 
 func (store *BasicStateStore) IsRegistered(userID string) bool {

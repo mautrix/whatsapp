@@ -38,6 +38,8 @@ func NewAutosavingStateStore(path string) *AutosavingStateStore {
 }
 
 func (store *AutosavingStateStore) Save() error {
+	store.RLock()
+	defer store.RUnlock()
 	data, err := json.Marshal(store.StateStore)
 	if err != nil {
 		return err
@@ -47,6 +49,8 @@ func (store *AutosavingStateStore) Save() error {
 }
 
 func (store *AutosavingStateStore) Load() error {
+	store.Lock()
+	defer store.Unlock()
 	data, err := ioutil.ReadFile(store.Path)
 	if err != nil {
 		if os.IsNotExist(err) {
