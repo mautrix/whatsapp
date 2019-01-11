@@ -20,6 +20,7 @@ import (
 	"io/ioutil"
 
 	"gopkg.in/yaml.v2"
+
 	"maunium.net/go/mautrix-appservice"
 )
 

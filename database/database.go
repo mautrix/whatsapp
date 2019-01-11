@@ -20,7 +20,8 @@ import (
 	"database/sql"
 
 	_ "github.com/mattn/go-sqlite3"
-	log "maunium.net/go/maulogger"
+
+	log "maunium.net/go/maulogger/v2"
 )
 
 type Database struct {

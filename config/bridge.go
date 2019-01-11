@@ -23,7 +23,9 @@ import (
 	"text/template"
 
 	"github.com/Rhymen/go-whatsapp"
+
 	"maunium.net/go/mautrix-appservice"
+
 	"maunium.net/go/mautrix-whatsapp/types"
 )
 

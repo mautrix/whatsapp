@@ -21,8 +21,8 @@ import (
 	"io/ioutil"
 	"os"
 
-	"maunium.net/go/gomatrix"
 	"maunium.net/go/mautrix-appservice"
+	"maunium.net/go/mautrix"
 )
 
 type AutosavingStateStore struct {
@@ -67,12 +67,12 @@ func (store *AutosavingStateStore) MarkRegistered(userID string) {
 	store.Save()
 }
 
-func (store *AutosavingStateStore) SetMembership(roomID, userID string, membership gomatrix.Membership) {
+func (store *AutosavingStateStore) SetMembership(roomID, userID string, membership mautrix.Membership) {
 	store.StateStore.SetMembership(roomID, userID, membership)
 	store.Save()
 }
 
-func (store *AutosavingStateStore) SetPowerLevels(roomID string, levels *gomatrix.PowerLevels) {
+func (store *AutosavingStateStore) SetPowerLevels(roomID string, levels *mautrix.PowerLevels) {
 	store.StateStore.SetPowerLevels(roomID, levels)
 	store.Save()
 }

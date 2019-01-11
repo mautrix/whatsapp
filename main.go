@@ -24,8 +24,9 @@ import (
 	"syscall"
 
 	flag "maunium.net/go/mauflag"
-	log "maunium.net/go/maulogger"
+	log "maunium.net/go/maulogger/v2"
 	"maunium.net/go/mautrix-appservice"
+
 	"maunium.net/go/mautrix-whatsapp/config"
 	"maunium.net/go/mautrix-whatsapp/database"
 	"maunium.net/go/mautrix-whatsapp/types"

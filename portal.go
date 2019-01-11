@@ -33,9 +33,11 @@ import (
 
 	"github.com/Rhymen/go-whatsapp"
 	waProto "github.com/Rhymen/go-whatsapp/binary/proto"
-	"maunium.net/go/gomatrix"
-	log "maunium.net/go/maulogger"
+
+	log "maunium.net/go/maulogger/v2"
+	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix-appservice"
+
 	"maunium.net/go/mautrix-whatsapp/database"
 	"maunium.net/go/mautrix-whatsapp/types"
 	"maunium.net/go/mautrix-whatsapp/whatsapp-ext"
@@ -224,7 +226,7 @@ func (portal *Portal) SyncParticipants(metadata *whatsappExt.GroupInfo) {
 
 		user := portal.bridge.GetUserByJID(participant.JID)
 		if user != nil && !portal.bridge.AS.StateStore.IsInvited(portal.MXID, user.MXID) {
-			portal.MainIntent().InviteUser(portal.MXID, &gomatrix.ReqInviteUser{
+			portal.MainIntent().InviteUser(portal.MXID, &mautrix.ReqInviteUser{
 				UserID: user.MXID,
 			})
 		}
@@ -363,10 +365,10 @@ func (portal *Portal) Sync(user *User, contact whatsapp.Contact) {
 	}
 }
 
-func (portal *Portal) GetBasePowerLevels() *gomatrix.PowerLevels {
+func (portal *Portal) GetBasePowerLevels() *mautrix.PowerLevels {
 	anyone := 0
 	nope := 99
-	return &gomatrix.PowerLevels{
+	return &mautrix.PowerLevels{
 		UsersDefault:    anyone,
 		EventsDefault:   anyone,
 		RedactPtr:       &anyone,
@@ -377,9 +379,9 @@ func (portal *Portal) GetBasePowerLevels() *gomatrix.PowerLevels {
 			portal.MainIntent().UserID: 100,
 		},
 		Events: map[string]int{
-			gomatrix.StateRoomName.Type:   anyone,
-			gomatrix.StateRoomAvatar.Type: anyone,
-			gomatrix.StateTopic.Type:      anyone,
+			mautrix.StateRoomName.Type:   anyone,
+			mautrix.StateRoomAvatar.Type: anyone,
+			mautrix.StateTopic.Type:      anyone,
 		},
 	}
 }
@@ -437,9 +439,9 @@ func (portal *Portal) RestrictMetadataChanges(restrict bool) {
 		newLevel = 50
 	}
 	changed := false
-	changed = levels.EnsureEventLevel(gomatrix.StateRoomName, newLevel) || changed
-	changed = levels.EnsureEventLevel(gomatrix.StateRoomAvatar, newLevel) || changed
-	changed = levels.EnsureEventLevel(gomatrix.StateTopic, newLevel) || changed
+	changed = levels.EnsureEventLevel(mautrix.StateRoomName, newLevel) || changed
+	changed = levels.EnsureEventLevel(mautrix.StateRoomAvatar, newLevel) || changed
+	changed = levels.EnsureEventLevel(mautrix.StateTopic, newLevel) || changed
 	if changed {
 		_, err = portal.MainIntent().SetPowerLevels(portal.MXID, levels)
 		if err != nil {
@@ -469,17 +471,17 @@ func (portal *Portal) CreateMatrixRoom(invite []string) error {
 		isPrivateChat = true
 	}
 
-	resp, err := intent.CreateRoom(&gomatrix.ReqCreateRoom{
+	resp, err := intent.CreateRoom(&mautrix.ReqCreateRoom{
 		Visibility: "private",
 		Name:       name,
 		Topic:      topic,
 		Invite:     invite,
 		Preset:     "private_chat",
 		IsDirect:   isPrivateChat,
-		InitialState: []*gomatrix.Event{{
-			Type: gomatrix.StatePowerLevels,
-			Content: gomatrix.Content{
-				PowerLevels: *portal.GetBasePowerLevels(),
+		InitialState: []*mautrix.Event{{
+			Type: mautrix.StatePowerLevels,
+			Content: mautrix.Content{
+				PowerLevels: portal.GetBasePowerLevels(),
 			},
 		}},
 	})
@@ -525,7 +527,7 @@ func (portal *Portal) GetMessageIntent(user *User, info whatsapp.MessageInfo) *a
 	return portal.bridge.GetPuppetByJID(info.SenderJid).Intent()
 }
 
-func (portal *Portal) SetReply(content *gomatrix.Content, info whatsapp.MessageInfo) {
+func (portal *Portal) SetReply(content *mautrix.Content, info whatsapp.MessageInfo) {
 	if len(info.QuotedMessageID) == 0 {
 		return
 	}
@@ -559,16 +561,16 @@ func (portal *Portal) HandleTextMessage(source *User, message whatsapp.TextMessa
 		return
 	}
 
-	content := &gomatrix.Content{
+	content := &mautrix.Content{
 		Body:    message.Text,
-		MsgType: gomatrix.MsgText,
+		MsgType: mautrix.MsgText,
 	}
 
 	portal.bridge.Formatter.ParseWhatsApp(content)
 	portal.SetReply(content, message.Info)
 
 	intent.UserTyping(portal.MXID, false, 0)
-	resp, err := intent.SendMassagedMessageEvent(portal.MXID, gomatrix.EventMessage, content, int64(message.Info.Timestamp*1000))
+	resp, err := intent.SendMassagedMessageEvent(portal.MXID, mautrix.EventMessage, content, int64(message.Info.Timestamp*1000))
 	if err != nil {
 		portal.log.Errorfln("Failed to handle message %s: %v", message.Info.Id, err)
 		return
@@ -612,10 +614,10 @@ func (portal *Portal) HandleMediaMessage(source *User, download func() ([]byte, 
 		fileName += exts[0]
 	}
 
-	content := &gomatrix.Content{
+	content := &mautrix.Content{
 		Body: fileName,
 		URL:  uploaded.ContentURI,
-		Info: &gomatrix.FileInfo{
+		Info: &mautrix.FileInfo{
 			Size:     len(data),
 			MimeType: mimeType,
 		},
@@ -628,7 +630,7 @@ func (portal *Portal) HandleMediaMessage(source *User, download func() ([]byte, 
 		if uploadedThumbnail != nil {
 			content.Info.ThumbnailURL = uploadedThumbnail.ContentURI
 			cfg, _, _ := image.DecodeConfig(bytes.NewReader(data))
-			content.Info.ThumbnailInfo = &gomatrix.FileInfo{
+			content.Info.ThumbnailInfo = &mautrix.FileInfo{
 				Size:     len(thumbnail),
 				Width:    cfg.Width,
 				Height:   cfg.Height,
@@ -639,35 +641,35 @@ func (portal *Portal) HandleMediaMessage(source *User, download func() ([]byte, 
 
 	switch strings.ToLower(strings.Split(mimeType, "/")[0]) {
 	case "image":
-		content.MsgType = gomatrix.MsgImage
+		content.MsgType = mautrix.MsgImage
 		cfg, _, _ := image.DecodeConfig(bytes.NewReader(data))
 		content.Info.Width = cfg.Width
 		content.Info.Height = cfg.Height
 	case "video":
-		content.MsgType = gomatrix.MsgVideo
+		content.MsgType = mautrix.MsgVideo
 	case "audio":
-		content.MsgType = gomatrix.MsgAudio
+		content.MsgType = mautrix.MsgAudio
 	default:
-		content.MsgType = gomatrix.MsgFile
+		content.MsgType = mautrix.MsgFile
 	}
 
 	intent.UserTyping(portal.MXID, false, 0)
 	ts := int64(info.Timestamp * 1000)
-	resp, err := intent.SendMassagedMessageEvent(portal.MXID, gomatrix.EventMessage, content, ts)
+	resp, err := intent.SendMassagedMessageEvent(portal.MXID, mautrix.EventMessage, content, ts)
 	if err != nil {
 		portal.log.Errorfln("Failed to handle message %s: %v", info.Id, err)
 		return
 	}
 
 	if len(caption) > 0 {
-		captionContent := &gomatrix.Content{
+		captionContent := &mautrix.Content{
 			Body:    caption,
-			MsgType: gomatrix.MsgNotice,
+			MsgType: mautrix.MsgNotice,
 		}
 
 		portal.bridge.Formatter.ParseWhatsApp(captionContent)
 
-		_, err := intent.SendMassagedMessageEvent(portal.MXID, gomatrix.EventMessage, captionContent, ts)
+		_, err := intent.SendMassagedMessageEvent(portal.MXID, mautrix.EventMessage, captionContent, ts)
 		if err != nil {
 			portal.log.Warnfln("Failed to handle caption of message %s: %v", info.Id, err)
 		}
@@ -684,7 +686,7 @@ func makeMessageID() *string {
 	return &str
 }
 
-func (portal *Portal) downloadThumbnail(evt *gomatrix.Event) []byte {
+func (portal *Portal) downloadThumbnail(evt *mautrix.Event) []byte {
 	if evt.Content.Info == nil || len(evt.Content.Info.ThumbnailURL) == 0 {
 		return nil
 	}
@@ -717,9 +719,9 @@ func (portal *Portal) downloadThumbnail(evt *gomatrix.Event) []byte {
 	return buf.Bytes()
 }
 
-func (portal *Portal) preprocessMatrixMedia(sender *User, evt *gomatrix.Event, mediaType whatsapp.MediaType) *MediaUpload {
+func (portal *Portal) preprocessMatrixMedia(sender *User, evt *mautrix.Event, mediaType whatsapp.MediaType) *MediaUpload {
 	if evt.Content.Info == nil {
-		evt.Content.Info = &gomatrix.FileInfo{}
+		evt.Content.Info = &mautrix.FileInfo{}
 	}
 	caption := evt.Content.Body
 	exts, err := mime.ExtensionsByType(evt.Content.Info.MimeType)
@@ -762,7 +764,7 @@ type MediaUpload struct {
 	Thumbnail     []byte
 }
 
-func (portal *Portal) HandleMatrixMessage(sender *User, evt *gomatrix.Event) {
+func (portal *Portal) HandleMatrixMessage(sender *User, evt *mautrix.Event) {
 	if portal.IsPrivateChat() && sender.JID != portal.Key.Receiver {
 		return
 	}
@@ -793,12 +795,12 @@ func (portal *Portal) HandleMatrixMessage(sender *User, evt *gomatrix.Event) {
 	}
 	var err error
 	switch evt.Content.MsgType {
-	case gomatrix.MsgText, gomatrix.MsgEmote:
+	case mautrix.MsgText, mautrix.MsgEmote:
 		text := evt.Content.Body
-		if evt.Content.Format == gomatrix.FormatHTML {
+		if evt.Content.Format == mautrix.FormatHTML {
 			text = portal.bridge.Formatter.ParseMatrix(evt.Content.FormattedBody)
 		}
-		if evt.Content.MsgType == gomatrix.MsgEmote {
+		if evt.Content.MsgType == mautrix.MsgEmote {
 			text = "/me " + text
 		}
 		ctxInfo.MentionedJid = mentionRegex.FindAllString(text, -1)
@@ -813,7 +815,7 @@ func (portal *Portal) HandleMatrixMessage(sender *User, evt *gomatrix.Event) {
 		} else {
 			info.Message.Conversation = &text
 		}
-	case gomatrix.MsgImage:
+	case mautrix.MsgImage:
 		media := portal.preprocessMatrixMedia(sender, evt, whatsapp.MediaImage)
 		if media == nil {
 			return
@@ -828,7 +830,7 @@ func (portal *Portal) HandleMatrixMessage(sender *User, evt *gomatrix.Event) {
 			FileSha256:    media.FileSHA256,
 			FileLength:    &media.FileLength,
 		}
-	case gomatrix.MsgVideo:
+	case mautrix.MsgVideo:
 		media := portal.preprocessMatrixMedia(sender, evt, whatsapp.MediaVideo)
 		if media == nil {
 			return
@@ -845,7 +847,7 @@ func (portal *Portal) HandleMatrixMessage(sender *User, evt *gomatrix.Event) {
 			FileSha256:    media.FileSHA256,
 			FileLength:    &media.FileLength,
 		}
-	case gomatrix.MsgAudio:
+	case mautrix.MsgAudio:
 		media := portal.preprocessMatrixMedia(sender, evt, whatsapp.MediaAudio)
 		if media == nil {
 			return
@@ -860,7 +862,7 @@ func (portal *Portal) HandleMatrixMessage(sender *User, evt *gomatrix.Event) {
 			FileSha256:    media.FileSHA256,
 			FileLength:    &media.FileLength,
 		}
-	case gomatrix.MsgFile:
+	case mautrix.MsgFile:
 		media := portal.preprocessMatrixMedia(sender, evt, whatsapp.MediaDocument)
 		if media == nil {
 			return
