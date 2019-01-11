@@ -22,7 +22,8 @@ import (
 
 	"github.com/Rhymen/go-whatsapp"
 	"github.com/skip2/go-qrcode"
-	log "maunium.net/go/maulogger"
+	log "maunium.net/go/maulogger/v2"
+
 	"maunium.net/go/mautrix-whatsapp/database"
 	"maunium.net/go/mautrix-whatsapp/types"
 	"maunium.net/go/mautrix-whatsapp/whatsapp-ext"
@@ -61,7 +62,6 @@ func (bridge *Bridge) GetUserByMXID(userID types.MatrixUserID) *User {
 	}
 	return user
 }
-
 
 func (bridge *Bridge) GetUserByJID(userID types.WhatsAppID) *User {
 	bridge.usersLock.Lock()
@@ -106,9 +106,9 @@ func (bridge *Bridge) GetAllUsers() []*User {
 
 func (bridge *Bridge) NewUser(dbUser *database.User) *User {
 	user := &User{
-		User:          dbUser,
-		bridge:        bridge,
-		log:           bridge.Log.Sub("User").Sub(string(dbUser.MXID)),
+		User:   dbUser,
+		bridge: bridge,
+		log:    bridge.Log.Sub("User").Sub(string(dbUser.MXID)),
 	}
 	user.Whitelisted = user.bridge.Config.Bridge.Permissions.IsWhitelisted(user.MXID)
 	user.Admin = user.bridge.Config.Bridge.Permissions.IsAdmin(user.MXID)

@@ -21,7 +21,9 @@ import (
 	"strings"
 
 	"github.com/Rhymen/go-whatsapp"
-	log "maunium.net/go/maulogger"
+
+	log "maunium.net/go/maulogger/v2"
+
 	"maunium.net/go/mautrix-whatsapp/types"
 	"maunium.net/go/mautrix-whatsapp/whatsapp-ext"
 )

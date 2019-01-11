@@ -22,8 +22,9 @@ import (
 	"regexp"
 	"strings"
 
-	"maunium.net/go/gomatrix"
-	"maunium.net/go/gomatrix/format"
+	"maunium.net/go/mautrix"
+	"maunium.net/go/mautrix/format"
+
 	"maunium.net/go/mautrix-whatsapp/types"
 	"maunium.net/go/mautrix-whatsapp/whatsapp-ext"
 )
@@ -116,7 +117,7 @@ func (formatter *Formatter) getMatrixInfoByJID(jid types.WhatsAppID) (mxid, disp
 	return
 }
 
-func (formatter *Formatter) ParseWhatsApp(content *gomatrix.Content) {
+func (formatter *Formatter) ParseWhatsApp(content *mautrix.Content) {
 	output := html.EscapeString(content.Body)
 	for regex, replacement := range formatter.waReplString {
 		output = regex.ReplaceAllString(output, replacement)
@@ -126,7 +127,7 @@ func (formatter *Formatter) ParseWhatsApp(content *gomatrix.Content) {
 	}
 	if output != content.Body {
 		content.FormattedBody = output
-		content.Format = gomatrix.FormatHTML
+		content.Format = mautrix.FormatHTML
 		for regex, replacer := range formatter.waReplFuncText {
 			content.Body = regex.ReplaceAllStringFunc(content.Body, replacer)
 		}

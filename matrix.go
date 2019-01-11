@@ -19,9 +19,10 @@ package main
 import (
 	"strings"
 
-	"maunium.net/go/gomatrix"
-	"maunium.net/go/maulogger"
+	"maunium.net/go/maulogger/v2"
+	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix-appservice"
+
 	"maunium.net/go/mautrix-whatsapp/types"
 )
 
@@ -39,15 +40,15 @@ func NewMatrixHandler(bridge *Bridge) *MatrixHandler {
 		log:    bridge.Log.Sub("Matrix"),
 		cmd:    NewCommandHandler(bridge),
 	}
-	bridge.EventProcessor.On(gomatrix.EventMessage, handler.HandleMessage)
-	bridge.EventProcessor.On(gomatrix.StateMember, handler.HandleMembership)
-	bridge.EventProcessor.On(gomatrix.StateRoomName, handler.HandleRoomMetadata)
-	bridge.EventProcessor.On(gomatrix.StateRoomAvatar, handler.HandleRoomMetadata)
-	bridge.EventProcessor.On(gomatrix.StateTopic, handler.HandleRoomMetadata)
+	bridge.EventProcessor.On(mautrix.EventMessage, handler.HandleMessage)
+	bridge.EventProcessor.On(mautrix.StateMember, handler.HandleMembership)
+	bridge.EventProcessor.On(mautrix.StateRoomName, handler.HandleRoomMetadata)
+	bridge.EventProcessor.On(mautrix.StateRoomAvatar, handler.HandleRoomMetadata)
+	bridge.EventProcessor.On(mautrix.StateTopic, handler.HandleRoomMetadata)
 	return handler
 }
 
-func (mx *MatrixHandler) HandleBotInvite(evt *gomatrix.Event) {
+func (mx *MatrixHandler) HandleBotInvite(evt *mautrix.Event) {
 	intent := mx.as.BotIntent()
 
 	user := mx.bridge.GetUserByMXID(evt.Sender)
@@ -103,13 +104,13 @@ func (mx *MatrixHandler) HandleBotInvite(evt *gomatrix.Event) {
 	}
 }
 
-func (mx *MatrixHandler) HandleMembership(evt *gomatrix.Event) {
+func (mx *MatrixHandler) HandleMembership(evt *mautrix.Event) {
 	if evt.Content.Membership == "invite" && evt.GetStateKey() == mx.as.BotMXID() {
 		mx.HandleBotInvite(evt)
 	}
 }
 
-func (mx *MatrixHandler) HandleRoomMetadata(evt *gomatrix.Event) {
+func (mx *MatrixHandler) HandleRoomMetadata(evt *mautrix.Event) {
 	user := mx.bridge.GetUserByMXID(types.MatrixUserID(evt.Sender))
 	if user == nil || !user.Whitelisted || !user.IsLoggedIn() {
 		return
@@ -123,11 +124,11 @@ func (mx *MatrixHandler) HandleRoomMetadata(evt *gomatrix.Event) {
 	var resp <-chan string
 	var err error
 	switch evt.Type {
-	case gomatrix.StateRoomName:
+	case mautrix.StateRoomName:
 		resp, err = user.Conn.UpdateGroupSubject(evt.Content.Name, portal.Key.JID)
-	case gomatrix.StateRoomAvatar:
+	case mautrix.StateRoomAvatar:
 		return
-	case gomatrix.StateTopic:
+	case mautrix.StateTopic:
 		return
 	}
 	if err != nil {
@@ -138,7 +139,7 @@ func (mx *MatrixHandler) HandleRoomMetadata(evt *gomatrix.Event) {
 	}
 }
 
-func (mx *MatrixHandler) HandleMessage(evt *gomatrix.Event) {
+func (mx *MatrixHandler) HandleMessage(evt *mautrix.Event) {
 	if _, isPuppet := mx.bridge.ParsePuppetMXID(evt.Sender); evt.Sender == mx.bridge.Bot.UserID || isPuppet {
 		return
 	}
@@ -150,7 +151,7 @@ func (mx *MatrixHandler) HandleMessage(evt *gomatrix.Event) {
 		return
 	}
 
-	if evt.Content.MsgType == gomatrix.MsgText {
+	if evt.Content.MsgType == mautrix.MsgText {
 		commandPrefix := mx.bridge.Config.Bridge.CommandPrefix
 		hasCommandPrefix := strings.HasPrefix(evt.Content.Body, commandPrefix)
 		if hasCommandPrefix {

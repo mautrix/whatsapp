@@ -22,7 +22,9 @@ import (
 	"encoding/json"
 
 	waProto "github.com/Rhymen/go-whatsapp/binary/proto"
-	log "maunium.net/go/maulogger"
+
+	log "maunium.net/go/maulogger/v2"
+
 	"maunium.net/go/mautrix-whatsapp/types"
 )
 

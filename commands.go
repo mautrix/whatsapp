@@ -20,8 +20,10 @@ import (
 	"strings"
 
 	"github.com/Rhymen/go-whatsapp"
-	"maunium.net/go/maulogger"
+
+	"maunium.net/go/maulogger/v2"
 	"maunium.net/go/mautrix-appservice"
+
 	"maunium.net/go/mautrix-whatsapp/database"
 	"maunium.net/go/mautrix-whatsapp/types"
 	"maunium.net/go/mautrix-whatsapp/whatsapp-ext"

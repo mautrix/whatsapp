@@ -19,7 +19,8 @@ package database
 import (
 	"database/sql"
 
-	log "maunium.net/go/maulogger"
+	log "maunium.net/go/maulogger/v2"
+
 	"maunium.net/go/mautrix-whatsapp/types"
 )
 
