@@ -1,11 +1,15 @@
 #!/bin/sh
 
+if [[ -z "$GID" ]]; then
+	GID="$UID"
+fi
+
 # Define functions.
 function fixperms {
 	chown -R $UID:$GID /data /opt/mautrix-whatsapp
 }
 
-if [ ! -f /data/config.yaml ]; then
+if [[ ! -f /data/config.yaml ]]; then
 	cp /opt/mautrix-whatsapp/example-config.yaml /data/config.yaml
 	echo "Didn't find a config file."
 	echo "Copied default config file to /data/config.yaml"
@@ -14,7 +18,7 @@ if [ ! -f /data/config.yaml ]; then
 	exit
 fi
 
-if [ ! -f /data/registration.yaml ]; then
+if [[ ! -f /data/registration.yaml ]]; then
 	/usr/bin/mautrix-whatsapp -g -c /data/config.yaml -r /data/registration.yaml
 	echo "Didn't find a registration file."
 	echo "Generated one for you."
