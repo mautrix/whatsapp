@@ -131,7 +131,7 @@ func (puppet *Puppet) UpdateAvatar(source *User, avatar *whatsappExt.ProfilePicI
 		var err error
 		avatar, err = source.Conn.GetProfilePicThumb(puppet.JID)
 		if err != nil {
-			puppet.log.Errorln(err)
+			puppet.log.Warnln("Failed to get avatar:", err)
 			return false
 		}
 	}
@@ -141,31 +141,40 @@ func (puppet *Puppet) UpdateAvatar(source *User, avatar *whatsappExt.ProfilePicI
 	}
 
 	if len(avatar.URL) == 0 {
-		puppet.Intent().SetAvatarURL("")
+		err := puppet.Intent().SetAvatarURL("")
+		if err != nil {
+			puppet.log.Warnln("Failed to remove avatar:", err)
+		}
 		puppet.Avatar = avatar.Tag
 		return true
 	}
 
 	data, err := avatar.DownloadBytes()
 	if err != nil {
-		puppet.log.Errorln("Failed to download avatar:", err)
+		puppet.log.Warnln("Failed to download avatar:", err)
 		return false
 	}
 
 	mime := http.DetectContentType(data)
 	resp, err := puppet.Intent().UploadBytes(data, mime)
 	if err != nil {
-		puppet.log.Errorln("Failed to upload avatar:", err)
+		puppet.log.Warnln("Failed to upload avatar:", err)
 		return false
 	}
 
-	puppet.Intent().SetAvatarURL(resp.ContentURI)
+	err = puppet.Intent().SetAvatarURL(resp.ContentURI)
+	if err != nil {
+		puppet.log.Warnln("Failed to set avatar:", err)
+	}
 	puppet.Avatar = avatar.Tag
 	return true
 }
 
 func (puppet *Puppet) Sync(source *User, contact whatsapp.Contact) {
-	puppet.Intent().EnsureRegistered()
+	err := puppet.Intent().EnsureRegistered()
+	if err != nil {
+		puppet.log.Errorln("Failed to ensure registered:", err)
+	}
 
 	if contact.Jid == source.JID {
 		contact.Notify = source.Conn.Info.Pushname

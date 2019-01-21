@@ -192,7 +192,10 @@ func (user *User) Login(roomID types.MatrixRoomID) {
 			return
 		}
 
-		bot.SendImage(roomID, string(code), resp.ContentURI)
+		_, err = bot.SendImage(roomID, string(code), resp.ContentURI)
+		if err != nil {
+			user.log.Errorln("Failed to send QR code to user:", err)
+		}
 	}()
 	session, err := user.Conn.Login(qrChan)
 	if err != nil {
@@ -204,7 +207,10 @@ func (user *User) Login(roomID types.MatrixRoomID) {
 	user.JID = strings.Replace(user.Conn.Info.Wid, whatsappExt.OldUserSuffix, whatsappExt.NewUserSuffix, 1)
 	user.Session = &session
 	user.Update()
-	bot.SendNotice(roomID, "Successfully logged in. Now, you may ask for `import contacts`.")
+	_, err = bot.SendNotice(roomID, "Successfully logged in. Now, you may ask for `import contacts`.")
+	if err != nil {
+		user.log.Warnln("Failed to send login confirmation to user:", err)
+	}
 }
 
 func (user *User) HandleError(err error) {

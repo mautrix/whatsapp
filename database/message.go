@@ -129,10 +129,9 @@ func (msg *Message) encodeBinaryContent() []byte {
 	return buf.Bytes()
 }
 
-func (msg *Message) Insert() error {
+func (msg *Message) Insert() {
 	_, err := msg.db.Exec("INSERT INTO message VALUES (?, ?, ?, ?, ?, ?)", msg.Chat.JID, msg.Chat.Receiver, msg.JID, msg.MXID, msg.Sender, msg.encodeBinaryContent())
 	if err != nil {
 		msg.log.Warnfln("Failed to insert %s@%s: %v", msg.Chat, msg.JID, err)
 	}
-	return err
 }

@@ -142,16 +142,15 @@ func (portal *Portal) mxidPtr() *string {
 	return nil
 }
 
-func (portal *Portal) Insert() error {
+func (portal *Portal) Insert() {
 	_, err := portal.db.Exec("INSERT INTO portal VALUES (?, ?, ?, ?, ?, ?)",
 		portal.Key.JID, portal.Key.Receiver, portal.mxidPtr(), portal.Name, portal.Topic, portal.Avatar)
 	if err != nil {
 		portal.log.Warnfln("Failed to insert %s: %v", portal.Key, err)
 	}
-	return err
 }
 
-func (portal *Portal) Update() error {
+func (portal *Portal) Update() {
 	var mxid *string
 	if len(portal.MXID) > 0 {
 		mxid = &portal.MXID
@@ -161,5 +160,4 @@ func (portal *Portal) Update() error {
 	if err != nil {
 		portal.log.Warnfln("Failed to update %s: %v", portal.Key, err)
 	}
-	return err
 }
