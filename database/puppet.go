@@ -92,20 +92,18 @@ func (puppet *Puppet) Scan(row Scannable) *Puppet {
 	return puppet
 }
 
-func (puppet *Puppet) Insert() error {
+func (puppet *Puppet) Insert() {
 	_, err := puppet.db.Exec("INSERT INTO puppet VALUES (?, ?, ?, ?)",
 		puppet.JID, puppet.Avatar, puppet.Displayname, puppet.NameQuality)
 	if err != nil {
 		puppet.log.Warnfln("Failed to insert %s: %v", puppet.JID, err)
 	}
-	return err
 }
 
-func (puppet *Puppet) Update() error {
+func (puppet *Puppet) Update() {
 	_, err := puppet.db.Exec("UPDATE puppet SET displayname=?, name_quality=?, avatar=? WHERE jid=?",
 		puppet.Displayname, puppet.NameQuality, puppet.Avatar, puppet.JID)
 	if err != nil {
 		puppet.log.Warnfln("Failed to update %s->%s: %v", puppet.JID, err)
 	}
-	return err
 }

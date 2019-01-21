@@ -222,13 +222,19 @@ func (portal *Portal) SyncParticipants(metadata *whatsappExt.GroupInfo) {
 	}
 	for _, participant := range metadata.Participants {
 		puppet := portal.bridge.GetPuppetByJID(participant.JID)
-		puppet.Intent().EnsureJoined(portal.MXID)
+		err := puppet.Intent().EnsureJoined(portal.MXID)
+		if err != nil {
+			portal.log.Warnfln("Failed to make puppet of %s join %s: %v", participant.JID, portal.MXID, err)
+		}
 
 		user := portal.bridge.GetUserByJID(participant.JID)
 		if user != nil && !portal.bridge.AS.StateStore.IsInvited(portal.MXID, user.MXID) {
-			portal.MainIntent().InviteUser(portal.MXID, &mautrix.ReqInviteUser{
+			_, err = portal.MainIntent().InviteUser(portal.MXID, &mautrix.ReqInviteUser{
 				UserID: user.MXID,
 			})
+			if err != nil {
+				portal.log.Warnfln("Failed to invite %s to %s: %v", user.MXID, portal.MXID, err)
+			}
 		}
 
 		expectedLevel := 0
@@ -272,14 +278,14 @@ func (portal *Portal) UpdateAvatar(user *User, avatar *whatsappExt.ProfilePicInf
 
 	data, err := avatar.DownloadBytes()
 	if err != nil {
-		portal.log.Errorln("Failed to download avatar:", err)
+		portal.log.Warnln("Failed to download avatar:", err)
 		return false
 	}
 
 	mimeType := http.DetectContentType(data)
 	resp, err := portal.MainIntent().UploadBytes(data, mimeType)
 	if err != nil {
-		portal.log.Errorln("Failed to upload avatar:", err)
+		portal.log.Warnln("Failed to upload avatar:", err)
 		return false
 	}
 
@@ -354,7 +360,10 @@ func (portal *Portal) Sync(user *User, contact whatsapp.Contact) {
 			return
 		}
 	} else {
-		portal.MainIntent().EnsureInvited(portal.MXID, user.MXID)
+		err := portal.MainIntent().EnsureInvited(portal.MXID, user.MXID)
+		if err != nil {
+			portal.log.Warnfln("Failed to ensure %s is invited to %s: %v", user.MXID, portal.MXID, err)
+		}
 	}
 
 	update := false
@@ -569,7 +578,7 @@ func (portal *Portal) HandleTextMessage(source *User, message whatsapp.TextMessa
 	portal.bridge.Formatter.ParseWhatsApp(content)
 	portal.SetReply(content, message.Info)
 
-	intent.UserTyping(portal.MXID, false, 0)
+	_, _ = intent.UserTyping(portal.MXID, false, 0)
 	resp, err := intent.SendMassagedMessageEvent(portal.MXID, mautrix.EventMessage, content, int64(message.Info.Timestamp*1000))
 	if err != nil {
 		portal.log.Errorfln("Failed to handle message %s: %v", message.Info.Id, err)
@@ -653,7 +662,7 @@ func (portal *Portal) HandleMediaMessage(source *User, download func() ([]byte, 
 		content.MsgType = mautrix.MsgFile
 	}
 
-	intent.UserTyping(portal.MXID, false, 0)
+	_, _ = intent.UserTyping(portal.MXID, false, 0)
 	ts := int64(info.Timestamp * 1000)
 	resp, err := intent.SendMassagedMessageEvent(portal.MXID, mautrix.EventMessage, content, ts)
 	if err != nil {
@@ -768,6 +777,7 @@ func (portal *Portal) HandleMatrixMessage(sender *User, evt *mautrix.Event) {
 	if portal.IsPrivateChat() && sender.JID != portal.Key.Receiver {
 		return
 	}
+	portal.log.Debugfln("Received event %s", evt.ID)
 
 	ts := uint64(evt.Timestamp / 1000)
 	status := waProto.WebMessageInfo_ERROR
@@ -880,6 +890,7 @@ func (portal *Portal) HandleMatrixMessage(sender *User, evt *mautrix.Event) {
 		return
 	}
 	portal.markHandled(sender, info, evt.ID)
+	portal.log.Debugln("Sending event", evt.ID, "to WhatsApp")
 	err = sender.Conn.Send(info)
 	if err != nil {
 		portal.log.Errorfln("Error handling Matrix event %s: %v", evt.ID, err)

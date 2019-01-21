@@ -148,7 +148,7 @@ func (user *User) sessionUnptr() (sess whatsapp.Session) {
 	return
 }
 
-func (user *User) Insert() error {
+func (user *User) Insert() {
 	sess := user.sessionUnptr()
 	_, err := user.db.Exec("INSERT INTO user VALUES (?, ?, ?, ?, ?, ?, ?, ?)", user.MXID, user.jidPtr(),
 		user.ManagementRoom,
@@ -156,10 +156,9 @@ func (user *User) Insert() error {
 	if err != nil {
 		user.log.Warnfln("Failed to insert %s: %v", user.MXID, err)
 	}
-	return err
 }
 
-func (user *User) Update() error {
+func (user *User) Update() {
 	sess := user.sessionUnptr()
 	_, err := user.db.Exec("UPDATE user SET jid=?, management_room=?, client_id=?, client_token=?, server_token=?, enc_key=?, mac_key=? WHERE mxid=?",
 		user.jidPtr(), user.ManagementRoom,
@@ -168,5 +167,4 @@ func (user *User) Update() error {
 	if err != nil {
 		user.log.Warnfln("Failed to update %s: %v", user.MXID, err)
 	}
-	return err
 }
