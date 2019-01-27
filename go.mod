@@ -14,7 +14,3 @@ require (
 	maunium.net/go/mautrix v0.1.0-alpha.3
 	maunium.net/go/mautrix-appservice v0.1.0-alpha.3
 )
-
-replace maunium.net/go/mautrix => ../mautrix-go
-
-replace maunium.net/go/mautrix-appservice => ../mautrix-appservice-go
