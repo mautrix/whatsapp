@@ -17,8 +17,8 @@ ENV UID=1337 \
 RUN apk add --no-cache su-exec ca-certificates
 
 COPY --from=builder /usr/bin/mautrix-whatsapp /usr/bin/mautrix-whatsapp
-COPY --from=builder /go/src/maunium.net/go/mautrix-whatsapp/example-config.yaml /opt/mautrix-whatsapp/example-config.yaml
-COPY --from=builder /go/src/maunium.net/go/mautrix-whatsapp/docker-run.sh /docker-run.sh
+COPY --from=builder /build/example-config.yaml /opt/mautrix-whatsapp/example-config.yaml
+COPY --from=builder /build/docker-run.sh /docker-run.sh
 VOLUME /data
 
 CMD ["/docker-run.sh"]
