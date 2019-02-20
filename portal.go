@@ -547,6 +547,7 @@ func (portal *Portal) SetReply(content *mautrix.Content, info whatsapp.MessageIn
 			portal.log.Warnln("Failed to get reply target:", err)
 			return
 		}
+		event.Content.RemoveReplyFallback()
 		content.SetReply(event)
 	}
 	return
