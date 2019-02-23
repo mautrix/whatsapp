@@ -14,5 +14,3 @@ require (
 	maunium.net/go/mautrix v0.1.0-alpha.3
 	maunium.net/go/mautrix-appservice v0.1.0-alpha.3
 )
-
-replace github.com/Rhymen/go-whatsapp => github.com/tulir/go-whatsapp v0.0.0-20190220151401-7a3b343b9c6a
