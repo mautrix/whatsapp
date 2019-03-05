@@ -207,7 +207,7 @@ func (user *User) Login(roomID types.MatrixRoomID) {
 	user.JID = strings.Replace(user.Conn.Info.Wid, whatsappExt.OldUserSuffix, whatsappExt.NewUserSuffix, 1)
 	user.Session = &session
 	user.Update()
-	_, err = bot.SendNotice(roomID, "Successfully logged in. Now, you may ask for `import contacts`.")
+	_, err = bot.SendNotice(roomID, "Successfully logged in. Now, you may ask for `sync [--create]`.")
 	if err != nil {
 		user.log.Warnln("Failed to send login confirmation to user:", err)
 	}
