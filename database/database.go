@@ -19,7 +19,7 @@ package database
 import (
 	"database/sql"
 
-	_ "github.com/mattn/go-sqlite3"
+	_ "github.com/lib/pq"
 
 	log "maunium.net/go/maulogger/v2"
 )
@@ -35,7 +35,8 @@ type Database struct {
 }
 
 func New(file string) (*Database, error) {
-	conn, err := sql.Open("sqlite3", file)
+  connStr := "postgres://synapse:changeme@db/whatsapp?sslmode=disable"
+	conn, err := sql.Open("postgres", connStr)
 	if err != nil {
 		return nil, err
 	}
