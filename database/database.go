@@ -63,20 +63,20 @@ func New(dbType string, uri string) (*Database, error) {
 	return db, nil
 }
 
-func (db *Database) CreateTables() error {
-	err := db.User.CreateTable()
+func (db *Database) CreateTables(dbType string) error {
+	err := db.User.CreateTable(dbType)
 	if err != nil {
 		return err
 	}
-	err = db.Portal.CreateTable()
+	err = db.Portal.CreateTable(dbType)
 	if err != nil {
 		return err
 	}
-	err = db.Puppet.CreateTable()
+	err = db.Puppet.CreateTable(dbType)
 	if err != nil {
 		return err
 	}
-	err = db.Message.CreateTable()
+	err = db.Message.CreateTable(dbType)
 	if err != nil {
 		return err
 	}
