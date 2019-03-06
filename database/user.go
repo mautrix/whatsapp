@@ -34,7 +34,7 @@ type UserQuery struct {
 }
 
 func (uq *UserQuery) CreateTable() error {
-	_, err := uq.db.Exec(`CREATE TABLE IF NOT EXISTS user (
+	_, err := uq.db.Exec(`CREATE TABLE IF NOT EXISTS whatsapp_user (
 		mxid VARCHAR(255) PRIMARY KEY,
 		jid  VARCHAR(25)  UNIQUE,
 
@@ -43,8 +43,8 @@ func (uq *UserQuery) CreateTable() error {
 		client_id    VARCHAR(255),
 		client_token VARCHAR(255),
 		server_token VARCHAR(255),
-		enc_key      BLOB,
-		mac_key      BLOB
+		enc_key      bytea,
+		mac_key      bytea
 	)`)
 	return err
 }
@@ -57,7 +57,7 @@ func (uq *UserQuery) New() *User {
 }
 
 func (uq *UserQuery) GetAll() (users []*User) {
-	rows, err := uq.db.Query("SELECT * FROM user")
+	rows, err := uq.db.Query("SELECT * FROM whatsapp_user")
 	if err != nil || rows == nil {
 		return nil
 	}
@@ -69,7 +69,7 @@ func (uq *UserQuery) GetAll() (users []*User) {
 }
 
 func (uq *UserQuery) GetByMXID(userID types.MatrixUserID) *User {
-	row := uq.db.QueryRow("SELECT * FROM user WHERE mxid=?", userID)
+	row := uq.db.QueryRow("SELECT * FROM whatsapp_user WHERE mxid=?", userID)
 	if row == nil {
 		return nil
 	}
@@ -77,7 +77,7 @@ func (uq *UserQuery) GetByMXID(userID types.MatrixUserID) *User {
 }
 
 func (uq *UserQuery) GetByJID(userID types.WhatsAppID) *User {
-	row := uq.db.QueryRow("SELECT * FROM user WHERE jid=?", stripSuffix(userID))
+	row := uq.db.QueryRow("SELECT * FROM whatsapp_user WHERE jid=?", stripSuffix(userID))
 	if row == nil {
 		return nil
 	}
@@ -150,7 +150,7 @@ func (user *User) sessionUnptr() (sess whatsapp.Session) {
 
 func (user *User) Insert() {
 	sess := user.sessionUnptr()
-	_, err := user.db.Exec("INSERT INTO user VALUES (?, ?, ?, ?, ?, ?, ?, ?)", user.MXID, user.jidPtr(),
+	_, err := user.db.Exec("INSERT INTO whatsapp_user VALUES (?, ?, ?, ?, ?, ?, ?, ?)", user.MXID, user.jidPtr(),
 		user.ManagementRoom,
 		sess.ClientId, sess.ClientToken, sess.ServerToken, sess.EncKey, sess.MacKey)
 	if err != nil {
@@ -160,7 +160,7 @@ func (user *User) Insert() {
 
 func (user *User) Update() {
 	sess := user.sessionUnptr()
-	_, err := user.db.Exec("UPDATE user SET jid=?, management_room=?, client_id=?, client_token=?, server_token=?, enc_key=?, mac_key=? WHERE mxid=?",
+	_, err := user.db.Exec("UPDATE whatsapp_user SET jid=?, management_room=?, client_id=?, client_token=?, server_token=?, enc_key=?, mac_key=? WHERE mxid=?",
 		user.jidPtr(), user.ManagementRoom,
 		sess.ClientId, sess.ClientToken, sess.ServerToken, sess.EncKey, sess.MacKey,
 		user.MXID)

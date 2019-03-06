@@ -70,7 +70,7 @@ func (pq *PortalQuery) CreateTable() error {
 		avatar VARCHAR(255) NOT NULL,
 
 		PRIMARY KEY (jid, receiver),
-		FOREIGN KEY (receiver) REFERENCES user(mxid)
+		FOREIGN KEY (receiver) REFERENCES whatsapp_user(mxid)
 	)`)
 	return err
 }

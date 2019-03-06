@@ -34,7 +34,7 @@ func (pq *PuppetQuery) CreateTable() error {
 		jid          VARCHAR(25) PRIMARY KEY,
 		avatar       VARCHAR(255),
 		displayname  VARCHAR(255),
-		name_quality TINYINT
+		name_quality SMALLINT
 	)`)
 	return err
 }
