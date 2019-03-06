@@ -35,7 +35,7 @@ type UserQuery struct {
 
 func (uq *UserQuery) CreateTable(dbType string) error {
 	if strings.ToLower(dbType) == "postgres" {
-		_, err := uq.db.Exec(`CREATE TABLE IF NOT EXISTS whatsapp_user (
+		_, err := uq.db.Exec(`CREATE TABLE IF NOT EXISTS "user" (
 			mxid VARCHAR(255) PRIMARY KEY,
 			jid  VARCHAR(255)  UNIQUE,
 
@@ -49,7 +49,7 @@ func (uq *UserQuery) CreateTable(dbType string) error {
 		)`)
 		return err
 	} else {
-		_, err := uq.db.Exec(`CREATE TABLE IF NOT EXISTS whatsapp_user (
+		_, err := uq.db.Exec(`CREATE TABLE IF NOT EXISTS "user" (
 			mxid VARCHAR(255) PRIMARY KEY,
 			jid  VARCHAR(255)  UNIQUE,
 
@@ -61,7 +61,7 @@ func (uq *UserQuery) CreateTable(dbType string) error {
 			enc_key      BLOB,
 			mac_key      BLOB
 		)`)
-		return err		
+		return err
 	}
 }
 
@@ -73,7 +73,7 @@ func (uq *UserQuery) New() *User {
 }
 
 func (uq *UserQuery) GetAll() (users []*User) {
-	rows, err := uq.db.Query("SELECT * FROM whatsapp_user")
+	rows, err := uq.db.Query(`SELECT * FROM "user"`)
 	if err != nil || rows == nil {
 		return nil
 	}
@@ -85,7 +85,7 @@ func (uq *UserQuery) GetAll() (users []*User) {
 }
 
 func (uq *UserQuery) GetByMXID(userID types.MatrixUserID) *User {
-	row := uq.db.QueryRow("SELECT * FROM whatsapp_user WHERE mxid=$1", userID)
+	row := uq.db.QueryRow(`SELECT * FROM "user" WHERE mxid=$1`, userID)
 	if row == nil {
 		return nil
 	}
@@ -93,7 +93,7 @@ func (uq *UserQuery) GetByMXID(userID types.MatrixUserID) *User {
 }
 
 func (uq *UserQuery) GetByJID(userID types.WhatsAppID) *User {
-	row := uq.db.QueryRow("SELECT * FROM whatsapp_user WHERE jid=$1", stripSuffix(userID))
+	row := uq.db.QueryRow(`SELECT * FROM "user" WHERE jid=$1`, stripSuffix(userID))
 	if row == nil {
 		return nil
 	}
@@ -166,7 +166,7 @@ func (user *User) sessionUnptr() (sess whatsapp.Session) {
 
 func (user *User) Insert() {
 	sess := user.sessionUnptr()
-	_, err := user.db.Exec("INSERT INTO whatsapp_user VALUES ($1, $2, $3, $4, $5, $6, $7, $8)", user.MXID, user.jidPtr(),
+	_, err := user.db.Exec(`INSERT INTO "user" VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`, user.MXID, user.jidPtr(),
 		user.ManagementRoom,
 		sess.ClientId, sess.ClientToken, sess.ServerToken, sess.EncKey, sess.MacKey)
 	if err != nil {
@@ -176,7 +176,7 @@ func (user *User) Insert() {
 
 func (user *User) Update() {
 	sess := user.sessionUnptr()
-	_, err := user.db.Exec("UPDATE whatsapp_user SET jid=$1, management_room=$2, client_id=$3, client_token=$4, server_token=$5, enc_key=$6, mac_key=$7 WHERE mxid=$8",
+	_, err := user.db.Exec(`UPDATE "user" SET jid=$1, management_room=$2, client_id=$3, client_token=$4, server_token=$5, enc_key=$6, mac_key=$7 WHERE mxid=$8`,
 		user.jidPtr(), user.ManagementRoom,
 		sess.ClientId, sess.ClientToken, sess.ServerToken, sess.EncKey, sess.MacKey,
 		user.MXID)
