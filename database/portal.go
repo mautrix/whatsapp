@@ -59,7 +59,7 @@ type PortalQuery struct {
 	log log.Logger
 }
 
-func (pq *PortalQuery) CreateTable() error {
+func (pq *PortalQuery) CreateTable(dbType string) error {
 	_, err := pq.db.Exec(`CREATE TABLE IF NOT EXISTS portal (
 		jid      VARCHAR(255),
 		receiver VARCHAR(255),
