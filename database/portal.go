@@ -61,16 +61,15 @@ type PortalQuery struct {
 
 func (pq *PortalQuery) CreateTable() error {
 	_, err := pq.db.Exec(`CREATE TABLE IF NOT EXISTS portal (
-		jid      VARCHAR(25),
-		receiver VARCHAR(25),
+		jid      VARCHAR(255),
+		receiver VARCHAR(255),
 		mxid     VARCHAR(255) UNIQUE,
 
 		name   VARCHAR(255) NOT NULL,
 		topic  VARCHAR(255) NOT NULL,
 		avatar VARCHAR(255) NOT NULL,
 
-		PRIMARY KEY (jid, receiver),
-		FOREIGN KEY (receiver) REFERENCES whatsapp_user(mxid)
+		PRIMARY KEY (jid, receiver)
 	)`)
 	return err
 }
@@ -95,11 +94,11 @@ func (pq *PortalQuery) GetAll() (portals []*Portal) {
 }
 
 func (pq *PortalQuery) GetByJID(key PortalKey) *Portal {
-	return pq.get("SELECT * FROM portal WHERE jid=? AND receiver=?", key.JID, key.Receiver)
+	return pq.get("SELECT * FROM portal WHERE jid=$1 AND receiver=$2", key.JID, key.Receiver)
 }
 
 func (pq *PortalQuery) GetByMXID(mxid types.MatrixRoomID) *Portal {
-	return pq.get("SELECT * FROM portal WHERE mxid=?", mxid)
+	return pq.get("SELECT * FROM portal WHERE mxid=$1", mxid)
 }
 
 func (pq *PortalQuery) get(query string, args ...interface{}) *Portal {
@@ -143,7 +142,7 @@ func (portal *Portal) mxidPtr() *string {
 }
 
 func (portal *Portal) Insert() {
-	_, err := portal.db.Exec("INSERT INTO portal VALUES (?, ?, ?, ?, ?, ?)",
+	_, err := portal.db.Exec("INSERT INTO portal VALUES ($1, $2, $3, $4, $5, $6)",
 		portal.Key.JID, portal.Key.Receiver, portal.mxidPtr(), portal.Name, portal.Topic, portal.Avatar)
 	if err != nil {
 		portal.log.Warnfln("Failed to insert %s: %v", portal.Key, err)
@@ -155,7 +154,7 @@ func (portal *Portal) Update() {
 	if len(portal.MXID) > 0 {
 		mxid = &portal.MXID
 	}
-	_, err := portal.db.Exec("UPDATE portal SET mxid=?, name=?, topic=?, avatar=? WHERE jid=? AND receiver=?",
+	_, err := portal.db.Exec("UPDATE portal SET mxid=$1, name=$2, topic=$3, avatar=$4 WHERE jid=$5 AND receiver=$6",
 		mxid, portal.Name, portal.Topic, portal.Avatar, portal.Key.JID, portal.Key.Receiver)
 	if err != nil {
 		portal.log.Warnfln("Failed to update %s: %v", portal.Key, err)
