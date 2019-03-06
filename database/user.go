@@ -34,19 +34,35 @@ type UserQuery struct {
 }
 
 func (uq *UserQuery) CreateTable(dbType string) error {
-	_, err := uq.db.Exec(`CREATE TABLE IF NOT EXISTS whatsapp_user (
-		mxid VARCHAR(255) PRIMARY KEY,
-		jid  VARCHAR(255)  UNIQUE,
+	if strings.ToLower(dbType) == "postgres" {
+		_, err := uq.db.Exec(`CREATE TABLE IF NOT EXISTS whatsapp_user (
+			mxid VARCHAR(255) PRIMARY KEY,
+			jid  VARCHAR(255)  UNIQUE,
 
-		management_room VARCHAR(255),
+			management_room VARCHAR(255),
 
-		client_id    VARCHAR(255),
-		client_token VARCHAR(255),
-		server_token VARCHAR(255),
-		enc_key      bytea,
-		mac_key      bytea
-	)`)
-	return err
+			client_id    VARCHAR(255),
+			client_token VARCHAR(255),
+			server_token VARCHAR(255),
+			enc_key      bytea,
+			mac_key      bytea
+		)`)
+		return err
+	} else {
+		_, err := uq.db.Exec(`CREATE TABLE IF NOT EXISTS whatsapp_user (
+			mxid VARCHAR(255) PRIMARY KEY,
+			jid  VARCHAR(255)  UNIQUE,
+
+			management_room VARCHAR(255),
+
+			client_id    VARCHAR(255),
+			client_token VARCHAR(255),
+			server_token VARCHAR(255),
+			enc_key      BLOB,
+			mac_key      BLOB
+		)`)
+		return err		
+	}
 }
 
 func (uq *UserQuery) New() *User {
