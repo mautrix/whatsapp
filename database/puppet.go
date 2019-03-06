@@ -29,7 +29,7 @@ type PuppetQuery struct {
 	log log.Logger
 }
 
-func (pq *PuppetQuery) CreateTable() error {
+func (pq *PuppetQuery) CreateTable(dbType string) error {
 	_, err := pq.db.Exec(`CREATE TABLE IF NOT EXISTS puppet (
 		jid          VARCHAR(255) PRIMARY KEY,
 		avatar       VARCHAR(255),
