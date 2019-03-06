@@ -34,8 +34,8 @@ type Database struct {
 	Message *MessageQuery
 }
 
-func New(file string) (*Database, error) {
-	conn, err := sql.Open("postgres", file)
+func New(dbType string, uri string) (*Database, error) {
+	conn, err := sql.Open(dbType, uri)
 	if err != nil {
 		return nil, err
 	}
