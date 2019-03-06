@@ -33,7 +33,7 @@ type MessageQuery struct {
 	log log.Logger
 }
 
-func (mq *MessageQuery) CreateTable() error {
+func (mq *MessageQuery) CreateTable(dbType string) error {
 	_, err := mq.db.Exec(`CREATE TABLE IF NOT EXISTS message (
 		chat_jid      VARCHAR(255),
 		chat_receiver VARCHAR(255),
