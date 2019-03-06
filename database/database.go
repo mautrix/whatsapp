@@ -35,8 +35,7 @@ type Database struct {
 }
 
 func New(file string) (*Database, error) {
-  connStr := "postgres://synapse:changeme@db/whatsapp?sslmode=disable"
-	conn, err := sql.Open("postgres", connStr)
+	conn, err := sql.Open("postgres", file)
 	if err != nil {
 		return nil, err
 	}
