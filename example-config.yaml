@@ -20,6 +20,7 @@ appservice:
     # The database type. Only "sqlite3" is supported.
     type: sqlite3
     # The database URI. Usually file name. https://github.com/mattn/go-sqlite3#connection-string
+    # postres example: postgres://synapse:changeme@db/whatsapp?sslmode=disable
     uri: mautrix-whatsapp.db
   # Path to the Matrix room state store.
   state_store_path: ./mx-state.json
