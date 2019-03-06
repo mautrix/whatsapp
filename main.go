@@ -133,7 +133,7 @@ func (bridge *Bridge) Init() {
 	bridge.AS.StateStore = bridge.StateStore
 
 	bridge.Log.Debugln("Initializing database")
-	bridge.DB, err = database.New(bridge.Config.AppService.Database.URI)
+	bridge.DB, err = database.New(bridge.Config.AppService.Database.Type, bridge.Config.AppService.Database.URI)
 	if err != nil {
 		bridge.Log.Fatalln("Failed to initialize database:", err)
 		os.Exit(14)
