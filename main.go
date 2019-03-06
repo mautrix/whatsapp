@@ -147,7 +147,7 @@ func (bridge *Bridge) Init() {
 }
 
 func (bridge *Bridge) Start() {
-	err := bridge.DB.CreateTables()
+	err := bridge.DB.CreateTables(bridge.Config.AppService.Database.Type)
 	if err != nil {
 		bridge.Log.Fatalln("Failed to create database tables:", err)
 		os.Exit(15)
