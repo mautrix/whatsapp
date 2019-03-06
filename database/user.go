@@ -33,7 +33,7 @@ type UserQuery struct {
 	log log.Logger
 }
 
-func (uq *UserQuery) CreateTable() error {
+func (uq *UserQuery) CreateTable(dbType string) error {
 	_, err := uq.db.Exec(`CREATE TABLE IF NOT EXISTS whatsapp_user (
 		mxid VARCHAR(255) PRIMARY KEY,
 		jid  VARCHAR(255)  UNIQUE,
