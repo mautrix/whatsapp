@@ -17,6 +17,7 @@
 package main
 
 import (
+	"encoding/json"
 	"strings"
 	"time"
 
@@ -151,9 +152,16 @@ func (user *User) Connect(evenIfNoSession bool) bool {
 	return user.RestoreSession()
 }
 
+func (user *User) Disconnect() {
+	if user.Conn == nil {
+		return
+	}
+	user.Conn.Disconnect()
+}
+
 func (user *User) RestoreSession() bool {
 	if user.Session != nil {
-		sess, err := user.Conn.RestoreSession(*user.Session)
+		sess, err := user.Conn.RestoreWithSession(*user.Session)
 		if err != nil {
 			user.log.Errorln("Failed to restore session:", err)
 			return false
@@ -344,5 +352,10 @@ func (user *User) HandleChatUpdate(cmd whatsappExt.ChatUpdate) {
 }
 
 func (user *User) HandleJsonMessage(message string) {
+	var msg json.RawMessage
+	err := json.Unmarshal([]byte(message), &msg)
+	if err != nil {
+		return
+	}
 	user.log.Debugln("JSON message:", message)
 }

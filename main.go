@@ -192,6 +192,9 @@ func (bridge *Bridge) StartUsers() {
 }
 
 func (bridge *Bridge) Stop() {
+	for _, user := range bridge.GetAllUsers() {
+		user.Disconnect()
+	}
 	bridge.AS.Stop()
 	bridge.EventProcessor.Stop()
 	err := bridge.StateStore.Save()
