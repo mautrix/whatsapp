@@ -4,6 +4,7 @@ require (
 	github.com/Baozisoftware/qrcode-terminal-go v0.0.0-20170407111555-c0650d8dff0f // indirect
 	github.com/Rhymen/go-whatsapp v0.0.0-20190208090600-c1173899de99
 	github.com/gorilla/mux v1.7.0 // indirect
+	github.com/lib/pq v1.0.0
 	github.com/mattn/go-colorable v0.1.1 // indirect
 	github.com/mattn/go-sqlite3 v1.10.0
 	github.com/shurcooL/sanitized_anchor_name v1.0.0 // indirect

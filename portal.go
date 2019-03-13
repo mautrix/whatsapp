@@ -300,7 +300,10 @@ func (portal *Portal) UpdateAvatar(user *User, avatar *whatsappExt.ProfilePicInf
 
 func (portal *Portal) UpdateName(name string, setBy types.WhatsAppID) bool {
 	if portal.Name != name {
-		intent := portal.bridge.GetPuppetByJID(setBy).Intent()
+		intent := portal.MainIntent()
+		if len(setBy) > 0 {
+			intent = portal.bridge.GetPuppetByJID(setBy).Intent()
+		}
 		_, err := intent.SetRoomName(portal.MXID, name)
 		if err == nil {
 			portal.Name = name
@@ -313,7 +316,10 @@ func (portal *Portal) UpdateName(name string, setBy types.WhatsAppID) bool {
 
 func (portal *Portal) UpdateTopic(topic string, setBy types.WhatsAppID) bool {
 	if portal.Topic != topic {
-		intent := portal.bridge.GetPuppetByJID(setBy).Intent()
+		intent := portal.MainIntent()
+		if len(setBy) > 0 {
+			intent = portal.bridge.GetPuppetByJID(setBy).Intent()
+		}
 		_, err := intent.SetRoomTopic(portal.MXID, topic)
 		if err == nil {
 			portal.Topic = topic
@@ -325,6 +331,14 @@ func (portal *Portal) UpdateTopic(topic string, setBy types.WhatsAppID) bool {
 }
 
 func (portal *Portal) UpdateMetadata(user *User) bool {
+	if portal.IsPrivateChat() {
+		return false
+	} else if portal.IsStatusBroadcastRoom() {
+		update := false
+		update = portal.UpdateName("WhatsApp Status Broadcast", "") || update
+		update = portal.UpdateTopic("WhatsApp status updates from your contacts", "") || update
+		return update
+	}
 	metadata, err := user.Conn.GetGroupMetaData(portal.Key.JID)
 	if err != nil {
 		portal.log.Errorln(err)
@@ -354,7 +368,7 @@ func (portal *Portal) Sync(user *User, contact whatsapp.Contact) {
 
 	if len(portal.MXID) == 0 {
 		portal.Name = contact.Name
-		err := portal.CreateMatrixRoom([]string{user.MXID})
+		err := portal.CreateMatrixRoom(user)
 		if err != nil {
 			portal.log.Errorln("Failed to create portal room:", err)
 			return
@@ -368,7 +382,9 @@ func (portal *Portal) Sync(user *User, contact whatsapp.Contact) {
 
 	update := false
 	update = portal.UpdateMetadata(user) || update
-	update = portal.UpdateAvatar(user, nil) || update
+	if !portal.IsStatusBroadcastRoom() {
+		update = portal.UpdateAvatar(user, nil) || update
+	}
 	if update {
 		portal.Update()
 	}
@@ -459,7 +475,7 @@ func (portal *Portal) RestrictMetadataChanges(restrict bool) {
 	}
 }
 
-func (portal *Portal) CreateMatrixRoom(invite []string) error {
+func (portal *Portal) CreateMatrixRoom(user *User) error {
 	portal.roomCreateLock.Lock()
 	defer portal.roomCreateLock.Unlock()
 	if len(portal.MXID) > 0 {
@@ -471,20 +487,27 @@ func (portal *Portal) CreateMatrixRoom(invite []string) error {
 		return err
 	}
 
-	name := portal.Name
-	topic := portal.Topic
 	isPrivateChat := false
 	if portal.IsPrivateChat() {
-		name = ""
-		topic = "WhatsApp private chat"
+		portal.Name = ""
+		portal.Topic = "WhatsApp private chat"
 		isPrivateChat = true
+	} else if portal.IsStatusBroadcastRoom() {
+		portal.Name = "WhatsApp Status Broadcast"
+		portal.Topic = "WhatsApp status updates from your contacts"
+	} else {
+		metadata, err := user.Conn.GetGroupMetaData(portal.Key.JID)
+		if err == nil && metadata.Status == 0 {
+			portal.Name = metadata.Name
+			portal.Topic = metadata.Topic
+		}
 	}
 
 	resp, err := intent.CreateRoom(&mautrix.ReqCreateRoom{
 		Visibility: "private",
-		Name:       name,
-		Topic:      topic,
-		Invite:     invite,
+		Name:       portal.Name,
+		Topic:      portal.Topic,
+		Invite:     []string{user.MXID},
 		Preset:     "private_chat",
 		IsDirect:   isPrivateChat,
 		InitialState: []*mautrix.Event{{
@@ -508,6 +531,10 @@ func (portal *Portal) IsPrivateChat() bool {
 		portal.isPrivate = &val
 	}
 	return *portal.isPrivate
+}
+
+func (portal *Portal) IsStatusBroadcastRoom() bool {
+	return portal.Key.JID == "status@broadcast"
 }
 
 func (portal *Portal) MainIntent() *appservice.IntentAPI {
@@ -560,7 +587,7 @@ func (portal *Portal) HandleTextMessage(source *User, message whatsapp.TextMessa
 	}
 	defer lock.Unlock()
 
-	err := portal.CreateMatrixRoom([]string{source.MXID})
+	err := portal.CreateMatrixRoom(source)
 	if err != nil {
 		portal.log.Errorln("Failed to create portal room:", err)
 		return
@@ -595,7 +622,7 @@ func (portal *Portal) HandleMediaMessage(source *User, download func() ([]byte, 
 	}
 	defer lock.Unlock()
 
-	err := portal.CreateMatrixRoom([]string{source.MXID})
+	err := portal.CreateMatrixRoom(source)
 	if err != nil {
 		portal.log.Errorln("Failed to create portal room:", err)
 		return

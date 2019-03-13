@@ -274,7 +274,7 @@ func (handler *CommandHandler) CommandPM(ce *CommandEvent) {
 		}
 		return
 	}
-	err := portal.CreateMatrixRoom([]string{user.MXID})
+	err := portal.CreateMatrixRoom(user)
 	if err != nil {
 		ce.Reply(fmt.Sprintf("Failed to create portal room: %v", err))
 		return
