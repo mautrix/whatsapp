@@ -29,12 +29,12 @@ type PuppetQuery struct {
 	log log.Logger
 }
 
-func (pq *PuppetQuery) CreateTable() error {
+func (pq *PuppetQuery) CreateTable(dbType string) error {
 	_, err := pq.db.Exec(`CREATE TABLE IF NOT EXISTS puppet (
-		jid          VARCHAR(25) PRIMARY KEY,
+		jid          VARCHAR(255) PRIMARY KEY,
 		avatar       VARCHAR(255),
 		displayname  VARCHAR(255),
-		name_quality TINYINT
+		name_quality SMALLINT
 	)`)
 	return err
 }
@@ -59,7 +59,7 @@ func (pq *PuppetQuery) GetAll() (puppets []*Puppet) {
 }
 
 func (pq *PuppetQuery) Get(jid types.WhatsAppID) *Puppet {
-	row := pq.db.QueryRow("SELECT * FROM puppet WHERE jid=?", jid)
+	row := pq.db.QueryRow("SELECT * FROM puppet WHERE jid=$1", jid)
 	if row == nil {
 		return nil
 	}
@@ -93,7 +93,7 @@ func (puppet *Puppet) Scan(row Scannable) *Puppet {
 }
 
 func (puppet *Puppet) Insert() {
-	_, err := puppet.db.Exec("INSERT INTO puppet VALUES (?, ?, ?, ?)",
+	_, err := puppet.db.Exec("INSERT INTO puppet VALUES ($1, $2, $3, $4)",
 		puppet.JID, puppet.Avatar, puppet.Displayname, puppet.NameQuality)
 	if err != nil {
 		puppet.log.Warnfln("Failed to insert %s: %v", puppet.JID, err)
@@ -101,7 +101,7 @@ func (puppet *Puppet) Insert() {
 }
 
 func (puppet *Puppet) Update() {
-	_, err := puppet.db.Exec("UPDATE puppet SET displayname=?, name_quality=?, avatar=? WHERE jid=?",
+	_, err := puppet.db.Exec("UPDATE puppet SET displayname=$1, name_quality=$2, avatar=$3 WHERE jid=$4",
 		puppet.Displayname, puppet.NameQuality, puppet.Avatar, puppet.JID)
 	if err != nil {
 		puppet.log.Warnfln("Failed to update %s->%s: %v", puppet.JID, err)

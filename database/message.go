@@ -18,6 +18,7 @@ package database
 
 import (
 	"bytes"
+	"strings"
 	"database/sql"
 	"encoding/json"
 
@@ -33,19 +34,34 @@ type MessageQuery struct {
 	log log.Logger
 }
 
-func (mq *MessageQuery) CreateTable() error {
-	_, err := mq.db.Exec(`CREATE TABLE IF NOT EXISTS message (
-		chat_jid      VARCHAR(25),
-		chat_receiver VARCHAR(25),
-		jid           VARCHAR(255),
-		mxid          VARCHAR(255) NOT NULL UNIQUE,
-		sender        VARCHAR(25)  NOT NULL,
-		content       BLOB         NOT NULL,
+func (mq *MessageQuery) CreateTable(dbType string) error {
+	if strings.ToLower(dbType) == "postgres" {
+		_, err := mq.db.Exec(`CREATE TABLE IF NOT EXISTS message (
+			chat_jid      VARCHAR(255),
+			chat_receiver VARCHAR(255),
+			jid           VARCHAR(255),
+			mxid          VARCHAR(255) NOT NULL UNIQUE,
+			sender        VARCHAR(255)  NOT NULL,
+			content       bytea         NOT NULL,
 
-		PRIMARY KEY (chat_jid, chat_receiver, jid),
-		FOREIGN KEY (chat_jid, chat_receiver) REFERENCES portal(jid, receiver)
-	)`)
+			PRIMARY KEY (chat_jid, chat_receiver, jid),
+			FOREIGN KEY (chat_jid, chat_receiver) REFERENCES portal(jid, receiver)
+		)`)
+		return err
+	} else {
+		_, err := mq.db.Exec(`CREATE TABLE IF NOT EXISTS message (
+			chat_jid      VARCHAR(255),
+			chat_receiver VARCHAR(255),
+			jid           VARCHAR(255),
+			mxid          VARCHAR(255) NOT NULL UNIQUE,
+			sender        VARCHAR(255)  NOT NULL,
+			content       BLOB          NOT NULL,
+
+			PRIMARY KEY (chat_jid, chat_receiver, jid),
+			FOREIGN KEY (chat_jid, chat_receiver) REFERENCES portal(jid, receiver)
+		)`)
 	return err
+	}
 }
 
 func (mq *MessageQuery) New() *Message {
@@ -56,7 +72,7 @@ func (mq *MessageQuery) New() *Message {
 }
 
 func (mq *MessageQuery) GetAll(chat PortalKey) (messages []*Message) {
-	rows, err := mq.db.Query("SELECT * FROM message WHERE chat_jid=? AND chat_receiver=?", chat.JID, chat.Receiver)
+	rows, err := mq.db.Query("SELECT * FROM message WHERE chat_jid=$1 AND chat_receiver=$2", chat.JID, chat.Receiver)
 	if err != nil || rows == nil {
 		return nil
 	}
@@ -68,11 +84,11 @@ func (mq *MessageQuery) GetAll(chat PortalKey) (messages []*Message) {
 }
 
 func (mq *MessageQuery) GetByJID(chat PortalKey, jid types.WhatsAppMessageID) *Message {
-	return mq.get("SELECT * FROM message WHERE chat_jid=? AND chat_receiver=? AND jid=?", chat.JID, chat.Receiver, jid)
+	return mq.get("SELECT * FROM message WHERE chat_jid=$1 AND chat_receiver=$2 AND jid=$3", chat.JID, chat.Receiver, jid)
 }
 
 func (mq *MessageQuery) GetByMXID(mxid types.MatrixEventID) *Message {
-	return mq.get("SELECT * FROM message WHERE mxid=?", mxid)
+	return mq.get("SELECT * FROM message WHERE mxid=$1", mxid)
 }
 
 func (mq *MessageQuery) get(query string, args ...interface{}) *Message {
@@ -130,7 +146,7 @@ func (msg *Message) encodeBinaryContent() []byte {
 }
 
 func (msg *Message) Insert() {
-	_, err := msg.db.Exec("INSERT INTO message VALUES (?, ?, ?, ?, ?, ?)", msg.Chat.JID, msg.Chat.Receiver, msg.JID, msg.MXID, msg.Sender, msg.encodeBinaryContent())
+	_, err := msg.db.Exec("INSERT INTO message VALUES ($1, $2, $3, $4, $5, $6)", msg.Chat.JID, msg.Chat.Receiver, msg.JID, msg.MXID, msg.Sender, msg.encodeBinaryContent())
 	if err != nil {
 		msg.log.Warnfln("Failed to insert %s@%s: %v", msg.Chat, msg.JID, err)
 	}
