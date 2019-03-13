@@ -19,6 +19,7 @@ package database
 import (
 	"database/sql"
 
+	_ "github.com/lib/pq"
 	_ "github.com/mattn/go-sqlite3"
 
 	log "maunium.net/go/maulogger/v2"
@@ -34,8 +35,8 @@ type Database struct {
 	Message *MessageQuery
 }
 
-func New(file string) (*Database, error) {
-	conn, err := sql.Open("sqlite3", file)
+func New(dbType string, uri string) (*Database, error) {
+	conn, err := sql.Open(dbType, uri)
 	if err != nil {
 		return nil, err
 	}
@@ -63,20 +64,20 @@ func New(file string) (*Database, error) {
 	return db, nil
 }
 
-func (db *Database) CreateTables() error {
-	err := db.User.CreateTable()
+func (db *Database) CreateTables(dbType string) error {
+	err := db.User.CreateTable(dbType)
 	if err != nil {
 		return err
 	}
-	err = db.Portal.CreateTable()
+	err = db.Portal.CreateTable(dbType)
 	if err != nil {
 		return err
 	}
-	err = db.Puppet.CreateTable()
+	err = db.Puppet.CreateTable(dbType)
 	if err != nil {
 		return err
 	}
-	err = db.Message.CreateTable()
+	err = db.Message.CreateTable(dbType)
 	if err != nil {
 		return err
 	}

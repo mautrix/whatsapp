@@ -133,7 +133,7 @@ func (bridge *Bridge) Init() {
 	bridge.AS.StateStore = bridge.StateStore
 
 	bridge.Log.Debugln("Initializing database")
-	bridge.DB, err = database.New(bridge.Config.AppService.Database.URI)
+	bridge.DB, err = database.New(bridge.Config.AppService.Database.Type, bridge.Config.AppService.Database.URI)
 	if err != nil {
 		bridge.Log.Fatalln("Failed to initialize database:", err)
 		os.Exit(14)
@@ -147,7 +147,7 @@ func (bridge *Bridge) Init() {
 }
 
 func (bridge *Bridge) Start() {
-	err := bridge.DB.CreateTables()
+	err := bridge.DB.CreateTables(bridge.Config.AppService.Database.Type)
 	if err != nil {
 		bridge.Log.Fatalln("Failed to create database tables:", err)
 		os.Exit(15)
@@ -185,6 +185,7 @@ func (bridge *Bridge) UpdateBotProfile() {
 }
 
 func (bridge *Bridge) StartUsers() {
+	bridge.Log.Debugln("Starting users")
 	for _, user := range bridge.GetAllUsers() {
 		go user.Connect(false)
 	}
