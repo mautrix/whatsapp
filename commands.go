@@ -79,18 +79,27 @@ func (handler *CommandHandler) Handle(roomID types.MatrixRoomID, user *User, mes
 	switch cmd {
 	case "login":
 		handler.CommandLogin(ce)
-	case "logout":
-		handler.CommandLogout(ce)
 	case "help":
 		handler.CommandHelp(ce)
-	case "sync":
-		handler.CommandSync(ce)
-	case "list":
-		handler.CommandList(ce)
-	case "open":
-		handler.CommandOpen(ce)
-	case "pm":
-		handler.CommandPM(ce)
+	case "logout", "sync", "list", "open", "pm":
+		if ce.User.Conn == nil {
+			ce.Reply("You are not logged in.")
+			ce.Reply("Please use the login command to log into WhatsApp.")
+			return
+		}
+
+		switch cmd {
+		case "logout":
+			handler.CommandLogout(ce)
+		case "sync":
+			handler.CommandSync(ce)
+		case "list":
+			handler.CommandList(ce)
+		case "open":
+			handler.CommandOpen(ce)
+		case "pm":
+			handler.CommandPM(ce)
+		}
 	default:
 		ce.Reply("Unknown Command")
 	}
@@ -183,6 +192,7 @@ const cmdListHelp = `list - Get a list of all contacts and groups.`
 func (handler *CommandHandler) CommandList(ce *CommandEvent) {
 	var contacts strings.Builder
 	var groups strings.Builder
+
 	for jid, contact := range ce.User.Conn.Store.Contacts {
 		if strings.HasSuffix(jid, whatsappExt.NewUserSuffix) {
 			_, _ = fmt.Fprintf(&contacts, "* %s / %s - `%s`\n", contact.Name, contact.Notify, contact.Jid[:len(contact.Jid)-len(whatsappExt.NewUserSuffix)])
@@ -198,6 +208,7 @@ const cmdOpenHelp = `open <_group JID_> - Open a group chat portal.`
 func (handler *CommandHandler) CommandOpen(ce *CommandEvent) {
 	if len(ce.Args) == 0 {
 		ce.Reply("**Usage:** `open <group JID>`")
+		return
 	}
 
 	user := ce.User
