@@ -56,7 +56,7 @@ func (bridge *Bridge) GenerateRegistration() {
 		fmt.Fprintln(os.Stderr, "Failed to save config:", err)
 		os.Exit(22)
 	}
-	fmt.Println("Registration generated. Add the path to the registration to your Synapse config restart it, then start the bridge.")
+	fmt.Println("Registration generated. Add the path to the registration to your Synapse config, restart it, then start the bridge.")
 	os.Exit(0)
 }
 
