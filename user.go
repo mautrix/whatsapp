@@ -234,10 +234,17 @@ func (user *User) HandleError(err error) {
 	closed, ok := err.(*whatsapp.ErrConnectionClosed)
 	if ok {
 		if closed.Code != 1000 {
-			msg := fmt.Sprintf("\u26a0 Your WhatsApp connection failed with websocket status code %d.\n\n"+
+			msg := fmt.Sprintf("\u26a0 Your WhatsApp connection was closed with websocket status code %d.\n\n"+
 				"Use the `reconnect` command to reconnect.", closed.Code)
 			_, _ = user.bridge.Bot.SendMessageEvent(user.ManagementRoom, mautrix.EventMessage, format.RenderMarkdown(msg))
 		}
+		user.Connected = false
+	}
+	failed, ok := err.(*whatsapp.ErrConnectionFailed)
+	if ok {
+		msg := fmt.Sprintf("\u26a0 Your WhatsApp connection failed: %v.\n\n"+
+			"Use the `reconnect` command to reconnect.", failed.Err)
+		_, _ = user.bridge.Bot.SendMessageEvent(user.ManagementRoom, mautrix.EventMessage, format.RenderMarkdown(msg))
 		user.Connected = false
 	}
 }
