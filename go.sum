@@ -150,6 +150,7 @@ golang.org/x/tools v0.0.0-20190425150028-36563e24a262/go.mod h1:RgjU9mgBXZiqYHBn
 golang.org/x/tools v0.0.0-20190425222832-ad9eeb80039a/go.mod h1:RgjU9mgBXZiqYHBnxXauZ1Gv1EHHAz9KjViQ78xBX0Q=
 golang.org/x/tools v0.0.0-20190511041617-99f201b6807e/go.mod h1:RgjU9mgBXZiqYHBnxXauZ1Gv1EHHAz9KjViQ78xBX0Q=
 golang.org/x/tools v0.0.0-20190515174815-473d3dc1d7eb/go.mod h1:RgjU9mgBXZiqYHBnxXauZ1Gv1EHHAz9KjViQ78xBX0Q=
+golang.org/x/tools v0.0.0-20190515191914-7c3f65130f29/go.mod h1:RgjU9mgBXZiqYHBnxXauZ1Gv1EHHAz9KjViQ78xBX0Q=
 google.golang.org/api v0.5.0/go.mod h1:8k5glujaEP+g9n7WNsDg8QP6cUVNI86fCNMcbazEtwE=
 google.golang.org/appengine v1.1.0/go.mod h1:EbEs0AVv82hx2wNQdGPgUI5lhzA/G0D9YwlJXL52JkM=
 google.golang.org/appengine v1.4.0/go.mod h1:xpcJRLb0r/rnEns0DIKYYv+WjYCduHsrkT7/EB5XEv4=
@@ -178,6 +179,8 @@ maunium.net/go/mautrix v0.1.0-alpha.3.0.20190426103725-3ac185c79f9c h1:3/aKdJyMr
 maunium.net/go/mautrix v0.1.0-alpha.3.0.20190426103725-3ac185c79f9c/go.mod h1:Ky82MfBtfv7tr/+XIc/DKVBsdhKG7C0cbwD3DgF3I0E=
 maunium.net/go/mautrix v0.1.0-alpha.3.0.20190512142959-897a8c5be1d9 h1:bmXWacD7spGlj2DriogI5ahet6dzY2Q33Aa8bCyQdtI=
 maunium.net/go/mautrix v0.1.0-alpha.3.0.20190512142959-897a8c5be1d9/go.mod h1:cyZKXVQphK5gnbKMvRLXoxfKMySfAQJvn8ttR4x/23c=
+maunium.net/go/mautrix v0.1.0-alpha.3.0.20190515215109-3e27638f3f1d h1:oszh/psVO5FPz+QbJwA3pTNOEChyUNGNM1kDMR+qLe8=
+maunium.net/go/mautrix v0.1.0-alpha.3.0.20190515215109-3e27638f3f1d/go.mod h1:cyZKXVQphK5gnbKMvRLXoxfKMySfAQJvn8ttR4x/23c=
 maunium.net/go/mautrix-appservice v0.1.0-alpha.3 h1:MZozKDJESr1bY9wnnmO+fSusYy5fpkE1kI7v1jXEVog=
 maunium.net/go/mautrix-appservice v0.1.0-alpha.3/go.mod h1:wOnWOIuprYad7ly12rHIo3JLCPh4jwvx1prVrAB9RhM=
 maunium.net/go/mautrix-appservice v0.1.0-alpha.3.0.20190426104103-ac6c53fb04d4 h1:JtF7ryK0sCqzQH3+D88+XLJKy8A5IGcy7P531b38pEo=
