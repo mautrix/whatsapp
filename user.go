@@ -18,12 +18,16 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 	"time"
 
-	"github.com/Rhymen/go-whatsapp"
 	"github.com/skip2/go-qrcode"
 	log "maunium.net/go/maulogger/v2"
+
+	"github.com/Rhymen/go-whatsapp"
+	"maunium.net/go/mautrix"
+	"maunium.net/go/mautrix/format"
 
 	"maunium.net/go/mautrix-whatsapp/database"
 	"maunium.net/go/mautrix-whatsapp/types"
@@ -39,6 +43,7 @@ type User struct {
 
 	Admin       bool
 	Whitelisted bool
+	Connected   bool
 }
 
 func (bridge *Bridge) GetUserByMXID(userID types.MatrixUserID) *User {
@@ -146,7 +151,7 @@ func (user *User) Connect(evenIfNoSession bool) bool {
 		return false
 	}
 	user.Conn = whatsappExt.ExtendConn(conn)
-	user.Conn.SetClientName("Mautrix-WhatsApp bridge", "mx-wa")
+	_ = user.Conn.SetClientName("Mautrix-WhatsApp bridge", "mx-wa")
 	user.log.Debugln("WhatsApp connection successful")
 	user.Conn.AddHandler(user)
 	return user.RestoreSession()
@@ -154,11 +159,12 @@ func (user *User) Connect(evenIfNoSession bool) bool {
 
 func (user *User) RestoreSession() bool {
 	if user.Session != nil {
-		sess, err := user.Conn.RestoreSession(*user.Session)
+		sess, err := user.Conn.RestoreWithSession(*user.Session)
 		if err != nil {
 			user.log.Errorln("Failed to restore session:", err)
 			return false
 		}
+		user.Connected = true
 		user.SetSession(&sess)
 		user.log.Debugln("Session restored successfully")
 		return true
@@ -182,14 +188,14 @@ func (user *User) Login(roomID types.MatrixRoomID) {
 		qrCode, err := qrcode.Encode(code, qrcode.Low, 256)
 		if err != nil {
 			user.log.Errorln("Failed to encode QR code:", err)
-			bot.SendNotice(roomID, "Failed to encode QR code (see logs for details)")
+			_, _ = bot.SendNotice(roomID, "Failed to encode QR code (see logs for details)")
 			return
 		}
 
 		resp, err := bot.UploadBytes(qrCode, "image/png")
 		if err != nil {
 			user.log.Errorln("Failed to upload QR code:", err)
-			bot.SendNotice(roomID, "Failed to upload QR code (see logs for details)")
+			_, _ = bot.SendNotice(roomID, "Failed to upload QR code (see logs for details)")
 			return
 		}
 
@@ -201,10 +207,11 @@ func (user *User) Login(roomID types.MatrixRoomID) {
 	session, err := user.Conn.Login(qrChan)
 	if err != nil {
 		user.log.Warnln("Failed to log in:", err)
-		bot.SendNotice(roomID, "Failed to log in: "+err.Error())
+		_, _ = bot.SendNotice(roomID, "Failed to log in: "+err.Error())
 		qrChan <- "error"
 		return
 	}
+	user.Connected = true
 	user.JID = strings.Replace(user.Conn.Info.Wid, whatsappExt.OldUserSuffix, whatsappExt.NewUserSuffix, 1)
 	user.Session = &session
 	user.Update()
@@ -216,6 +223,15 @@ func (user *User) Login(roomID types.MatrixRoomID) {
 
 func (user *User) HandleError(err error) {
 	user.log.Errorln("WhatsApp error:", err)
+	closed, ok := err.(*whatsapp.ErrConnectionClosed)
+	if ok {
+		if closed.Code != 1000 {
+			msg := fmt.Sprintf("⚠️\u26a0 Your WhatsApp connection failed with websocket status code %d.\n\n" +
+				"Use the `reconnect` command to reconnect.", closed.Code)
+			_, _ = user.bridge.Bot.SendMessageEvent(user.ManagementRoom, mautrix.EventMessage, format.RenderMarkdown(msg))
+		}
+		user.Connected = false
+	}
 }
 
 func (user *User) HandleJSONParseError(err error) {
@@ -313,6 +329,16 @@ func (user *User) HandleCommand(cmd whatsappExt.Command) {
 			portal := user.GetPortalByJID(cmd.JID)
 			portal.UpdateAvatar(user, cmd.ProfilePicInfo)
 		}
+	case whatsappExt.CommandDisconnect:
+		var msg string
+		if cmd.Kind == "replaced" {
+			msg = "\u26a0 Your WhatsApp connection was closed by the server because you opened another WhatsApp Web client.\n\n" +
+				"Use the `reconnect` command to disconnect the other client and resume bridging."
+		} else {
+			msg = fmt.Sprintf("\u26a0 Your WhatsApp connection was closed by the server (reason code: %s).\n\n" +
+				"Use the `reconnect` command to reconnect.", cmd.Kind)
+		}
+		_, _ = user.bridge.Bot.SendMessageEvent(user.ManagementRoom, mautrix.EventMessage, format.RenderMarkdown(msg))
 	}
 }
 

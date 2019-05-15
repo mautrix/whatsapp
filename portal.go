@@ -919,7 +919,7 @@ func (portal *Portal) HandleMatrixMessage(sender *User, evt *mautrix.Event) {
 	}
 	portal.markHandled(sender, info, evt.ID)
 	portal.log.Debugln("Sending event", evt.ID, "to WhatsApp")
-	err = sender.Conn.Send(info)
+	_, err = sender.Conn.Send(info)
 	if err != nil {
 		portal.log.Errorfln("Error handling Matrix event %s: %v", evt.ID, err)
 	} else {

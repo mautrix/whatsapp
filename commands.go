@@ -55,8 +55,8 @@ type CommandEvent struct {
 }
 
 // Reply sends a reply to command as notice
-func (ce *CommandEvent) Reply(msg string) {
-	content := format.RenderMarkdown(msg)
+func (ce *CommandEvent) Reply(msg string, args ...interface{}) {
+	content := format.RenderMarkdown(fmt.Sprintf(msg, args...))
 	content.MsgType = mautrix.MsgNotice
 	_, err := ce.Bot.SendMessageEvent(ce.User.ManagementRoom, mautrix.EventMessage, content)
 	if err != nil {
@@ -81,7 +81,7 @@ func (handler *CommandHandler) Handle(roomID types.MatrixRoomID, user *User, mes
 		handler.CommandLogin(ce)
 	case "help":
 		handler.CommandHelp(ce)
-	case "logout", "sync", "list", "open", "pm":
+	case "logout", "reconnect", "disconnect", "sync", "list", "open", "pm":
 		if ce.User.Conn == nil {
 			ce.Reply("You are not logged in.")
 			ce.Reply("Please use the login command to log into WhatsApp.")
@@ -91,6 +91,10 @@ func (handler *CommandHandler) Handle(roomID types.MatrixRoomID, user *User, mes
 		switch cmd {
 		case "logout":
 			handler.CommandLogout(ce)
+		case "reconnect":
+			handler.CommandReconnect(ce)
+		case "disconnect":
+			handler.CommandDisconnect(ce)
 		case "sync":
 			handler.CommandSync(ce)
 		case "list":
@@ -138,6 +142,43 @@ func (handler *CommandHandler) CommandLogout(ce *CommandEvent) {
 	ce.Reply("Logged out successfully.")
 }
 
+const cmdReconnectHelp = `reconnect - Reconnect to WhatsApp`
+
+func (handler *CommandHandler) CommandReconnect(ce *CommandEvent) {
+	err := ce.User.Conn.Restore()
+	if err == whatsapp.ErrAlreadyLoggedIn {
+		if ce.User.Connected {
+			ce.Reply("You were already connected.")
+		} else {
+			ce.User.Connected = true
+			ce.Reply("You were already connected, but the bridge hadn't noticed. Fixed that now.")
+		}
+	} else if err != nil {
+		ce.User.log.Warnln("Error while reconnecting:", err)
+		ce.Reply("Error while reconnecting (see logs for details)")
+		return
+	}
+	ce.User.Connected = true
+	ce.Reply("Reconnected successfully.")
+}
+
+const cmdDisconnectHelp = `disconnect - Disconnect from WhatsApp (without logging out)`
+
+func (handler *CommandHandler) CommandDisconnect(ce *CommandEvent) {
+	sess, err := ce.User.Conn.Disconnect()
+	ce.User.Connected = false
+	if err == whatsapp.ErrNotConnected {
+		ce.Reply("You were not connected.")
+		return
+	} else if err != nil {
+		ce.User.log.Warnln("Error while disconnecting:", err)
+		ce.Reply("Error while disconnecting (see logs for details)")
+		return
+	}
+	ce.User.SetSession(&sess)
+	ce.Reply("Successfully disconnected. Use the `reconnect` command to reconnect.")
+}
+
 const cmdHelpHelp = `help - Prints this help`
 
 // CommandHelp handles help command
@@ -151,6 +192,8 @@ func (handler *CommandHandler) CommandHelp(ce *CommandEvent) {
 		cmdPrefix + cmdHelpHelp,
 		cmdPrefix + cmdLoginHelp,
 		cmdPrefix + cmdLogoutHelp,
+		cmdPrefix + cmdReconnectHelp,
+		cmdPrefix + cmdDisconnectHelp,
 		cmdPrefix + cmdSyncHelp,
 		cmdPrefix + cmdListHelp,
 		cmdPrefix + cmdOpenHelp,
@@ -200,7 +243,7 @@ func (handler *CommandHandler) CommandList(ce *CommandEvent) {
 			_, _ = fmt.Fprintf(&groups, "* %s - `%s`\n", contact.Name, contact.Jid)
 		}
 	}
-	ce.Reply(fmt.Sprintf("### Contacts\n%s\n\n### Groups\n%s", contacts.String(), groups.String()))
+	ce.Reply("### Contacts\n%s\n\n### Groups\n%s", contacts.String(), groups.String())
 }
 
 const cmdOpenHelp = `open <_group JID_> - Open a group chat portal.`
@@ -215,7 +258,7 @@ func (handler *CommandHandler) CommandOpen(ce *CommandEvent) {
 	jid := ce.Args[0]
 
 	if strings.HasSuffix(jid, whatsappExt.NewUserSuffix) {
-		ce.Reply(fmt.Sprintf("That looks like a user JID. Did you mean `pm %s`?", jid[:len(jid)-len(whatsappExt.NewUserSuffix)]))
+		ce.Reply("That looks like a user JID. Did you mean `pm %s`?", jid[:len(jid)-len(whatsappExt.NewUserSuffix)])
 		return
 	}
 
@@ -287,7 +330,7 @@ func (handler *CommandHandler) CommandPM(ce *CommandEvent) {
 	}
 	err := portal.CreateMatrixRoom(user)
 	if err != nil {
-		ce.Reply(fmt.Sprintf("Failed to create portal room: %v", err))
+		ce.Reply("Failed to create portal room: %v", err)
 		return
 	}
 	ce.Reply("Created portal room and invited you to it.")

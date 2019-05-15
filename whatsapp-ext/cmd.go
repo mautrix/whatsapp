@@ -26,7 +26,8 @@ import (
 type CommandType string
 
 const (
-	CommandPicture CommandType = "picture"
+	CommandPicture    CommandType = "picture"
+	CommandDisconnect CommandType = "disconnect"
 )
 
 type Command struct {
@@ -34,6 +35,7 @@ type Command struct {
 	JID  string      `json:"jid"`
 
 	*ProfilePicInfo
+	Kind string `json:"kind"`
 }
 
 type CommandHandler interface {

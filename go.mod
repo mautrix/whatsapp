@@ -3,13 +3,13 @@ module maunium.net/go/mautrix-whatsapp
 go 1.12
 
 require (
-	github.com/Baozisoftware/qrcode-terminal-go v0.0.0-20170407111555-c0650d8dff0f // indirect
-	github.com/Rhymen/go-whatsapp v0.0.1
+	github.com/Rhymen/go-whatsapp v0.0.2-0.20190511164245-5d5100902126
 	github.com/golang/protobuf v1.3.1 // indirect
 	github.com/lib/pq v1.1.1
 	github.com/mattn/go-sqlite3 v1.10.0
 	github.com/shurcooL/sanitized_anchor_name v1.0.0 // indirect
 	github.com/skip2/go-qrcode v0.0.0-20190110000554-dc11ecdae0a9
+	golang.org/x/sys v0.0.0-20190515190549-87c872767d25 // indirect
 	gopkg.in/yaml.v2 v2.2.2
 	maunium.net/go/mauflag v1.0.0
 	maunium.net/go/maulogger/v2 v2.0.0
@@ -18,3 +18,9 @@ require (
 )
 
 replace gopkg.in/russross/blackfriday.v2 => github.com/russross/blackfriday/v2 v2.0.1
+
+replace maunium.net/go/mautrix-appservice => ../mautrix-appservice-go
+
+replace maunium.net/go/mautrix => ../mautrix-go
+
+replace github.com/Rhymen/go-whatsapp => ../../Go/go-whatsapp

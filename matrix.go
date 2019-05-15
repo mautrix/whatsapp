@@ -17,11 +17,13 @@
 package main
 
 import (
+	"fmt"
 	"strings"
 
 	"maunium.net/go/maulogger/v2"
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix-appservice"
+	"maunium.net/go/mautrix/format"
 
 	"maunium.net/go/mautrix-whatsapp/types"
 )
@@ -112,7 +114,7 @@ func (mx *MatrixHandler) HandleMembership(evt *mautrix.Event) {
 
 func (mx *MatrixHandler) HandleRoomMetadata(evt *mautrix.Event) {
 	user := mx.bridge.GetUserByMXID(types.MatrixUserID(evt.Sender))
-	if user == nil || !user.Whitelisted || !user.IsLoggedIn() {
+	if user == nil || !user.Whitelisted || !user.IsLoggedIn() || !user.Connected {
 		return
 	}
 
@@ -164,6 +166,12 @@ func (mx *MatrixHandler) HandleMessage(evt *mautrix.Event) {
 	}
 
 	if !user.IsLoggedIn() {
+		return
+	} else if !user.Connected {
+		msg := format.RenderMarkdown(fmt.Sprintf("\u26a0 You are not connected to WhatsApp, so your message was not bridged. " +
+			"Use `%s reconnect` to reconnect.", mx.bridge.Config.Bridge.CommandPrefix))
+		msg.MsgType = mautrix.MsgNotice
+		_, _ = mx.bridge.Bot.SendMessageEvent(roomID, mautrix.EventMessage, msg)
 		return
 	}
 
