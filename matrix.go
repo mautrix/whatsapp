@@ -43,6 +43,7 @@ func NewMatrixHandler(bridge *Bridge) *MatrixHandler {
 		cmd:    NewCommandHandler(bridge),
 	}
 	bridge.EventProcessor.On(mautrix.EventMessage, handler.HandleMessage)
+	bridge.EventProcessor.On(mautrix.EventRedaction, handler.HandleRedaction)
 	bridge.EventProcessor.On(mautrix.StateMember, handler.HandleMembership)
 	bridge.EventProcessor.On(mautrix.StateRoomName, handler.HandleRoomMetadata)
 	bridge.EventProcessor.On(mautrix.StateRoomAvatar, handler.HandleRoomMetadata)
@@ -178,5 +179,34 @@ func (mx *MatrixHandler) HandleMessage(evt *mautrix.Event) {
 	portal := mx.bridge.GetPortalByMXID(roomID)
 	if portal != nil {
 		portal.HandleMatrixMessage(user, evt)
+	}
+}
+
+func (mx *MatrixHandler) HandleRedaction(evt *mautrix.Event) {
+	if _, isPuppet := mx.bridge.ParsePuppetMXID(evt.Sender); evt.Sender == mx.bridge.Bot.UserID || isPuppet {
+		return
+	}
+
+	roomID := types.MatrixRoomID(evt.RoomID)
+	user := mx.bridge.GetUserByMXID(types.MatrixUserID(evt.Sender))
+
+	if !user.Whitelisted {
+		return
+	}
+
+	if !user.IsLoggedIn() {
+		return
+	} else if !user.Connected {
+		msg := format.RenderMarkdown(fmt.Sprintf("[%[1]s](https://matrix.to/#/%[1]s): \u26a0 " +
+			"You are not connected to WhatsApp, so your redaction was not bridged. " +
+			"Use `%[2]s reconnect` to reconnect.", user.MXID, mx.bridge.Config.Bridge.CommandPrefix))
+		msg.MsgType = mautrix.MsgNotice
+		_, _ = mx.bridge.Bot.SendMessageEvent(roomID, mautrix.EventMessage, msg)
+		return
+	}
+
+	portal := mx.bridge.GetPortalByMXID(roomID)
+	if portal != nil {
+		portal.HandleMatrixRedaction(user, evt)
 	}
 }

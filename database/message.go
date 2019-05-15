@@ -151,3 +151,10 @@ func (msg *Message) Insert() {
 		msg.log.Warnfln("Failed to insert %s@%s: %v", msg.Chat, msg.JID, err)
 	}
 }
+
+func (msg *Message) Delete() {
+	_, err := msg.db.Exec("DELETE FROM message WHERE chat_jid=$1 AND chat_receiver=$2 AND jid=$3", msg.Chat.JID, msg.Chat.Receiver, msg.JID)
+	if err != nil {
+		msg.log.Warnfln("Failed to delete %s@%s: %v", msg.Chat, msg.JID, err)
+	}
+}

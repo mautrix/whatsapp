@@ -35,6 +35,7 @@ import (
 	waProto "github.com/Rhymen/go-whatsapp/binary/proto"
 
 	log "maunium.net/go/maulogger/v2"
+
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix-appservice"
 
@@ -580,6 +581,29 @@ func (portal *Portal) SetReply(content *mautrix.Content, info whatsapp.MessageIn
 	return
 }
 
+func (portal *Portal) HandleMessageRevoke(user *User, message whatsappExt.MessageRevocation) {
+	msg := portal.bridge.DB.Message.GetByJID(portal.Key, message.Id)
+	if msg == nil {
+		return
+	}
+	intent := portal.MainIntent()
+	if message.FromMe {
+		if portal.IsPrivateChat() {
+			// TODO handle
+		} else {
+			intent = portal.bridge.GetPuppetByJID(user.JID).Intent()
+		}
+	} else if len(message.Participant) > 0 {
+		intent = portal.bridge.GetPuppetByJID(message.Participant).Intent()
+	}
+	_, err := intent.RedactEvent(portal.MXID, msg.MXID)
+	if err != nil {
+		portal.log.Errorln("Failed to redact %s: %v", msg.JID, err)
+		return
+	}
+	msg.Delete()
+}
+
 func (portal *Portal) HandleTextMessage(source *User, message whatsapp.TextMessage) {
 	lock, ok := portal.startHandling(message.Info.Id)
 	if !ok {
@@ -924,5 +948,46 @@ func (portal *Portal) HandleMatrixMessage(sender *User, evt *mautrix.Event) {
 		portal.log.Errorfln("Error handling Matrix event %s: %v", evt.ID, err)
 	} else {
 		portal.log.Debugln("Handled Matrix event:", evt)
+	}
+}
+
+func (portal *Portal) HandleMatrixRedaction(sender *User, evt *mautrix.Event) {
+	if portal.IsPrivateChat() && sender.JID != portal.Key.Receiver {
+		return
+	}
+
+	msg := portal.bridge.DB.Message.GetByMXID(evt.Redacts)
+	if msg.Sender != sender.JID {
+		return
+	}
+
+	ts := uint64(evt.Timestamp / 1000)
+	status := waProto.WebMessageInfo_PENDING
+	protoMsgType := waProto.ProtocolMessage_REVOKE
+	fromMe := true
+	info := &waProto.WebMessageInfo{
+		Key: &waProto.MessageKey{
+			FromMe:    &fromMe,
+			Id:        makeMessageID(),
+			RemoteJid: &portal.Key.JID,
+		},
+		MessageTimestamp: &ts,
+		Message: &waProto.Message{
+			ProtocolMessage: &waProto.ProtocolMessage{
+				Type: &protoMsgType,
+				Key: &waProto.MessageKey{
+					FromMe:    &fromMe,
+					Id:        &msg.JID,
+					RemoteJid: &portal.Key.JID,
+				},
+			},
+		},
+		Status: &status,
+	}
+	_, err := sender.Conn.Send(info)
+	if err != nil {
+		portal.log.Errorfln("Error handling Matrix redaction: %s: %v", evt.ID, err)
+	} else {
+		portal.log.Debugln("Handled Matrix redaction:", evt)
 	}
 }

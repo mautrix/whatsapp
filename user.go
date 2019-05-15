@@ -286,6 +286,11 @@ func (user *User) HandleDocumentMessage(message whatsapp.DocumentMessage) {
 	portal.HandleMediaMessage(user, message.Download, message.Thumbnail, message.Info, message.Type, message.Title)
 }
 
+func (user *User) HandleMessageRevoke(message whatsappExt.MessageRevocation) {
+	portal := user.GetPortalByJID(message.RemoteJid)
+	portal.HandleMessageRevoke(user, message)
+}
+
 func (user *User) HandlePresence(info whatsappExt.Presence) {
 	puppet := user.bridge.GetPuppetByJID(info.SenderJID)
 	switch info.Status {

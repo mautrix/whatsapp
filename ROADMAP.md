@@ -5,7 +5,7 @@
     * [x] Formatted messages
     * [x] Media/files
     * [x] Replies
-  * [ ] Message redactions<sup>[1]</sup>
+  * [x] Message redactions
   * [ ] Presence<sup>[4]</sup>
   * [ ] Typing notifications<sup>[4]</sup>
   * [ ] Read receipts<sup>[4]</sup>
@@ -25,12 +25,13 @@
     * [x] Plain text
     * [x] Formatted messages
     * [x] Media/files
+    * [ ] Location messages
     * [x] Replies
   * [ ] Chat types
     * [x] Private chat
     * [x] Group chat
     * [ ] Broadcast list<sup>[2]</sup>
-  * [ ] Message deletions<sup>[1]</sup>
+  * [x] Message deletions
   * [x] Avatars
   * [x] Presence
   * [x] Typing notifications
