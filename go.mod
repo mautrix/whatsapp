@@ -18,9 +18,3 @@ require (
 )
 
 replace gopkg.in/russross/blackfriday.v2 => github.com/russross/blackfriday/v2 v2.0.1
-
-replace maunium.net/go/mautrix-appservice => ../mautrix-appservice-go
-
-replace maunium.net/go/mautrix => ../mautrix-go
-
-replace github.com/Rhymen/go-whatsapp => ../../Go/go-whatsapp
