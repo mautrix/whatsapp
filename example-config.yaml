@@ -54,6 +54,9 @@ bridge:
     # {{.Short}}  - short display name from contact list
     displayname_template: "{{if .Notify}}{{.Notify}}{{else}}{{.Jid}}{{end}} (WA)"
 
+    # WhatsApp connection timeout in seconds.
+    connection_timeout: 20
+
     # The prefix for commands. Only required in non-management rooms.
     command_prefix: "!wa"
 

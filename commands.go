@@ -81,18 +81,20 @@ func (handler *CommandHandler) Handle(roomID types.MatrixRoomID, user *User, mes
 		handler.CommandLogin(ce)
 	case "help":
 		handler.CommandHelp(ce)
-	case "logout", "reconnect", "disconnect", "sync", "list", "open", "pm":
+	case "reconnect":
+		handler.CommandReconnect(ce)
+	case "logout", "disconnect", "sync", "list", "open", "pm":
 		if ce.User.Conn == nil {
-			ce.Reply("You are not logged in.")
-			ce.Reply("Please use the login command to log into WhatsApp.")
+			ce.Reply("You are not logged in. Use the `login` command to log into WhatsApp.")
+			return
+		} else if !ce.User.Connected {
+			ce.Reply("You are not connected to WhatsApp. Use the `reconnect` command to reconnect.")
 			return
 		}
 
 		switch cmd {
 		case "logout":
 			handler.CommandLogout(ce)
-		case "reconnect":
-			handler.CommandReconnect(ce)
 		case "disconnect":
 			handler.CommandDisconnect(ce)
 		case "sync":
@@ -130,7 +132,7 @@ func (handler *CommandHandler) CommandLogout(ce *CommandEvent) {
 	err := ce.User.Conn.Logout()
 	if err != nil {
 		ce.User.log.Warnln("Error while logging out:", err)
-		ce.Reply("Error while logging out (see logs for details)")
+		ce.Reply("Unknown error while logging out: %v", err)
 		return
 	}
 	_, err = ce.User.Conn.Disconnect()
@@ -148,16 +150,33 @@ const cmdReconnectHelp = `reconnect - Reconnect to WhatsApp`
 
 func (handler *CommandHandler) CommandReconnect(ce *CommandEvent) {
 	err := ce.User.Conn.Restore()
-	if err == whatsapp.ErrAlreadyLoggedIn {
-		if ce.User.Connected {
-			ce.Reply("You were already connected.")
+	if err == whatsapp.ErrInvalidSession {
+		if ce.User.Session != nil {
+			ce.User.log.Debugln("Got invalid session error when reconnecting, but user has session. Retrying using RestoreWithSession()...")
+			var sess whatsapp.Session
+			sess, err = ce.User.Conn.RestoreWithSession(*ce.User.Session)
+			if err == nil {
+				ce.User.SetSession(&sess)
+			}
 		} else {
-			ce.User.Connected = true
-			ce.Reply("You were already connected, but the bridge hadn't noticed. Fixed that now.")
+			ce.Reply("You are not logged in.")
+			return
 		}
-	} else if err != nil {
+	}
+	if err != nil {
 		ce.User.log.Warnln("Error while reconnecting:", err)
-		ce.Reply("Error while reconnecting (see logs for details)")
+		if err == whatsapp.ErrAlreadyLoggedIn {
+			if ce.User.Connected {
+				ce.Reply("You were already connected.")
+			} else {
+				ce.User.Connected = true
+				ce.Reply("You were already connected, but the bridge hadn't noticed. Fixed that now.")
+			}
+		} else if err.Error() == "restore session connection timed out" {
+			ce.Reply("Reconnection timed out. Is WhatsApp on your phone reachable?")
+		} else {
+			ce.Reply("Unknown error while reconnecting: %v", err)
+		}
 		return
 	}
 	ce.User.Connected = true
@@ -174,7 +193,7 @@ func (handler *CommandHandler) CommandDisconnect(ce *CommandEvent) {
 		return
 	} else if err != nil {
 		ce.User.log.Warnln("Error while disconnecting:", err)
-		ce.Reply("Error while disconnecting (see logs for details)")
+		ce.Reply("Unknown error while disconnecting: %v", err)
 		return
 	}
 	ce.User.SetSession(&sess)

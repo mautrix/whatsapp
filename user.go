@@ -162,6 +162,10 @@ func (user *User) RestoreSession() bool {
 		sess, err := user.Conn.RestoreWithSession(*user.Session)
 		if err != nil {
 			user.log.Errorln("Failed to restore session:", err)
+			msg := format.RenderMarkdown(fmt.Sprintf("\u26a0 Failed to connect to WhatsApp. Make sure WhatsApp "+
+				"on your phone is reachable and use `%s reconnect` to try connecting again.",
+				user.bridge.Config.Bridge.CommandPrefix))
+			_, _ = user.bridge.Bot.SendMessageEvent(user.ManagementRoom, mautrix.EventMessage, msg)
 			return false
 		}
 		user.Connected = true
@@ -186,7 +190,7 @@ func (user *User) Login(ce *CommandEvent) {
 		qrCode, err := qrcode.Encode(code, qrcode.Low, 256)
 		if err != nil {
 			user.log.Errorln("Failed to encode QR code:", err)
-			ce.Reply("Failed to encode QR code (see logs for details)")
+			ce.Reply("Failed to encode QR code: %v", err)
 			return
 		}
 
@@ -195,7 +199,7 @@ func (user *User) Login(ce *CommandEvent) {
 		resp, err := bot.UploadBytes(qrCode, "image/png")
 		if err != nil {
 			user.log.Errorln("Failed to upload QR code:", err)
-			ce.Reply("Failed to upload QR code (see logs for details)")
+			ce.Reply("Failed to upload QR code: %v", err)
 			return
 		}
 
@@ -211,16 +215,17 @@ func (user *User) Login(ce *CommandEvent) {
 			ce.Reply("You're already logged in.")
 		} else if err == whatsapp.ErrLoginInProgress {
 			ce.Reply("You have a login in progress already.")
+		} else if err.Error() == "qr code scan timed out" {
+			ce.Reply("QR code scan timed out. Please try again.")
 		} else {
 			user.log.Warnln("Failed to log in:", err)
-			ce.Reply("Failed to log in (see logs for details)")
+			ce.Reply("Failed to log in: %v", err)
 		}
 		return
 	}
 	user.Connected = true
 	user.JID = strings.Replace(user.Conn.Info.Wid, whatsappExt.OldUserSuffix, whatsappExt.NewUserSuffix, 1)
-	user.Session = &session
-	user.Update()
+	user.SetSession(&session)
 	ce.Reply("Successfully logged in. Now, you may ask for `sync [--create]`.")
 }
 
