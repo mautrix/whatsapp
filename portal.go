@@ -635,13 +635,13 @@ func (portal *Portal) HandleMediaMessage(source *User, download func() ([]byte, 
 
 	data, err := download()
 	if err != nil {
-		portal.log.Errorln("Failed to download media:", err)
+		portal.log.Errorfln("Failed to download media for %s: %v", info.Id, err)
 		return
 	}
 
 	uploaded, err := intent.UploadBytes(data, mimeType)
 	if err != nil {
-		portal.log.Errorln("Failed to upload media:", err)
+		portal.log.Errorfln("Failed to upload media for %s: %v", err)
 		return
 	}
 
