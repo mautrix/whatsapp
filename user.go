@@ -176,9 +176,7 @@ func (user *User) IsLoggedIn() bool {
 	return user.Conn != nil
 }
 
-func (user *User) Login(roomID types.MatrixRoomID) {
-	bot := user.bridge.AS.BotClient()
-
+func (user *User) Login(ce *CommandEvent) {
 	qrChan := make(chan string, 2)
 	go func() {
 		code := <-qrChan
@@ -188,37 +186,42 @@ func (user *User) Login(roomID types.MatrixRoomID) {
 		qrCode, err := qrcode.Encode(code, qrcode.Low, 256)
 		if err != nil {
 			user.log.Errorln("Failed to encode QR code:", err)
-			_, _ = bot.SendNotice(roomID, "Failed to encode QR code (see logs for details)")
+			ce.Reply("Failed to encode QR code (see logs for details)")
 			return
 		}
+
+		bot := user.bridge.AS.BotClient()
 
 		resp, err := bot.UploadBytes(qrCode, "image/png")
 		if err != nil {
 			user.log.Errorln("Failed to upload QR code:", err)
-			_, _ = bot.SendNotice(roomID, "Failed to upload QR code (see logs for details)")
+			ce.Reply("Failed to upload QR code (see logs for details)")
 			return
 		}
 
-		_, err = bot.SendImage(roomID, string(code), resp.ContentURI)
+		_, err = bot.SendImage(ce.RoomID, string(code), resp.ContentURI)
 		if err != nil {
 			user.log.Errorln("Failed to send QR code to user:", err)
 		}
 	}()
 	session, err := user.Conn.Login(qrChan)
 	if err != nil {
-		user.log.Warnln("Failed to log in:", err)
-		_, _ = bot.SendNotice(roomID, "Failed to log in: "+err.Error())
 		qrChan <- "error"
+		if err == whatsapp.ErrAlreadyLoggedIn {
+			ce.Reply("You're already logged in.")
+		} else if err == whatsapp.ErrLoginInProgress {
+			ce.Reply("You have a login in progress already.")
+		} else {
+			user.log.Warnln("Failed to log in:", err)
+			ce.Reply("Failed to log in (see logs for details)")
+		}
 		return
 	}
 	user.Connected = true
 	user.JID = strings.Replace(user.Conn.Info.Wid, whatsappExt.OldUserSuffix, whatsappExt.NewUserSuffix, 1)
 	user.Session = &session
 	user.Update()
-	_, err = bot.SendNotice(roomID, "Successfully logged in. Now, you may ask for `sync [--create]`.")
-	if err != nil {
-		user.log.Warnln("Failed to send login confirmation to user:", err)
-	}
+	ce.Reply("Successfully logged in. Now, you may ask for `sync [--create]`.")
 }
 
 func (user *User) HandleError(err error) {
@@ -226,7 +229,7 @@ func (user *User) HandleError(err error) {
 	closed, ok := err.(*whatsapp.ErrConnectionClosed)
 	if ok {
 		if closed.Code != 1000 {
-			msg := fmt.Sprintf("⚠️\u26a0 Your WhatsApp connection failed with websocket status code %d.\n\n" +
+			msg := fmt.Sprintf("\u26a0 Your WhatsApp connection failed with websocket status code %d.\n\n"+
 				"Use the `reconnect` command to reconnect.", closed.Code)
 			_, _ = user.bridge.Bot.SendMessageEvent(user.ManagementRoom, mautrix.EventMessage, format.RenderMarkdown(msg))
 		}
@@ -335,7 +338,7 @@ func (user *User) HandleCommand(cmd whatsappExt.Command) {
 			msg = "\u26a0 Your WhatsApp connection was closed by the server because you opened another WhatsApp Web client.\n\n" +
 				"Use the `reconnect` command to disconnect the other client and resume bridging."
 		} else {
-			msg = fmt.Sprintf("\u26a0 Your WhatsApp connection was closed by the server (reason code: %s).\n\n" +
+			msg = fmt.Sprintf("\u26a0 Your WhatsApp connection was closed by the server (reason code: %s).\n\n"+
 				"Use the `reconnect` command to reconnect.", cmd.Kind)
 		}
 		_, _ = user.bridge.Bot.SendMessageEvent(user.ManagementRoom, mautrix.EventMessage, format.RenderMarkdown(msg))

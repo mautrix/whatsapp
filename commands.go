@@ -113,13 +113,10 @@ const cmdLoginHelp = `login - Authenticate this Bridge as WhatsApp Web Client`
 
 // CommandLogin handles login command
 func (handler *CommandHandler) CommandLogin(ce *CommandEvent) {
-	if ce.User.Session != nil {
-		ce.Reply("You're already logged in.")
-		return
+	if ce.User.Conn == nil {
+		ce.User.Connect(true)
 	}
-
-	ce.User.Connect(true)
-	ce.User.Login(ce.RoomID)
+	ce.User.Login(ce)
 }
 
 const cmdLogoutHelp = `logout - Logout from WhatsApp`
@@ -136,6 +133,11 @@ func (handler *CommandHandler) CommandLogout(ce *CommandEvent) {
 		ce.Reply("Error while logging out (see logs for details)")
 		return
 	}
+	_, err = ce.User.Conn.Disconnect()
+	if err != nil {
+		ce.User.log.Warnln("Error while disconnecting after logout:", err)
+	}
+	ce.User.Connected = false
 	ce.User.Conn = nil
 	ce.User.Session = nil
 	ce.User.Update()
