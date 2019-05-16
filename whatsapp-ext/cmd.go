@@ -36,6 +36,8 @@ type Command struct {
 
 	*ProfilePicInfo
 	Kind string `json:"kind"`
+
+	Raw json.RawMessage `json:"-"`
 }
 
 type CommandHandler interface {
@@ -50,6 +52,7 @@ func (ext *ExtendedConn) handleMessageCommand(message []byte) {
 		ext.jsonParseError(err)
 		return
 	}
+	event.Raw = message
 	event.JID = strings.Replace(event.JID, OldUserSuffix, NewUserSuffix, 1)
 	for _, handler := range ext.handlers {
 		commandHandler, ok := handler.(CommandHandler)

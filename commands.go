@@ -83,6 +83,8 @@ func (handler *CommandHandler) Handle(roomID types.MatrixRoomID, user *User, mes
 		handler.CommandHelp(ce)
 	case "reconnect":
 		handler.CommandReconnect(ce)
+	case "delete-session":
+		handler.CommandDeleteSession(ce)
 	case "logout", "disconnect", "sync", "list", "open", "pm":
 		if ce.User.Conn == nil {
 			ce.Reply("You are not logged in. Use the `login` command to log into WhatsApp.")
@@ -141,9 +143,24 @@ func (handler *CommandHandler) CommandLogout(ce *CommandEvent) {
 	}
 	ce.User.Connected = false
 	ce.User.Conn = nil
-	ce.User.Session = nil
-	ce.User.Update()
+	ce.User.SetSession(nil)
 	ce.Reply("Logged out successfully.")
+}
+
+const cmdDeleteSessionHelp = `delete-session - Delete session information and disconnect from WhatsApp without sending a logout request`
+
+func (handler *CommandHandler) CommandDeleteSession(ce *CommandEvent) {
+	if ce.User.Session == nil && !ce.User.Connected && ce.User.Conn == nil {
+		ce.Reply("Nothing to purge: no session information stored and no active connection.")
+		return
+	}
+	ce.User.SetSession(nil)
+	ce.User.Connected = false
+	if ce.User.Conn != nil {
+		_, _ = ce.User.Conn.Disconnect()
+		ce.User.Conn = nil
+	}
+	ce.Reply("Session information purged")
 }
 
 const cmdReconnectHelp = `reconnect - Reconnect to WhatsApp`
@@ -213,6 +230,7 @@ func (handler *CommandHandler) CommandHelp(ce *CommandEvent) {
 		cmdPrefix + cmdHelpHelp,
 		cmdPrefix + cmdLoginHelp,
 		cmdPrefix + cmdLogoutHelp,
+		cmdPrefix + cmdDeleteSessionHelp,
 		cmdPrefix + cmdReconnectHelp,
 		cmdPrefix + cmdDisconnectHelp,
 		cmdPrefix + cmdSyncHelp,

@@ -219,7 +219,7 @@ func (user *User) Login(ce *CommandEvent) {
 			ce.Reply("QR code scan timed out. Please try again.")
 		} else {
 			user.log.Warnln("Failed to log in:", err)
-			ce.Reply("Failed to log in: %v", err)
+			ce.Reply("Unknown error while logging in: %v", err)
 		}
 		return
 	}
@@ -355,6 +355,7 @@ func (user *User) HandleCommand(cmd whatsappExt.Command) {
 			msg = "\u26a0 Your WhatsApp connection was closed by the server because you opened another WhatsApp Web client.\n\n" +
 				"Use the `reconnect` command to disconnect the other client and resume bridging."
 		} else {
+			user.log.Warnln("Unknown kind of disconnect:", string(cmd.Raw))
 			msg = fmt.Sprintf("\u26a0 Your WhatsApp connection was closed by the server (reason code: %s).\n\n"+
 				"Use the `reconnect` command to reconnect.", cmd.Kind)
 		}
