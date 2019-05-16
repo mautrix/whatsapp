@@ -161,14 +161,15 @@ func (user *User) Connect(evenIfNoSession bool) bool {
 	_ = user.Conn.SetClientName("Mautrix-WhatsApp bridge", "mx-wa")
 	user.log.Debugln("WhatsApp connection successful")
 	user.Conn.AddHandler(user)
-	user.RestoreSession()
-	return true
+	return user.RestoreSession()
 }
 
 func (user *User) RestoreSession() bool {
 	if user.Session != nil {
 		sess, err := user.Conn.RestoreWithSession(*user.Session)
-		if err != nil {
+		if err == whatsapp.ErrAlreadyLoggedIn {
+			return true
+		} else if err != nil {
 			user.log.Errorln("Failed to restore session:", err)
 			msg := format.RenderMarkdown(fmt.Sprintf("\u26a0 Failed to connect to WhatsApp. Make sure WhatsApp "+
 				"on your phone is reachable and use `%s reconnect` to try connecting again.",
@@ -179,9 +180,8 @@ func (user *User) RestoreSession() bool {
 		user.Connected = true
 		user.SetSession(&sess)
 		user.log.Debugln("Session restored successfully")
-		return true
 	}
-	return false
+	return true
 }
 
 func (user *User) IsLoggedIn() bool {
