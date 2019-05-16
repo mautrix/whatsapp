@@ -145,7 +145,11 @@ func (user *User) Connect(evenIfNoSession bool) bool {
 		return false
 	}
 	user.log.Debugln("Connecting to WhatsApp")
-	conn, err := whatsapp.NewConn(20 * time.Second)
+	timeout := time.Duration(user.bridge.Config.Bridge.ConnectionTimeout)
+	if timeout == 0 {
+		timeout = 20
+	}
+	conn, err := whatsapp.NewConn(timeout * time.Second)
 	if err != nil {
 		user.log.Errorln("Failed to connect to WhatsApp:", err)
 		return false
