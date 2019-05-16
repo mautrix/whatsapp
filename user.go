@@ -152,13 +152,17 @@ func (user *User) Connect(evenIfNoSession bool) bool {
 	conn, err := whatsapp.NewConn(timeout * time.Second)
 	if err != nil {
 		user.log.Errorln("Failed to connect to WhatsApp:", err)
+		msg := format.RenderMarkdown(fmt.Sprintf("\u26a0 Failed to connect to WhatsApp server. " +
+			"This indicates a network problem on the bridge server. See bridge logs for more info."))
+		_, _ = user.bridge.Bot.SendMessageEvent(user.ManagementRoom, mautrix.EventMessage, msg)
 		return false
 	}
 	user.Conn = whatsappExt.ExtendConn(conn)
 	_ = user.Conn.SetClientName("Mautrix-WhatsApp bridge", "mx-wa")
 	user.log.Debugln("WhatsApp connection successful")
 	user.Conn.AddHandler(user)
-	return user.RestoreSession()
+	user.RestoreSession()
+	return true
 }
 
 func (user *User) RestoreSession() bool {
