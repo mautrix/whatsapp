@@ -991,3 +991,53 @@ func (portal *Portal) HandleMatrixRedaction(sender *User, evt *mautrix.Event) {
 		portal.log.Debugln("Handled Matrix redaction:", evt)
 	}
 }
+
+func (portal *Portal) Delete() {
+	portal.Portal.Delete()
+	delete(portal.bridge.portalsByJID, portal.Key)
+	if len(portal.MXID) > 0 {
+		delete(portal.bridge.portalsByMXID, portal.MXID)
+	}
+}
+
+func (portal *Portal) Cleanup(puppetsOnly bool) {
+	if len(portal.MXID) == 0 {
+		return
+	}
+	if portal.IsPrivateChat() {
+		_, err := portal.MainIntent().LeaveRoom(portal.MXID)
+		if err != nil {
+			portal.log.Warnln("Failed to leave private chat portal with main intent:", err)
+		}
+		return
+	}
+	intent := portal.MainIntent()
+	members, err := intent.JoinedMembers(portal.MXID)
+	if err != nil {
+		portal.log.Errorln("Failed to get portal members for cleanup:", err)
+		return
+	}
+	for member, _ := range members.Joined {
+		puppet := portal.bridge.GetPuppetByMXID(member)
+		if puppet != nil {
+			_, err = puppet.Intent().LeaveRoom(portal.MXID)
+			portal.log.Errorln("Error leaving as puppet while cleaning up portal:", err)
+		} else if !puppetsOnly {
+			_, err = intent.KickUser(portal.MXID, &mautrix.ReqKickUser{UserID: member, Reason: "Deleting portal"})
+			portal.log.Errorln("Error kicking user while cleaning up portal:", err)
+		}
+	}
+}
+
+func (portal *Portal) HandleMatrixLeave(sender *User) {
+	if portal.IsPrivateChat() {
+		portal.log.Debugln("User left private chat portal, cleaning up and deleting...")
+		portal.Delete()
+		portal.Cleanup(false)
+		return
+	}
+}
+
+func (portal *Portal) HandleMatrixKick(sender *User, event *mautrix.Event) {
+	// TODO
+}

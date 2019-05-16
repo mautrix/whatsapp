@@ -47,6 +47,10 @@ type User struct {
 }
 
 func (bridge *Bridge) GetUserByMXID(userID types.MatrixUserID) *User {
+	_, isPuppet := bridge.ParsePuppetMXID(userID)
+	if isPuppet || userID == bridge.Bot.UserID {
+		return nil
+	}
 	bridge.usersLock.Lock()
 	defer bridge.usersLock.Unlock()
 	user, ok := bridge.usersByMXID[userID]

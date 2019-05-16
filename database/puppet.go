@@ -29,16 +29,6 @@ type PuppetQuery struct {
 	log log.Logger
 }
 
-func (pq *PuppetQuery) CreateTable(dbType string) error {
-	_, err := pq.db.Exec(`CREATE TABLE IF NOT EXISTS puppet (
-		jid          VARCHAR(255) PRIMARY KEY,
-		avatar       VARCHAR(255),
-		displayname  VARCHAR(255),
-		name_quality SMALLINT
-	)`)
-	return err
-}
-
 func (pq *PuppetQuery) New() *Puppet {
 	return &Puppet{
 		db:  pq.db,

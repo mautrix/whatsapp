@@ -59,21 +59,6 @@ type PortalQuery struct {
 	log log.Logger
 }
 
-func (pq *PortalQuery) CreateTable(dbType string) error {
-	_, err := pq.db.Exec(`CREATE TABLE IF NOT EXISTS portal (
-		jid      VARCHAR(255),
-		receiver VARCHAR(255),
-		mxid     VARCHAR(255) UNIQUE,
-
-		name   VARCHAR(255) NOT NULL,
-		topic  VARCHAR(255) NOT NULL,
-		avatar VARCHAR(255) NOT NULL,
-
-		PRIMARY KEY (jid, receiver)
-	)`)
-	return err
-}
-
 func (pq *PortalQuery) New() *Portal {
 	return &Portal{
 		db:  pq.db,
@@ -158,5 +143,12 @@ func (portal *Portal) Update() {
 		mxid, portal.Name, portal.Topic, portal.Avatar, portal.Key.JID, portal.Key.Receiver)
 	if err != nil {
 		portal.log.Warnfln("Failed to update %s: %v", portal.Key, err)
+	}
+}
+
+func (portal *Portal) Delete() {
+	_, err := portal.db.Exec("DELETE FROM portal WHERE jid=$1 AND receiver=$2", portal.Key.JID, portal.Key.Receiver)
+	if err != nil {
+		portal.log.Warnfln("Failed to delete %s: %v", portal.Key, err)
 	}
 }

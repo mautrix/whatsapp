@@ -23,6 +23,8 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 
 	log "maunium.net/go/maulogger/v2"
+
+	"maunium.net/go/mautrix-whatsapp/database/upgrades"
 )
 
 type Database struct {
@@ -64,24 +66,8 @@ func New(dbType string, uri string) (*Database, error) {
 	return db, nil
 }
 
-func (db *Database) CreateTables(dbType string) error {
-	err := db.User.CreateTable(dbType)
-	if err != nil {
-		return err
-	}
-	err = db.Portal.CreateTable(dbType)
-	if err != nil {
-		return err
-	}
-	err = db.Puppet.CreateTable(dbType)
-	if err != nil {
-		return err
-	}
-	err = db.Message.CreateTable(dbType)
-	if err != nil {
-		return err
-	}
-	return nil
+func (db *Database) Init(dialectName string) error {
+	return upgrades.Run(db.log.Sub("Upgrade"), dialectName, db.DB)
 }
 
 type Scannable interface {

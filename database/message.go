@@ -18,7 +18,6 @@ package database
 
 import (
 	"bytes"
-	"strings"
 	"database/sql"
 	"encoding/json"
 
@@ -32,36 +31,6 @@ import (
 type MessageQuery struct {
 	db  *Database
 	log log.Logger
-}
-
-func (mq *MessageQuery) CreateTable(dbType string) error {
-	if strings.ToLower(dbType) == "postgres" {
-		_, err := mq.db.Exec(`CREATE TABLE IF NOT EXISTS message (
-			chat_jid      VARCHAR(255),
-			chat_receiver VARCHAR(255),
-			jid           VARCHAR(255),
-			mxid          VARCHAR(255) NOT NULL UNIQUE,
-			sender        VARCHAR(255)  NOT NULL,
-			content       bytea         NOT NULL,
-
-			PRIMARY KEY (chat_jid, chat_receiver, jid),
-			FOREIGN KEY (chat_jid, chat_receiver) REFERENCES portal(jid, receiver)
-		)`)
-		return err
-	} else {
-		_, err := mq.db.Exec(`CREATE TABLE IF NOT EXISTS message (
-			chat_jid      VARCHAR(255),
-			chat_receiver VARCHAR(255),
-			jid           VARCHAR(255),
-			mxid          VARCHAR(255) NOT NULL UNIQUE,
-			sender        VARCHAR(255)  NOT NULL,
-			content       BLOB          NOT NULL,
-
-			PRIMARY KEY (chat_jid, chat_receiver, jid),
-			FOREIGN KEY (chat_jid, chat_receiver) REFERENCES portal(jid, receiver)
-		)`)
-	return err
-	}
 }
 
 func (mq *MessageQuery) New() *Message {

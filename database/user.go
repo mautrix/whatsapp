@@ -33,38 +33,6 @@ type UserQuery struct {
 	log log.Logger
 }
 
-func (uq *UserQuery) CreateTable(dbType string) error {
-	if strings.ToLower(dbType) == "postgres" {
-		_, err := uq.db.Exec(`CREATE TABLE IF NOT EXISTS "user" (
-			mxid VARCHAR(255) PRIMARY KEY,
-			jid  VARCHAR(255)  UNIQUE,
-
-			management_room VARCHAR(255),
-
-			client_id    VARCHAR(255),
-			client_token VARCHAR(255),
-			server_token VARCHAR(255),
-			enc_key      bytea,
-			mac_key      bytea
-		)`)
-		return err
-	} else {
-		_, err := uq.db.Exec(`CREATE TABLE IF NOT EXISTS "user" (
-			mxid VARCHAR(255) PRIMARY KEY,
-			jid  VARCHAR(255)  UNIQUE,
-
-			management_room VARCHAR(255),
-
-			client_id    VARCHAR(255),
-			client_token VARCHAR(255),
-			server_token VARCHAR(255),
-			enc_key      BLOB,
-			mac_key      BLOB
-		)`)
-		return err
-	}
-}
-
 func (uq *UserQuery) New() *User {
 	return &User{
 		db:  uq.db,

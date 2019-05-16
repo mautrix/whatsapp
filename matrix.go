@@ -111,6 +111,26 @@ func (mx *MatrixHandler) HandleMembership(evt *mautrix.Event) {
 	if evt.Content.Membership == "invite" && evt.GetStateKey() == mx.as.BotMXID() {
 		mx.HandleBotInvite(evt)
 	}
+
+	portal := mx.bridge.GetPortalByMXID(evt.RoomID)
+	if portal == nil {
+		return
+	}
+
+	user := mx.bridge.GetUserByMXID(types.MatrixUserID(evt.Sender))
+	if user == nil || !user.Whitelisted || !user.IsLoggedIn() {
+		return
+	}
+
+	if evt.Content.Membership == "leave" {
+		if evt.GetStateKey() == evt.Sender {
+			if portal.IsPrivateChat() || evt.Unsigned.PrevContent.Membership == "join" {
+				portal.HandleMatrixLeave(user)
+			}
+		} else {
+			portal.HandleMatrixKick(user, evt)
+		}
+	}
 }
 
 func (mx *MatrixHandler) HandleRoomMetadata(evt *mautrix.Event) {
