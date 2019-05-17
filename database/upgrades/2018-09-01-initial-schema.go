@@ -40,7 +40,7 @@ func init() {
 
 		_, err = tx.Exec(fmt.Sprintf(`CREATE TABLE IF NOT EXISTS "user" (
 			mxid VARCHAR(255) PRIMARY KEY,
-			jid  VARCHAR(255)  UNIQUE,
+			jid  VARCHAR(255) UNIQUE,
 
 			management_room VARCHAR(255),
 
@@ -63,7 +63,7 @@ func init() {
 			content       %[1]s        NOT NULL,
 
 			PRIMARY KEY (chat_jid, chat_receiver, jid),
-			FOREIGN KEY (chat_jid, chat_receiver) REFERENCES portal(jid, receiver)
+			FOREIGN KEY (chat_jid, chat_receiver) REFERENCES portal(jid, receiver) ON DELETE CASCADE
 		)`, byteType))
 		if err != nil {
 			return err
