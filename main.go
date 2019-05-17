@@ -139,6 +139,9 @@ func (bridge *Bridge) Init() {
 		os.Exit(14)
 	}
 
+	bridge.DB.SetMaxOpenConns(bridge.Config.AppService.Database.MaxOpenConns)
+	bridge.DB.SetMaxIdleConns(bridge.Config.AppService.Database.MaxIdleConns)
+
 	bridge.Log.Debugln("Initializing Matrix event processor")
 	bridge.EventProcessor = appservice.NewEventProcessor(bridge.AS)
 	bridge.Log.Debugln("Initializing Matrix event handler")

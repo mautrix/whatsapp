@@ -23,6 +23,10 @@ appservice:
         #   SQLite: File name is enough. https://github.com/mattn/go-sqlite3#connection-string
         #   Postgres: Connection string. For example, postgres://user:password@host/database
         uri: mautrix-whatsapp.db
+        # Maximum number of connections. Mostly relevant for Postgres.
+        max_open_conns: 20
+        max_idle_conns: 2
+
     # Path to the Matrix room state store.
     state_store_path: ./mx-state.json
 
@@ -56,6 +60,11 @@ bridge:
 
     # WhatsApp connection timeout in seconds.
     connection_timeout: 20
+    # Maximum number of times to retry connecting on connection error.
+    max_connection_attempts: 3
+    # Whether or not the bridge should send a notice to the user's management room when it retries connecting.
+    # If false, it will only report when it stops retrying.
+    report_connection_retry: true
 
     # The prefix for commands. Only required in non-management rooms.
     command_prefix: "!wa"

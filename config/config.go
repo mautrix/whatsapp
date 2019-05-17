@@ -38,6 +38,9 @@ type Config struct {
 		Database struct {
 			Type string `yaml:"type"`
 			URI  string `yaml:"uri"`
+
+			MaxOpenConns int `yaml:"max_open_conns"`
+			MaxIdleConns int `yaml:"max_idle_conns"`
 		} `yaml:"database"`
 
 		StateStore string `yaml:"state_store_path"`
@@ -58,6 +61,11 @@ type Config struct {
 	Logging appservice.LogConfig `yaml:"logging"`
 }
 
+func (config *Config) setDefaults() {
+	config.AppService.Database.MaxOpenConns = 20
+	config.AppService.Database.MaxIdleConns = 2
+}
+
 func Load(path string) (*Config, error) {
 	data, err := ioutil.ReadFile(path)
 	if err != nil {
@@ -65,6 +73,7 @@ func Load(path string) (*Config, error) {
 	}
 
 	var config = &Config{}
+	config.setDefaults()
 	err = yaml.Unmarshal(data, config)
 	return config, err
 }
