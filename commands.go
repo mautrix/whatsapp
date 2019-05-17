@@ -182,6 +182,9 @@ func (handler *CommandHandler) CommandReconnect(ce *CommandEvent) {
 			ce.Reply("You are not logged in.")
 			return
 		}
+	} else if err == whatsapp.ErrLoginInProgress {
+		ce.Reply("A login or reconnection is already in progress.")
+		return
 	}
 	if err != nil {
 		ce.User.log.Warnln("Error while reconnecting:", err)
@@ -190,6 +193,7 @@ func (handler *CommandHandler) CommandReconnect(ce *CommandEvent) {
 				ce.Reply("You were already connected.")
 			} else {
 				ce.User.Connected = true
+				ce.User.ConnectionErrors = 0
 				ce.Reply("You were already connected, but the bridge hadn't noticed. Fixed that now.")
 			}
 		} else if err.Error() == "restore session connection timed out" {
@@ -200,6 +204,7 @@ func (handler *CommandHandler) CommandReconnect(ce *CommandEvent) {
 		return
 	}
 	ce.User.Connected = true
+	ce.User.ConnectionErrors = 0
 	ce.Reply("Reconnected successfully.")
 }
 

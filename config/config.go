@@ -64,6 +64,7 @@ type Config struct {
 func (config *Config) setDefaults() {
 	config.AppService.Database.MaxOpenConns = 20
 	config.AppService.Database.MaxIdleConns = 2
+	config.Bridge.setDefaults()
 }
 
 func Load(path string) (*Config, error) {

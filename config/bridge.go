@@ -33,7 +33,9 @@ type BridgeConfig struct {
 	UsernameTemplate    string `yaml:"username_template"`
 	DisplaynameTemplate string `yaml:"displayname_template"`
 
-	ConnectionTimeout int `yaml:"connection_timeout"`
+	ConnectionTimeout     int  `yaml:"connection_timeout"`
+	MaxConnectionAttempts int  `yaml:"max_connection_attempts"`
+	ReportConnectionRetry bool `yaml:"report_connection_retry"`
 
 	CommandPrefix string `yaml:"command_prefix"`
 
@@ -41,6 +43,12 @@ type BridgeConfig struct {
 
 	usernameTemplate    *template.Template `yaml:"-"`
 	displaynameTemplate *template.Template `yaml:"-"`
+}
+
+func (bc *BridgeConfig) setDefaults() {
+	bc.ConnectionTimeout = 20
+	bc.MaxConnectionAttempts = 3
+	bc.ReportConnectionRetry = true
 }
 
 type umBridgeConfig BridgeConfig
@@ -61,7 +69,7 @@ func (bc *BridgeConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
 }
 
 type UsernameTemplateArgs struct {
-	UserID   string
+	UserID string
 }
 
 func (bc BridgeConfig) FormatDisplayname(contact whatsapp.Contact) (string, int8) {

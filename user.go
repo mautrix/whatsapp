@@ -44,6 +44,8 @@ type User struct {
 	Admin       bool
 	Whitelisted bool
 	Connected   bool
+
+	ConnectionErrors int
 }
 
 func (bridge *Bridge) GetUserByMXID(userID types.MatrixUserID) *User {
@@ -182,6 +184,7 @@ func (user *User) RestoreSession() bool {
 			return false
 		}
 		user.Connected = true
+		user.ConnectionErrors = 0
 		user.SetSession(&sess)
 		user.log.Debugln("Session restored successfully")
 	}
@@ -236,6 +239,7 @@ func (user *User) Login(ce *CommandEvent) {
 		return
 	}
 	user.Connected = true
+	user.ConnectionErrors = 0
 	user.JID = strings.Replace(user.Conn.Info.Wid, whatsappExt.OldUserSuffix, whatsappExt.NewUserSuffix, 1)
 	user.SetSession(&session)
 	ce.Reply("Successfully logged in. Now, you may ask for `sync [--create]`.")
@@ -243,22 +247,63 @@ func (user *User) Login(ce *CommandEvent) {
 
 func (user *User) HandleError(err error) {
 	user.log.Errorln("WhatsApp error:", err)
-	closed, ok := err.(*whatsapp.ErrConnectionClosed)
-	if ok {
-		if closed.Code != 1000 {
-			msg := fmt.Sprintf("\u26a0 Your WhatsApp connection was closed with websocket status code %d.\n\n"+
-				"Use the `reconnect` command to reconnect.", closed.Code)
-			_, _ = user.bridge.Bot.SendMessageEvent(user.ManagementRoom, mautrix.EventMessage, format.RenderMarkdown(msg))
+	var msg string
+	if closed, ok := err.(*whatsapp.ErrConnectionClosed); ok {
+		user.Connected = false
+		if closed.Code == 1000 {
+			// Normal closure
+			return
 		}
+		user.ConnectionErrors++
+		msg = fmt.Sprintf("Your WhatsApp connection was closed with websocket status code %d", closed.Code)
+	} else if failed, ok := err.(*whatsapp.ErrConnectionFailed); ok {
 		user.Connected = false
+		user.ConnectionErrors++
+		msg = fmt.Sprintf("Your WhatsApp connection failed: %v", failed.Err)
+	} else {
+		// Unknown error, probably mostly harmless
+		return
 	}
-	failed, ok := err.(*whatsapp.ErrConnectionFailed)
-	if ok {
-		msg := fmt.Sprintf("\u26a0 Your WhatsApp connection failed: %v.\n\n"+
-			"Use the `reconnect` command to reconnect.", failed.Err)
-		_, _ = user.bridge.Bot.SendMessageEvent(user.ManagementRoom, mautrix.EventMessage, format.RenderMarkdown(msg))
-		user.Connected = false
+	if user.ConnectionErrors > user.bridge.Config.Bridge.MaxConnectionAttempts {
+		content := format.RenderMarkdown(fmt.Sprintf("%s. Use the `reconnect` command to reconnect.", msg))
+		_, _ = user.bridge.Bot.SendMessageEvent(user.ManagementRoom, mautrix.EventMessage, content)
+		return
 	}
+	if user.bridge.Config.Bridge.ReportConnectionRetry {
+		_, _ = user.bridge.Bot.SendNotice(user.ManagementRoom, fmt.Sprintf("%s. Reconnecting...", msg))
+		// Don't want the same error to be repeated
+		msg = ""
+	}
+	tries := 0
+	for user.ConnectionErrors <= user.bridge.Config.Bridge.MaxConnectionAttempts {
+		err = user.Conn.Restore()
+		if err == nil {
+			user.ConnectionErrors = 0
+			user.Connected = true
+			_, _ = user.bridge.Bot.SendNotice(user.ManagementRoom, "Reconnected successfully")
+			return
+		}
+		user.log.Errorln("Error while trying to reconnect after disconnection:", err)
+		tries++
+		user.ConnectionErrors++
+		if user.ConnectionErrors <= user.bridge.Config.Bridge.MaxConnectionAttempts {
+			if user.bridge.Config.Bridge.ReportConnectionRetry {
+				_, _ = user.bridge.Bot.SendNotice(user.ManagementRoom,
+					fmt.Sprintf("Reconnection attempt failed: %v. Retrying in 10 seconds...", err))
+			}
+			time.Sleep(10 * time.Second)
+		}
+	}
+
+	if user.bridge.Config.Bridge.ReportConnectionRetry {
+		msg = fmt.Sprintf("%d reconnection attempts failed. Use the `reconnect` command to try to reconnect manually.", tries)
+	} else {
+		msg = fmt.Sprintf("\u26a0 %sAdditionally, %d reconnection attempts failed. "+
+			"Use the `reconnect` command to try to reconnect.", msg, tries)
+	}
+
+	content := format.RenderMarkdown(msg)
+	_, _ = user.bridge.Bot.SendMessageEvent(user.ManagementRoom, mautrix.EventMessage, content)
 }
 
 func (user *User) HandleJSONParseError(err error) {
