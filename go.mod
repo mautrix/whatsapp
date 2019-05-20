@@ -3,7 +3,7 @@ module maunium.net/go/mautrix-whatsapp
 go 1.12
 
 require (
-	github.com/Rhymen/go-whatsapp v0.0.2-0.20190511164245-5d5100902126
+	github.com/Rhymen/go-whatsapp v0.0.2-0.20190520154255-e9add85056dd
 	github.com/golang/protobuf v1.3.1 // indirect
 	github.com/lib/pq v1.1.1
 	github.com/mattn/go-sqlite3 v1.10.0
@@ -19,3 +19,5 @@ require (
 )
 
 replace gopkg.in/russross/blackfriday.v2 => github.com/russross/blackfriday/v2 v2.0.1
+
+replace github.com/Rhymen/go-whatsapp => github.com/tulir/go-whatsapp v0.0.2-0.20190520154255-e9add85056dd
