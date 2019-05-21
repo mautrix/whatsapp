@@ -96,7 +96,12 @@ func (ext *ExtendedConn) HandleJsonMessage(message string) {
 			if !ok {
 				continue
 			}
-			ujmHandler.HandleUnhandledJSONMessage(message)
+
+			if ext.shouldCallSynchronously(ujmHandler) {
+				ujmHandler.HandleUnhandledJSONMessage(message)
+			} else {
+				go ujmHandler.HandleUnhandledJSONMessage(message)
+			}
 		}
 	}
 }

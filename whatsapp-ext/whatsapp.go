@@ -46,6 +46,15 @@ func ExtendConn(conn *whatsapp.Conn) *ExtendedConn {
 	return ext
 }
 
+func (ext *ExtendedConn) shouldCallSynchronously(handler whatsapp.Handler) bool {
+	sh, ok := handler.(whatsapp.SyncHandler)
+	return ok && sh.ShouldCallSynchronously()
+}
+
+func (ext *ExtendedConn) ShouldCallSynchronously() bool {
+	return true
+}
+
 type GroupInfo struct {
 	JID      string `json:"jid"`
 	OwnerJID string `json:"owner"`

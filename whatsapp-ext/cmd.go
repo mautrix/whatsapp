@@ -59,6 +59,11 @@ func (ext *ExtendedConn) handleMessageCommand(message []byte) {
 		if !ok {
 			continue
 		}
-		go commandHandler.HandleCommand(event)
+
+		if ext.shouldCallSynchronously(commandHandler) {
+			commandHandler.HandleCommand(event)
+		} else {
+			go commandHandler.HandleCommand(event)
+		}
 	}
 }

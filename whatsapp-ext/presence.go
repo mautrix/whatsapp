@@ -62,6 +62,11 @@ func (ext *ExtendedConn) handleMessagePresence(message []byte) {
 		if !ok {
 			continue
 		}
-		go presenceHandler.HandlePresence(event)
+
+		if ext.shouldCallSynchronously(presenceHandler) {
+			presenceHandler.HandlePresence(event)
+		} else {
+			go presenceHandler.HandlePresence(event)
+		}
 	}
 }

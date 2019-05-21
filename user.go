@@ -25,9 +25,10 @@ import (
 	"github.com/skip2/go-qrcode"
 	log "maunium.net/go/maulogger/v2"
 
-	"github.com/Rhymen/go-whatsapp"
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/format"
+
+	"github.com/Rhymen/go-whatsapp"
 
 	"maunium.net/go/mautrix-whatsapp/database"
 	"maunium.net/go/mautrix-whatsapp/types"
@@ -306,6 +307,10 @@ func (user *User) HandleError(err error) {
 	_, _ = user.bridge.Bot.SendMessageEvent(user.ManagementRoom, mautrix.EventMessage, content)
 }
 
+func (user *User) ShouldCallSynchronously() bool {
+	return true
+}
+
 func (user *User) HandleJSONParseError(err error) {
 	user.log.Errorln("WhatsApp JSON parse error:", err)
 }
@@ -319,33 +324,27 @@ func (user *User) GetPortalByJID(jid types.WhatsAppID) *Portal {
 }
 
 func (user *User) HandleTextMessage(message whatsapp.TextMessage) {
-	portal := user.GetPortalByJID(message.Info.RemoteJid)
-	portal.HandleTextMessage(user, message)
+	user.GetPortalByJID(message.Info.RemoteJid).messages <- PortalMessage{user, message}
 }
 
 func (user *User) HandleImageMessage(message whatsapp.ImageMessage) {
-	portal := user.GetPortalByJID(message.Info.RemoteJid)
-	portal.HandleMediaMessage(user, message.Download, message.Thumbnail, message.Info, message.Type, message.Caption)
+	user.GetPortalByJID(message.Info.RemoteJid).messages <- PortalMessage{user, message}
 }
 
 func (user *User) HandleVideoMessage(message whatsapp.VideoMessage) {
-	portal := user.GetPortalByJID(message.Info.RemoteJid)
-	portal.HandleMediaMessage(user, message.Download, message.Thumbnail, message.Info, message.Type, message.Caption)
+	user.GetPortalByJID(message.Info.RemoteJid).messages <- PortalMessage{user, message}
 }
 
 func (user *User) HandleAudioMessage(message whatsapp.AudioMessage) {
-	portal := user.GetPortalByJID(message.Info.RemoteJid)
-	portal.HandleMediaMessage(user, message.Download, nil, message.Info, message.Type, "")
+	user.GetPortalByJID(message.Info.RemoteJid).messages <- PortalMessage{user, message}
 }
 
 func (user *User) HandleDocumentMessage(message whatsapp.DocumentMessage) {
-	portal := user.GetPortalByJID(message.Info.RemoteJid)
-	portal.HandleMediaMessage(user, message.Download, message.Thumbnail, message.Info, message.Type, message.Title)
+	user.GetPortalByJID(message.Info.RemoteJid).messages <- PortalMessage{user, message}
 }
 
 func (user *User) HandleMessageRevoke(message whatsappExt.MessageRevocation) {
-	portal := user.GetPortalByJID(message.RemoteJid)
-	portal.HandleMessageRevoke(user, message)
+	user.GetPortalByJID(message.RemoteJid).messages <- PortalMessage{user, message}
 }
 
 func (user *User) HandlePresence(info whatsappExt.Presence) {
@@ -382,17 +381,20 @@ func (user *User) HandleMsgInfo(info whatsappExt.MsgInfo) {
 			return
 		}
 
-		intent := user.bridge.GetPuppetByJID(info.SenderJID).Intent()
-		for _, id := range info.IDs {
-			msg := user.bridge.DB.Message.GetByJID(portal.Key, id)
-			if msg == nil {
-				continue
+		go func() {
+			intent := user.bridge.GetPuppetByJID(info.SenderJID).Intent()
+			for _, id := range info.IDs {
+				msg := user.bridge.DB.Message.GetByJID(portal.Key, id)
+				if msg == nil {
+					continue
+				}
+
+				err := intent.MarkRead(portal.MXID, msg.MXID)
+				if err != nil {
+					user.log.Warnln("Failed to mark message %s as read by %s: %v", msg.MXID, info.SenderJID, err)
+				}
 			}
-			err := intent.MarkRead(portal.MXID, msg.MXID)
-			if err != nil {
-				user.log.Warnln("Failed to mark message %s as read by %s: %v", msg.MXID, info.SenderJID, err)
-			}
-		}
+		}()
 	}
 }
 
@@ -401,10 +403,10 @@ func (user *User) HandleCommand(cmd whatsappExt.Command) {
 	case whatsappExt.CommandPicture:
 		if strings.HasSuffix(cmd.JID, whatsappExt.NewUserSuffix) {
 			puppet := user.bridge.GetPuppetByJID(cmd.JID)
-			puppet.UpdateAvatar(user, cmd.ProfilePicInfo)
+			go puppet.UpdateAvatar(user, cmd.ProfilePicInfo)
 		} else {
 			portal := user.GetPortalByJID(cmd.JID)
-			portal.UpdateAvatar(user, cmd.ProfilePicInfo)
+			go portal.UpdateAvatar(user, cmd.ProfilePicInfo)
 		}
 	case whatsappExt.CommandDisconnect:
 		var msg string
@@ -416,7 +418,7 @@ func (user *User) HandleCommand(cmd whatsappExt.Command) {
 			msg = fmt.Sprintf("\u26a0 Your WhatsApp connection was closed by the server (reason code: %s).\n\n"+
 				"Use the `reconnect` command to reconnect.", cmd.Kind)
 		}
-		_, _ = user.bridge.Bot.SendMessageEvent(user.ManagementRoom, mautrix.EventMessage, format.RenderMarkdown(msg))
+		go user.bridge.Bot.SendMessageEvent(user.ManagementRoom, mautrix.EventMessage, format.RenderMarkdown(msg))
 	}
 }
 
@@ -432,19 +434,19 @@ func (user *User) HandleChatUpdate(cmd whatsappExt.ChatUpdate) {
 
 	switch cmd.Data.Action {
 	case whatsappExt.ChatActionNameChange:
-		portal.UpdateName(cmd.Data.NameChange.Name, cmd.Data.SenderJID)
+		go portal.UpdateName(cmd.Data.NameChange.Name, cmd.Data.SenderJID)
 	case whatsappExt.ChatActionAddTopic:
-		portal.UpdateTopic(cmd.Data.AddTopic.Topic, cmd.Data.SenderJID)
+		go portal.UpdateTopic(cmd.Data.AddTopic.Topic, cmd.Data.SenderJID)
 	case whatsappExt.ChatActionRemoveTopic:
-		portal.UpdateTopic("", cmd.Data.SenderJID)
+		go portal.UpdateTopic("", cmd.Data.SenderJID)
 	case whatsappExt.ChatActionPromote:
-		portal.ChangeAdminStatus(cmd.Data.PermissionChange.JIDs, true)
+		go portal.ChangeAdminStatus(cmd.Data.PermissionChange.JIDs, true)
 	case whatsappExt.ChatActionDemote:
-		portal.ChangeAdminStatus(cmd.Data.PermissionChange.JIDs, false)
+		go portal.ChangeAdminStatus(cmd.Data.PermissionChange.JIDs, false)
 	case whatsappExt.ChatActionAnnounce:
-		portal.RestrictMessageSending(cmd.Data.Announce)
+		go portal.RestrictMessageSending(cmd.Data.Announce)
 	case whatsappExt.ChatActionRestrict:
-		portal.RestrictMetadataChanges(cmd.Data.Restrict)
+		go portal.RestrictMetadataChanges(cmd.Data.Restrict)
 	}
 }
 

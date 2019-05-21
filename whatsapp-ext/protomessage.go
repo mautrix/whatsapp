@@ -35,7 +35,7 @@ type MessageRevocation struct {
 
 func (ext *ExtendedConn) HandleRawMessage(message *proto.WebMessageInfo) {
 	protoMsg := message.GetMessage().GetProtocolMessage()
-	if protoMsg.GetType() == proto.ProtocolMessage_REVOKE {
+	if protoMsg != nil && protoMsg.GetType() == proto.ProtocolMessage_REVOKE {
 		key := protoMsg.GetKey()
 		deletedMessage := MessageRevocation{
 			Id:          key.GetId(),
@@ -48,7 +48,12 @@ func (ext *ExtendedConn) HandleRawMessage(message *proto.WebMessageInfo) {
 			if !ok {
 				continue
 			}
-			mrHandler.HandleMessageRevoke(deletedMessage)
+
+			if ext.shouldCallSynchronously(mrHandler) {
+				mrHandler.HandleMessageRevoke(deletedMessage)
+			} else {
+				go mrHandler.HandleMessageRevoke(deletedMessage)
+			}
 		}
 	}
 }
