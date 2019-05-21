@@ -85,6 +85,8 @@ func (handler *CommandHandler) Handle(roomID types.MatrixRoomID, user *User, mes
 		handler.CommandReconnect(ce)
 	case "delete-session":
 		handler.CommandDeleteSession(ce)
+	case "delete-portal":
+		handler.CommandDeletePortal(ce)
 	case "logout", "disconnect", "sync", "list", "open", "pm":
 		if ce.User.Conn == nil {
 			ce.Reply("You are not logged in. Use the `login` command to log into WhatsApp.")
@@ -275,6 +277,23 @@ func (handler *CommandHandler) CommandSync(ce *CommandEvent) {
 	}
 
 	ce.Reply("Imported contacts successfully.")
+}
+
+func (handler *CommandHandler) CommandDeletePortal(ce *CommandEvent) {
+	if !ce.User.Admin {
+		ce.Reply("Only bridge admins can delete portals")
+		return
+	}
+
+	portal := ce.Bridge.GetPortalByMXID(ce.RoomID)
+	if portal == nil {
+		ce.Reply("You must be in a portal room to use that command")
+		return
+	}
+
+	portal.log.Infoln(ce.User.MXID, "requested deletion of portal.")
+	portal.Delete()
+	portal.Cleanup(false)
 }
 
 const cmdListHelp = `list - Get a list of all contacts and groups.`

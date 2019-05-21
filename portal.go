@@ -1021,10 +1021,14 @@ func (portal *Portal) Cleanup(puppetsOnly bool) {
 		puppet := portal.bridge.GetPuppetByMXID(member)
 		if puppet != nil {
 			_, err = puppet.Intent().LeaveRoom(portal.MXID)
-			portal.log.Errorln("Error leaving as puppet while cleaning up portal:", err)
+			if err != nil {
+				portal.log.Errorln("Error leaving as puppet while cleaning up portal:", err)
+			}
 		} else if !puppetsOnly {
 			_, err = intent.KickUser(portal.MXID, &mautrix.ReqKickUser{UserID: member, Reason: "Deleting portal"})
-			portal.log.Errorln("Error kicking user while cleaning up portal:", err)
+			if err != nil {
+				portal.log.Errorln("Error kicking user while cleaning up portal:", err)
+			}
 		}
 	}
 }

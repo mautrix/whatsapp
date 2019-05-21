@@ -38,9 +38,9 @@ func (ext *ExtendedConn) HandleRawMessage(message *proto.WebMessageInfo) {
 	if protoMsg.GetType() == proto.ProtocolMessage_REVOKE {
 		key := protoMsg.GetKey()
 		deletedMessage := MessageRevocation{
-			Id: key.GetId(),
-			RemoteJid: key.GetRemoteJid(),
-			FromMe: key.GetFromMe(),
+			Id:          key.GetId(),
+			RemoteJid:   key.GetRemoteJid(),
+			FromMe:      key.GetFromMe(),
 			Participant: key.GetParticipant(),
 		}
 		for _, handler := range ext.handlers {
