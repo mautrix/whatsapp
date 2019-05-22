@@ -53,11 +53,23 @@ func (mq *MessageQuery) GetAll(chat PortalKey) (messages []*Message) {
 }
 
 func (mq *MessageQuery) GetByJID(chat PortalKey, jid types.WhatsAppMessageID) *Message {
-	return mq.get("SELECT * FROM message WHERE chat_jid=$1 AND chat_receiver=$2 AND jid=$3", chat.JID, chat.Receiver, jid)
+	return mq.get("SELECT chat_jid, chat_receiver, jid, mxid, sender, timestamp, content " +
+		"FROM message WHERE chat_jid=$1 AND chat_receiver=$2 AND jid=$3", chat.JID, chat.Receiver, jid)
 }
 
 func (mq *MessageQuery) GetByMXID(mxid types.MatrixEventID) *Message {
-	return mq.get("SELECT * FROM message WHERE mxid=$1", mxid)
+	return mq.get("SELECT chat_jid, chat_receiver, jid, mxid, sender, timestamp, content " +
+		"FROM message WHERE mxid=$1", mxid)
+}
+
+func (mq *MessageQuery) GetLastInChat(chat PortalKey) *Message {
+	msg := mq.get("SELECT chat_jid, chat_receiver, jid, mxid, sender, timestamp, content " +
+		"FROM message WHERE chat_jid=$1 AND chat_receiver=$2 ORDER BY timestamp DESC LIMIT 1", chat.JID, chat.Receiver)
+	if msg.Timestamp == 0 {
+		// Old db, we don't know what the last message is.
+		return nil
+	}
+	return msg
 }
 
 func (mq *MessageQuery) get(query string, args ...interface{}) *Message {
@@ -72,16 +84,17 @@ type Message struct {
 	db  *Database
 	log log.Logger
 
-	Chat    PortalKey
-	JID     types.WhatsAppMessageID
-	MXID    types.MatrixEventID
-	Sender  types.WhatsAppID
-	Content *waProto.Message
+	Chat      PortalKey
+	JID       types.WhatsAppMessageID
+	MXID      types.MatrixEventID
+	Sender    types.WhatsAppID
+	Timestamp uint64
+	Content   *waProto.Message
 }
 
 func (msg *Message) Scan(row Scannable) *Message {
 	var content []byte
-	err := row.Scan(&msg.Chat.JID, &msg.Chat.Receiver, &msg.JID, &msg.MXID, &msg.Sender, &content)
+	err := row.Scan(&msg.Chat.JID, &msg.Chat.Receiver, &msg.JID, &msg.MXID, &msg.Sender, &msg.Timestamp, &content)
 	if err != nil {
 		if err != sql.ErrNoRows {
 			msg.log.Errorln("Database scan failed:", err)

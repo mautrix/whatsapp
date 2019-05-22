@@ -19,6 +19,7 @@ package database
 import (
 	"database/sql"
 	"strings"
+	"time"
 
 	"github.com/Rhymen/go-whatsapp"
 
@@ -76,12 +77,14 @@ type User struct {
 	JID            types.WhatsAppID
 	ManagementRoom types.MatrixRoomID
 	Session        *whatsapp.Session
+	LastConnection uint64
 }
 
 func (user *User) Scan(row Scannable) *User {
 	var jid, clientID, clientToken, serverToken sql.NullString
 	var encKey, macKey []byte
-	err := row.Scan(&user.MXID, &jid, &user.ManagementRoom, &clientID, &clientToken, &serverToken, &encKey, &macKey)
+	err := row.Scan(&user.MXID, &jid, &user.ManagementRoom, &clientID, &clientToken, &serverToken, &encKey, &macKey,
+		&user.LastConnection)
 	if err != nil {
 		if err != sql.ErrNoRows {
 			user.log.Errorln("Database scan failed:", err)
@@ -134,18 +137,28 @@ func (user *User) sessionUnptr() (sess whatsapp.Session) {
 
 func (user *User) Insert() {
 	sess := user.sessionUnptr()
-	_, err := user.db.Exec(`INSERT INTO "user" VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`, user.MXID, user.jidPtr(),
-		user.ManagementRoom,
+	_, err := user.db.Exec(`INSERT INTO "user" (mxid, jid, management_room, last_connection, client_id, client_token, server_token, enc_key, mac_key) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+		user.MXID, user.jidPtr(),
+		user.ManagementRoom, user.LastConnection,
 		sess.ClientId, sess.ClientToken, sess.ServerToken, sess.EncKey, sess.MacKey)
 	if err != nil {
 		user.log.Warnfln("Failed to insert %s: %v", user.MXID, err)
 	}
 }
 
+func (user *User) UpdateLastConnection() {
+	user.LastConnection = uint64(time.Now().Unix())
+	_, err := user.db.Exec(`UPDATE "user" SET last_connection=$1 WHERE mxid=$2`,
+		user.LastConnection, user.MXID)
+	if err != nil {
+		user.log.Warnfln("Failed to update last connection ts: %v", err)
+	}
+}
+
 func (user *User) Update() {
 	sess := user.sessionUnptr()
-	_, err := user.db.Exec(`UPDATE "user" SET jid=$1, management_room=$2, client_id=$3, client_token=$4, server_token=$5, enc_key=$6, mac_key=$7 WHERE mxid=$8`,
-		user.jidPtr(), user.ManagementRoom,
+	_, err := user.db.Exec(`UPDATE "user" SET jid=$1, management_room=$2, last_connection=$3, client_id=$4, client_token=$5, server_token=$6, enc_key=$7, mac_key=$8 WHERE mxid=$9`,
+		user.jidPtr(), user.ManagementRoom, user.LastConnection,
 		sess.ClientId, sess.ClientToken, sess.ServerToken, sess.EncKey, sess.MacKey,
 		user.MXID)
 	if err != nil {

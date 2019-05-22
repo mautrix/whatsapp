@@ -37,6 +37,11 @@ type BridgeConfig struct {
 	MaxConnectionAttempts int  `yaml:"max_connection_attempts"`
 	ReportConnectionRetry bool `yaml:"report_connection_retry"`
 
+	InitialChatSync    int  `yaml:"initial_chat_sync_count"`
+	InitialHistoryFill int  `yaml:"initial_history_fill_count"`
+	RecoverChatSync    int  `yaml:"recovery_chat_sync_count"`
+	RecoverHistory     bool `yaml:"recovery_history_backfill"`
+
 	CommandPrefix string `yaml:"command_prefix"`
 
 	Permissions PermissionConfig `yaml:"permissions"`
@@ -49,6 +54,11 @@ func (bc *BridgeConfig) setDefaults() {
 	bc.ConnectionTimeout = 20
 	bc.MaxConnectionAttempts = 3
 	bc.ReportConnectionRetry = true
+
+	bc.InitialChatSync = 10
+	bc.InitialHistoryFill = 20
+	bc.RecoverChatSync = -1
+	bc.RecoverHistory = true
 }
 
 type umBridgeConfig BridgeConfig

@@ -19,6 +19,8 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -29,6 +31,7 @@ import (
 	"maunium.net/go/mautrix/format"
 
 	"github.com/Rhymen/go-whatsapp"
+	waProto "github.com/Rhymen/go-whatsapp/binary/proto"
 
 	"maunium.net/go/mautrix-whatsapp/database"
 	"maunium.net/go/mautrix-whatsapp/types"
@@ -142,6 +145,9 @@ func (user *User) SetManagementRoom(roomID types.MatrixRoomID) {
 
 func (user *User) SetSession(session *whatsapp.Session) {
 	user.Session = session
+	if session == nil {
+		user.LastConnection = 0
+	}
 	user.Update()
 }
 
@@ -188,6 +194,7 @@ func (user *User) RestoreSession() bool {
 		user.ConnectionErrors = 0
 		user.SetSession(&sess)
 		user.log.Debugln("Session restored successfully")
+		go user.PostLogin()
 	}
 	return true
 }
@@ -243,7 +250,84 @@ func (user *User) Login(ce *CommandEvent) {
 	user.ConnectionErrors = 0
 	user.JID = strings.Replace(user.Conn.Info.Wid, whatsappExt.OldUserSuffix, whatsappExt.NewUserSuffix, 1)
 	user.SetSession(&session)
-	ce.Reply("Successfully logged in. Now, you may ask for `sync [--create]`.")
+	ce.Reply("Successfully logged in, synchronizing chats...")
+	go user.PostLogin()
+}
+
+type Chat struct {
+	Portal          *Portal
+	LastMessageTime uint64
+	Contact         whatsapp.Contact
+}
+
+type ChatList []Chat
+
+func (cl ChatList) Len() int {
+	return len(cl)
+}
+
+func (cl ChatList) Less(i, j int) bool {
+	return cl[i].LastMessageTime < cl[i].LastMessageTime
+}
+
+func (cl ChatList) Swap(i, j int) {
+	cl[i], cl[j] = cl[j], cl[i]
+}
+
+func (user *User) PostLogin() {
+	user.log.Debugln("Waiting for 3 seconds for contacts to arrive")
+	// Hacky way to wait for chats and contacts to arrive automatically
+	time.Sleep(3 * time.Second)
+	user.log.Debugln("Waited 3 seconds:", len(user.Conn.Store.Chats), len(user.Conn.Store.Contacts))
+
+	go user.syncPortals()
+	go user.syncPuppets()
+}
+
+func (user *User) syncPortals() {
+	var chats ChatList
+	for _, chat := range user.Conn.Store.Chats {
+		ts, err := strconv.ParseUint(chat.LastMessageTime, 10, 64)
+		if err != nil {
+			user.log.Warnfln("Non-integer last message time in %s: %s", chat.Jid, chat.LastMessageTime)
+			continue
+		}
+		chats = append(chats, Chat{
+			Portal:          user.GetPortalByJID(chat.Jid),
+			Contact:         user.Conn.Store.Contacts[chat.Jid],
+			LastMessageTime: ts,
+		})
+	}
+	sort.Sort(chats)
+	limit := user.bridge.Config.Bridge.InitialChatSync
+	if limit < 0 {
+		limit = len(chats)
+	}
+	for i, chat := range chats {
+		create := (chat.LastMessageTime >= user.LastConnection && user.LastConnection > 0) || i < limit
+		if len(chat.Portal.MXID) > 0 || create {
+			chat.Portal.Sync(user, chat.Contact)
+			err := chat.Portal.BackfillHistory(user)
+			if err != nil {
+				chat.Portal.log.Errorln("Error backfilling history:", err)
+			}
+		}
+	}
+}
+
+func (user *User) syncPuppets() {
+	for jid, contact := range user.Conn.Store.Contacts {
+		if strings.HasSuffix(jid, whatsappExt.NewUserSuffix) {
+			puppet := user.bridge.GetPuppetByJID(contact.Jid)
+			puppet.Sync(user, contact)
+		}
+	}
+}
+
+func (user *User) updateLastConnectionIfNecessary() {
+	if user.LastConnection+60 < uint64(time.Now().Unix()) {
+		user.UpdateLastConnection()
+	}
 }
 
 func (user *User) HandleError(err error) {
@@ -282,6 +366,7 @@ func (user *User) HandleError(err error) {
 			user.ConnectionErrors = 0
 			user.Connected = true
 			_, _ = user.bridge.Bot.SendNotice(user.ManagementRoom, "Reconnected successfully")
+			go user.PostLogin()
 			return
 		}
 		user.log.Errorln("Error while trying to reconnect after disconnection:", err)
@@ -324,27 +409,27 @@ func (user *User) GetPortalByJID(jid types.WhatsAppID) *Portal {
 }
 
 func (user *User) HandleTextMessage(message whatsapp.TextMessage) {
-	user.GetPortalByJID(message.Info.RemoteJid).messages <- PortalMessage{user, message}
+	user.GetPortalByJID(message.Info.RemoteJid).messages <- PortalMessage{user, message, message.Info.Timestamp}
 }
 
 func (user *User) HandleImageMessage(message whatsapp.ImageMessage) {
-	user.GetPortalByJID(message.Info.RemoteJid).messages <- PortalMessage{user, message}
+	user.GetPortalByJID(message.Info.RemoteJid).messages <- PortalMessage{user, message, message.Info.Timestamp}
 }
 
 func (user *User) HandleVideoMessage(message whatsapp.VideoMessage) {
-	user.GetPortalByJID(message.Info.RemoteJid).messages <- PortalMessage{user, message}
+	user.GetPortalByJID(message.Info.RemoteJid).messages <- PortalMessage{user, message, message.Info.Timestamp}
 }
 
 func (user *User) HandleAudioMessage(message whatsapp.AudioMessage) {
-	user.GetPortalByJID(message.Info.RemoteJid).messages <- PortalMessage{user, message}
+	user.GetPortalByJID(message.Info.RemoteJid).messages <- PortalMessage{user, message, message.Info.Timestamp}
 }
 
 func (user *User) HandleDocumentMessage(message whatsapp.DocumentMessage) {
-	user.GetPortalByJID(message.Info.RemoteJid).messages <- PortalMessage{user, message}
+	user.GetPortalByJID(message.Info.RemoteJid).messages <- PortalMessage{user, message, message.Info.Timestamp}
 }
 
 func (user *User) HandleMessageRevoke(message whatsappExt.MessageRevocation) {
-	user.GetPortalByJID(message.RemoteJid).messages <- PortalMessage{user, message}
+	user.GetPortalByJID(message.RemoteJid).messages <- PortalMessage{user, message, 0}
 }
 
 func (user *User) HandlePresence(info whatsappExt.Presence) {
@@ -457,4 +542,9 @@ func (user *User) HandleJsonMessage(message string) {
 		return
 	}
 	user.log.Debugln("JSON message:", message)
+	user.updateLastConnectionIfNecessary()
+}
+
+func (user *User) HandleRawMessage(message *waProto.WebMessageInfo) {
+	user.updateLastConnectionIfNecessary()
 }

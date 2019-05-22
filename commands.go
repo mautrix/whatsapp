@@ -208,6 +208,7 @@ func (handler *CommandHandler) CommandReconnect(ce *CommandEvent) {
 	ce.User.Connected = true
 	ce.User.ConnectionErrors = 0
 	ce.Reply("Reconnected successfully.")
+	go ce.User.PostLogin()
 }
 
 const cmdDisconnectHelp = `disconnect - Disconnect from WhatsApp (without logging out)`

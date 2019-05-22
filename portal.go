@@ -30,8 +30,10 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/Rhymen/go-whatsapp"
+	"github.com/Rhymen/go-whatsapp/binary"
 	waProto "github.com/Rhymen/go-whatsapp/binary/proto"
 
 	log "maunium.net/go/maulogger/v2"
@@ -119,8 +121,9 @@ func (bridge *Bridge) NewPortal(dbPortal *database.Portal) *Portal {
 const recentlyHandledLength = 100
 
 type PortalMessage struct {
-	source *User
-	data   interface{}
+	source    *User
+	data      interface{}
+	timestamp uint64
 }
 
 type Portal struct {
@@ -137,6 +140,7 @@ type Portal struct {
 	recentlyHandledLock  sync.Mutex
 	recentlyHandledIndex uint8
 
+	backfillLock  sync.Mutex
 	lastMessageTs uint64
 
 	messages chan PortalMessage
@@ -144,11 +148,13 @@ type Portal struct {
 	isPrivate *bool
 }
 
+const MaxMessageAgeToCreatePortal = 5 * 60 // 5 minutes
+
 func (portal *Portal) handleMessageLoop() {
 	for msg := range portal.messages {
 		if len(portal.MXID) == 0 {
-			_, isRevocation := msg.data.(whatsappExt.MessageRevocation)
-			if isRevocation {
+			if msg.timestamp+MaxMessageAgeToCreatePortal < uint64(time.Now().Unix()) {
+				portal.log.Debugln("Not creating portal room for incoming message as the message is too old.")
 				continue
 			}
 			err := portal.CreateMatrixRoom(msg.source)
@@ -221,6 +227,7 @@ func (portal *Portal) markHandled(source *User, message *waProto.WebMessageInfo,
 	msg.Chat = portal.Key
 	msg.JID = message.GetKey().GetId()
 	msg.MXID = mxid
+	msg.Timestamp = message.GetMessageTimestamp()
 	if message.GetKey().GetFromMe() {
 		msg.Sender = source.JID
 	} else if portal.IsPrivateChat() {
@@ -414,6 +421,7 @@ func (portal *Portal) Sync(user *User, contact whatsapp.Contact) {
 	if portal.IsPrivateChat() {
 		return
 	}
+	portal.log.Infoln("Syncing portal for", user.MXID)
 
 	if len(portal.MXID) == 0 {
 		portal.Name = contact.Name
@@ -524,15 +532,52 @@ func (portal *Portal) RestrictMetadataChanges(restrict bool) {
 	}
 }
 
-func (portal *Portal) FillHistory(user *User) error {
-	resp, err := user.Conn.LoadMessages(portal.Key.JID, "", 50)
+func (portal *Portal) BackfillHistory(user *User) error {
+	if !portal.bridge.Config.Bridge.RecoverHistory {
+		return nil
+	}
+	portal.backfillLock.Lock()
+	defer portal.backfillLock.Unlock()
+	lastMessage := portal.bridge.DB.Message.GetLastInChat(portal.Key)
+	if lastMessage == nil {
+		return nil
+	}
+
+	lastMessageID := lastMessage.JID
+	portal.log.Infoln("Backfilling history since", lastMessageID, "for", user.MXID)
+	for len(lastMessageID) > 0 {
+		portal.log.Debugln("Backfilling history: 50 messages after", lastMessageID)
+		resp, err := user.Conn.LoadMessagesAfter(portal.Key.JID, lastMessageID, 50)
+		if err != nil {
+			return err
+		}
+		lastMessageID, err = portal.handleHistory(user, resp)
+		if err != nil {
+			return err
+		}
+	}
+	portal.log.Infoln("Backfilling finished")
+	return nil
+}
+
+func (portal *Portal) FillInitialHistory(user *User) error {
+	if portal.bridge.Config.Bridge.InitialHistoryFill == 0 {
+		return nil
+	}
+	resp, err := user.Conn.LoadMessages(portal.Key.JID, "", portal.bridge.Config.Bridge.InitialHistoryFill)
 	if err != nil {
 		return err
 	}
-	messages, ok := resp.Content.([]interface{})
+	_, err = portal.handleHistory(user, resp)
+	return err
+}
+
+func (portal *Portal) handleHistory(user *User, history *binary.Node) (string, error) {
+	messages, ok := history.Content.([]interface{})
 	if !ok {
-		return fmt.Errorf("history response not list")
+		return "", fmt.Errorf("history response not a list")
 	}
+	lastID := ""
 	for _, rawMessage := range messages {
 		message, ok := rawMessage.(*waProto.WebMessageInfo)
 		if !ok {
@@ -541,8 +586,9 @@ func (portal *Portal) FillHistory(user *User) error {
 		}
 		fmt.Println("Filling history", message.GetKey(), message.GetMessageTimestamp())
 		portal.handleMessage(PortalMessage{user, whatsapp.ParseProtoMessage(message)})
+		lastID = message.GetKey().GetId()
 	}
-	return nil
+	return lastID, nil
 }
 
 func (portal *Portal) CreateMatrixRoom(user *User) error {
@@ -556,6 +602,8 @@ func (portal *Portal) CreateMatrixRoom(user *User) error {
 	if err := intent.EnsureRegistered(); err != nil {
 		return err
 	}
+
+	portal.log.Infoln("Creating Matrix room. Info source:", user.MXID)
 
 	isPrivateChat := false
 	if portal.IsPrivateChat() {
@@ -592,7 +640,7 @@ func (portal *Portal) CreateMatrixRoom(user *User) error {
 	}
 	portal.MXID = resp.RoomID
 	portal.Update()
-	err = portal.FillHistory(user)
+	err = portal.FillInitialHistory(user)
 	if err != nil {
 		portal.log.Errorln("Failed to fill history:", err)
 	}
