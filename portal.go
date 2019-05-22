@@ -33,7 +33,6 @@ import (
 	"time"
 
 	"github.com/Rhymen/go-whatsapp"
-	"github.com/Rhymen/go-whatsapp/binary"
 	waProto "github.com/Rhymen/go-whatsapp/binary/proto"
 
 	log "maunium.net/go/maulogger/v2"
@@ -551,9 +550,18 @@ func (portal *Portal) BackfillHistory(user *User) error {
 		if err != nil {
 			return err
 		}
-		lastMessageID, err = portal.handleHistory(user, resp)
-		if err != nil {
-			return err
+		messages, ok := resp.Content.([]interface{})
+		if !ok {
+			return fmt.Errorf("history response not a list")
+		} else if len(messages) == 0 {
+			break
+		}
+
+		portal.handleHistory(user, messages)
+
+		lastMessageProto, ok := messages[len(messages)-1].(*waProto.WebMessageInfo)
+		if ok {
+			lastMessageID = lastMessageProto.GetKey().GetId()
 		}
 	}
 	portal.log.Infoln("Backfilling finished")
@@ -564,20 +572,46 @@ func (portal *Portal) FillInitialHistory(user *User) error {
 	if portal.bridge.Config.Bridge.InitialHistoryFill == 0 {
 		return nil
 	}
-	resp, err := user.Conn.LoadMessages(portal.Key.JID, "", portal.bridge.Config.Bridge.InitialHistoryFill)
-	if err != nil {
-		return err
+	n := portal.bridge.Config.Bridge.InitialHistoryFill
+	portal.log.Infoln("Filling initial history, maximum", n, "messages")
+	var messages []interface{}
+	before := ""
+	chunkNum := 1
+	for n > 0 {
+		count := 100
+		if n < count {
+			count = n
+		}
+		portal.log.Debugfln("Fetching chunk %d (%d messages / %d cap) before message %s", chunkNum, count, n, before)
+		resp, err := user.Conn.LoadMessagesBefore(portal.Key.JID, before, count)
+		if err != nil {
+			return err
+		}
+		chunk, ok := resp.Content.([]interface{})
+		if !ok {
+			return fmt.Errorf("history response not a list")
+		} else if len(chunk) == 0 {
+			portal.log.Infoln("Chunk empty, starting handling of loaded messages")
+			break
+		}
+
+		messages = append(messages, chunk...)
+
+		portal.log.Debugfln("Fetched chunk and received %d messages", len(chunk))
+
+		n -= len(chunk)
+		before = chunk[0].(*waProto.WebMessageInfo).GetKey().GetId()
+		if len(before) == 0 {
+			portal.log.Infoln("No message ID for first message, starting handling of loaded messages")
+			break
+		}
 	}
-	_, err = portal.handleHistory(user, resp)
-	return err
+	portal.handleHistory(user, messages)
+	return nil
 }
 
-func (portal *Portal) handleHistory(user *User, history *binary.Node) (string, error) {
-	messages, ok := history.Content.([]interface{})
-	if !ok {
-		return "", fmt.Errorf("history response not a list")
-	}
-	lastID := ""
+func (portal *Portal) handleHistory(user *User, messages []interface{}) {
+	portal.log.Infoln("Handling", len(messages), "messages of history")
 	for _, rawMessage := range messages {
 		message, ok := rawMessage.(*waProto.WebMessageInfo)
 		if !ok {
@@ -586,9 +620,7 @@ func (portal *Portal) handleHistory(user *User, history *binary.Node) (string, e
 		}
 		data := whatsapp.ParseProtoMessage(message)
 		portal.handleMessage(PortalMessage{user, data, message.GetMessageTimestamp()})
-		lastID = message.GetKey().GetId()
 	}
-	return lastID, nil
 }
 
 func (portal *Portal) CreateMatrixRoom(user *User) error {
