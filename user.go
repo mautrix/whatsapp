@@ -286,7 +286,7 @@ func (user *User) PostLogin() {
 	user.log.Debugln("Waiting a second for contacts to arrive")
 	// Hacky way to wait for chats and contacts to arrive automatically
 	time.Sleep(1 * time.Second)
-	user.log.Debugln("Waited 3 seconds:", len(user.Conn.Store.Chats), len(user.Conn.Store.Contacts))
+	user.log.Debugln("Waited a second, have", len(user.Conn.Store.Chats), "chats and", len(user.Conn.Store.Contacts), "contacts")
 
 	go user.syncPuppets()
 	user.syncPortals()

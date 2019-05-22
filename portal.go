@@ -132,6 +132,8 @@ type Portal struct {
 	bridge *Bridge
 	log    log.Logger
 
+	avatarURL string
+
 	roomCreateLock   sync.Mutex
 	messageLocksLock sync.Mutex
 	messageLocks     map[types.WhatsAppMessageID]sync.Mutex
@@ -347,10 +349,13 @@ func (portal *Portal) UpdateAvatar(user *User, avatar *whatsappExt.ProfilePicInf
 		return false
 	}
 
-	_, err = portal.MainIntent().SetRoomAvatar(portal.MXID, resp.ContentURI)
-	if err != nil {
-		portal.log.Warnln("Failed to set room topic:", err)
-		return false
+	portal.avatarURL = resp.ContentURI
+	if len(portal.MXID) > 0 {
+		_, err = portal.MainIntent().SetRoomAvatar(portal.MXID, resp.ContentURI)
+		if err != nil {
+			portal.log.Warnln("Failed to set room topic:", err)
+			return false
+		}
 	}
 	portal.Avatar = avatar.Tag
 	return true
@@ -644,6 +649,7 @@ func (portal *Portal) CreateMatrixRoom(user *User) error {
 
 	portal.log.Infoln("Creating Matrix room. Info source:", user.MXID)
 
+	var metadata *whatsappExt.GroupInfo
 	isPrivateChat := false
 	if portal.IsPrivateChat() {
 		portal.Name = ""
@@ -653,32 +659,47 @@ func (portal *Portal) CreateMatrixRoom(user *User) error {
 		portal.Name = "WhatsApp Status Broadcast"
 		portal.Topic = "WhatsApp status updates from your contacts"
 	} else {
-		metadata, err := user.Conn.GetGroupMetaData(portal.Key.JID)
+		var err error
+		metadata, err = user.Conn.GetGroupMetaData(portal.Key.JID)
 		if err == nil && metadata.Status == 0 {
 			portal.Name = metadata.Name
 			portal.Topic = metadata.Topic
 		}
+		portal.UpdateAvatar(user, nil)
+	}
+
+	initialState := []*mautrix.Event{{
+		Type: mautrix.StatePowerLevels,
+		Content: mautrix.Content{
+			PowerLevels: portal.GetBasePowerLevels(),
+		},
+	}}
+	if len(portal.avatarURL) > 0 {
+		initialState = append(initialState, &mautrix.Event{
+			Type: mautrix.StateRoomAvatar,
+			Content: mautrix.Content{
+				URL: portal.avatarURL,
+			},
+		})
 	}
 
 	resp, err := intent.CreateRoom(&mautrix.ReqCreateRoom{
-		Visibility: "private",
-		Name:       portal.Name,
-		Topic:      portal.Topic,
-		Invite:     []string{user.MXID},
-		Preset:     "private_chat",
-		IsDirect:   isPrivateChat,
-		InitialState: []*mautrix.Event{{
-			Type: mautrix.StatePowerLevels,
-			Content: mautrix.Content{
-				PowerLevels: portal.GetBasePowerLevels(),
-			},
-		}},
+		Visibility:   "private",
+		Name:         portal.Name,
+		Topic:        portal.Topic,
+		Invite:       []string{user.MXID},
+		Preset:       "private_chat",
+		IsDirect:     isPrivateChat,
+		InitialState: initialState,
 	})
 	if err != nil {
 		return err
 	}
 	portal.MXID = resp.RoomID
 	portal.Update()
+	if metadata != nil {
+		portal.SyncParticipants(metadata)
+	}
 	err = portal.FillInitialHistory(user)
 	if err != nil {
 		portal.log.Errorln("Failed to fill history:", err)
