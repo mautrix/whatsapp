@@ -22,6 +22,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/skip2/go-qrcode"
@@ -50,6 +51,9 @@ type User struct {
 	Connected   bool
 
 	ConnectionErrors int
+
+	messages chan PortalMessage
+	syncLock sync.Mutex
 }
 
 func (bridge *Bridge) GetUserByMXID(userID types.MatrixUserID) *User {
@@ -125,9 +129,12 @@ func (bridge *Bridge) NewUser(dbUser *database.User) *User {
 		User:   dbUser,
 		bridge: bridge,
 		log:    bridge.Log.Sub("User").Sub(string(dbUser.MXID)),
+
+		messages: make(chan PortalMessage, 256),
 	}
 	user.Whitelisted = user.bridge.Config.Bridge.Permissions.IsWhitelisted(user.MXID)
 	user.Admin = user.bridge.Config.Bridge.Permissions.IsAdmin(user.MXID)
+	go user.handleMessageLoop()
 	return user
 }
 
@@ -275,13 +282,15 @@ func (cl ChatList) Swap(i, j int) {
 }
 
 func (user *User) PostLogin() {
-	user.log.Debugln("Waiting for 3 seconds for contacts to arrive")
+	user.syncLock.Lock()
+	user.log.Debugln("Waiting a second for contacts to arrive")
 	// Hacky way to wait for chats and contacts to arrive automatically
-	time.Sleep(3 * time.Second)
+	time.Sleep(1 * time.Second)
 	user.log.Debugln("Waited 3 seconds:", len(user.Conn.Store.Chats), len(user.Conn.Store.Contacts))
 
-	go user.syncPortals()
 	go user.syncPuppets()
+	user.syncPortals()
+	user.syncLock.Unlock()
 }
 
 func (user *User) syncPortals() {
@@ -307,7 +316,7 @@ func (user *User) syncPortals() {
 		create := (chat.LastMessageTime >= user.LastConnection && user.LastConnection > 0) || i < limit
 		if len(chat.Portal.MXID) > 0 || create {
 			chat.Portal.Sync(user, chat.Contact)
-			err := chat.Portal.BackfillHistory(user)
+			err := chat.Portal.BackfillHistory(user, chat.LastMessageTime)
 			if err != nil {
 				chat.Portal.log.Errorln("Error backfilling history:", err)
 			}
@@ -408,28 +417,44 @@ func (user *User) GetPortalByJID(jid types.WhatsAppID) *Portal {
 	return user.bridge.GetPortalByJID(user.PortalKey(jid))
 }
 
+func (user *User) handleMessageLoop() {
+	for msg := range user.messages {
+		user.syncLock.Lock()
+		user.GetPortalByJID(msg.chat).messages <- msg
+		user.syncLock.Unlock()
+	}
+}
+
+func (user *User) putMessage(message PortalMessage) {
+	select {
+	case user.messages <- message:
+	default:
+		user.log.Warnln("Buffer is full, dropping message in", message.chat)
+	}
+}
+
 func (user *User) HandleTextMessage(message whatsapp.TextMessage) {
-	user.GetPortalByJID(message.Info.RemoteJid).messages <- PortalMessage{user, message, message.Info.Timestamp}
+	user.putMessage(PortalMessage{message.Info.RemoteJid, user, message, message.Info.Timestamp})
 }
 
 func (user *User) HandleImageMessage(message whatsapp.ImageMessage) {
-	user.GetPortalByJID(message.Info.RemoteJid).messages <- PortalMessage{user, message, message.Info.Timestamp}
+	user.putMessage(PortalMessage{message.Info.RemoteJid, user, message, message.Info.Timestamp})
 }
 
 func (user *User) HandleVideoMessage(message whatsapp.VideoMessage) {
-	user.GetPortalByJID(message.Info.RemoteJid).messages <- PortalMessage{user, message, message.Info.Timestamp}
+	user.putMessage(PortalMessage{message.Info.RemoteJid, user, message, message.Info.Timestamp})
 }
 
 func (user *User) HandleAudioMessage(message whatsapp.AudioMessage) {
-	user.GetPortalByJID(message.Info.RemoteJid).messages <- PortalMessage{user, message, message.Info.Timestamp}
+	user.putMessage(PortalMessage{message.Info.RemoteJid, user, message, message.Info.Timestamp})
 }
 
 func (user *User) HandleDocumentMessage(message whatsapp.DocumentMessage) {
-	user.GetPortalByJID(message.Info.RemoteJid).messages <- PortalMessage{user, message, message.Info.Timestamp}
+	user.putMessage(PortalMessage{message.Info.RemoteJid, user, message, message.Info.Timestamp})
 }
 
 func (user *User) HandleMessageRevoke(message whatsappExt.MessageRevocation) {
-	user.GetPortalByJID(message.RemoteJid).messages <- PortalMessage{user, message, 0}
+	user.putMessage(PortalMessage{message.RemoteJid, user, message, 0})
 }
 
 func (user *User) HandlePresence(info whatsappExt.Presence) {

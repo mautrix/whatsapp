@@ -65,7 +65,7 @@ func (mq *MessageQuery) GetByMXID(mxid types.MatrixEventID) *Message {
 func (mq *MessageQuery) GetLastInChat(chat PortalKey) *Message {
 	msg := mq.get("SELECT chat_jid, chat_receiver, jid, mxid, sender, timestamp, content " +
 		"FROM message WHERE chat_jid=$1 AND chat_receiver=$2 ORDER BY timestamp DESC LIMIT 1", chat.JID, chat.Receiver)
-	if msg.Timestamp == 0 {
+	if msg == nil || msg.Timestamp == 0 {
 		// Old db, we don't know what the last message is.
 		return nil
 	}
@@ -128,7 +128,9 @@ func (msg *Message) encodeBinaryContent() []byte {
 }
 
 func (msg *Message) Insert() {
-	_, err := msg.db.Exec("INSERT INTO message VALUES ($1, $2, $3, $4, $5, $6)", msg.Chat.JID, msg.Chat.Receiver, msg.JID, msg.MXID, msg.Sender, msg.encodeBinaryContent())
+	_, err := msg.db.Exec("INSERT INTO message (chat_jid, chat_receiver, jid, mxid, sender, timestamp, content) " +
+		"VALUES ($1, $2, $3, $4, $5, $6, $7)",
+		msg.Chat.JID, msg.Chat.Receiver, msg.JID, msg.MXID, msg.Sender, msg.Timestamp, msg.encodeBinaryContent())
 	if err != nil {
 		msg.log.Warnfln("Failed to insert %s@%s: %v", msg.Chat, msg.JID, err)
 	}

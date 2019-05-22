@@ -120,6 +120,7 @@ func (bridge *Bridge) NewPortal(dbPortal *database.Portal) *Portal {
 const recentlyHandledLength = 100
 
 type PortalMessage struct {
+	chat      string
 	source    *User
 	data      interface{}
 	timestamp uint64
@@ -162,7 +163,9 @@ func (portal *Portal) handleMessageLoop() {
 				return
 			}
 		}
+		portal.backfillLock.Lock()
 		portal.handleMessage(msg)
+		portal.backfillLock.Unlock()
 	}
 }
 
@@ -531,7 +534,7 @@ func (portal *Portal) RestrictMetadataChanges(restrict bool) {
 	}
 }
 
-func (portal *Portal) BackfillHistory(user *User) error {
+func (portal *Portal) BackfillHistory(user *User, lastMessageTime uint64) error {
 	if !portal.bridge.Config.Bridge.RecoverHistory {
 		return nil
 	}
@@ -539,6 +542,10 @@ func (portal *Portal) BackfillHistory(user *User) error {
 	defer portal.backfillLock.Unlock()
 	lastMessage := portal.bridge.DB.Message.GetLastInChat(portal.Key)
 	if lastMessage == nil {
+		return nil
+	}
+	if lastMessage.Timestamp <= lastMessageTime {
+		portal.log.Debugln("Not backfilling: no new messages")
 		return nil
 	}
 
@@ -619,7 +626,7 @@ func (portal *Portal) handleHistory(user *User, messages []interface{}) {
 			continue
 		}
 		data := whatsapp.ParseProtoMessage(message)
-		portal.handleMessage(PortalMessage{user, data, message.GetMessageTimestamp()})
+		portal.handleMessage(PortalMessage{portal.Key.JID, user, data, message.GetMessageTimestamp()})
 	}
 }
 
