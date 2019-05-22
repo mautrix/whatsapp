@@ -584,8 +584,8 @@ func (portal *Portal) handleHistory(user *User, history *binary.Node) (string, e
 			portal.log.Warnln("Unexpected non-WebMessageInfo item in history response:", rawMessage)
 			continue
 		}
-		fmt.Println("Filling history", message.GetKey(), message.GetMessageTimestamp())
-		portal.handleMessage(PortalMessage{user, whatsapp.ParseProtoMessage(message)})
+		data := whatsapp.ParseProtoMessage(message)
+		portal.handleMessage(PortalMessage{user, data, message.GetMessageTimestamp()})
 		lastID = message.GetKey().GetId()
 	}
 	return lastID, nil
