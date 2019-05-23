@@ -37,11 +37,6 @@ const (
 	MessageChat     JSONMessageType = "Chat"
 )
 
-func (ext *ExtendedConn) AddHandler(handler whatsapp.Handler) {
-	ext.Conn.AddHandler(handler)
-	ext.handlers = append(ext.handlers, handler)
-}
-
 func (ext *ExtendedConn) HandleError(error) {}
 
 type UnhandledJSONMessageHandler interface {

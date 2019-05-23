@@ -136,11 +136,7 @@ func (puppet *Puppet) UpdateAvatar(source *User, avatar *whatsappExt.ProfilePicI
 		}
 	}
 
-	if avatar.Status != 0 && avatar.Status != 404 {
-		// 401s can happen a lot so let's not log those.
-		if avatar.Status != 401 {
-			puppet.log.Warnln("Unexpected avatar update status code, not updating.", avatar)
-		}
+	if avatar.Status != 0 {
 		return false
 	}
 

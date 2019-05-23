@@ -76,6 +76,7 @@ func (handler *CommandHandler) Handle(roomID types.MatrixRoomID, user *User, mes
 		User:    user,
 		Args:    args[1:],
 	}
+	handler.log.Debugfln("%s sent '%s' in %s", user.MXID, message, roomID)
 	switch cmd {
 	case "login":
 		handler.CommandLogin(ce)
@@ -83,11 +84,15 @@ func (handler *CommandHandler) Handle(roomID types.MatrixRoomID, user *User, mes
 		handler.CommandHelp(ce)
 	case "reconnect":
 		handler.CommandReconnect(ce)
+	case "disconnect":
+		handler.CommandDisconnect(ce)
+	case "delete-connection":
+		handler.CommandDeleteConnection(ce)
 	case "delete-session":
 		handler.CommandDeleteSession(ce)
 	case "delete-portal":
 		handler.CommandDeletePortal(ce)
-	case "logout", "disconnect", "sync", "list", "open", "pm":
+	case "logout", "sync", "list", "open", "pm":
 		if ce.User.Conn == nil {
 			ce.Reply("You are not logged in. Use the `login` command to log into WhatsApp.")
 			return
@@ -99,8 +104,6 @@ func (handler *CommandHandler) Handle(roomID types.MatrixRoomID, user *User, mes
 		switch cmd {
 		case "logout":
 			handler.CommandLogout(ce)
-		case "disconnect":
-			handler.CommandDisconnect(ce)
 		case "sync":
 			handler.CommandSync(ce)
 		case "list":
@@ -147,6 +150,7 @@ func (handler *CommandHandler) CommandLogout(ce *CommandEvent) {
 		ce.User.log.Warnln("Error while disconnecting after logout:", err)
 	}
 	ce.User.Connected = false
+	ce.User.Conn.RemoveHandlers()
 	ce.User.Conn = nil
 	ce.User.SetSession(nil)
 	ce.Reply("Logged out successfully.")
@@ -163,6 +167,7 @@ func (handler *CommandHandler) CommandDeleteSession(ce *CommandEvent) {
 	ce.User.Connected = false
 	if ce.User.Conn != nil {
 		_, _ = ce.User.Conn.Disconnect()
+		ce.User.Conn.RemoveHandlers()
 		ce.User.Conn = nil
 	}
 	ce.Reply("Session information purged")
@@ -171,6 +176,11 @@ func (handler *CommandHandler) CommandDeleteSession(ce *CommandEvent) {
 const cmdReconnectHelp = `reconnect - Reconnect to WhatsApp`
 
 func (handler *CommandHandler) CommandReconnect(ce *CommandEvent) {
+	if ce.User.Conn == nil {
+		ce.Reply("No existing connection, creating one...")
+		ce.User.Connect(false)
+		return
+	}
 	err := ce.User.Conn.Restore()
 	if err == whatsapp.ErrInvalidSession {
 		if ce.User.Session != nil {
@@ -211,9 +221,28 @@ func (handler *CommandHandler) CommandReconnect(ce *CommandEvent) {
 	go ce.User.PostLogin()
 }
 
+func (handler *CommandHandler) CommandDeleteConnection(ce *CommandEvent) {
+	if ce.User.Conn == nil {
+		ce.Reply("You don't have a WhatsApp connection.")
+		return
+	}
+	sess, err := ce.User.Conn.Disconnect()
+	if err == nil && len(sess.Wid) > 0 {
+		ce.User.SetSession(&sess)
+	}
+	ce.User.Connected = false
+	ce.User.Conn.RemoveHandlers()
+	ce.User.Conn = nil
+	ce.Reply("Successfully disconnected. Use the `reconnect` command to reconnect.")
+}
+
 const cmdDisconnectHelp = `disconnect - Disconnect from WhatsApp (without logging out)`
 
 func (handler *CommandHandler) CommandDisconnect(ce *CommandEvent) {
+	if ce.User.Conn == nil {
+		ce.Reply("You don't have a WhatsApp connection.")
+		return
+	}
 	sess, err := ce.User.Conn.Disconnect()
 	ce.User.Connected = false
 	if err == whatsapp.ErrNotConnected {
