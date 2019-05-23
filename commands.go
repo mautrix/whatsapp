@@ -177,8 +177,12 @@ const cmdReconnectHelp = `reconnect - Reconnect to WhatsApp`
 
 func (handler *CommandHandler) CommandReconnect(ce *CommandEvent) {
 	if ce.User.Conn == nil {
-		ce.Reply("No existing connection, creating one...")
-		ce.User.Connect(false)
+		if ce.User.Session == nil {
+			ce.Reply("No existing connection and no session. Did you mean `login`?")
+		} else {
+			ce.Reply("No existing connection, creating one...")
+			ce.User.Connect(false)
+		}
 		return
 	}
 	err := ce.User.Conn.Restore()
