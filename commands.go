@@ -294,21 +294,19 @@ func (handler *CommandHandler) CommandSync(ce *CommandEvent) {
 	handler.log.Debugln("Importing all contacts of", user)
 	_, err := user.Conn.Contacts()
 	if err != nil {
-		handler.log.Errorln("Error on update of contacts of user", user, ":", err)
+		user.log.Errorln("Error updating contacts:", err)
+		ce.Reply("Failed to sync contact list (see logs for details)")
+		return
+	}
+	_, err = user.Conn.Chats()
+	if err != nil {
+		user.log.Errorln("Error updating chats:", err)
+		ce.Reply("Failed to sync chat list (see logs for details)")
 		return
 	}
 
-	for jid, contact := range user.Conn.Store.Contacts {
-		if strings.HasSuffix(jid, whatsappExt.NewUserSuffix) {
-			puppet := user.bridge.GetPuppetByJID(contact.Jid)
-			puppet.Sync(user, contact)
-		} else {
-			portal := user.bridge.GetPortalByJID(database.GroupPortalKey(contact.Jid))
-			if len(portal.MXID) > 0 || create {
-				portal.Sync(user, contact)
-			}
-		}
-	}
+	user.syncPuppets()
+	user.syncPortals(create)
 
 	ce.Reply("Imported contacts successfully.")
 }

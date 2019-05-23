@@ -289,11 +289,11 @@ func (user *User) PostLogin() {
 	user.log.Debugln("Waited a second, have", len(user.Conn.Store.Chats), "chats and", len(user.Conn.Store.Contacts), "contacts")
 
 	go user.syncPuppets()
-	user.syncPortals()
+	user.syncPortals(false)
 	user.syncLock.Unlock()
 }
 
-func (user *User) syncPortals() {
+func (user *User) syncPortals(createAll bool) {
 	var chats ChatList
 	for _, chat := range user.Conn.Store.Chats {
 		ts, err := strconv.ParseUint(chat.LastMessageTime, 10, 64)
@@ -318,7 +318,7 @@ func (user *User) syncPortals() {
 			break
 		}
 		create := (chat.LastMessageTime >= user.LastConnection && user.LastConnection > 0) || i < limit
-		if len(chat.Portal.MXID) > 0 || create {
+		if len(chat.Portal.MXID) > 0 || create || createAll {
 			chat.Portal.Sync(user, chat.Contact)
 			err := chat.Portal.BackfillHistory(user, chat.LastMessageTime)
 			if err != nil {
