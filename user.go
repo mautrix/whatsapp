@@ -465,14 +465,15 @@ func (user *User) HandlePresence(info whatsappExt.Presence) {
 	puppet := user.bridge.GetPuppetByJID(info.SenderJID)
 	switch info.Status {
 	case whatsappExt.PresenceUnavailable:
-		puppet.Intent().SetPresence("offline")
+		_ = puppet.DefaultIntent().SetPresence("offline")
 	case whatsappExt.PresenceAvailable:
 		if len(puppet.typingIn) > 0 && puppet.typingAt+15 > time.Now().Unix() {
-			puppet.Intent().UserTyping(puppet.typingIn, false, 0)
+			portal := user.bridge.GetPortalByMXID(puppet.typingIn)
+			_, _ = puppet.IntentFor(portal).UserTyping(puppet.typingIn, false, 0)
 			puppet.typingIn = ""
 			puppet.typingAt = 0
 		} else {
-			puppet.Intent().SetPresence("online")
+			_ = puppet.DefaultIntent().SetPresence("online")
 		}
 	case whatsappExt.PresenceComposing:
 		portal := user.GetPortalByJID(info.JID)
@@ -480,11 +481,11 @@ func (user *User) HandlePresence(info whatsappExt.Presence) {
 			if puppet.typingIn == portal.MXID {
 				return
 			}
-			puppet.Intent().UserTyping(puppet.typingIn, false, 0)
+			_, _ = puppet.IntentFor(portal).UserTyping(puppet.typingIn, false, 0)
 		}
 		puppet.typingIn = portal.MXID
 		puppet.typingAt = time.Now().Unix()
-		puppet.Intent().UserTyping(portal.MXID, true, 15*1000)
+		_, _ = puppet.IntentFor(portal).UserTyping(portal.MXID, true, 15*1000)
 	}
 }
 
@@ -496,7 +497,7 @@ func (user *User) HandleMsgInfo(info whatsappExt.MsgInfo) {
 		}
 
 		go func() {
-			intent := user.bridge.GetPuppetByJID(info.SenderJID).Intent()
+			intent := user.bridge.GetPuppetByJID(info.SenderJID).IntentFor(portal)
 			for _, id := range info.IDs {
 				msg := user.bridge.DB.Message.GetByJID(portal.Key, id)
 				if msg == nil {

@@ -71,20 +71,49 @@ func (bridge *Bridge) GetPuppetByJID(jid types.WhatsAppID) *Puppet {
 		}
 		puppet = bridge.NewPuppet(dbPuppet)
 		bridge.puppets[puppet.JID] = puppet
+		if len(puppet.CustomMXID) > 0 {
+			bridge.puppetsByCustomMXID[puppet.CustomMXID] = puppet
+		}
 	}
 	return puppet
 }
 
-func (bridge *Bridge) GetAllPuppets() []*Puppet {
+func (bridge *Bridge) GetPuppetByCustomMXID(mxid types.MatrixUserID) *Puppet {
 	bridge.puppetsLock.Lock()
 	defer bridge.puppetsLock.Unlock()
-	dbPuppets := bridge.DB.Puppet.GetAll()
+	puppet, ok := bridge.puppetsByCustomMXID[mxid]
+	if !ok {
+		dbPuppet := bridge.DB.Puppet.GetByCustomMXID(mxid)
+		if dbPuppet == nil {
+			return nil
+		}
+		puppet = bridge.NewPuppet(dbPuppet)
+		bridge.puppets[puppet.JID] = puppet
+		bridge.puppetsByCustomMXID[puppet.CustomMXID] = puppet
+	}
+	return puppet
+}
+
+func (bridge *Bridge) GetAllPuppetsWithCustomMXID() []*Puppet {
+	return bridge.dbPuppetsToPuppets(bridge.DB.Puppet.GetAllWithCustomMXID())
+}
+
+func (bridge *Bridge) GetAllPuppets() []*Puppet {
+	return bridge.dbPuppetsToPuppets(bridge.DB.Puppet.GetAll())
+}
+
+func (bridge *Bridge) dbPuppetsToPuppets(dbPuppets []*database.Puppet) []*Puppet {
+	bridge.puppetsLock.Lock()
+	defer bridge.puppetsLock.Unlock()
 	output := make([]*Puppet, len(dbPuppets))
 	for index, dbPuppet := range dbPuppets {
 		puppet, ok := bridge.puppets[dbPuppet.JID]
 		if !ok {
 			puppet = bridge.NewPuppet(dbPuppet)
 			bridge.puppets[dbPuppet.JID] = puppet
+			if len(dbPuppet.CustomMXID) > 0  {
+				bridge.puppetsByCustomMXID[dbPuppet.CustomMXID] = puppet
+			}
 		}
 		output[index] = puppet
 	}
@@ -116,13 +145,26 @@ type Puppet struct {
 	typingAt int64
 
 	MXID types.MatrixUserID
+
+	customIntent *appservice.IntentAPI
 }
 
 func (puppet *Puppet) PhoneNumber() string {
 	return strings.Replace(puppet.JID, whatsappExt.NewUserSuffix, "", 1)
 }
 
-func (puppet *Puppet) Intent() *appservice.IntentAPI {
+func (puppet *Puppet) IntentFor(portal *Portal) *appservice.IntentAPI {
+	if puppet.customIntent == nil || portal.Key.JID == puppet.JID{
+		return puppet.DefaultIntent()
+	}
+	return puppet.customIntent
+}
+
+func (puppet *Puppet) CustomIntent() *appservice.IntentAPI {
+	return puppet.customIntent
+}
+
+func (puppet *Puppet) DefaultIntent() *appservice.IntentAPI {
 	return puppet.bridge.AS.Intent(puppet.MXID)
 }
 
@@ -145,7 +187,7 @@ func (puppet *Puppet) UpdateAvatar(source *User, avatar *whatsappExt.ProfilePicI
 	}
 
 	if len(avatar.URL) == 0 {
-		err := puppet.Intent().SetAvatarURL("")
+		err := puppet.DefaultIntent().SetAvatarURL("")
 		if err != nil {
 			puppet.log.Warnln("Failed to remove avatar:", err)
 		}
@@ -160,13 +202,13 @@ func (puppet *Puppet) UpdateAvatar(source *User, avatar *whatsappExt.ProfilePicI
 	}
 
 	mime := http.DetectContentType(data)
-	resp, err := puppet.Intent().UploadBytes(data, mime)
+	resp, err := puppet.DefaultIntent().UploadBytes(data, mime)
 	if err != nil {
 		puppet.log.Warnln("Failed to upload avatar:", err)
 		return false
 	}
 
-	err = puppet.Intent().SetAvatarURL(resp.ContentURI)
+	err = puppet.DefaultIntent().SetAvatarURL(resp.ContentURI)
 	if err != nil {
 		puppet.log.Warnln("Failed to set avatar:", err)
 	}
@@ -175,7 +217,7 @@ func (puppet *Puppet) UpdateAvatar(source *User, avatar *whatsappExt.ProfilePicI
 }
 
 func (puppet *Puppet) Sync(source *User, contact whatsapp.Contact) {
-	err := puppet.Intent().EnsureRegistered()
+	err := puppet.DefaultIntent().EnsureRegistered()
 	if err != nil {
 		puppet.log.Errorln("Failed to ensure registered:", err)
 	}
@@ -185,7 +227,7 @@ func (puppet *Puppet) Sync(source *User, contact whatsapp.Contact) {
 	}
 	newName, quality := puppet.bridge.Config.Bridge.FormatDisplayname(contact)
 	if puppet.Displayname != newName && quality >= puppet.NameQuality {
-		err := puppet.Intent().SetDisplayName(newName)
+		err := puppet.DefaultIntent().SetDisplayName(newName)
 		if err == nil {
 			puppet.Displayname = newName
 			puppet.NameQuality = quality

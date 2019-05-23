@@ -281,12 +281,6 @@ func (portal *Portal) SyncParticipants(metadata *whatsappExt.GroupInfo) {
 		changed = true
 	}
 	for _, participant := range metadata.Participants {
-		puppet := portal.bridge.GetPuppetByJID(participant.JID)
-		err := puppet.Intent().EnsureJoined(portal.MXID)
-		if err != nil {
-			portal.log.Warnfln("Failed to make puppet of %s join %s: %v", participant.JID, portal.MXID, err)
-		}
-
 		user := portal.bridge.GetUserByJID(participant.JID)
 		if user != nil && !portal.bridge.AS.StateStore.IsInvited(portal.MXID, user.MXID) {
 			_, err = portal.MainIntent().InviteUser(portal.MXID, &mautrix.ReqInviteUser{
@@ -295,6 +289,12 @@ func (portal *Portal) SyncParticipants(metadata *whatsappExt.GroupInfo) {
 			if err != nil {
 				portal.log.Warnfln("Failed to invite %s to %s: %v", user.MXID, portal.MXID, err)
 			}
+		}
+
+		puppet := portal.bridge.GetPuppetByJID(participant.JID)
+		err := puppet.IntentFor(portal).EnsureJoined(portal.MXID)
+		if err != nil {
+			portal.log.Warnfln("Failed to make puppet of %s join %s: %v", participant.JID, portal.MXID, err)
 		}
 
 		expectedLevel := 0
@@ -363,7 +363,7 @@ func (portal *Portal) UpdateName(name string, setBy types.WhatsAppID) bool {
 	if portal.Name != name {
 		intent := portal.MainIntent()
 		if len(setBy) > 0 {
-			intent = portal.bridge.GetPuppetByJID(setBy).Intent()
+			intent = portal.bridge.GetPuppetByJID(setBy).IntentFor(portal)
 		}
 		_, err := intent.SetRoomName(portal.MXID, name)
 		if err == nil {
@@ -379,7 +379,7 @@ func (portal *Portal) UpdateTopic(topic string, setBy types.WhatsAppID) bool {
 	if portal.Topic != topic {
 		intent := portal.MainIntent()
 		if len(setBy) > 0 {
-			intent = portal.bridge.GetPuppetByJID(setBy).Intent()
+			intent = portal.bridge.GetPuppetByJID(setBy).IntentFor(portal)
 		}
 		_, err := intent.SetRoomTopic(portal.MXID, topic)
 		if err == nil {
@@ -719,7 +719,7 @@ func (portal *Portal) IsStatusBroadcastRoom() bool {
 
 func (portal *Portal) MainIntent() *appservice.IntentAPI {
 	if portal.IsPrivateChat() {
-		return portal.bridge.GetPuppetByJID(portal.Key.JID).Intent()
+		return portal.bridge.GetPuppetByJID(portal.Key.JID).DefaultIntent()
 	}
 	return portal.bridge.Bot
 }
@@ -727,10 +727,9 @@ func (portal *Portal) MainIntent() *appservice.IntentAPI {
 func (portal *Portal) GetMessageIntent(user *User, info whatsapp.MessageInfo) *appservice.IntentAPI {
 	if info.FromMe {
 		if portal.IsPrivateChat() {
-			// TODO handle own messages in private chats properly
-			return nil
+			return portal.bridge.GetPuppetByJID(user.JID).CustomIntent()
 		}
-		return portal.bridge.GetPuppetByJID(user.JID).Intent()
+		return portal.bridge.GetPuppetByJID(user.JID).IntentFor(portal)
 	} else if portal.IsPrivateChat() {
 		return portal.MainIntent()
 	} else if len(info.SenderJid) == 0 {
@@ -740,7 +739,7 @@ func (portal *Portal) GetMessageIntent(user *User, info whatsapp.MessageInfo) *a
 			return nil
 		}
 	}
-	return portal.bridge.GetPuppetByJID(info.SenderJid).Intent()
+	return portal.bridge.GetPuppetByJID(info.SenderJid).IntentFor(portal)
 }
 
 func (portal *Portal) SetReply(content *mautrix.Content, info whatsapp.MessageInfo) {
@@ -765,15 +764,18 @@ func (portal *Portal) HandleMessageRevoke(user *User, message whatsappExt.Messag
 	if msg == nil {
 		return
 	}
-	intent := portal.MainIntent()
+	var intent *appservice.IntentAPI
 	if message.FromMe {
 		if portal.IsPrivateChat() {
-			// TODO handle
+			intent = portal.bridge.GetPuppetByJID(user.JID).CustomIntent()
 		} else {
-			intent = portal.bridge.GetPuppetByJID(user.JID).Intent()
+			intent = portal.bridge.GetPuppetByJID(user.JID).IntentFor(portal)
 		}
 	} else if len(message.Participant) > 0 {
-		intent = portal.bridge.GetPuppetByJID(message.Participant).Intent()
+		intent = portal.bridge.GetPuppetByJID(message.Participant).IntentFor(portal)
+	}
+	if intent == nil {
+		intent = portal.MainIntent()
 	}
 	_, err := intent.RedactEvent(portal.MXID, msg.MXID)
 	if err != nil {
@@ -781,6 +783,11 @@ func (portal *Portal) HandleMessageRevoke(user *User, message whatsappExt.Messag
 		return
 	}
 	msg.Delete()
+}
+
+type MessageContent struct {
+	*mautrix.Content
+	IsCustomPuppet bool `json:"net.maunium.whatsapp.puppet,omitempty"`
 }
 
 func (portal *Portal) HandleTextMessage(source *User, message whatsapp.TextMessage) {
@@ -808,7 +815,7 @@ func (portal *Portal) HandleTextMessage(source *User, message whatsapp.TextMessa
 	portal.SetReply(content, message.Info)
 
 	_, _ = intent.UserTyping(portal.MXID, false, 0)
-	resp, err := intent.SendMassagedMessageEvent(portal.MXID, mautrix.EventMessage, content, int64(message.Info.Timestamp*1000))
+	resp, err := intent.SendMassagedMessageEvent(portal.MXID, mautrix.EventMessage, &MessageContent{content, intent.IsCustomPuppet}, int64(message.Info.Timestamp*1000))
 	if err != nil {
 		portal.log.Errorfln("Failed to handle message %s: %v", message.Info.Id, err)
 		return
@@ -891,7 +898,7 @@ func (portal *Portal) HandleMediaMessage(source *User, download func() ([]byte, 
 
 	_, _ = intent.UserTyping(portal.MXID, false, 0)
 	ts := int64(info.Timestamp * 1000)
-	resp, err := intent.SendMassagedMessageEvent(portal.MXID, mautrix.EventMessage, content, ts)
+	resp, err := intent.SendMassagedMessageEvent(portal.MXID, mautrix.EventMessage, &MessageContent{content, intent.IsCustomPuppet}, ts)
 	if err != nil {
 		portal.log.Errorfln("Failed to handle message %s: %v", info.Id, err)
 		return
@@ -905,7 +912,7 @@ func (portal *Portal) HandleMediaMessage(source *User, download func() ([]byte, 
 
 		portal.bridge.Formatter.ParseWhatsApp(captionContent)
 
-		_, err := intent.SendMassagedMessageEvent(portal.MXID, mautrix.EventMessage, captionContent, ts)
+		_, err := intent.SendMassagedMessageEvent(portal.MXID, mautrix.EventMessage, &MessageContent{captionContent, intent.IsCustomPuppet}, ts)
 		if err != nil {
 			portal.log.Warnfln("Failed to handle caption of message %s: %v", info.Id, err)
 		}
@@ -1198,7 +1205,7 @@ func (portal *Portal) Cleanup(puppetsOnly bool) {
 		}
 		puppet := portal.bridge.GetPuppetByMXID(member)
 		if puppet != nil {
-			_, err = puppet.Intent().LeaveRoom(portal.MXID)
+			_, err = puppet.DefaultIntent().LeaveRoom(portal.MXID)
 			if err != nil {
 				portal.log.Errorln("Error leaving as puppet while cleaning up portal:", err)
 			}

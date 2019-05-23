@@ -8,6 +8,7 @@ require (
 	github.com/lib/pq v1.1.1
 	github.com/mattn/go-isatty v0.0.8 // indirect
 	github.com/mattn/go-sqlite3 v1.10.0
+	github.com/pkg/errors v0.8.1
 	github.com/shurcooL/sanitized_anchor_name v1.0.0 // indirect
 	github.com/skip2/go-qrcode v0.0.0-20190110000554-dc11ecdae0a9
 	golang.org/x/net v0.0.0-20190522155817-f3200d17e092 // indirect
@@ -17,9 +18,10 @@ require (
 	maunium.net/go/mauflag v1.0.0
 	maunium.net/go/maulogger/v2 v2.0.0
 	maunium.net/go/mautrix v0.1.0-alpha.3.0.20190515215109-3e27638f3f1d
-	maunium.net/go/mautrix-appservice v0.1.0-alpha.3.0.20190515184712-aecd1f0cca6f
+	maunium.net/go/mautrix-appservice v0.1.0-alpha.3.0.20190523231710-8b9923f4ca89
 )
 
 replace gopkg.in/russross/blackfriday.v2 => github.com/russross/blackfriday/v2 v2.0.1
 
-replace github.com/Rhymen/go-whatsapp => github.com/tulir/go-whatsapp v0.0.2-0.20190523194501-cc7603f853df
+//replace github.com/Rhymen/go-whatsapp => github.com/tulir/go-whatsapp v0.0.2-0.20190523194501-cc7603f853df
+replace github.com/Rhymen/go-whatsapp => ../../Go/go-whatsapp

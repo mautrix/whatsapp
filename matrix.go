@@ -166,6 +166,10 @@ func (mx *MatrixHandler) HandleMessage(evt *mautrix.Event) {
 	if _, isPuppet := mx.bridge.ParsePuppetMXID(evt.Sender); evt.Sender == mx.bridge.Bot.UserID || isPuppet {
 		return
 	}
+	isCustomPuppet, ok := evt.Content.Raw["net.maunium.whatsapp.puppet"].(bool)
+	if ok && isCustomPuppet && mx.bridge.GetPuppetByCustomMXID(evt.Sender) != nil {
+		return
+	}
 
 	roomID := types.MatrixRoomID(evt.RoomID)
 	user := mx.bridge.GetUserByMXID(types.MatrixUserID(evt.Sender))

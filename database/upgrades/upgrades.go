@@ -22,7 +22,9 @@ type upgrade struct {
 	fn upgradeFunc
 }
 
-var upgrades [5]upgrade
+const NumberOfUpgrades = 6
+
+var upgrades [NumberOfUpgrades]upgrade
 
 func getVersion(dialect Dialect, db *sql.DB) (int, error) {
 	_, err := db.Exec("CREATE TABLE IF NOT EXISTS version (version INTEGER)")
@@ -63,7 +65,7 @@ func Run(log log.Logger, dialectName string, db *sql.DB) error {
 		return err
 	}
 
-	log.Infofln("Database currently on v%d, latest: v%d", version, len(upgrades))
+	log.Infofln("Database currently on v%d, latest: v%d", version, NumberOfUpgrades)
 	for i, upgrade := range upgrades[version:] {
 		log.Infofln("Upgrading database to v%d: %s", version+i+1, upgrade.message)
 		tx, err := db.Begin()

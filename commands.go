@@ -18,10 +18,12 @@ package main
 
 import (
 	"fmt"
-	"github.com/Rhymen/go-whatsapp"
+	"strings"
+
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/format"
-	"strings"
+
+	"github.com/Rhymen/go-whatsapp"
 
 	"maunium.net/go/maulogger/v2"
 	"maunium.net/go/mautrix-appservice"
@@ -80,6 +82,8 @@ func (handler *CommandHandler) Handle(roomID types.MatrixRoomID, user *User, mes
 	switch cmd {
 	case "login":
 		handler.CommandLogin(ce)
+	case "logout-matrix":
+		handler.CommandLogoutMatrix(ce)
 	case "help":
 		handler.CommandHelp(ce)
 	case "reconnect":
@@ -92,7 +96,7 @@ func (handler *CommandHandler) Handle(roomID types.MatrixRoomID, user *User, mes
 		handler.CommandDeleteSession(ce)
 	case "delete-portal":
 		handler.CommandDeletePortal(ce)
-	case "logout", "sync", "list", "open", "pm":
+	case "login-matrix", "logout", "sync", "list", "open", "pm":
 		if ce.User.Conn == nil {
 			ce.Reply("You are not logged in. Use the `login` command to log into WhatsApp.")
 			return
@@ -102,6 +106,8 @@ func (handler *CommandHandler) Handle(roomID types.MatrixRoomID, user *User, mes
 		}
 
 		switch cmd {
+		case "login-matrix":
+			handler.CommandLoginMatrix(ce)
 		case "logout":
 			handler.CommandLogout(ce)
 		case "sync":
@@ -432,4 +438,26 @@ func (handler *CommandHandler) CommandPM(ce *CommandEvent) {
 		return
 	}
 	ce.Reply("Created portal room and invited you to it.")
+}
+
+const cmdLoginMatrixHelp = `login-matrix <_access token_> - Replace your WhatsApp account's Matrix puppet with your real Matrix account.'`
+
+func (handler *CommandHandler) CommandLoginMatrix(ce *CommandEvent) {
+	if len(ce.Args) == 0 {
+		ce.Reply("**Usage:** `login-matrix <access token>`")
+		return
+	}
+	puppet := handler.bridge.GetPuppetByJID(ce.User.JID)
+	err := puppet.SwitchCustomMXID(ce.Args[0], ce.User.MXID)
+	if err != nil {
+		ce.Reply("Failed to switch puppet: %v", err)
+		return
+	}
+	ce.Reply("Successfully switched puppet")
+}
+
+const cmdLogoutMatrixHelp = `logout-matrix - Switch your WhatsApp account's Matrix puppet back to the default one.`
+
+func (handler *CommandHandler) CommandLogoutMatrix(ce *CommandEvent) {
+
 }

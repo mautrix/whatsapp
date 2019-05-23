@@ -80,17 +80,19 @@ type Bridge struct {
 	portalsByJID        map[database.PortalKey]*Portal
 	portalsLock         sync.Mutex
 	puppets             map[types.WhatsAppID]*Puppet
+	puppetsByCustomMXID map[types.MatrixUserID]*Puppet
 	puppetsLock         sync.Mutex
 }
 
 func NewBridge() *Bridge {
 	bridge := &Bridge{
-		usersByMXID:     make(map[types.MatrixUserID]*User),
-		usersByJID:      make(map[types.WhatsAppID]*User),
-		managementRooms: make(map[types.MatrixRoomID]*User),
-		portalsByMXID:   make(map[types.MatrixRoomID]*Portal),
-		portalsByJID:    make(map[database.PortalKey]*Portal),
-		puppets:         make(map[types.WhatsAppID]*Puppet),
+		usersByMXID:         make(map[types.MatrixUserID]*User),
+		usersByJID:          make(map[types.WhatsAppID]*User),
+		managementRooms:     make(map[types.MatrixRoomID]*User),
+		portalsByMXID:       make(map[types.MatrixRoomID]*Portal),
+		portalsByJID:        make(map[database.PortalKey]*Portal),
+		puppets:             make(map[types.WhatsAppID]*Puppet),
+		puppetsByCustomMXID: make(map[types.MatrixUserID]*Puppet),
 	}
 
 	var err error
@@ -191,6 +193,16 @@ func (bridge *Bridge) StartUsers() {
 	bridge.Log.Debugln("Starting users")
 	for _, user := range bridge.GetAllUsers() {
 		go user.Connect(false)
+	}
+	bridge.Log.Debugln("Starting custom puppets")
+	for _, puppet := range bridge.GetAllPuppetsWithCustomMXID() {
+		go func() {
+			puppet.log.Debugln("Starting custom puppet", puppet.CustomMXID)
+			err := puppet.StartCustomMXID()
+			if err != nil {
+				puppet.log.Errorln("Failed to start custom puppet:", err)
+			}
+		}()
 	}
 }
 
