@@ -1027,7 +1027,7 @@ func (portal *Portal) HandleMatrixMessage(sender *User, evt *mautrix.Event) {
 		if msg != nil && msg.Content != nil {
 			ctxInfo.StanzaId = &msg.JID
 			ctxInfo.Participant = &msg.Sender
-			ctxInfo.QuotedMessage = []*waProto.Message{msg.Content}
+			ctxInfo.QuotedMessage = msg.Content
 		}
 	}
 	var err error

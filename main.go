@@ -198,6 +198,9 @@ func (bridge *Bridge) Stop() {
 	bridge.AS.Stop()
 	bridge.EventProcessor.Stop()
 	for _, user := range bridge.usersByJID {
+		if user.Conn == nil {
+			continue
+		}
 		bridge.Log.Debugln("Disconnecting", user.MXID)
 		sess, err := user.Conn.Disconnect()
 		if err != nil {
