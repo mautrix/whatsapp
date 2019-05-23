@@ -15,14 +15,14 @@ const (
 	SQLite
 )
 
-type upgradeFunc func(Dialect, *sql.Tx) error
+type upgradeFunc func(Dialect, *sql.Tx, *sql.DB) error
 
 type upgrade struct {
 	message string
 	fn upgradeFunc
 }
 
-var upgrades [4]upgrade
+var upgrades [5]upgrade
 
 func getVersion(dialect Dialect, db *sql.DB) (int, error) {
 	_, err := db.Exec("CREATE TABLE IF NOT EXISTS version (version INTEGER)")
@@ -70,7 +70,7 @@ func Run(log log.Logger, dialectName string, db *sql.DB) error {
 		if err != nil {
 			return err
 		}
-		err = upgrade.fn(dialect, tx)
+		err = upgrade.fn(dialect, tx, db)
 		if err != nil {
 			return err
 		}

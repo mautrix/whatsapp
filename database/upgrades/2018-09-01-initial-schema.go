@@ -6,7 +6,7 @@ import (
 )
 
 func init() {
-	upgrades[0] = upgrade{"Initial schema", func(dialect Dialect, tx *sql.Tx) error {
+	upgrades[0] = upgrade{"Initial schema", func(dialect Dialect, tx *sql.Tx, db *sql.DB) error {
 		var byteType string
 		if dialect == SQLite {
 			byteType = "BLOB"
