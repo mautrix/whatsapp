@@ -3,15 +3,17 @@ module maunium.net/go/mautrix-whatsapp
 go 1.12
 
 require (
-	github.com/Rhymen/go-whatsapp v0.0.2-0.20190521203213-17d96f9c79ea
+	github.com/Rhymen/go-whatsapp v0.0.2-0.20190511164245-5d5100902126
 	github.com/golang/protobuf v1.3.1 // indirect
 	github.com/gorilla/mux v1.7.2 // indirect
 	github.com/lib/pq v1.1.1
+	github.com/mattn/go-isatty v0.0.8 // indirect
 	github.com/mattn/go-sqlite3 v1.10.0
 	github.com/shurcooL/sanitized_anchor_name v1.0.0 // indirect
 	github.com/skip2/go-qrcode v0.0.0-20190110000554-dc11ecdae0a9
-	golang.org/x/sys v0.0.0-20190516110030-61b9204099cb // indirect
-	golang.org/x/tools v0.0.0-20190517183331-d88f79806bbd // indirect
+	golang.org/x/net v0.0.0-20190522155817-f3200d17e092 // indirect
+	golang.org/x/sys v0.0.0-20190522044717-8097e1b27ff5 // indirect
+	golang.org/x/tools v0.0.0-20190521203540-521d6ed310dd // indirect
 	gopkg.in/yaml.v2 v2.2.2
 	maunium.net/go/mauflag v1.0.0
 	maunium.net/go/maulogger/v2 v2.0.0
@@ -21,4 +23,4 @@ require (
 
 replace gopkg.in/russross/blackfriday.v2 => github.com/russross/blackfriday/v2 v2.0.1
 
-replace github.com/Rhymen/go-whatsapp => github.com/tulir/go-whatsapp v0.0.2-0.20190521203213-17d96f9c79ea
+replace github.com/Rhymen/go-whatsapp => github.com/tulir/go-whatsapp v0.0.2-0.20190523152421-80171e36abc2
