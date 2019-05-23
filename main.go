@@ -197,6 +197,15 @@ func (bridge *Bridge) StartUsers() {
 func (bridge *Bridge) Stop() {
 	bridge.AS.Stop()
 	bridge.EventProcessor.Stop()
+	for _, user := range bridge.usersByJID {
+		bridge.Log.Debugln("Disconnecting", user.MXID)
+		sess, err := user.Conn.Disconnect()
+		if err != nil {
+			bridge.Log.Errorfln("Error while disconnecting %s: %v", user.MXID, err)
+		} else {
+			user.SetSession(&sess)
+		}
+	}
 	err := bridge.StateStore.Save()
 	if err != nil {
 		bridge.Log.Warnln("Failed to save state store:", err)
