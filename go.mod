@@ -23,5 +23,4 @@ require (
 
 replace gopkg.in/russross/blackfriday.v2 => github.com/russross/blackfriday/v2 v2.0.1
 
-//replace github.com/Rhymen/go-whatsapp => github.com/tulir/go-whatsapp v0.0.2-0.20190523194501-cc7603f853df
-replace github.com/Rhymen/go-whatsapp => ../../Go/go-whatsapp
+replace github.com/Rhymen/go-whatsapp => github.com/tulir/go-whatsapp v0.0.2-0.20190523194501-cc7603f853df
