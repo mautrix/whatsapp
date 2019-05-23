@@ -75,6 +75,11 @@ bridge:
     recovery_chat_sync_limit: -1
     # Whether or not to sync history when recovering from downtime.
     recovery_history_backfill: true
+    # Maximum number of seconds since last message in chat to skip
+    # syncing the chat in any case. This setting will take priority
+    # over both recovery_chat_sync_limit and initial_chat_sync_count.
+    # Default is 3 days = 259200 seconds
+    sync_max_chat_age: 259200
 
     # The prefix for commands. Only required in non-management rooms.
     command_prefix: "!wa"

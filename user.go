@@ -312,7 +312,11 @@ func (user *User) syncPortals() {
 	if limit < 0 {
 		limit = len(chats)
 	}
+	now := uint64(time.Now().Unix())
 	for i, chat := range chats {
+		if chat.LastMessageTime + user.bridge.Config.Bridge.SyncChatMaxAge < now {
+			break
+		}
 		create := (chat.LastMessageTime >= user.LastConnection && user.LastConnection > 0) || i < limit
 		if len(chat.Portal.MXID) > 0 || create {
 			chat.Portal.Sync(user, chat.Contact)

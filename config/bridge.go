@@ -37,10 +37,11 @@ type BridgeConfig struct {
 	MaxConnectionAttempts int  `yaml:"max_connection_attempts"`
 	ReportConnectionRetry bool `yaml:"report_connection_retry"`
 
-	InitialChatSync    int  `yaml:"initial_chat_sync_count"`
-	InitialHistoryFill int  `yaml:"initial_history_fill_count"`
-	RecoverChatSync    int  `yaml:"recovery_chat_sync_count"`
-	RecoverHistory     bool `yaml:"recovery_history_backfill"`
+	InitialChatSync    int    `yaml:"initial_chat_sync_count"`
+	InitialHistoryFill int    `yaml:"initial_history_fill_count"`
+	RecoverChatSync    int    `yaml:"recovery_chat_sync_count"`
+	RecoverHistory     bool   `yaml:"recovery_history_backfill"`
+	SyncChatMaxAge     uint64 `yaml:"sync_max_chat_age"`
 
 	CommandPrefix string `yaml:"command_prefix"`
 
@@ -59,6 +60,7 @@ func (bc *BridgeConfig) setDefaults() {
 	bc.InitialHistoryFill = 20
 	bc.RecoverChatSync = -1
 	bc.RecoverHistory = true
+	bc.SyncChatMaxAge = 259200
 }
 
 type umBridgeConfig BridgeConfig
