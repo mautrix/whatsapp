@@ -23,12 +23,13 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
+
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix-appservice"
 )
 
 var (
-	ErrNoCustomMXID = errors.New("no custom mxid set")
+	ErrNoCustomMXID    = errors.New("no custom mxid set")
 	ErrMismatchingMXID = errors.New("whoami result does not match custom mxid")
 )
 
@@ -64,6 +65,8 @@ func (puppet *Puppet) newCustomIntent() (*appservice.IntentAPI, error) {
 	if err != nil {
 		return nil, err
 	}
+	client.Logger = puppet.bridge.AS.Log.Sub(puppet.CustomMXID)
+	client.Syncer = puppet
 	client.Store = puppet
 
 	ia := puppet.bridge.AS.NewIntentAPI("custom")
@@ -123,7 +126,8 @@ func (puppet *Puppet) stopSyncing() {
 }
 
 func (puppet *Puppet) ProcessResponse(resp *mautrix.RespSync, since string) error {
-	puppet.log.Debugln("Sync data:", resp, since)
+	d, _ := json.Marshal(resp)
+	puppet.log.Debugln("Sync data:", string(d), since)
 	// TODO handle sync data
 	return nil
 }
@@ -161,7 +165,7 @@ func (puppet *Puppet) GetFilterJSON(_ string) json.RawMessage {
 }
 
 func (puppet *Puppet) SaveFilterID(_, _ string)             {}
-func (puppet *Puppet) SaveNextBatch(_, nbt string)          { puppet.NextBatch = nbt }
+func (puppet *Puppet) SaveNextBatch(_, nbt string)          { puppet.NextBatch = nbt; puppet.Update() }
 func (puppet *Puppet) SaveRoom(room *mautrix.Room)          {}
 func (puppet *Puppet) LoadFilterID(_ string) string         { return "" }
 func (puppet *Puppet) LoadNextBatch(_ string) string        { return puppet.NextBatch }
