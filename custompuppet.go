@@ -137,7 +137,8 @@ func (puppet *Puppet) stopSyncing() {
 
 func (puppet *Puppet) ProcessResponse(resp *mautrix.RespSync, since string) error {
 	if !puppet.customUser.Connected {
-		return fmt.Errorf("custom user not connected to whatsapp")
+		puppet.log.Warnln("Skipping sync processing: custom user not connected to whatsapp")
+		return nil
 	}
 	for roomID, events := range resp.Rooms.Join {
 		portal := puppet.bridge.GetPortalByMXID(roomID)
