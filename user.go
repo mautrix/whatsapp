@@ -25,6 +25,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/pkg/errors"
 	"github.com/skip2/go-qrcode"
 	log "maunium.net/go/maulogger/v2"
 
@@ -344,7 +345,7 @@ func (user *User) updateLastConnectionIfNecessary() {
 }
 
 func (user *User) HandleError(err error) {
-	if err != whatsapp.ErrInvalidWsData {
+	if errors.Cause(err) != whatsapp.ErrInvalidWsData {
 		user.log.Errorln("WhatsApp error:", err)
 	}
 	var msg string
