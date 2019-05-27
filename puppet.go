@@ -147,6 +147,8 @@ type Puppet struct {
 	MXID types.MatrixUserID
 
 	customIntent *appservice.IntentAPI
+	customTypingIn map[string]bool
+	customUser *User
 }
 
 func (puppet *Puppet) PhoneNumber() string {

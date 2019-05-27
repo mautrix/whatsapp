@@ -23,20 +23,12 @@ import (
 	"github.com/Rhymen/go-whatsapp"
 )
 
-type PresenceType string
-
-const (
-	PresenceUnavailable PresenceType = "unavailable"
-	PresenceAvailable   PresenceType = "available"
-	PresenceComposing   PresenceType = "composing"
-)
-
 type Presence struct {
-	JID       string       `json:"id"`
-	SenderJID string       `json:"participant"`
-	Status    PresenceType `json:"type"`
-	Timestamp int64        `json:"t"`
-	Deny      bool         `json:"deny"`
+	JID       string            `json:"id"`
+	SenderJID string            `json:"participant"`
+	Status    whatsapp.Presence `json:"type"`
+	Timestamp int64             `json:"t"`
+	Deny      bool              `json:"deny"`
 }
 
 type PresenceHandler interface {

@@ -344,7 +344,9 @@ func (user *User) updateLastConnectionIfNecessary() {
 }
 
 func (user *User) HandleError(err error) {
-	user.log.Errorln("WhatsApp error:", err)
+	if err != whatsapp.ErrInvalidWsData {
+		user.log.Errorln("WhatsApp error:", err)
+	}
 	var msg string
 	if closed, ok := err.(*whatsapp.ErrConnectionClosed); ok {
 		user.Connected = false
@@ -464,9 +466,9 @@ func (user *User) HandleMessageRevoke(message whatsappExt.MessageRevocation) {
 func (user *User) HandlePresence(info whatsappExt.Presence) {
 	puppet := user.bridge.GetPuppetByJID(info.SenderJID)
 	switch info.Status {
-	case whatsappExt.PresenceUnavailable:
+	case whatsapp.PresenceUnavailable:
 		_ = puppet.DefaultIntent().SetPresence("offline")
-	case whatsappExt.PresenceAvailable:
+	case whatsapp.PresenceAvailable:
 		if len(puppet.typingIn) > 0 && puppet.typingAt+15 > time.Now().Unix() {
 			portal := user.bridge.GetPortalByMXID(puppet.typingIn)
 			_, _ = puppet.IntentFor(portal).UserTyping(puppet.typingIn, false, 0)
@@ -475,7 +477,7 @@ func (user *User) HandlePresence(info whatsappExt.Presence) {
 		} else {
 			_ = puppet.DefaultIntent().SetPresence("online")
 		}
-	case whatsappExt.PresenceComposing:
+	case whatsapp.PresenceComposing:
 		portal := user.GetPortalByJID(info.JID)
 		if len(puppet.typingIn) > 0 && puppet.typingAt+15 > time.Now().Unix() {
 			if puppet.typingIn == portal.MXID {

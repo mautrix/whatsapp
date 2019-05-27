@@ -6,9 +6,9 @@
     * [x] Media/files
     * [x] Replies
   * [x] Message redactions
-  * [ ] Presence<sup>[4]</sup>
-  * [ ] Typing notifications<sup>[4]</sup>
-  * [ ] Read receipts<sup>[4]</sup>
+  * [x] Presence
+  * [x] Typing notifications
+  * [x] Read receipts
   * [ ] Power level
   * [ ] Membership actions
     * [ ] Invite
@@ -65,4 +65,3 @@
 <sup>[1]</sup> May involve reverse-engineering the WhatsApp Web API and/or editing go-whatsapp  
 <sup>[2]</sup> May already work  
 <sup>[3]</sup> May not be possible  
-<sup>[4]</sup> Requires [matrix-org/synapse#2954](https://github.com/matrix-org/synapse/issues/2954) or Matrix puppeting
