@@ -565,7 +565,7 @@ func (portal *Portal) FillInitialHistory(user *User) error {
 	fromMe := true
 	chunkNum := 1
 	for n > 0 {
-		count := 100
+		count := 50
 		if n < count {
 			count = n
 		}
