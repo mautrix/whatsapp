@@ -348,23 +348,22 @@ func (user *User) HandleError(err error) {
 	if errors.Cause(err) != whatsapp.ErrInvalidWsData {
 		user.log.Errorln("WhatsApp error:", err)
 	}
-	var msg string
 	if closed, ok := err.(*whatsapp.ErrConnectionClosed); ok {
 		user.Connected = false
 		if closed.Code == 1000 {
 			// Normal closure
 			return
 		}
-		user.ConnectionErrors++
-		msg = fmt.Sprintf("Your WhatsApp connection was closed with websocket status code %d", closed.Code)
+		go user.tryReconnect(fmt.Sprintf("Your WhatsApp connection was closed with websocket status code %d", closed.Code))
 	} else if failed, ok := err.(*whatsapp.ErrConnectionFailed); ok {
 		user.Connected = false
 		user.ConnectionErrors++
-		msg = fmt.Sprintf("Your WhatsApp connection failed: %v", failed.Err)
-	} else {
-		// Unknown error, probably mostly harmless
-		return
+		go user.tryReconnect(fmt.Sprintf("Your WhatsApp connection failed: %v", failed.Err))
 	}
+	// Otherwise unknown error, probably mostly harmless
+}
+
+func (user *User) tryReconnect(msg string) {
 	if user.ConnectionErrors > user.bridge.Config.Bridge.MaxConnectionAttempts {
 		content := format.RenderMarkdown(fmt.Sprintf("%s. Use the `reconnect` command to reconnect.", msg))
 		_, _ = user.bridge.Bot.SendMessageEvent(user.ManagementRoom, mautrix.EventMessage, content)
@@ -375,9 +374,16 @@ func (user *User) HandleError(err error) {
 		// Don't want the same error to be repeated
 		msg = ""
 	}
-	tries := 0
+	var tries uint
+	var exponentialBackoff bool
+	baseDelay := time.Duration(user.bridge.Config.Bridge.ConnectionRetryDelay)
+	if baseDelay < 0 {
+		exponentialBackoff = true
+		baseDelay = -baseDelay + 1
+	}
+	delay := baseDelay
 	for user.ConnectionErrors <= user.bridge.Config.Bridge.MaxConnectionAttempts {
-		err = user.Conn.Restore()
+		err := user.Conn.Restore()
 		if err == nil {
 			user.ConnectionErrors = 0
 			user.Connected = true
@@ -389,11 +395,14 @@ func (user *User) HandleError(err error) {
 		tries++
 		user.ConnectionErrors++
 		if user.ConnectionErrors <= user.bridge.Config.Bridge.MaxConnectionAttempts {
+			if exponentialBackoff {
+				delay = (1 << tries) + baseDelay
+			}
 			if user.bridge.Config.Bridge.ReportConnectionRetry {
 				_, _ = user.bridge.Bot.SendNotice(user.ManagementRoom,
-					fmt.Sprintf("Reconnection attempt failed: %v. Retrying in 10 seconds...", err))
+					fmt.Sprintf("Reconnection attempt failed: %v. Retrying in %d seconds...", err, delay))
 			}
-			time.Sleep(10 * time.Second)
+			time.Sleep(delay * time.Second)
 		}
 	}
 

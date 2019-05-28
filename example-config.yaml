@@ -62,6 +62,9 @@ bridge:
     connection_timeout: 20
     # Maximum number of times to retry connecting on connection error.
     max_connection_attempts: 3
+    # Number of seconds to wait between connection attempts.
+    # Negative numbers are exponential backoff: -connection_retry_delay + 1 + 2^attempts
+    connection_retry_delay: -1
     # Whether or not the bridge should send a notice to the user's management room when it retries connecting.
     # If false, it will only report when it stops retrying.
     report_connection_retry: true

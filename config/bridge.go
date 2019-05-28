@@ -35,6 +35,7 @@ type BridgeConfig struct {
 
 	ConnectionTimeout     int  `yaml:"connection_timeout"`
 	MaxConnectionAttempts int  `yaml:"max_connection_attempts"`
+	ConnectionRetryDelay  int  `yaml:"connection_retry_delay"`
 	ReportConnectionRetry bool `yaml:"report_connection_retry"`
 
 	InitialChatSync    int    `yaml:"initial_chat_sync_count"`
@@ -56,6 +57,7 @@ type BridgeConfig struct {
 func (bc *BridgeConfig) setDefaults() {
 	bc.ConnectionTimeout = 20
 	bc.MaxConnectionAttempts = 3
+	bc.ConnectionRetryDelay = -1
 	bc.ReportConnectionRetry = true
 
 	bc.InitialChatSync = 10
