@@ -522,23 +522,22 @@ func (portal *Portal) BackfillHistory(user *User, lastMessageTime uint64) error 
 	if lastMessage == nil {
 		return nil
 	}
-	if lastMessage.Timestamp <= lastMessageTime {
+	if lastMessage.Timestamp >= lastMessageTime {
 		portal.log.Debugln("Not backfilling: no new messages")
 		return nil
 	}
 
 	lastMessageID := lastMessage.JID
+	lastMessageFromMe := lastMessage.Sender == user.JID
 	portal.log.Infoln("Backfilling history since", lastMessageID, "for", user.MXID)
 	for len(lastMessageID) > 0 {
 		portal.log.Debugln("Backfilling history: 50 messages after", lastMessageID)
-		resp, err := user.Conn.LoadMessagesAfter(portal.Key.JID, lastMessageID, 50)
+		resp, err := user.Conn.LoadMessagesAfter(portal.Key.JID, lastMessageID, lastMessageFromMe, 50)
 		if err != nil {
 			return err
 		}
 		messages, ok := resp.Content.([]interface{})
-		if !ok {
-			return fmt.Errorf("history response not a list")
-		} else if len(messages) == 0 {
+		if !ok || len(messages) == 0 {
 			break
 		}
 
@@ -547,6 +546,7 @@ func (portal *Portal) BackfillHistory(user *User, lastMessageTime uint64) error 
 		lastMessageProto, ok := messages[len(messages)-1].(*waProto.WebMessageInfo)
 		if ok {
 			lastMessageID = lastMessageProto.GetKey().GetId()
+			lastMessageFromMe = lastMessageProto.GetKey().GetFromMe()
 		}
 	}
 	portal.log.Infoln("Backfilling finished")
@@ -563,6 +563,7 @@ func (portal *Portal) FillInitialHistory(user *User) error {
 	portal.log.Infoln("Filling initial history, maximum", n, "messages")
 	var messages []interface{}
 	before := ""
+	fromMe := true
 	chunkNum := 1
 	for n > 0 {
 		count := 100
@@ -570,7 +571,7 @@ func (portal *Portal) FillInitialHistory(user *User) error {
 			count = n
 		}
 		portal.log.Debugfln("Fetching chunk %d (%d messages / %d cap) before message %s", chunkNum, count, n, before)
-		resp, err := user.Conn.LoadMessagesBefore(portal.Key.JID, before, count)
+		resp, err := user.Conn.LoadMessagesBefore(portal.Key.JID, before, fromMe, count)
 		if err != nil {
 			return err
 		}
@@ -587,7 +588,9 @@ func (portal *Portal) FillInitialHistory(user *User) error {
 		portal.log.Debugfln("Fetched chunk and received %d messages", len(chunk))
 
 		n -= len(chunk)
-		before = chunk[0].(*waProto.WebMessageInfo).GetKey().GetId()
+		key := chunk[0].(*waProto.WebMessageInfo).GetKey()
+		before = key.GetId()
+		fromMe = key.GetFromMe()
 		if len(before) == 0 {
 			portal.log.Infoln("No message ID for first message, starting handling of loaded messages")
 			break
