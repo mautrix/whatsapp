@@ -26,6 +26,8 @@ const NumberOfUpgrades = 6
 
 var upgrades [NumberOfUpgrades]upgrade
 
+var UnsupportedDatabaseVersion = fmt.Errorf("unsupported database version")
+
 func getVersion(dialect Dialect, db *sql.DB) (int, error) {
 	_, err := db.Exec("CREATE TABLE IF NOT EXISTS version (version INTEGER)")
 	if err != nil {
@@ -63,6 +65,10 @@ func Run(log log.Logger, dialectName string, db *sql.DB) error {
 	version, err := getVersion(dialect, db)
 	if err != nil {
 		return err
+	}
+
+	if version > NumberOfUpgrades {
+		return UnsupportedDatabaseVersion
 	}
 
 	log.Infofln("Database currently on v%d, latest: v%d", version, NumberOfUpgrades)

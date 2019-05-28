@@ -25,7 +25,9 @@ import (
 
 	flag "maunium.net/go/mauflag"
 	log "maunium.net/go/maulogger/v2"
+
 	"maunium.net/go/mautrix-appservice"
+	"maunium.net/go/mautrix-whatsapp/database/upgrades"
 
 	"maunium.net/go/mautrix-whatsapp/config"
 	"maunium.net/go/mautrix-whatsapp/database"
@@ -36,6 +38,7 @@ var configPath = flag.MakeFull("c", "config", "The path to your config file.", "
 //var baseConfigPath = flag.MakeFull("b", "base-config", "The path to the example config file.", "example-config.yaml").String()
 var registrationPath = flag.MakeFull("r", "registration", "The path where to save the appservice registration.", "registration.yaml").String()
 var generateRegistration = flag.MakeFull("g", "generate-registration", "Generate registration and quit.", "false").Bool()
+var ignoreUnsupportedDatabase = flag.Make().LongKey("ignore-unsupported-database").Usage("Run even if database is too new").Default("false").Bool()
 var wantHelp, _ = flag.MakeHelpFlag()
 
 func (bridge *Bridge) GenerateRegistration() {
@@ -136,7 +139,7 @@ func (bridge *Bridge) Init() {
 
 	bridge.Log.Debugln("Initializing database")
 	bridge.DB, err = database.New(bridge.Config.AppService.Database.Type, bridge.Config.AppService.Database.URI)
-	if err != nil {
+	if err != nil && (err != upgrades.UnsupportedDatabaseVersion || !*ignoreUnsupportedDatabase) {
 		bridge.Log.Fatalln("Failed to initialize database:", err)
 		os.Exit(14)
 	}
