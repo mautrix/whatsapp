@@ -50,15 +50,7 @@ func (bridge *Bridge) GetPortalByMXID(mxid types.MatrixRoomID) *Portal {
 	defer bridge.portalsLock.Unlock()
 	portal, ok := bridge.portalsByMXID[mxid]
 	if !ok {
-		dbPortal := bridge.DB.Portal.GetByMXID(mxid)
-		if dbPortal == nil {
-			return nil
-		}
-		portal = bridge.NewPortal(dbPortal)
-		bridge.portalsByJID[portal.Key] = portal
-		if len(portal.MXID) > 0 {
-			bridge.portalsByMXID[portal.MXID] = portal
-		}
+		return bridge.loadDBPortal(bridge.DB.Portal.GetByMXID(mxid), nil)
 	}
 	return portal
 }
@@ -68,17 +60,7 @@ func (bridge *Bridge) GetPortalByJID(key database.PortalKey) *Portal {
 	defer bridge.portalsLock.Unlock()
 	portal, ok := bridge.portalsByJID[key]
 	if !ok {
-		dbPortal := bridge.DB.Portal.GetByJID(key)
-		if dbPortal == nil {
-			dbPortal = bridge.DB.Portal.New()
-			dbPortal.Key = key
-			dbPortal.Insert()
-		}
-		portal = bridge.NewPortal(dbPortal)
-		bridge.portalsByJID[portal.Key] = portal
-		if len(portal.MXID) > 0 {
-			bridge.portalsByMXID[portal.MXID] = portal
-		}
+		return bridge.loadDBPortal(bridge.DB.Portal.GetByJID(key), &key)
 	}
 	return portal
 }
@@ -91,15 +73,32 @@ func (bridge *Bridge) GetAllPortals() []*Portal {
 	for index, dbPortal := range dbPortals {
 		portal, ok := bridge.portalsByJID[dbPortal.Key]
 		if !ok {
-			portal = bridge.NewPortal(dbPortal)
-			bridge.portalsByJID[portal.Key] = portal
-			if len(dbPortal.MXID) > 0 {
-				bridge.portalsByMXID[dbPortal.MXID] = portal
-			}
+			portal = bridge.loadDBPortal(dbPortal, nil)
 		}
 		output[index] = portal
 	}
 	return output
+}
+
+func (bridge *Bridge) loadDBPortal(dbPortal *database.Portal, key *database.PortalKey) *Portal {
+	if dbPortal == nil {
+		if key == nil {
+			return nil
+		}
+		dbPortal = bridge.DB.Portal.New()
+		dbPortal.Key = *key
+		dbPortal.Insert()
+	}
+	portal := bridge.NewPortal(dbPortal)
+	bridge.portalsByJID[portal.Key] = portal
+	if len(portal.MXID) > 0 {
+		bridge.portalsByMXID[portal.MXID] = portal
+	}
+	return portal
+}
+
+func (portal *Portal) GetUsers() []*User {
+	return nil
 }
 
 func (bridge *Bridge) NewPortal(dbPortal *database.Portal) *Portal {

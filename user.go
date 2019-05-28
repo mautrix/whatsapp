@@ -66,20 +66,7 @@ func (bridge *Bridge) GetUserByMXID(userID types.MatrixUserID) *User {
 	defer bridge.usersLock.Unlock()
 	user, ok := bridge.usersByMXID[userID]
 	if !ok {
-		dbUser := bridge.DB.User.GetByMXID(userID)
-		if dbUser == nil {
-			dbUser = bridge.DB.User.New()
-			dbUser.MXID = userID
-			dbUser.Insert()
-		}
-		user = bridge.NewUser(dbUser)
-		bridge.usersByMXID[user.MXID] = user
-		if len(user.JID) > 0 {
-			bridge.usersByJID[user.JID] = user
-		}
-		if len(user.ManagementRoom) > 0 {
-			bridge.managementRooms[user.ManagementRoom] = user
-		}
+		return bridge.loadDBUser(bridge.DB.User.GetByMXID(userID), &userID)
 	}
 	return user
 }
@@ -89,16 +76,7 @@ func (bridge *Bridge) GetUserByJID(userID types.WhatsAppID) *User {
 	defer bridge.usersLock.Unlock()
 	user, ok := bridge.usersByJID[userID]
 	if !ok {
-		dbUser := bridge.DB.User.GetByJID(userID)
-		if dbUser == nil {
-			return nil
-		}
-		user = bridge.NewUser(dbUser)
-		bridge.usersByMXID[user.MXID] = user
-		bridge.usersByJID[user.JID] = user
-		if len(user.ManagementRoom) > 0 {
-			bridge.managementRooms[user.ManagementRoom] = user
-		}
+		return bridge.loadDBUser(bridge.DB.User.GetByJID(userID), nil)
 	}
 	return user
 }
@@ -111,18 +89,48 @@ func (bridge *Bridge) GetAllUsers() []*User {
 	for index, dbUser := range dbUsers {
 		user, ok := bridge.usersByMXID[dbUser.MXID]
 		if !ok {
-			user = bridge.NewUser(dbUser)
-			bridge.usersByMXID[user.MXID] = user
-			if len(user.JID) > 0 {
-				bridge.usersByJID[user.JID] = user
-			}
-			if len(user.ManagementRoom) > 0 {
-				bridge.managementRooms[user.ManagementRoom] = user
-			}
+			user = bridge.loadDBUser(dbUser, nil)
 		}
 		output[index] = user
 	}
 	return output
+}
+
+func (bridge *Bridge) loadDBUser(dbUser *database.User, mxid *types.MatrixUserID) *User {
+	if dbUser == nil {
+		if mxid == nil {
+			return nil
+		}
+		dbUser = bridge.DB.User.New()
+		dbUser.MXID = *mxid
+		dbUser.Insert()
+	}
+	user := bridge.NewUser(dbUser)
+	bridge.usersByMXID[user.MXID] = user
+	if len(user.JID) > 0 {
+		bridge.usersByJID[user.JID] = user
+	}
+	if len(user.ManagementRoom) > 0 {
+		bridge.managementRooms[user.ManagementRoom] = user
+	}
+	return user
+}
+
+func (user *User) GetPortals() []*Portal {
+	keys := user.User.GetPortalKeys()
+	portals := make([]*Portal, len(keys))
+
+	user.bridge.portalsLock.Lock()
+	defer user.bridge.portalsLock.Unlock()
+
+	for i, key := range keys {
+		portal, ok := user.bridge.portalsByJID[key]
+		if !ok {
+			portal = user.bridge.loadDBPortal(user.bridge.DB.Portal.GetByJID(key), &key)
+		}
+		portals[i] = portal
+	}
+	return portals
 }
 
 func (bridge *Bridge) NewUser(dbUser *database.User) *User {
@@ -295,18 +303,26 @@ func (user *User) PostLogin() {
 }
 
 func (user *User) syncPortals(createAll bool) {
-	var chats ChatList
+	chats := make(ChatList, 0, len(user.Conn.Store.Chats))
+	portalKeys := make([]database.PortalKey, 0, len(user.Conn.Store.Chats))
 	for _, chat := range user.Conn.Store.Chats {
 		ts, err := strconv.ParseUint(chat.LastMessageTime, 10, 64)
 		if err != nil {
 			user.log.Warnfln("Non-integer last message time in %s: %s", chat.Jid, chat.LastMessageTime)
 			continue
 		}
+		portal := user.GetPortalByJID(chat.Jid)
+
 		chats = append(chats, Chat{
-			Portal:          user.GetPortalByJID(chat.Jid),
+			Portal:          portal,
 			Contact:         user.Conn.Store.Contacts[chat.Jid],
 			LastMessageTime: ts,
 		})
+		portalKeys = append(portalKeys, portal.Key)
+	}
+	err := user.SetPortalKeys(portalKeys)
+	if err != nil {
+		user.log.Warnln("Failed to update user-portal mapping:", err)
 	}
 	sort.Sort(chats)
 	limit := user.bridge.Config.Bridge.InitialChatSync
@@ -315,7 +331,7 @@ func (user *User) syncPortals(createAll bool) {
 	}
 	now := uint64(time.Now().Unix())
 	for i, chat := range chats {
-		if chat.LastMessageTime + user.bridge.Config.Bridge.SyncChatMaxAge < now {
+		if chat.LastMessageTime+user.bridge.Config.Bridge.SyncChatMaxAge < now {
 			break
 		}
 		create := (chat.LastMessageTime >= user.LastConnection && user.LastConnection > 0) || i < limit

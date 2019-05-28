@@ -18,6 +18,7 @@ package database
 
 import (
 	"database/sql"
+	"fmt"
 	"strings"
 	"time"
 
@@ -164,4 +165,51 @@ func (user *User) Update() {
 	if err != nil {
 		user.log.Warnfln("Failed to update %s: %v", user.MXID, err)
 	}
+}
+
+func (user *User) SetPortalKeys(newKeys []PortalKey) error {
+	tx, err := user.db.Begin()
+	if err != nil {
+		return err
+	}
+	_, err = tx.Exec("DELETE FROM user_portal WHERE user_jid=$1", user.jidPtr())
+	if err != nil {
+		_ = tx.Rollback()
+		return err
+	}
+	valueStrings := make([]string, len(newKeys))
+	values := make([]interface{}, len(newKeys)*3)
+	for i, key := range newKeys {
+		valueStrings[i] = fmt.Sprintf("($%d, $%d, $%d)", i*3+1, i*3+2, i*3+3)
+		values[i*3] = user.jidPtr()
+		values[i*3+1] = key.JID
+		values[i*3+2] = key.Receiver
+	}
+	query := fmt.Sprintf("INSERT INTO user_portal (user_jid, portal_jid, portal_receiver) VALUES %s",
+		strings.Join(valueStrings, ", "))
+	_, err = tx.Exec(query, values...)
+	if err != nil {
+		_ = tx.Rollback()
+		return err
+	}
+	return tx.Commit()
+}
+
+func (user *User) GetPortalKeys() []PortalKey {
+	rows, err := user.db.Query(`SELECT portal_jid, portal_receiver FROM user_portal WHERE user_jid=$1`, user.jidPtr())
+	if err != nil {
+		user.log.Warnln("Failed to get user portal keys:", err)
+		return nil
+	}
+	var keys []PortalKey
+	for rows.Next() {
+		var key PortalKey
+		err = rows.Scan(&key.JID, &key.Receiver)
+		if err != nil {
+			user.log.Warnln("Failed to scan row:", err)
+			continue
+		}
+		keys = append(keys, key)
+	}
+	return keys
 }
