@@ -139,6 +139,7 @@ type Portal struct {
 	recentlyHandledIndex uint8
 
 	backfillLock  sync.Mutex
+	backfilling   bool
 	lastMessageTs uint64
 
 	messages chan PortalMessage
@@ -401,8 +402,20 @@ func (portal *Portal) UpdateMetadata(user *User) bool {
 	return update
 }
 
+func (portal *Portal) ensureUserInvited(user *User) {
+	err := portal.MainIntent().EnsureInvited(portal.MXID, user.MXID)
+	if err != nil {
+		portal.log.Warnfln("Failed to ensure %s is invited to %s: %v", user.MXID, portal.MXID, err)
+	}
+	customPuppet := portal.bridge.GetPuppetByCustomMXID(user.MXID)
+	if customPuppet.CustomIntent() != nil {
+		_ = customPuppet.CustomIntent().EnsureJoined(portal.MXID)
+	}
+}
+
 func (portal *Portal) Sync(user *User, contact whatsapp.Contact) {
 	if portal.IsPrivateChat() {
+		portal.ensureUserInvited(user)
 		return
 	}
 	portal.log.Infoln("Syncing portal for", user.MXID)
@@ -415,10 +428,7 @@ func (portal *Portal) Sync(user *User, contact whatsapp.Contact) {
 			return
 		}
 	} else {
-		err := portal.MainIntent().EnsureInvited(portal.MXID, user.MXID)
-		if err != nil {
-			portal.log.Warnfln("Failed to ensure %s is invited to %s: %v", user.MXID, portal.MXID, err)
-		}
+		portal.ensureUserInvited(user)
 	}
 
 	update := false
@@ -521,7 +531,11 @@ func (portal *Portal) BackfillHistory(user *User, lastMessageTime uint64) error 
 		return nil
 	}
 	portal.backfillLock.Lock()
-	defer portal.backfillLock.Unlock()
+	portal.backfilling = true
+	defer func() {
+		portal.backfilling = false
+		portal.backfillLock.Unlock()
+	}()
 	lastMessage := portal.bridge.DB.Message.GetLastInChat(portal.Key)
 	if lastMessage == nil {
 		return nil
@@ -562,7 +576,17 @@ func (portal *Portal) FillInitialHistory(user *User) error {
 		return nil
 	}
 	portal.backfillLock.Lock()
-	defer portal.backfillLock.Unlock()
+	portal.backfilling = true
+	defer func() {
+		portal.backfilling = false
+		portal.backfillLock.Unlock()
+	}()
+	var privateChatPuppet *Puppet
+	if portal.IsPrivateChat() {
+		privateChatPuppet = portal.bridge.GetPuppetByJID(portal.Key.Receiver)
+		_, _ = portal.MainIntent().InviteUser(portal.MXID, &mautrix.ReqInviteUser{UserID: privateChatPuppet.MXID})
+		_ = privateChatPuppet.DefaultIntent().EnsureJoined(portal.MXID)
+	}
 	n := portal.bridge.Config.Bridge.InitialHistoryFill
 	portal.log.Infoln("Filling initial history, maximum", n, "messages")
 	var messages []interface{}
@@ -601,6 +625,9 @@ func (portal *Portal) FillInitialHistory(user *User) error {
 		}
 	}
 	portal.handleHistory(user, messages)
+	if privateChatPuppet != nil {
+		_, _ = privateChatPuppet.DefaultIntent().LeaveRoom(portal.MXID)
+	}
 	return nil
 }
 
@@ -681,6 +708,11 @@ func (portal *Portal) CreateMatrixRoom(user *User) error {
 	portal.Update()
 	if metadata != nil {
 		portal.SyncParticipants(metadata)
+	} else {
+		customPuppet := portal.bridge.GetPuppetByCustomMXID(user.MXID)
+		if customPuppet.CustomIntent() != nil {
+			_ = customPuppet.CustomIntent().EnsureJoined(portal.MXID)
+		}
 	}
 	err = portal.FillInitialHistory(user)
 	if err != nil {
@@ -710,9 +742,6 @@ func (portal *Portal) MainIntent() *appservice.IntentAPI {
 
 func (portal *Portal) GetMessageIntent(user *User, info whatsapp.MessageInfo) *appservice.IntentAPI {
 	if info.FromMe {
-		if portal.IsPrivateChat() {
-			return portal.bridge.GetPuppetByJID(user.JID).CustomIntent()
-		}
 		return portal.bridge.GetPuppetByJID(user.JID).IntentFor(portal)
 	} else if portal.IsPrivateChat() {
 		return portal.MainIntent()

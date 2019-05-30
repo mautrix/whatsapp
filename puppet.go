@@ -111,7 +111,7 @@ func (bridge *Bridge) dbPuppetsToPuppets(dbPuppets []*database.Puppet) []*Puppet
 		if !ok {
 			puppet = bridge.NewPuppet(dbPuppet)
 			bridge.puppets[dbPuppet.JID] = puppet
-			if len(dbPuppet.CustomMXID) > 0  {
+			if len(dbPuppet.CustomMXID) > 0 {
 				bridge.puppetsByCustomMXID[dbPuppet.CustomMXID] = puppet
 			}
 		}
@@ -146,9 +146,9 @@ type Puppet struct {
 
 	MXID types.MatrixUserID
 
-	customIntent *appservice.IntentAPI
+	customIntent   *appservice.IntentAPI
 	customTypingIn map[string]bool
-	customUser *User
+	customUser     *User
 }
 
 func (puppet *Puppet) PhoneNumber() string {
@@ -156,7 +156,7 @@ func (puppet *Puppet) PhoneNumber() string {
 }
 
 func (puppet *Puppet) IntentFor(portal *Portal) *appservice.IntentAPI {
-	if puppet.customIntent == nil || portal.Key.JID == puppet.JID{
+	if (!portal.IsPrivateChat() && puppet.customIntent == nil) || portal.backfilling || portal.Key.JID == puppet.JID {
 		return puppet.DefaultIntent()
 	}
 	return puppet.customIntent
