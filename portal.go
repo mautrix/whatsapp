@@ -168,6 +168,9 @@ func (portal *Portal) handleMessageLoop() {
 }
 
 func (portal *Portal) handleMessage(msg PortalMessage) {
+	if len(portal.MXID) == 0 {
+		return
+	}
 	switch data := msg.data.(type) {
 	case whatsapp.TextMessage:
 		portal.HandleTextMessage(msg.source, data)
@@ -181,6 +184,8 @@ func (portal *Portal) handleMessage(msg PortalMessage) {
 		portal.HandleMediaMessage(msg.source, data.Download, data.Thumbnail, data.Info, data.Type, data.Title)
 	case whatsappExt.MessageRevocation:
 		portal.HandleMessageRevoke(msg.source, data)
+	case FakeMessage:
+		portal.HandleFakeMessage(msg.source, data)
 	}
 }
 
@@ -764,16 +769,30 @@ func (portal *Portal) HandleMessageRevoke(user *User, message whatsappExt.Messag
 	msg.Delete()
 }
 
+func (portal *Portal) HandleFakeMessage(source *User, message FakeMessage) {
+	if portal.isRecentlyHandled(message.ID) {
+		return
+	}
+
+	_, err := portal.MainIntent().SendText(portal.MXID, message.Text)
+	if err != nil {
+		portal.log.Errorfln("Failed to handle fake message %s: %v", message.ID, err)
+		return
+	}
+
+	portal.recentlyHandledLock.Lock()
+	index := portal.recentlyHandledIndex
+	portal.recentlyHandledIndex = (portal.recentlyHandledIndex + 1) % recentlyHandledLength
+	portal.recentlyHandledLock.Unlock()
+	portal.recentlyHandled[index] = message.ID
+}
+
 type MessageContent struct {
 	*mautrix.Content
 	IsCustomPuppet bool `json:"net.maunium.whatsapp.puppet,omitempty"`
 }
 
 func (portal *Portal) HandleTextMessage(source *User, message whatsapp.TextMessage) {
-	if len(portal.MXID) == 0 {
-		return
-	}
-
 	if !portal.startHandling(message.Info) {
 		return
 	}
@@ -801,10 +820,6 @@ func (portal *Portal) HandleTextMessage(source *User, message whatsapp.TextMessa
 }
 
 func (portal *Portal) HandleMediaMessage(source *User, download func() ([]byte, error), thumbnail []byte, info whatsapp.MessageInfo, mimeType, caption string) {
-	if len(portal.MXID) == 0 {
-		return
-	}
-
 	if !portal.startHandling(info) {
 		return
 	}

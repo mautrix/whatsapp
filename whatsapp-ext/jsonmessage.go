@@ -35,6 +35,7 @@ const (
 	MessageProps    JSONMessageType = "Props"
 	MessageCmd      JSONMessageType = "Cmd"
 	MessageChat     JSONMessageType = "Chat"
+	MessageCall     JSONMessageType = "Call"
 )
 
 func (ext *ExtendedConn) HandleError(error) {}
@@ -85,6 +86,8 @@ func (ext *ExtendedConn) HandleJsonMessage(message string) {
 		ext.handleMessageCommand(msg[1])
 	case MessageChat:
 		ext.handleMessageChatUpdate(msg[1])
+	case MessageCall:
+		ext.handleMessageCall(msg[1])
 	default:
 		for _, handler := range ext.handlers {
 			ujmHandler, ok := handler.(UnhandledJSONMessageHandler)

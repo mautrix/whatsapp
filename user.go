@@ -489,6 +489,35 @@ func (user *User) HandleMessageRevoke(message whatsappExt.MessageRevocation) {
 	user.putMessage(PortalMessage{message.RemoteJid, user, message, 0})
 }
 
+type FakeMessage struct {
+	Text string
+	ID   string
+}
+
+func (user *User) HandleCallInfo(info whatsappExt.CallInfo) {
+	if info.Data != nil {
+		return
+	}
+	data := FakeMessage{
+		ID: info.ID,
+	}
+	switch info.Type {
+	case whatsappExt.CallOffer:
+		data.Text = "Incoming call"
+	case whatsappExt.CallOfferVideo:
+		data.Text = "Incoming video call"
+	case whatsappExt.CallTerminate:
+		data.Text = "Call ended"
+		data.ID += "E"
+	default:
+		return
+	}
+	portal := user.GetPortalByJID(info.From)
+	if portal != nil {
+		portal.messages <- PortalMessage{info.From, user, data, 0}
+	}
+}
+
 func (user *User) HandlePresence(info whatsappExt.Presence) {
 	puppet := user.bridge.GetPuppetByJID(info.SenderJID)
 	switch info.Status {
