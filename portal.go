@@ -142,6 +142,8 @@ type Portal struct {
 	backfilling   bool
 	lastMessageTs uint64
 
+	privateChatBackfillInvitePuppet func()
+
 	messages chan PortalMessage
 
 	isPrivate *bool
@@ -572,16 +574,24 @@ func (portal *Portal) BackfillHistory(user *User, lastMessageTime uint64) error 
 func (portal *Portal) beginBackfill() func() {
 	portal.backfillLock.Lock()
 	portal.backfilling = true
+	var privateChatPuppetInvited bool
 	var privateChatPuppet *Puppet
 	if portal.IsPrivateChat() {
 		privateChatPuppet = portal.bridge.GetPuppetByJID(portal.Key.Receiver)
-		_, _ = portal.MainIntent().InviteUser(portal.MXID, &mautrix.ReqInviteUser{UserID: privateChatPuppet.MXID})
-		_ = privateChatPuppet.DefaultIntent().EnsureJoined(portal.MXID)
+		portal.privateChatBackfillInvitePuppet = func() {
+			if privateChatPuppetInvited {
+				return
+			}
+			privateChatPuppetInvited = true
+			_, _ = portal.MainIntent().InviteUser(portal.MXID, &mautrix.ReqInviteUser{UserID: privateChatPuppet.MXID})
+			_ = privateChatPuppet.DefaultIntent().EnsureJoined(portal.MXID)
+		}
 	}
 	return func() {
 		portal.backfilling = false
+		portal.privateChatBackfillInvitePuppet = nil
 		portal.backfillLock.Unlock()
-		if privateChatPuppet != nil {
+		if privateChatPuppet != nil && privateChatPuppetInvited {
 			_, _ = privateChatPuppet.DefaultIntent().LeaveRoom(portal.MXID)
 		}
 	}
@@ -593,6 +603,9 @@ func (portal *Portal) FillInitialHistory(user *User) error {
 	}
 	endBackfill := portal.beginBackfill()
 	defer endBackfill()
+	if portal.privateChatBackfillInvitePuppet != nil {
+		portal.privateChatBackfillInvitePuppet()
+	}
 
 	n := portal.bridge.Config.Bridge.InitialHistoryFill
 	portal.log.Infoln("Filling initial history, maximum", n, "messages")
@@ -632,6 +645,7 @@ func (portal *Portal) FillInitialHistory(user *User) error {
 		}
 	}
 	portal.handleHistory(user, messages)
+	portal.log.Infoln("Initial history fill complete")
 	return nil
 }
 
@@ -644,6 +658,9 @@ func (portal *Portal) handleHistory(user *User, messages []interface{}) {
 			continue
 		}
 		data := whatsapp.ParseProtoMessage(message)
+		if portal.privateChatBackfillInvitePuppet != nil && message.GetKey().GetFromMe() && portal.IsPrivateChat() {
+			portal.privateChatBackfillInvitePuppet()
+		}
 		portal.handleMessage(PortalMessage{portal.Key.JID, user, data, message.GetMessageTimestamp()})
 	}
 }

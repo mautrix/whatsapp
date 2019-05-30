@@ -228,7 +228,7 @@ func (handler *CommandHandler) CommandReconnect(ce *CommandEvent) {
 	ce.User.Connected = true
 	ce.User.ConnectionErrors = 0
 	ce.Reply("Reconnected successfully.")
-	go ce.User.PostLogin()
+	ce.User.PostLogin()
 }
 
 func (handler *CommandHandler) CommandDeleteConnection(ce *CommandEvent) {

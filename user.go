@@ -210,7 +210,7 @@ func (user *User) RestoreSession() bool {
 		user.ConnectionErrors = 0
 		user.SetSession(&sess)
 		user.log.Debugln("Session restored successfully")
-		go user.PostLogin()
+		user.PostLogin()
 	}
 	return true
 }
@@ -267,7 +267,7 @@ func (user *User) Login(ce *CommandEvent) {
 	user.JID = strings.Replace(user.Conn.Info.Wid, whatsappExt.OldUserSuffix, whatsappExt.NewUserSuffix, 1)
 	user.SetSession(&session)
 	ce.Reply("Successfully logged in, synchronizing chats...")
-	go user.PostLogin()
+	user.PostLogin()
 }
 
 type Chat struct {
@@ -292,6 +292,10 @@ func (cl ChatList) Swap(i, j int) {
 
 func (user *User) PostLogin() {
 	user.syncLock.Lock()
+	go user.intPostLogin()
+}
+
+func (user *User) intPostLogin() {
 	user.log.Debugln("Waiting a second for contacts to arrive")
 	// Hacky way to wait for chats and contacts to arrive automatically
 	time.Sleep(1 * time.Second)
@@ -404,7 +408,7 @@ func (user *User) tryReconnect(msg string) {
 			user.ConnectionErrors = 0
 			user.Connected = true
 			_, _ = user.bridge.Bot.SendNotice(user.ManagementRoom, "Reconnected successfully")
-			go user.PostLogin()
+			user.PostLogin()
 			return
 		}
 		user.log.Errorln("Error while trying to reconnect after disconnection:", err)
