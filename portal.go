@@ -530,12 +530,10 @@ func (portal *Portal) BackfillHistory(user *User, lastMessageTime uint64) error 
 	if !portal.bridge.Config.Bridge.RecoverHistory {
 		return nil
 	}
-	portal.backfillLock.Lock()
-	portal.backfilling = true
-	defer func() {
-		portal.backfilling = false
-		portal.backfillLock.Unlock()
-	}()
+
+	endBackfill := portal.beginBackfill()
+	defer endBackfill()
+
 	lastMessage := portal.bridge.DB.Message.GetLastInChat(portal.Key)
 	if lastMessage == nil {
 		return nil
@@ -571,22 +569,31 @@ func (portal *Portal) BackfillHistory(user *User, lastMessageTime uint64) error 
 	return nil
 }
 
-func (portal *Portal) FillInitialHistory(user *User) error {
-	if portal.bridge.Config.Bridge.InitialHistoryFill == 0 {
-		return nil
-	}
+func (portal *Portal) beginBackfill() func() {
 	portal.backfillLock.Lock()
 	portal.backfilling = true
-	defer func() {
-		portal.backfilling = false
-		portal.backfillLock.Unlock()
-	}()
 	var privateChatPuppet *Puppet
 	if portal.IsPrivateChat() {
 		privateChatPuppet = portal.bridge.GetPuppetByJID(portal.Key.Receiver)
 		_, _ = portal.MainIntent().InviteUser(portal.MXID, &mautrix.ReqInviteUser{UserID: privateChatPuppet.MXID})
 		_ = privateChatPuppet.DefaultIntent().EnsureJoined(portal.MXID)
 	}
+	return func() {
+		portal.backfilling = false
+		portal.backfillLock.Unlock()
+		if privateChatPuppet != nil {
+			_, _ = privateChatPuppet.DefaultIntent().LeaveRoom(portal.MXID)
+		}
+	}
+}
+
+func (portal *Portal) FillInitialHistory(user *User) error {
+	if portal.bridge.Config.Bridge.InitialHistoryFill == 0 {
+		return nil
+	}
+	endBackfill := portal.beginBackfill()
+	defer endBackfill()
+
 	n := portal.bridge.Config.Bridge.InitialHistoryFill
 	portal.log.Infoln("Filling initial history, maximum", n, "messages")
 	var messages []interface{}
@@ -625,9 +632,6 @@ func (portal *Portal) FillInitialHistory(user *User) error {
 		}
 	}
 	portal.handleHistory(user, messages)
-	if privateChatPuppet != nil {
-		_, _ = privateChatPuppet.DefaultIntent().LeaveRoom(portal.MXID)
-	}
 	return nil
 }
 
