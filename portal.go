@@ -410,7 +410,7 @@ func (portal *Portal) ensureUserInvited(user *User) {
 		portal.log.Warnfln("Failed to ensure %s is invited to %s: %v", user.MXID, portal.MXID, err)
 	}
 	customPuppet := portal.bridge.GetPuppetByCustomMXID(user.MXID)
-	if customPuppet.CustomIntent() != nil {
+	if customPuppet != nil && customPuppet.CustomIntent() != nil {
 		_ = customPuppet.CustomIntent().EnsureJoined(portal.MXID)
 	}
 }

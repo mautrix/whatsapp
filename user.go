@@ -296,10 +296,11 @@ func (user *User) PostLogin() {
 }
 
 func (user *User) intPostLogin() {
-	user.log.Debugln("Waiting a second for contacts to arrive")
+	dur := time.Duration(user.bridge.Config.Bridge.ContactWaitDelay) * time.Second
+	user.log.Debugfln("Waiting %s for contacts to arrive", dur)
 	// Hacky way to wait for chats and contacts to arrive automatically
-	time.Sleep(1 * time.Second)
-	user.log.Debugln("Waited a second, have", len(user.Conn.Store.Chats), "chats and", len(user.Conn.Store.Contacts), "contacts")
+	time.Sleep(dur)
+	user.log.Debugfln("Waited %s, have %d chats and %d contacts", dur, len(user.Conn.Store.Chats), len(user.Conn.Store.Contacts))
 
 	go user.syncPuppets()
 	user.syncPortals(false)

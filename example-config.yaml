@@ -68,6 +68,9 @@ bridge:
     # Whether or not the bridge should send a notice to the user's management room when it retries connecting.
     # If false, it will only report when it stops retrying.
     report_connection_retry: true
+    # Number of seconds to wait for contacts and chats to be sent at startup before syncing.
+    # If you have lots of chats, it might take more than a second.
+    contact_wait_delay: 1
 
     # Number of chats to sync for new users.
     initial_chat_sync_count: 10
