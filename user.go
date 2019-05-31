@@ -283,7 +283,7 @@ func (cl ChatList) Len() int {
 }
 
 func (cl ChatList) Less(i, j int) bool {
-	return cl[i].LastMessageTime < cl[i].LastMessageTime
+	return cl[i].LastMessageTime > cl[j].LastMessageTime
 }
 
 func (cl ChatList) Swap(i, j int) {
