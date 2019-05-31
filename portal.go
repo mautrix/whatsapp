@@ -416,14 +416,12 @@ func (portal *Portal) ensureUserInvited(user *User) {
 }
 
 func (portal *Portal) Sync(user *User, contact whatsapp.Contact) {
-	if portal.IsPrivateChat() {
-		portal.ensureUserInvited(user)
-		return
-	}
 	portal.log.Infoln("Syncing portal for", user.MXID)
 
 	if len(portal.MXID) == 0 {
-		portal.Name = contact.Name
+		if !portal.IsPrivateChat() {
+			portal.Name = contact.Name
+		}
 		err := portal.CreateMatrixRoom(user)
 		if err != nil {
 			portal.log.Errorln("Failed to create portal room:", err)
@@ -431,6 +429,10 @@ func (portal *Portal) Sync(user *User, contact whatsapp.Contact) {
 		}
 	} else {
 		portal.ensureUserInvited(user)
+	}
+
+	if portal.IsPrivateChat() {
+		return
 	}
 
 	update := false

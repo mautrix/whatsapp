@@ -96,6 +96,8 @@ func (handler *CommandHandler) Handle(roomID types.MatrixRoomID, user *User, mes
 		handler.CommandDeleteSession(ce)
 	case "delete-portal":
 		handler.CommandDeletePortal(ce)
+	case "delete-all-portals":
+		handler.CommandDeleteAllPortals(ce)
 	case "login-matrix", "logout", "sync", "list", "open", "pm":
 		if ce.User.Conn == nil {
 			ce.Reply("You are not logged in. Use the `login` command to log into WhatsApp.")
@@ -290,20 +292,22 @@ func (handler *CommandHandler) CommandHelp(ce *CommandEvent) {
 	}, "\n* "))
 }
 
-const cmdSyncHelp = `sync [--create] - Synchronize contacts from phone and optionally create portals for group chats.`
+const cmdSyncHelp = `sync [--create-all] - Synchronize contacts from phone and optionally create portals for group chats.`
 
 // CommandSync handles sync command
 func (handler *CommandHandler) CommandSync(ce *CommandEvent) {
 	user := ce.User
-	create := len(ce.Args) > 0 && ce.Args[0] == "--create"
+	create := len(ce.Args) > 0 && ce.Args[0] == "--create-all"
 
-	handler.log.Debugln("Importing all contacts of", user)
+	ce.Reply("Updating contact and chat list...")
+	handler.log.Debugln("Importing contacts of", user.MXID)
 	_, err := user.Conn.Contacts()
 	if err != nil {
 		user.log.Errorln("Error updating contacts:", err)
 		ce.Reply("Failed to sync contact list (see logs for details)")
 		return
 	}
+	handler.log.Debugln("Importing chats of", user.MXID)
 	_, err = user.Conn.Chats()
 	if err != nil {
 		user.log.Errorln("Error updating chats:", err)
@@ -311,10 +315,12 @@ func (handler *CommandHandler) CommandSync(ce *CommandEvent) {
 		return
 	}
 
+	ce.Reply("Syncing contacts...")
 	user.syncPuppets()
+	ce.Reply("Syncing chats...")
 	user.syncPortals(create)
 
-	ce.Reply("Imported contacts successfully.")
+	ce.Reply("Sync complete.")
 }
 
 func (handler *CommandHandler) CommandDeletePortal(ce *CommandEvent) {
@@ -332,6 +338,49 @@ func (handler *CommandHandler) CommandDeletePortal(ce *CommandEvent) {
 	portal.log.Infoln(ce.User.MXID, "requested deletion of portal.")
 	portal.Delete()
 	portal.Cleanup(false)
+}
+
+func (handler *CommandHandler) CommandDeleteAllPortals(ce *CommandEvent) {
+	portals := ce.User.GetPortals()
+	portalsToDelete := make([]*Portal, 0, len(portals))
+	for _, portal := range portals {
+		users := portal.GetUserIDs()
+		if len(users) == 1 && users[0] == ce.User.MXID {
+			portalsToDelete = append(portalsToDelete, portal)
+		}
+	}
+	leave := func(portal *Portal) {
+		if len(portal.MXID) > 0 {
+			_, _ = portal.MainIntent().KickUser(portal.MXID, &mautrix.ReqKickUser{
+				Reason: "Deleting portal",
+				UserID: ce.User.MXID,
+			})
+		}
+	}
+	customPuppet := handler.bridge.GetPuppetByCustomMXID(ce.User.MXID)
+	if customPuppet != nil {
+		intent := customPuppet.CustomIntent()
+		leave = func(portal *Portal) {
+			if len(portal.MXID) > 0 {
+				_, _ = intent.LeaveRoom(portal.MXID)
+				_, _ = intent.ForgetRoom(portal.MXID)
+			}
+		}
+	}
+	ce.Reply("Found %d portals with no other users, deleting...", len(portalsToDelete))
+	for _, portal := range portalsToDelete {
+		portal.Delete()
+		leave(portal)
+	}
+	ce.Reply("Finished deleting portal info. Now cleaning up rooms in background. " +
+		"You may already continue using the bridge. Use `sync` to recreate portals.")
+
+	go func() {
+		for _, portal := range portalsToDelete {
+			portal.Cleanup(false)
+		}
+		ce.Reply("Finished background cleanup of deleted portal rooms.")
+	}()
 }
 
 const cmdListHelp = `list - Get a list of all contacts and groups.`
