@@ -28,6 +28,7 @@ import (
 	"math/rand"
 	"mime"
 	"net/http"
+	"reflect"
 	"strings"
 	"sync"
 	"time"
@@ -172,6 +173,7 @@ func (portal *Portal) handleMessageLoop() {
 
 func (portal *Portal) handleMessage(msg PortalMessage) {
 	if len(portal.MXID) == 0 {
+		portal.log.Warnln("handleMessage called even though portal.MXID is empty")
 		return
 	}
 	switch data := msg.data.(type) {
@@ -189,6 +191,8 @@ func (portal *Portal) handleMessage(msg PortalMessage) {
 		portal.HandleMessageRevoke(msg.source, data)
 	case FakeMessage:
 		portal.HandleFakeMessage(msg.source, data)
+	default:
+		portal.log.Warnln("Unknown message type:", reflect.TypeOf(msg.data))
 	}
 }
 
@@ -626,14 +630,12 @@ func (portal *Portal) FillInitialHistory(user *User) error {
 			return err
 		}
 		chunk, ok := resp.Content.([]interface{})
-		if !ok {
-			return fmt.Errorf("history response not a list")
-		} else if len(chunk) == 0 {
+		if !ok || len(chunk) == 0 {
 			portal.log.Infoln("Chunk empty, starting handling of loaded messages")
 			break
 		}
 
-		messages = append(messages, chunk...)
+		messages = append(chunk, messages...)
 
 		portal.log.Debugfln("Fetched chunk and received %d messages", len(chunk))
 
