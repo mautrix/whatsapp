@@ -508,5 +508,15 @@ func (handler *CommandHandler) CommandLoginMatrix(ce *CommandEvent) {
 const cmdLogoutMatrixHelp = `logout-matrix - Switch your WhatsApp account's Matrix puppet back to the default one.`
 
 func (handler *CommandHandler) CommandLogoutMatrix(ce *CommandEvent) {
-
+	puppet := handler.bridge.GetPuppetByJID(ce.User.JID)
+	if len(puppet.CustomMXID) == 0 {
+		ce.Reply("You had not changed your WhatsApp account's Matrix puppet.")
+		return
+	}
+	err := puppet.SwitchCustomMXID("", "")
+	if err != nil {
+		ce.Reply("Failed to remove custom puppet: %v", err)
+		return
+	}
+	ce.Reply("Successfully removed custom puppet")
 }
