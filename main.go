@@ -198,14 +198,14 @@ func (bridge *Bridge) StartUsers() {
 		go user.Connect(false)
 	}
 	bridge.Log.Debugln("Starting custom puppets")
-	for _, puppet := range bridge.GetAllPuppetsWithCustomMXID() {
-		go func() {
+	for _, loopuppet := range bridge.GetAllPuppetsWithCustomMXID() {
+		go func(puppet *Puppet) {
 			puppet.log.Debugln("Starting custom puppet", puppet.CustomMXID)
 			err := puppet.StartCustomMXID()
 			if err != nil {
 				puppet.log.Errorln("Failed to start custom puppet:", err)
 			}
-		}()
+		}(loopuppet)
 	}
 }
 
