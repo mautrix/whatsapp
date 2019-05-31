@@ -234,7 +234,7 @@ func (puppet *Puppet) GetFilterJSON(_ string) json.RawMessage {
     "presence": {
         "senders": [
             %s
-	    ],
+        ],
         "types": [
             "m.presence"
         ]
