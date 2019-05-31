@@ -358,7 +358,7 @@ func (handler *CommandHandler) CommandDeleteAllPortals(ce *CommandEvent) {
 		}
 	}
 	customPuppet := handler.bridge.GetPuppetByCustomMXID(ce.User.MXID)
-	if customPuppet != nil {
+	if customPuppet != nil && customPuppet.CustomIntent() != nil {
 		intent := customPuppet.CustomIntent()
 		leave = func(portal *Portal) {
 			if len(portal.MXID) > 0 {

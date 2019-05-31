@@ -308,6 +308,7 @@ func (user *User) intPostLogin() {
 }
 
 func (user *User) syncPortals(createAll bool) {
+	user.log.Infoln("Reading chat list")
 	chats := make(ChatList, 0, len(user.Conn.Store.Chats))
 	portalKeys := make([]database.PortalKey, 0, len(user.Conn.Store.Chats))
 	for _, chat := range user.Conn.Store.Chats {
@@ -325,6 +326,7 @@ func (user *User) syncPortals(createAll bool) {
 		})
 		portalKeys = append(portalKeys, portal.Key)
 	}
+	user.log.Infoln("Read chat list, updating user-portal mapping")
 	err := user.SetPortalKeys(portalKeys)
 	if err != nil {
 		user.log.Warnln("Failed to update user-portal mapping:", err)
@@ -335,6 +337,7 @@ func (user *User) syncPortals(createAll bool) {
 		limit = len(chats)
 	}
 	now := uint64(time.Now().Unix())
+	user.log.Infoln("Syncing portals")
 	for i, chat := range chats {
 		if chat.LastMessageTime+user.bridge.Config.Bridge.SyncChatMaxAge < now {
 			break
@@ -348,15 +351,18 @@ func (user *User) syncPortals(createAll bool) {
 			}
 		}
 	}
+	user.log.Infoln("Finished syncing portals")
 }
 
 func (user *User) syncPuppets() {
+	user.log.Infoln("Syncing puppet info from contacts")
 	for jid, contact := range user.Conn.Store.Contacts {
 		if strings.HasSuffix(jid, whatsappExt.NewUserSuffix) {
 			puppet := user.bridge.GetPuppetByJID(contact.Jid)
 			puppet.Sync(user, contact)
 		}
 	}
+	user.log.Infoln("Finished syncing puppet info from contacts")
 }
 
 func (user *User) updateLastConnectionIfNecessary() {
