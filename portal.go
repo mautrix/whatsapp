@@ -735,7 +735,7 @@ func (portal *Portal) CreateMatrixRoom(user *User) error {
 		portal.SyncParticipants(metadata)
 	} else {
 		customPuppet := portal.bridge.GetPuppetByCustomMXID(user.MXID)
-		if customPuppet.CustomIntent() != nil {
+		if customPuppet != nil && customPuppet.CustomIntent() != nil {
 			_ = customPuppet.CustomIntent().EnsureJoined(portal.MXID)
 		}
 	}
