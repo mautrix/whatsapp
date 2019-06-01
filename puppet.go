@@ -193,7 +193,9 @@ func (puppet *Puppet) UpdateAvatar(source *User, avatar *whatsappExt.ProfilePicI
 		if err != nil {
 			puppet.log.Warnln("Failed to remove avatar:", err)
 		}
+		puppet.AvatarURL = ""
 		puppet.Avatar = avatar.Tag
+		go puppet.updatePortalAvatar()
 		return true
 	}
 
@@ -210,12 +212,66 @@ func (puppet *Puppet) UpdateAvatar(source *User, avatar *whatsappExt.ProfilePicI
 		return false
 	}
 
-	err = puppet.DefaultIntent().SetAvatarURL(resp.ContentURI)
+	puppet.AvatarURL = resp.ContentURI
+	err = puppet.DefaultIntent().SetAvatarURL(puppet.AvatarURL)
 	if err != nil {
 		puppet.log.Warnln("Failed to set avatar:", err)
 	}
 	puppet.Avatar = avatar.Tag
+	go puppet.updatePortalAvatar()
 	return true
+}
+
+func (puppet *Puppet) UpdateName(source *User, contact whatsapp.Contact) bool {
+	newName, quality := puppet.bridge.Config.Bridge.FormatDisplayname(contact)
+	if puppet.Displayname != newName && quality >= puppet.NameQuality {
+		err := puppet.DefaultIntent().SetDisplayName(newName)
+		if err == nil {
+			puppet.Displayname = newName
+			puppet.NameQuality = quality
+			go puppet.updatePortalName()
+			puppet.Update()
+		} else {
+			puppet.log.Warnln("Failed to set display name:", err)
+		}
+		return true
+	}
+	return false
+}
+
+func (puppet *Puppet) updatePortalMeta(meta func(portal *Portal)) {
+	if puppet.bridge.Config.Bridge.PrivateChatPortalMeta {
+		for _, portal := range puppet.bridge.GetAllPortalsByJID(puppet.JID) {
+			meta(portal)
+		}
+	}
+}
+
+func (puppet *Puppet) updatePortalAvatar() {
+	puppet.updatePortalMeta(func(portal *Portal) {
+		if len(portal.MXID) > 0 {
+			_, err := portal.MainIntent().SetRoomAvatar(portal.MXID, puppet.AvatarURL)
+			if err != nil {
+				portal.log.Warnln("Failed to set avatar:", err)
+			}
+		}
+		portal.AvatarURL = puppet.AvatarURL
+		portal.Avatar = puppet.Avatar
+		portal.Update()
+	})
+}
+
+func (puppet *Puppet) updatePortalName() {
+	puppet.updatePortalMeta(func(portal *Portal) {
+		if len(portal.MXID) > 0 {
+			_, err := portal.MainIntent().SetRoomName(portal.MXID, puppet.Displayname)
+			if err != nil {
+				portal.log.Warnln("Failed to set name:", err)
+			}
+		}
+		portal.Name = puppet.Displayname
+		portal.Update()
+	})
 }
 
 func (puppet *Puppet) Sync(source *User, contact whatsapp.Contact) {
@@ -227,19 +283,11 @@ func (puppet *Puppet) Sync(source *User, contact whatsapp.Contact) {
 	if contact.Jid == source.JID {
 		contact.Notify = source.Conn.Info.Pushname
 	}
-	newName, quality := puppet.bridge.Config.Bridge.FormatDisplayname(contact)
-	if puppet.Displayname != newName && quality >= puppet.NameQuality {
-		err := puppet.DefaultIntent().SetDisplayName(newName)
-		if err == nil {
-			puppet.Displayname = newName
-			puppet.NameQuality = quality
-			puppet.Update()
-		} else {
-			puppet.log.Warnln("Failed to set display name:", err)
-		}
-	}
 
-	if puppet.UpdateAvatar(source, nil) {
+	update := false
+	update = puppet.UpdateName(source, contact) || update
+	update = puppet.UpdateAvatar(source, nil) || update
+	if update {
 		puppet.Update()
 	}
 }

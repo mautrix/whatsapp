@@ -67,9 +67,16 @@ func (bridge *Bridge) GetPortalByJID(key database.PortalKey) *Portal {
 }
 
 func (bridge *Bridge) GetAllPortals() []*Portal {
+	return bridge.dbPortalsToPortals(bridge.DB.Portal.GetAll())
+}
+
+func (bridge *Bridge) GetAllPortalsByJID(jid types.WhatsAppID) []*Portal {
+	return bridge.dbPortalsToPortals(bridge.DB.Portal.GetAllByJID(jid))
+}
+
+func (bridge *Bridge) dbPortalsToPortals(dbPortals []*database.Portal) []*Portal {
 	bridge.portalsLock.Lock()
 	defer bridge.portalsLock.Unlock()
-	dbPortals := bridge.DB.Portal.GetAll()
 	output := make([]*Portal, len(dbPortals))
 	for index, dbPortal := range dbPortals {
 		portal, ok := bridge.portalsByJID[dbPortal.Key]
@@ -130,8 +137,6 @@ type Portal struct {
 
 	bridge *Bridge
 	log    log.Logger
-
-	avatarURL string
 
 	roomCreateLock sync.Mutex
 
@@ -333,7 +338,7 @@ func (portal *Portal) UpdateAvatar(user *User, avatar *whatsappExt.ProfilePicInf
 		return false
 	}
 
-	portal.avatarURL = resp.ContentURI
+	portal.AvatarURL = resp.ContentURI
 	if len(portal.MXID) > 0 {
 		_, err = portal.MainIntent().SetRoomAvatar(portal.MXID, resp.ContentURI)
 		if err != nil {
@@ -582,7 +587,7 @@ func (portal *Portal) beginBackfill() func() {
 	portal.backfilling = true
 	var privateChatPuppetInvited bool
 	var privateChatPuppet *Puppet
-	if portal.IsPrivateChat() {
+	if portal.IsPrivateChat() && portal.bridge.Config.Bridge.InviteOwnPuppetForBackfilling {
 		privateChatPuppet = portal.bridge.GetPuppetByJID(portal.Key.Receiver)
 		portal.privateChatBackfillInvitePuppet = func() {
 			if privateChatPuppetInvited {
@@ -686,7 +691,14 @@ func (portal *Portal) CreateMatrixRoom(user *User) error {
 	var metadata *whatsappExt.GroupInfo
 	isPrivateChat := false
 	if portal.IsPrivateChat() {
-		portal.Name = ""
+		puppet := portal.bridge.GetPuppetByJID(portal.Key.JID)
+		if portal.bridge.Config.Bridge.PrivateChatPortalMeta {
+			portal.Name = puppet.Displayname
+			portal.AvatarURL = puppet.AvatarURL
+			portal.Avatar = puppet.Avatar
+		} else {
+			portal.Name = ""
+		}
 		portal.Topic = "WhatsApp private chat"
 		isPrivateChat = true
 	} else if portal.IsStatusBroadcastRoom() {
@@ -708,11 +720,11 @@ func (portal *Portal) CreateMatrixRoom(user *User) error {
 			PowerLevels: portal.GetBasePowerLevels(),
 		},
 	}}
-	if len(portal.avatarURL) > 0 {
+	if len(portal.AvatarURL) > 0 {
 		initialState = append(initialState, &mautrix.Event{
 			Type: mautrix.StateRoomAvatar,
 			Content: mautrix.Content{
-				URL: portal.avatarURL,
+				URL: portal.AvatarURL,
 			},
 		})
 	}

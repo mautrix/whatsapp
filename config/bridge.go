@@ -47,6 +47,9 @@ type BridgeConfig struct {
 
 	SyncWithCustomPuppets bool `yaml:"sync_with_custom_puppets"`
 
+	InviteOwnPuppetForBackfilling bool `yaml:"invite_own_puppet_for_backfilling"`
+	PrivateChatPortalMeta         bool `yaml:"private_chat_portal_meta"`
+
 	CommandPrefix string `yaml:"command_prefix"`
 
 	Permissions PermissionConfig `yaml:"permissions"`
@@ -69,6 +72,9 @@ func (bc *BridgeConfig) setDefaults() {
 	bc.SyncChatMaxAge = 259200
 
 	bc.SyncWithCustomPuppets = true
+
+	bc.InviteOwnPuppetForBackfilling = true
+	bc.PrivateChatPortalMeta = false
 }
 
 type umBridgeConfig BridgeConfig

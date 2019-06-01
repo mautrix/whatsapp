@@ -66,16 +66,8 @@ func (pq *PortalQuery) New() *Portal {
 	}
 }
 
-func (pq *PortalQuery) GetAll() (portals []*Portal) {
-	rows, err := pq.db.Query("SELECT * FROM portal")
-	if err != nil || rows == nil {
-		return nil
-	}
-	defer rows.Close()
-	for rows.Next() {
-		portals = append(portals, pq.New().Scan(rows))
-	}
-	return
+func (pq *PortalQuery) GetAll() []*Portal {
+	return pq.getAll("SELECT * FROM portal")
 }
 
 func (pq *PortalQuery) GetByJID(key PortalKey) *Portal {
@@ -84,6 +76,22 @@ func (pq *PortalQuery) GetByJID(key PortalKey) *Portal {
 
 func (pq *PortalQuery) GetByMXID(mxid types.MatrixRoomID) *Portal {
 	return pq.get("SELECT * FROM portal WHERE mxid=$1", mxid)
+}
+
+func (pq *PortalQuery) GetAllByJID(jid types.WhatsAppID) []*Portal {
+	return pq.getAll("SELECT * FROM portal WHERE jid=$1", jid)
+}
+
+func (pq *PortalQuery) getAll(query string, args ...interface{}) (portals []*Portal) {
+	rows, err := pq.db.Query(query, args...)
+	if err != nil || rows == nil {
+		return nil
+	}
+	defer rows.Close()
+	for rows.Next() {
+		portals = append(portals, pq.New().Scan(rows))
+	}
+	return
 }
 
 func (pq *PortalQuery) get(query string, args ...interface{}) *Portal {
@@ -101,14 +109,15 @@ type Portal struct {
 	Key  PortalKey
 	MXID types.MatrixRoomID
 
-	Name   string
-	Topic  string
-	Avatar string
+	Name      string
+	Topic     string
+	Avatar    string
+	AvatarURL string
 }
 
 func (portal *Portal) Scan(row Scannable) *Portal {
-	var mxid sql.NullString
-	err := row.Scan(&portal.Key.JID, &portal.Key.Receiver, &mxid, &portal.Name, &portal.Topic, &portal.Avatar)
+	var mxid, avatarURL sql.NullString
+	err := row.Scan(&portal.Key.JID, &portal.Key.Receiver, &mxid, &portal.Name, &portal.Topic, &portal.Avatar, &avatarURL)
 	if err != nil {
 		if err != sql.ErrNoRows {
 			portal.log.Errorln("Database scan failed:", err)
@@ -116,6 +125,7 @@ func (portal *Portal) Scan(row Scannable) *Portal {
 		return nil
 	}
 	portal.MXID = mxid.String
+	portal.AvatarURL = avatarURL.String
 	return portal
 }
 
@@ -127,8 +137,8 @@ func (portal *Portal) mxidPtr() *string {
 }
 
 func (portal *Portal) Insert() {
-	_, err := portal.db.Exec("INSERT INTO portal VALUES ($1, $2, $3, $4, $5, $6)",
-		portal.Key.JID, portal.Key.Receiver, portal.mxidPtr(), portal.Name, portal.Topic, portal.Avatar)
+	_, err := portal.db.Exec("INSERT INTO portal VALUES ($1, $2, $3, $4, $5, $6, $7)",
+		portal.Key.JID, portal.Key.Receiver, portal.mxidPtr(), portal.Name, portal.Topic, portal.Avatar, portal.AvatarURL)
 	if err != nil {
 		portal.log.Warnfln("Failed to insert %s: %v", portal.Key, err)
 	}
@@ -139,8 +149,8 @@ func (portal *Portal) Update() {
 	if len(portal.MXID) > 0 {
 		mxid = &portal.MXID
 	}
-	_, err := portal.db.Exec("UPDATE portal SET mxid=$1, name=$2, topic=$3, avatar=$4 WHERE jid=$5 AND receiver=$6",
-		mxid, portal.Name, portal.Topic, portal.Avatar, portal.Key.JID, portal.Key.Receiver)
+	_, err := portal.db.Exec("UPDATE portal SET mxid=$1, name=$2, topic=$3, avatar=$4, avatar_url=$5 WHERE jid=$6 AND receiver=$7",
+		mxid, portal.Name, portal.Topic, portal.Avatar, portal.AvatarURL, portal.Key.JID, portal.Key.Receiver)
 	if err != nil {
 		portal.log.Warnfln("Failed to update %s: %v", portal.Key, err)
 	}
