@@ -113,7 +113,7 @@ func (puppet *Puppet) Scan(row Scannable) *Puppet {
 
 func (puppet *Puppet) Insert() {
 	_, err := puppet.db.Exec("INSERT INTO puppet VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
-		puppet.JID, puppet.Avatar, puppet.AvatarURL, puppet.Displayname, puppet.NameQuality, puppet.CustomMXID, puppet.AccessToken, puppet.NextBatch)
+		puppet.JID, puppet.Avatar, puppet.AvatarURL, puppet.NameQuality, puppet.Displayname, puppet.CustomMXID, puppet.AccessToken, puppet.NextBatch)
 	if err != nil {
 		puppet.log.Warnfln("Failed to insert %s: %v", puppet.JID, err)
 	}
