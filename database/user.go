@@ -43,7 +43,7 @@ func (uq *UserQuery) New() *User {
 }
 
 func (uq *UserQuery) GetAll() (users []*User) {
-	rows, err := uq.db.Query(`SELECT * FROM "user"`)
+	rows, err := uq.db.Query(`SELECT mxid, jid, management_room, last_connection, client_id, client_token, server_token, enc_key, mac_key FROM "user"`)
 	if err != nil || rows == nil {
 		return nil
 	}
@@ -55,7 +55,7 @@ func (uq *UserQuery) GetAll() (users []*User) {
 }
 
 func (uq *UserQuery) GetByMXID(userID types.MatrixUserID) *User {
-	row := uq.db.QueryRow(`SELECT * FROM "user" WHERE mxid=$1`, userID)
+	row := uq.db.QueryRow(`SELECT mxid, jid, management_room, last_connection, client_id, client_token, server_token, enc_key, mac_key FROM "user" WHERE mxid=$1`, userID)
 	if row == nil {
 		return nil
 	}
@@ -63,7 +63,7 @@ func (uq *UserQuery) GetByMXID(userID types.MatrixUserID) *User {
 }
 
 func (uq *UserQuery) GetByJID(userID types.WhatsAppID) *User {
-	row := uq.db.QueryRow(`SELECT * FROM "user" WHERE jid=$1`, stripSuffix(userID))
+	row := uq.db.QueryRow(`SELECT mxid, jid, management_room, last_connection, client_id, client_token, server_token, enc_key, mac_key FROM "user" WHERE jid=$1`, stripSuffix(userID))
 	if row == nil {
 		return nil
 	}
@@ -84,8 +84,7 @@ type User struct {
 func (user *User) Scan(row Scannable) *User {
 	var jid, clientID, clientToken, serverToken sql.NullString
 	var encKey, macKey []byte
-	err := row.Scan(&user.MXID, &jid, &user.ManagementRoom, &clientID, &clientToken, &serverToken, &encKey, &macKey,
-		&user.LastConnection)
+	err := row.Scan(&user.MXID, &jid, &user.ManagementRoom, &user.LastConnection, &clientID, &clientToken, &serverToken, &encKey, &macKey)
 	if err != nil {
 		if err != sql.ErrNoRows {
 			user.log.Errorln("Database scan failed:", err)
