@@ -107,6 +107,9 @@ func (bridge *Bridge) dbPuppetsToPuppets(dbPuppets []*database.Puppet) []*Puppet
 	defer bridge.puppetsLock.Unlock()
 	output := make([]*Puppet, len(dbPuppets))
 	for index, dbPuppet := range dbPuppets {
+		if dbPuppet == nil {
+			continue
+		}
 		puppet, ok := bridge.puppets[dbPuppet.JID]
 		if !ok {
 			puppet = bridge.NewPuppet(dbPuppet)

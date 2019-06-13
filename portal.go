@@ -79,6 +79,9 @@ func (bridge *Bridge) dbPortalsToPortals(dbPortals []*database.Portal) []*Portal
 	defer bridge.portalsLock.Unlock()
 	output := make([]*Portal, len(dbPortals))
 	for index, dbPortal := range dbPortals {
+		if dbPortal == nil {
+			continue
+		}
 		portal, ok := bridge.portalsByJID[dbPortal.Key]
 		if !ok {
 			portal = bridge.loadDBPortal(dbPortal, nil)
