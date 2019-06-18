@@ -1198,7 +1198,7 @@ func (portal *Portal) HandleMatrixRedaction(sender *User, evt *mautrix.Event) {
 	}
 
 	msg := portal.bridge.DB.Message.GetByMXID(evt.Redacts)
-	if msg.Sender != sender.JID {
+	if msg == nil || msg.Sender != sender.JID {
 		return
 	}
 
