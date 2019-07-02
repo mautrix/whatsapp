@@ -466,7 +466,7 @@ func (portal *Portal) GetBasePowerLevels() *mautrix.PowerLevels {
 		RedactPtr:       &anyone,
 		StateDefaultPtr: &nope,
 		BanPtr:          &nope,
-		InvitePtr:       &nope,
+		InvitePtr:       &anyone,
 		Users: map[string]int{
 			portal.MainIntent().UserID: 100,
 		},
