@@ -53,6 +53,8 @@ type User struct {
 
 	ConnectionErrors int
 
+	cleanDisconnection bool
+
 	messages chan PortalMessage
 	syncLock sync.Mutex
 }
@@ -216,7 +218,7 @@ func (user *User) RestoreSession() bool {
 }
 
 func (user *User) IsLoggedIn() bool {
-	return user.Conn != nil
+	return user.Session != nil || user.Conn != nil
 }
 
 func (user *User) Login(ce *CommandEvent) {
@@ -377,8 +379,9 @@ func (user *User) HandleError(err error) {
 	}
 	if closed, ok := err.(*whatsapp.ErrConnectionClosed); ok {
 		user.Connected = false
-		if closed.Code == 1000 {
-			// Normal closure
+		if closed.Code == 1000 && user.cleanDisconnection {
+			user.cleanDisconnection = false
+			user.log.Infoln("Clean disconnection by server")
 			return
 		}
 		go user.tryReconnect(fmt.Sprintf("Your WhatsApp connection was closed with websocket status code %d", closed.Code))
@@ -601,6 +604,7 @@ func (user *User) HandleCommand(cmd whatsappExt.Command) {
 			msg = fmt.Sprintf("\u26a0 Your WhatsApp connection was closed by the server (reason code: %s).\n\n"+
 				"Use the `reconnect` command to reconnect.", cmd.Kind)
 		}
+		user.cleanDisconnection = true
 		go user.bridge.Bot.SendMessageEvent(user.ManagementRoom, mautrix.EventMessage, format.RenderMarkdown(msg))
 	}
 }
