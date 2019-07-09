@@ -460,9 +460,9 @@ func (portal *Portal) Sync(user *User, contact whatsapp.Contact) {
 func (portal *Portal) GetBasePowerLevels() *mautrix.PowerLevels {
 	anyone := 0
 	nope := 99
-	invite := 0
+	invite := 99
 	if portal.bridge.Config.Bridge.AllowUserInvite {
-		invite = 99
+		invite = 0
 	}
 	return &mautrix.PowerLevels{
 		UsersDefault:    anyone,
