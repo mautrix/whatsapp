@@ -34,6 +34,7 @@ type BridgeConfig struct {
 	DisplaynameTemplate string `yaml:"displayname_template"`
 
 	ConnectionTimeout     int  `yaml:"connection_timeout"`
+	LoginQRRegenCount     int  `yaml:"login_qr_regen_count"`
 	MaxConnectionAttempts int  `yaml:"max_connection_attempts"`
 	ConnectionRetryDelay  int  `yaml:"connection_retry_delay"`
 	ReportConnectionRetry bool `yaml:"report_connection_retry"`
@@ -62,6 +63,7 @@ type BridgeConfig struct {
 
 func (bc *BridgeConfig) setDefaults() {
 	bc.ConnectionTimeout = 20
+	bc.LoginQRRegenCount = 2
 	bc.MaxConnectionAttempts = 3
 	bc.ConnectionRetryDelay = -1
 	bc.ReportConnectionRetry = true

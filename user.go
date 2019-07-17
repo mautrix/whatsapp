@@ -221,11 +221,11 @@ func (user *User) IsLoggedIn() bool {
 	return user.Session != nil || user.Conn != nil
 }
 
-func (user *User) Login(ce *CommandEvent) {
-	qrChan := make(chan string, 2)
-	go func() {
-		code := <-qrChan
-		if code == "error" {
+func (user *User) loginQrChannel(ce *CommandEvent, qrChan <-chan string, eventIDChan chan<- string) {
+	var qrEventID string
+	for code := range qrChan {
+		fmt.Println("qrChan:", code)
+		if code == "stop" {
 			return
 		}
 		qrCode, err := qrcode.Encode(code, qrcode.Low, 256)
@@ -244,24 +244,70 @@ func (user *User) Login(ce *CommandEvent) {
 			return
 		}
 
-		_, err = bot.SendImage(ce.RoomID, string(code), resp.ContentURI)
-		if err != nil {
-			user.log.Errorln("Failed to send QR code to user:", err)
+		if qrEventID == "" {
+			sendResp, err := bot.SendImage(ce.RoomID, code, resp.ContentURI)
+			if err != nil {
+				user.log.Errorln("Failed to send QR code to user:", err)
+				return
+			}
+			qrEventID = sendResp.EventID
+			eventIDChan <- qrEventID
+		} else {
+			_, err = bot.SendMessageEvent(ce.RoomID, mautrix.EventMessage, &mautrix.Content{
+				MsgType: mautrix.MsgImage,
+				Body:    code,
+				URL:     resp.ContentURI,
+				NewContent: &mautrix.Content{
+					MsgType: mautrix.MsgImage,
+					Body:    code,
+					URL:     resp.ContentURI,
+				},
+				RelatesTo: &mautrix.RelatesTo{
+					Type:    mautrix.RelReplace,
+					EventID: qrEventID,
+				},
+			})
+			if err != nil {
+				user.log.Errorln("Failed to send edited QR code to user:", err)
+			}
 		}
-	}()
-	session, err := user.Conn.Login(qrChan)
+	}
+}
+
+func (user *User) Login(ce *CommandEvent) {
+	qrChan := make(chan string, 3)
+	eventIDChan := make(chan string, 1)
+	go user.loginQrChannel(ce, qrChan, eventIDChan)
+	session, err := user.Conn.LoginWithRetry(qrChan, user.bridge.Config.Bridge.LoginQRRegenCount)
+	qrChan <- "stop"
 	if err != nil {
-		qrChan <- "error"
+		var eventID string
+		select {
+		case eventID = <-eventIDChan:
+		default:
+		}
+		reply := mautrix.Content{
+			MsgType: mautrix.MsgText,
+		}
 		if err == whatsapp.ErrAlreadyLoggedIn {
-			ce.Reply("You're already logged in.")
+			reply.Body = "You're already logged in"
 		} else if err == whatsapp.ErrLoginInProgress {
-			ce.Reply("You have a login in progress already.")
-		} else if err.Error() == "qr code scan timed out" {
-			ce.Reply("QR code scan timed out. Please try again.")
+			reply.Body = "You have a login in progress already."
+		} else if err == whatsapp.ErrLoginTimedOut {
+			reply.Body = "QR code scan timed out. Please try again."
 		} else {
 			user.log.Warnln("Failed to log in:", err)
-			ce.Reply("Unknown error while logging in: %v", err)
+			reply.Body = fmt.Sprintf("Unknown error while logging in: %v", err)
 		}
+		msg := reply
+		if eventID != "" {
+			msg.NewContent = &reply
+			msg.RelatesTo = &mautrix.RelatesTo{
+				Type:    mautrix.RelReplace,
+				EventID: eventID,
+			}
+		}
+		_, _ = ce.Bot.SendMessageEvent(ce.RoomID, mautrix.EventMessage, &msg)
 		return
 	}
 	user.Connected = true
