@@ -1,6 +1,6 @@
 module maunium.net/go/mautrix-whatsapp
 
-go 1.12
+go 1.11
 
 require (
 	github.com/Rhymen/go-whatsapp v0.0.2-0.20190524185555-8d76e32a6d8e
@@ -11,11 +11,11 @@ require (
 	gopkg.in/yaml.v2 v2.2.2
 	maunium.net/go/mauflag v1.0.0
 	maunium.net/go/maulogger/v2 v2.0.0
-	maunium.net/go/mautrix v0.1.0-alpha.3.0.20190606153009-ca5d9535b6cc
+	maunium.net/go/mautrix v0.1.0-alpha.3.0.20190622085722-6406f15cb8e3
 	maunium.net/go/mautrix-appservice v0.1.0-alpha.3.0.20190618052224-6e6c9bb47548
 )
 
 replace (
-	github.com/Rhymen/go-whatsapp => github.com/tulir/go-whatsapp v0.0.2-0.20190618052157-36ed380bdc18
+	github.com/Rhymen/go-whatsapp => github.com/tulir/go-whatsapp v0.0.2-0.20190717210948-309b1b2cfa74
 	gopkg.in/russross/blackfriday.v2 => github.com/russross/blackfriday/v2 v2.0.1
 )
