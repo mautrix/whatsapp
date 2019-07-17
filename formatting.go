@@ -126,6 +126,7 @@ func (formatter *Formatter) ParseWhatsApp(content *mautrix.Content) {
 		output = regex.ReplaceAllStringFunc(output, replacer)
 	}
 	if output != content.Body {
+		output = strings.Replace(output, "\n", "<br/>", -1)
 		content.FormattedBody = output
 		content.Format = mautrix.FormatHTML
 		for regex, replacer := range formatter.waReplFuncText {
