@@ -6,13 +6,19 @@ stages:
 build:
   image: golang:1-alpine
   stage: build
+  cache:
+    paths:
+    - .cache
   before_script:
   - apk add git build-base
+  - mkdir -p .cache
+  - export GOPATH="$CI_PROJECT_DIR/.cache"
   script:
   - go build -o mautrix-whatsapp
   artifacts:
     paths:
     - mautrix-whatsapp
+    - example-config.yaml
 
 build docker:
   image: docker:stable
