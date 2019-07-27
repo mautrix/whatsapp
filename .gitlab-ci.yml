@@ -1,0 +1,55 @@
+stages:
+- build
+- build docker
+- push docker
+
+build:
+  image: golang:1-alpine
+  stage: build
+  before_script:
+  - apk add git build-base
+  script:
+  - go build -o mautrix-whatsapp
+  artifacts:
+    paths:
+    - mautrix-whatsapp
+
+build docker:
+  image: docker:stable
+  stage: build docker
+  before_script:
+  - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+  script:
+  - docker pull $CI_REGISTRY_IMAGE:latest || true
+  - docker build --pull --cache-from $CI_REGISTRY_IMAGE:latest --tag $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA . --file Dockerfile.ci
+  - docker push $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA
+
+push latest:
+  image: docker:stable
+  stage: push docker
+  only:
+  - master
+  variables:
+    GIT_STRATEGY: none
+  before_script:
+  - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+  script:
+  - docker pull $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA
+  - docker tag $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA $CI_REGISTRY_IMAGE:latest
+  - docker push $CI_REGISTRY_IMAGE:latest
+  dependencies: []
+
+push tag:
+  image: docker:stable
+  stage: push docker
+  except:
+  - master
+  variables:
+    GIT_STRATEGY: none
+  before_script:
+  - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+  script:
+  - docker pull $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA
+  - docker tag $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA $CI_REGISTRY_IMAGE:$CI_COMMIT_REF_NAME
+  - docker push $CI_REGISTRY_IMAGE:$CI_COMMIT_REF_NAME
+  dependencies: []
