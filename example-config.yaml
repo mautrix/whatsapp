@@ -9,11 +9,11 @@ homeserver:
 # Changing these values requires regeneration of the registration.
 appservice:
     # The address that the homeserver can use to connect to this appservice.
-    address: http://localhost:8080
+    address: http://localhost:29318
 
     # The hostname and port where this appservice should listen.
     hostname: 0.0.0.0
-    port: 8080
+    port: 29318
 
     # Database config.
     database:
