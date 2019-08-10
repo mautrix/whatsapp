@@ -29,7 +29,7 @@ func (user *User) inviteToCommunity() {
 	reqBody := map[string]interface{}{}
 	_, err := user.bridge.Bot.MakeRequest(http.MethodPut, url, &reqBody, nil)
 	if err != nil {
-		user.log.Warnln("Failed to invite user to personal filtering community %s: %v", user.CommunityID, err)
+		user.log.Warnfln("Failed to invite user to personal filtering community %s: %v", user.CommunityID, err)
 	}
 }
 
@@ -42,7 +42,7 @@ func (user *User) updateCommunityProfile() {
 	}{"WhatsApp", user.bridge.Config.AppService.Bot.Avatar, "Your WhatsApp bridged chats"}
 	_, err := user.bridge.Bot.MakeRequest(http.MethodPost, url, &profileReq, nil)
 	if err != nil {
-		user.log.Warnln("Failed to update metadata of %s: %v", user.CommunityID, err)
+		user.log.Warnfln("Failed to update metadata of %s: %v", user.CommunityID, err)
 	}
 }
 
@@ -92,7 +92,7 @@ func (user *User) addPortalToCommunity(portal *Portal) bool {
 	reqBody := map[string]interface{}{}
 	_, err := bot.MakeRequest(http.MethodPut, url, &reqBody, nil)
 	if err != nil {
-		user.log.Warnln("Failed to add %s to %s: %v", portal.MXID, user.CommunityID, err)
+		user.log.Warnfln("Failed to add %s to %s: %v", portal.MXID, user.CommunityID, err)
 		return false
 	}
 	user.log.Debugln("Added", portal.MXID, "to", user.CommunityID)
