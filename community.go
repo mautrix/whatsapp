@@ -68,8 +68,8 @@ func (user *User) createCommunity() {
 				user.log.Warnln("Server responded with error creating personal filtering community:", err)
 				return
 			} else {
-				resp.GroupID = fmt.Sprintf("+%s:%s", req.Localpart, user.bridge.Config.Homeserver.Domain)
 				user.log.Debugln("Personal filtering community", resp.GroupID, "already existed")
+				user.CommunityID = fmt.Sprintf("+%s:%s", req.Localpart, user.bridge.Config.Homeserver.Domain)
 			}
 		} else {
 			user.log.Warnln("Unknown error creating personal filtering community:", err)
@@ -77,10 +77,10 @@ func (user *User) createCommunity() {
 		}
 	} else {
 		user.log.Infoln("Created personal filtering community %s", resp.GroupID)
+		user.CommunityID = resp.GroupID
 		user.inviteToCommunity()
 		user.updateCommunityProfile()
 	}
-	user.CommunityID = resp.GroupID
 }
 
 func (user *User) addPortalToCommunity(portal *Portal) bool {
