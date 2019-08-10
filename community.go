@@ -84,7 +84,7 @@ func (user *User) createCommunity() {
 }
 
 func (user *User) addPortalToCommunity(portal *Portal) bool {
-	if len(user.CommunityID) == 0 {
+	if len(user.CommunityID) == 0 || len(portal.MXID) == 0 {
 		return false
 	}
 	bot := user.bridge.Bot

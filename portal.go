@@ -758,6 +758,7 @@ func (portal *Portal) CreateMatrixRoom(user *User) error {
 			_ = customPuppet.CustomIntent().EnsureJoined(portal.MXID)
 		}
 	}
+	user.addPortalToCommunity(portal)
 	err = portal.FillInitialHistory(user)
 	if err != nil {
 		portal.log.Errorln("Failed to fill history:", err)
