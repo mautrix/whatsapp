@@ -29,11 +29,11 @@ import (
 	"github.com/skip2/go-qrcode"
 	log "maunium.net/go/maulogger/v2"
 
-	"maunium.net/go/mautrix"
-	"maunium.net/go/mautrix/format"
-
 	"github.com/Rhymen/go-whatsapp"
 	waProto "github.com/Rhymen/go-whatsapp/binary/proto"
+
+	"maunium.net/go/mautrix"
+	"maunium.net/go/mautrix/format"
 
 	"maunium.net/go/mautrix-whatsapp/database"
 	"maunium.net/go/mautrix-whatsapp/types"
@@ -52,6 +52,7 @@ type User struct {
 	Connected   bool
 
 	ConnectionErrors int
+	CommunityID      string
 
 	cleanDisconnection bool
 
@@ -183,7 +184,7 @@ func (user *User) Connect(evenIfNoSession bool) bool {
 	conn, err := whatsapp.NewConn(timeout * time.Second)
 	if err != nil {
 		user.log.Errorln("Failed to connect to WhatsApp:", err)
-		msg := format.RenderMarkdown("\u26a0 Failed to connect to WhatsApp server. "+
+		msg := format.RenderMarkdown("\u26a0 Failed to connect to WhatsApp server. " +
 			"This indicates a network problem on the bridge server. See bridge logs for more info.")
 		_, _ = user.bridge.Bot.SendMessageEvent(user.ManagementRoom, mautrix.EventMessage, msg)
 		return false
@@ -202,7 +203,7 @@ func (user *User) RestoreSession() bool {
 			return true
 		} else if err != nil {
 			user.log.Errorln("Failed to restore session:", err)
-			msg := format.RenderMarkdown("\u26a0 Failed to connect to WhatsApp. Make sure WhatsApp "+
+			msg := format.RenderMarkdown("\u26a0 Failed to connect to WhatsApp. Make sure WhatsApp " +
 				"on your phone is reachable and use `reconnect` to try connecting again.")
 			_, _ = user.bridge.Bot.SendMessageEvent(user.ManagementRoom, mautrix.EventMessage, msg)
 			return false
@@ -338,6 +339,7 @@ func (cl ChatList) Swap(i, j int) {
 }
 
 func (user *User) PostLogin() {
+	user.log.Debugln("Locking processing of incoming messages and starting post-login sync")
 	user.syncLock.Lock()
 	go user.intPostLogin()
 }
@@ -349,15 +351,18 @@ func (user *User) intPostLogin() {
 	time.Sleep(dur)
 	user.log.Debugfln("Waited %s, have %d chats and %d contacts", dur, len(user.Conn.Store.Chats), len(user.Conn.Store.Contacts))
 
+	user.createCommunity()
 	go user.syncPuppets()
 	user.syncPortals(false)
+	user.log.Debugln("Post-login sync complete, unlocking processing of incoming messages")
 	user.syncLock.Unlock()
 }
 
 func (user *User) syncPortals(createAll bool) {
 	user.log.Infoln("Reading chat list")
 	chats := make(ChatList, 0, len(user.Conn.Store.Chats))
-	portalKeys := make([]database.PortalKey, 0, len(user.Conn.Store.Chats))
+	existingKeys := user.GetInCommunityMap()
+	portalKeys := make([]database.PortalKeyWithMeta, 0, len(user.Conn.Store.Chats))
 	for _, chat := range user.Conn.Store.Chats {
 		ts, err := strconv.ParseUint(chat.LastMessageTime, 10, 64)
 		if err != nil {
@@ -371,7 +376,11 @@ func (user *User) syncPortals(createAll bool) {
 			Contact:         user.Conn.Store.Contacts[chat.Jid],
 			LastMessageTime: ts,
 		})
-		portalKeys = append(portalKeys, portal.Key)
+		var inCommunity, ok bool
+		if inCommunity, ok = existingKeys[portal.Key]; !ok || !inCommunity {
+			inCommunity = user.addPortalToCommunity(portal)
+		}
+		portalKeys = append(portalKeys, database.PortalKeyWithMeta{PortalKey: portal.Key, InCommunity: inCommunity})
 	}
 	user.log.Infoln("Read chat list, updating user-portal mapping")
 	err := user.SetPortalKeys(portalKeys)

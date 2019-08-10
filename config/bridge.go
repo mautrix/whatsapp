@@ -32,6 +32,7 @@ import (
 type BridgeConfig struct {
 	UsernameTemplate    string `yaml:"username_template"`
 	DisplaynameTemplate string `yaml:"displayname_template"`
+	CommunityTemplate   string `yaml:"community_template"`
 
 	ConnectionTimeout     int  `yaml:"connection_timeout"`
 	LoginQRRegenCount     int  `yaml:"login_qr_regen_count"`
@@ -51,7 +52,7 @@ type BridgeConfig struct {
 	InviteOwnPuppetForBackfilling bool `yaml:"invite_own_puppet_for_backfilling"`
 	PrivateChatPortalMeta         bool `yaml:"private_chat_portal_meta"`
 
-	AllowUserInvite         bool `yaml:"allow_user_invite"`
+	AllowUserInvite bool `yaml:"allow_user_invite"`
 
 	CommandPrefix string `yaml:"command_prefix"`
 
@@ -59,6 +60,7 @@ type BridgeConfig struct {
 
 	usernameTemplate    *template.Template `yaml:"-"`
 	displaynameTemplate *template.Template `yaml:"-"`
+	communityTemplate   *template.Template `yaml:"-"`
 }
 
 func (bc *BridgeConfig) setDefaults() {
@@ -95,7 +97,18 @@ func (bc *BridgeConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	}
 
 	bc.displaynameTemplate, err = template.New("displayname").Parse(bc.DisplaynameTemplate)
-	return err
+	if err != nil {
+		return err
+	}
+
+	if len(bc.CommunityTemplate) > 0 {
+		bc.communityTemplate, err = template.New("community").Parse(bc.CommunityTemplate)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 type UsernameTemplateArgs struct {
@@ -125,6 +138,21 @@ func (bc BridgeConfig) FormatDisplayname(contact whatsapp.Contact) (string, int8
 func (bc BridgeConfig) FormatUsername(userID types.WhatsAppID) string {
 	var buf bytes.Buffer
 	bc.usernameTemplate.Execute(&buf, userID)
+	return buf.String()
+}
+
+type CommunityTemplateArgs struct {
+	Localpart string
+	Server    string
+}
+
+func (bc BridgeConfig) EnableCommunities() bool {
+	return bc.communityTemplate != nil
+}
+
+func (bc BridgeConfig) FormatCommunity(localpart, server string) string {
+	var buf bytes.Buffer
+	bc.communityTemplate.Execute(&buf, CommunityTemplateArgs{localpart, server})
 	return buf.String()
 }
 

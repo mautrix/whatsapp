@@ -57,6 +57,10 @@ bridge:
     # {{.Name}}   - display name from contact list
     # {{.Short}}  - short display name from contact list
     displayname_template: "{{if .Notify}}{{.Notify}}{{else}}{{.Jid}}{{end}} (WA)"
+    # Localpart template for per-user room grouping community IDs.
+    # The bridge will create these communities and add all of the specific user's portals to the community.
+    # {{.Localpart}} is the MXID localpart and {{.Server}} is the MXID server part of the user.
+    community_template: whatsapp_{{.Localpart}}={{.Server}}
 
     # WhatsApp connection timeout in seconds.
     connection_timeout: 20
@@ -104,7 +108,7 @@ bridge:
     # but causes room avatar/name bugs.
     private_chat_portal_meta: false
 
-    # Allow invite permission for user. User can invite any bots to room with whatsapp 
+    # Allow invite permission for user. User can invite any bots to room with whatsapp
     # users (private chat and groups)
     allow_user_invite: false
 

@@ -166,7 +166,12 @@ func (user *User) Update() {
 	}
 }
 
-func (user *User) SetPortalKeys(newKeys []PortalKey) error {
+type PortalKeyWithMeta struct {
+	PortalKey
+	InCommunity bool
+}
+
+func (user *User) SetPortalKeys(newKeys []PortalKeyWithMeta) error {
 	tx, err := user.db.Begin()
 	if err != nil {
 		return err
@@ -177,14 +182,16 @@ func (user *User) SetPortalKeys(newKeys []PortalKey) error {
 		return err
 	}
 	valueStrings := make([]string, len(newKeys))
-	values := make([]interface{}, len(newKeys)*3)
+	values := make([]interface{}, len(newKeys)*4)
 	for i, key := range newKeys {
-		valueStrings[i] = fmt.Sprintf("($%d, $%d, $%d)", i*3+1, i*3+2, i*3+3)
-		values[i*3] = user.jidPtr()
-		values[i*3+1] = key.JID
-		values[i*3+2] = key.Receiver
+		pos := i * 4
+		valueStrings[i] = fmt.Sprintf("($%d, $%d, $%d, $%d)", pos+1, pos+2, pos+3, pos+4)
+		values[pos] = user.jidPtr()
+		values[pos+1] = key.JID
+		values[pos+2] = key.Receiver
+		values[pos+3] = key.InCommunity
 	}
-	query := fmt.Sprintf("INSERT INTO user_portal (user_jid, portal_jid, portal_receiver) VALUES %s",
+	query := fmt.Sprintf("INSERT INTO user_portal (user_jid, portal_jid, portal_receiver, in_community) VALUES %s",
 		strings.Join(valueStrings, ", "))
 	_, err = tx.Exec(query, values...)
 	if err != nil {
@@ -209,6 +216,26 @@ func (user *User) GetPortalKeys() []PortalKey {
 			continue
 		}
 		keys = append(keys, key)
+	}
+	return keys
+}
+
+func (user *User) GetInCommunityMap() map[PortalKey]bool {
+	rows, err := user.db.Query(`SELECT portal_jid, portal_receiver, in_community FROM user_portal WHERE user_jid=$1`, user.jidPtr())
+	if err != nil {
+		user.log.Warnln("Failed to get user portal keys:", err)
+		return nil
+	}
+	keys := make(map[PortalKey]bool)
+	for rows.Next() {
+		var key PortalKey
+		var inCommunity bool
+		err = rows.Scan(&key.JID, &key.Receiver, &inCommunity)
+		if err != nil {
+			user.log.Warnln("Failed to scan row:", err)
+			continue
+		}
+		keys[key] = inCommunity
 	}
 	return keys
 }
