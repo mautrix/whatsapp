@@ -12,7 +12,7 @@ require (
 	maunium.net/go/mauflag v1.0.0
 	maunium.net/go/maulogger/v2 v2.0.0
 	maunium.net/go/mautrix v0.1.0-alpha.3.0.20190622085722-6406f15cb8e3
-	maunium.net/go/mautrix-appservice v0.1.0-alpha.3.0.20190618052224-6e6c9bb47548
+	maunium.net/go/mautrix-appservice v0.1.0-alpha.3.0.20190822210104-3e49344e186b
 )
 
 replace (
