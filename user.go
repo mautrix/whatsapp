@@ -55,6 +55,8 @@ type User struct {
 
 	cleanDisconnection bool
 
+	syncPortalsDone chan struct{}
+
 	messages chan PortalMessage
 	syncLock sync.Mutex
 }
@@ -141,6 +143,7 @@ func (bridge *Bridge) NewUser(dbUser *database.User) *User {
 		bridge: bridge,
 		log:    bridge.Log.Sub("User").Sub(string(dbUser.MXID)),
 
+		syncPortalsDone: make(chan struct{}, 1),
 		messages: make(chan PortalMessage, 256),
 	}
 	user.Whitelisted = user.bridge.Config.Bridge.Permissions.IsWhitelisted(user.MXID)
@@ -346,25 +349,37 @@ func (user *User) PostLogin() {
 }
 
 func (user *User) intPostLogin() {
-	dur := time.Duration(user.bridge.Config.Bridge.ContactWaitDelay) * time.Second
-	user.log.Debugfln("Waiting %s for contacts to arrive", dur)
-	// Hacky way to wait for chats and contacts to arrive automatically
-	time.Sleep(dur)
-	user.log.Debugfln("Waited %s, have %d chats and %d contacts", dur, len(user.Conn.Store.Chats), len(user.Conn.Store.Contacts))
-
 	user.createCommunity()
-	go user.syncPuppets()
-	user.syncPortals(false)
-	user.log.Debugln("Post-login sync complete, unlocking processing of incoming messages")
+
+	select {
+	case <- user.syncPortalsDone:
+		user.log.Debugln("Post-login portal sync complete, unlocking processing of incoming messages.")
+	case <- time.After(time.Duration(user.bridge.Config.Bridge.ContactWaitDelay) * time.Second):
+		user.log.Warnln("Timed out waiting for chat list to arrive! Unlocking processing of incoming messages.")
+	}
 	user.syncLock.Unlock()
 }
 
-func (user *User) syncPortals(createAll bool) {
-	user.log.Infoln("Reading chat list")
-	chats := make(ChatList, 0, len(user.Conn.Store.Chats))
-	existingKeys := user.GetInCommunityMap()
-	portalKeys := make([]database.PortalKeyWithMeta, 0, len(user.Conn.Store.Chats))
+func (user *User) HandleChatList(chats []whatsapp.Chat) {
+	chatMap := make(map[string]whatsapp.Chat)
 	for _, chat := range user.Conn.Store.Chats {
+		chatMap[chat.Jid] = chat
+	}
+	for _, chat := range chats {
+		chatMap[chat.Jid] = chat
+	}
+	go user.syncPortals(chatMap, false)
+}
+
+func (user *User) syncPortals(chatMap map[string]whatsapp.Chat, createAll bool) {
+	if chatMap == nil {
+		chatMap = user.Conn.Store.Chats
+	}
+	user.log.Infoln("Reading chat list")
+	chats := make(ChatList, 0, len(chatMap))
+	existingKeys := user.GetInCommunityMap()
+	portalKeys := make([]database.PortalKeyWithMeta, 0, len(chatMap))
+	for _, chat := range chatMap {
 		ts, err := strconv.ParseUint(chat.LastMessageTime, 10, 64)
 		if err != nil {
 			user.log.Warnfln("Non-integer last message time in %s: %s", chat.Jid, chat.LastMessageTime)
@@ -409,11 +424,26 @@ func (user *User) syncPortals(createAll bool) {
 		}
 	}
 	user.log.Infoln("Finished syncing portals")
+	select {
+	case user.syncPortalsDone <- struct{}{}:
+	default:
+	}
 }
 
-func (user *User) syncPuppets() {
+func (user *User) HandleContactList(contacts []whatsapp.Contact) {
+	contactMap := make(map[string]whatsapp.Contact)
+	for _, contact := range contacts {
+		contactMap[contact.Jid] = contact
+	}
+	go user.syncPuppets(contactMap)
+}
+
+func (user *User) syncPuppets(contacts map[string]whatsapp.Contact) {
+	if contacts == nil {
+		contacts = user.Conn.Store.Contacts
+	}
 	user.log.Infoln("Syncing puppet info from contacts")
-	for jid, contact := range user.Conn.Store.Contacts {
+	for jid, contact := range contacts {
 		if strings.HasSuffix(jid, whatsappExt.NewUserSuffix) {
 			puppet := user.bridge.GetPuppetByJID(contact.Jid)
 			puppet.Sync(user, contact)

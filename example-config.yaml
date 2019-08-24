@@ -75,9 +75,9 @@ bridge:
     # Whether or not the bridge should send a notice to the user's management room when it retries connecting.
     # If false, it will only report when it stops retrying.
     report_connection_retry: true
-    # Number of seconds to wait for contacts and chats to be sent at startup before syncing.
-    # If you have lots of chats, it might take more than a second.
-    contact_wait_delay: 1
+    # Maximum number of seconds to wait for chats to be sent at startup.
+    # If this is too low and you have lots of chats, it could cause backfilling to fail.
+    contact_wait_delay: 30
 
     # Whether or not to send call start/end notices to Matrix.
     call_notices:

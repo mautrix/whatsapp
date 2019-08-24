@@ -103,7 +103,7 @@ func (handler *CommandHandler) Handle(roomID types.MatrixRoomID, user *User, mes
 	case "dev-test":
 		handler.CommandDevTest(ce)
 	case "login-matrix", "logout", "sync", "list", "open", "pm":
-		if ce.User.Conn == nil {
+		if !ce.User.HasSession() {
 			ce.Reply("You are not logged in. Use the `login` command to log into WhatsApp.")
 			return
 		} else if !ce.User.IsConnected() {
@@ -333,9 +333,9 @@ func (handler *CommandHandler) CommandSync(ce *CommandEvent) {
 	}
 
 	ce.Reply("Syncing contacts...")
-	user.syncPuppets()
+	user.syncPuppets(nil)
 	ce.Reply("Syncing chats...")
-	user.syncPortals(create)
+	user.syncPortals(nil, create)
 
 	ce.Reply("Sync complete.")
 }

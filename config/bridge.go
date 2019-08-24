@@ -74,7 +74,7 @@ func (bc *BridgeConfig) setDefaults() {
 	bc.MaxConnectionAttempts = 3
 	bc.ConnectionRetryDelay = -1
 	bc.ReportConnectionRetry = true
-	bc.ContactWaitDelay = 1
+	bc.ContactWaitDelay = 30
 
 	bc.CallNotices.Start = true
 	bc.CallNotices.End = true

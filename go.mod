@@ -16,6 +16,6 @@ require (
 )
 
 replace (
-	github.com/Rhymen/go-whatsapp => github.com/tulir/go-whatsapp v0.0.2-0.20190824193805-f9a7dc8e6a5f
+	github.com/Rhymen/go-whatsapp => github.com/tulir/go-whatsapp v0.0.2-0.20190824212315-7c97464c8c54
 	gopkg.in/russross/blackfriday.v2 => github.com/russross/blackfriday/v2 v2.0.1
 )
