@@ -12,10 +12,10 @@ require (
 	maunium.net/go/mauflag v1.0.0
 	maunium.net/go/maulogger/v2 v2.0.0
 	maunium.net/go/mautrix v0.1.0-alpha.3.0.20190622085722-6406f15cb8e3
-	maunium.net/go/mautrix-appservice v0.1.0-alpha.3.0.20190822210104-3e49344e186b
+	maunium.net/go/mautrix-appservice v0.1.0-alpha.3.0.20190824195529-3507711d75aa
 )
 
 replace (
-	github.com/Rhymen/go-whatsapp => github.com/tulir/go-whatsapp v0.0.2-0.20190717210948-309b1b2cfa74
+	github.com/Rhymen/go-whatsapp => github.com/tulir/go-whatsapp v0.0.2-0.20190824193805-f9a7dc8e6a5f
 	gopkg.in/russross/blackfriday.v2 => github.com/russross/blackfriday/v2 v2.0.1
 )
