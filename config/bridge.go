@@ -41,6 +41,11 @@ type BridgeConfig struct {
 	ReportConnectionRetry bool `yaml:"report_connection_retry"`
 	ContactWaitDelay      int  `yaml:"contact_wait_delay"`
 
+	CallNotices struct {
+		Start bool `yaml:"start"`
+		End   bool `yaml:"end"`
+	} `yaml:"call_notices"`
+
 	InitialChatSync    int    `yaml:"initial_chat_sync_count"`
 	InitialHistoryFill int    `yaml:"initial_history_fill_count"`
 	RecoverChatSync    int    `yaml:"recovery_chat_sync_count"`
@@ -70,6 +75,9 @@ func (bc *BridgeConfig) setDefaults() {
 	bc.ConnectionRetryDelay = -1
 	bc.ReportConnectionRetry = true
 	bc.ContactWaitDelay = 1
+
+	bc.CallNotices.Start = true
+	bc.CallNotices.End = true
 
 	bc.InitialChatSync = 10
 	bc.InitialHistoryFill = 20

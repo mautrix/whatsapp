@@ -578,10 +578,19 @@ func (user *User) HandleCallInfo(info whatsappExt.CallInfo) {
 	}
 	switch info.Type {
 	case whatsappExt.CallOffer:
+		if !user.bridge.Config.Bridge.CallNotices.Start {
+			return
+		}
 		data.Text = "Incoming call"
 	case whatsappExt.CallOfferVideo:
+		if !user.bridge.Config.Bridge.CallNotices.Start {
+			return
+		}
 		data.Text = "Incoming video call"
 	case whatsappExt.CallTerminate:
+		if !user.bridge.Config.Bridge.CallNotices.End {
+			return
+		}
 		data.Text = "Call ended"
 		data.ID += "E"
 	default:
