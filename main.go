@@ -112,19 +112,21 @@ func (bridge *Bridge) Init() {
 
 	bridge.AS, err = bridge.Config.MakeAppService()
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "Failed to initialize AppService:", err)
+		_, _ = fmt.Fprintln(os.Stderr, "Failed to initialize AppService:", err)
 		os.Exit(11)
 	}
-	bridge.AS.Init()
+	_, _ = bridge.AS.Init()
 	bridge.Bot = bridge.AS.BotIntent()
 
 	bridge.Log = log.Create()
 	bridge.Config.Logging.Configure(bridge.Log)
 	log.DefaultLogger = bridge.Log.(*log.BasicLogger)
-	err = log.OpenFile()
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "Failed to open log file:", err)
-		os.Exit(12)
+	if len(bridge.Config.Logging.FileNameFormat) > 0 {
+		err = log.OpenFile()
+		if err != nil {
+			_, _ = fmt.Fprintln(os.Stderr, "Failed to open log file:", err)
+			os.Exit(12)
+		}
 	}
 	bridge.AS.Log = log.Sub("Matrix")
 
