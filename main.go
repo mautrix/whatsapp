@@ -32,9 +32,13 @@ import (
 	"maunium.net/go/mautrix-whatsapp/config"
 	"maunium.net/go/mautrix-whatsapp/database"
 	"maunium.net/go/mautrix-whatsapp/types"
+	"net/http"
+	"maunium.net/go/mautrix"
+	"time"
 )
 
 var configPath = flag.MakeFull("c", "config", "The path to your config file.", "config.yaml").String()
+
 //var baseConfigPath = flag.MakeFull("b", "base-config", "The path to the example config file.", "example-config.yaml").String()
 var registrationPath = flag.MakeFull("r", "registration", "The path where to save the appservice registration.", "registration.yaml").String()
 var generateRegistration = flag.MakeFull("g", "generate-registration", "Generate registration and quit.", "false").Bool()
@@ -107,6 +111,29 @@ func NewBridge() *Bridge {
 	return bridge
 }
 
+func (bridge *Bridge) ensureConnection() {
+	url := bridge.Bot.BuildURL("account", "whoami")
+	resp := struct {
+		UserID string `json:"user_id"`
+	}{}
+	for {
+		_, err := bridge.Bot.MakeRequest(http.MethodGet, url, nil, &resp)
+		if err != nil {
+			if httpErr, ok := err.(mautrix.HTTPError); ok && httpErr.RespError != nil && httpErr.RespError.ErrCode == "M_UNKNOWN_ACCESS_TOKEN" {
+				bridge.Log.Fatalln("Access token invalid. Is the registration installed in your homeserver correctly?")
+				os.Exit(16)
+			}
+			bridge.Log.Errorfln("Failed to connect to homeserver: %v. Retrying in 10 seconds...", err)
+			time.Sleep(10 * time.Second)
+		} else if resp.UserID != bridge.Bot.UserID {
+			bridge.Log.Fatalln("Unexpected user ID in whoami call: got %s, expected %s", resp.UserID, bridge.Bot.UserID)
+			os.Exit(17)
+		} else {
+			break
+		}
+	}
+}
+
 func (bridge *Bridge) Init() {
 	var err error
 
@@ -162,6 +189,8 @@ func (bridge *Bridge) Start() {
 		bridge.Log.Fatalln("Failed to initialize database:", err)
 		os.Exit(15)
 	}
+	bridge.Log.Debugln("Checking connection to homeserver")
+	bridge.ensureConnection()
 	bridge.Log.Debugln("Starting application service HTTP server")
 	go bridge.AS.Start()
 	bridge.Log.Debugln("Starting event processor")
