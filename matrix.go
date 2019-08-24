@@ -118,7 +118,7 @@ func (mx *MatrixHandler) HandleMembership(evt *mautrix.Event) {
 	}
 
 	user := mx.bridge.GetUserByMXID(types.MatrixUserID(evt.Sender))
-	if user == nil || !user.Whitelisted || !user.IsLoggedIn() {
+	if user == nil || !user.Whitelisted || !user.IsConnected() {
 		return
 	}
 
@@ -135,7 +135,7 @@ func (mx *MatrixHandler) HandleMembership(evt *mautrix.Event) {
 
 func (mx *MatrixHandler) HandleRoomMetadata(evt *mautrix.Event) {
 	user := mx.bridge.GetUserByMXID(types.MatrixUserID(evt.Sender))
-	if user == nil || !user.Whitelisted || !user.IsLoggedIn() || !user.Connected {
+	if user == nil || !user.Whitelisted || !user.IsConnected()  {
 		return
 	}
 
@@ -190,9 +190,9 @@ func (mx *MatrixHandler) HandleMessage(evt *mautrix.Event) {
 		}
 	}
 
-	if !user.IsLoggedIn() {
+	if !user.HasSession() {
 		return
-	} else if !user.Connected {
+	} else if !user.IsConnected() {
 		msg := format.RenderMarkdown(fmt.Sprintf("\u26a0 You are not connected to WhatsApp, so your message was not bridged. " +
 			"Use `%s reconnect` to reconnect.", mx.bridge.Config.Bridge.CommandPrefix))
 		msg.MsgType = mautrix.MsgNotice
@@ -218,9 +218,9 @@ func (mx *MatrixHandler) HandleRedaction(evt *mautrix.Event) {
 		return
 	}
 
-	if !user.IsLoggedIn() {
+	if !user.HasSession() {
 		return
-	} else if !user.Connected {
+	} else if !user.IsConnected() {
 		msg := format.RenderMarkdown(fmt.Sprintf("[%[1]s](https://matrix.to/#/%[1]s): \u26a0 " +
 			"You are not connected to WhatsApp, so your redaction was not bridged. " +
 			"Use `%[2]s reconnect` to reconnect.", user.MXID, mx.bridge.Config.Bridge.CommandPrefix))

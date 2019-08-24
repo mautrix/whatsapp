@@ -136,8 +136,8 @@ func (puppet *Puppet) stopSyncing() {
 }
 
 func (puppet *Puppet) ProcessResponse(resp *mautrix.RespSync, since string) error {
-	if !puppet.customUser.Connected {
-		puppet.log.Warnln("Skipping sync processing: custom user not connected to whatsapp")
+	if !puppet.customUser.IsConnected() {
+		puppet.log.Debugln("Skipping sync processing: custom user not connected to whatsapp")
 		return nil
 	}
 	for roomID, events := range resp.Rooms.Join {

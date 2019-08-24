@@ -49,7 +49,6 @@ type User struct {
 
 	Admin       bool
 	Whitelisted bool
-	Connected   bool
 
 	ConnectionErrors int
 	CommunityID      string
@@ -208,7 +207,6 @@ func (user *User) RestoreSession() bool {
 			_, _ = user.bridge.Bot.SendMessageEvent(user.ManagementRoom, mautrix.EventMessage, msg)
 			return false
 		}
-		user.Connected = true
 		user.ConnectionErrors = 0
 		user.SetSession(&sess)
 		user.log.Debugln("Session restored successfully")
@@ -217,8 +215,12 @@ func (user *User) RestoreSession() bool {
 	return true
 }
 
-func (user *User) IsLoggedIn() bool {
-	return user.Session != nil || user.Conn != nil
+func (user *User) HasSession() bool {
+	return user.Session != nil
+}
+
+func (user *User) IsConnected() bool {
+	return user.Conn != nil && user.Conn.IsConnected() && user.Conn.IsLoggedIn()
 }
 
 func (user *User) loginQrChannel(ce *CommandEvent, qrChan <-chan string, eventIDChan chan<- string) {
@@ -310,7 +312,6 @@ func (user *User) Login(ce *CommandEvent) {
 		_, _ = ce.Bot.SendMessageEvent(ce.RoomID, mautrix.EventMessage, &msg)
 		return
 	}
-	user.Connected = true
 	user.ConnectionErrors = 0
 	user.JID = strings.Replace(user.Conn.Info.Wid, whatsappExt.OldUserSuffix, whatsappExt.NewUserSuffix, 1)
 	user.SetSession(&session)
@@ -432,7 +433,6 @@ func (user *User) HandleError(err error) {
 		user.log.Errorln("WhatsApp error:", err)
 	}
 	if closed, ok := err.(*whatsapp.ErrConnectionClosed); ok {
-		user.Connected = false
 		if closed.Code == 1000 && user.cleanDisconnection {
 			user.cleanDisconnection = false
 			user.log.Infoln("Clean disconnection by server")
@@ -440,7 +440,6 @@ func (user *User) HandleError(err error) {
 		}
 		go user.tryReconnect(fmt.Sprintf("Your WhatsApp connection was closed with websocket status code %d", closed.Code))
 	} else if failed, ok := err.(*whatsapp.ErrConnectionFailed); ok {
-		user.Connected = false
 		user.ConnectionErrors++
 		go user.tryReconnect(fmt.Sprintf("Your WhatsApp connection failed: %v", failed.Err))
 	}
@@ -470,10 +469,18 @@ func (user *User) tryReconnect(msg string) {
 		err := user.Conn.Restore()
 		if err == nil {
 			user.ConnectionErrors = 0
-			user.Connected = true
 			_, _ = user.bridge.Bot.SendNotice(user.ManagementRoom, "Reconnected successfully")
 			user.PostLogin()
 			return
+		} else if err.Error() == "init responded with 400" {
+			user.log.Infoln("Got init 400 error when trying to reconnect, resetting connection...")
+			sess, err := user.Conn.Disconnect()
+			if err != nil {
+				user.log.Debugln("Error while disconnecting for connection reset:", err)
+			}
+			if len(sess.Wid) > 0 {
+				user.SetSession(&sess)
+			}
 		}
 		user.log.Errorln("Error while trying to reconnect after disconnection:", err)
 		tries++
