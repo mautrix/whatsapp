@@ -74,7 +74,7 @@ type Bridge struct {
 	Config         *config.Config
 	DB             *database.Database
 	Log            log.Logger
-	StateStore     *AutosavingStateStore
+	StateStore     *database.SQLStateStore
 	Bot            *appservice.IntentAPI
 	Formatter      *Formatter
 
@@ -157,21 +157,16 @@ func (bridge *Bridge) Init() {
 	}
 	bridge.AS.Log = log.Sub("Matrix")
 
-	bridge.Log.Debugln("Initializing state store")
-	bridge.StateStore = NewAutosavingStateStore(bridge.Config.AppService.StateStore)
-	err = bridge.StateStore.Load()
-	if err != nil {
-		bridge.Log.Fatalln("Failed to load state store:", err)
-		os.Exit(13)
-	}
-	bridge.AS.StateStore = bridge.StateStore
-
 	bridge.Log.Debugln("Initializing database")
 	bridge.DB, err = database.New(bridge.Config.AppService.Database.Type, bridge.Config.AppService.Database.URI)
 	if err != nil && (err != upgrades.UnsupportedDatabaseVersion || !*ignoreUnsupportedDatabase) {
 		bridge.Log.Fatalln("Failed to initialize database:", err)
 		os.Exit(14)
 	}
+
+	bridge.Log.Debugln("Initializing state store")
+	bridge.StateStore = database.NewSQLStateStore(bridge.DB)
+	bridge.AS.StateStore = bridge.StateStore
 
 	bridge.DB.SetMaxOpenConns(bridge.Config.AppService.Database.MaxOpenConns)
 	bridge.DB.SetMaxIdleConns(bridge.Config.AppService.Database.MaxIdleConns)
@@ -184,7 +179,7 @@ func (bridge *Bridge) Init() {
 }
 
 func (bridge *Bridge) Start() {
-	err := bridge.DB.Init(bridge.Config.AppService.Database.Type)
+	err := bridge.DB.Init()
 	if err != nil {
 		bridge.Log.Fatalln("Failed to initialize database:", err)
 		os.Exit(15)
@@ -254,10 +249,6 @@ func (bridge *Bridge) Stop() {
 		} else {
 			user.SetSession(&sess)
 		}
-	}
-	err := bridge.StateStore.Save()
-	if err != nil {
-		bridge.Log.Warnln("Failed to save state store:", err)
 	}
 }
 

@@ -29,7 +29,8 @@ import (
 
 type Database struct {
 	*sql.DB
-	log log.Logger
+	log     log.Logger
+	dialect string
 
 	User    *UserQuery
 	Portal  *PortalQuery
@@ -48,8 +49,9 @@ func New(dbType string, uri string) (*Database, error) {
 	}
 
 	db := &Database{
-		DB:  conn,
-		log: log.Sub("Database"),
+		DB:      conn,
+		log:     log.Sub("Database"),
+		dialect: dbType,
 	}
 	db.User = &UserQuery{
 		db:  db,
@@ -70,8 +72,8 @@ func New(dbType string, uri string) (*Database, error) {
 	return db, nil
 }
 
-func (db *Database) Init(dialectName string) error {
-	return upgrades.Run(db.log.Sub("Upgrade"), dialectName, db.DB)
+func (db *Database) Init() error {
+	return upgrades.Run(db.log.Sub("Upgrade"), db.dialect, db.DB)
 }
 
 type Scannable interface {

@@ -27,9 +27,6 @@ appservice:
         max_open_conns: 20
         max_idle_conns: 2
 
-    # Path to the Matrix room state store.
-    state_store_path: ./mx-state.json
-
     # The unique ID of this appservice.
     id: whatsapp
     # Appservice bot details.
