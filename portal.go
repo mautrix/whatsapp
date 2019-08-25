@@ -674,6 +674,10 @@ func (portal *Portal) handleHistory(user *User, messages []interface{}) {
 			continue
 		}
 		data := whatsapp.ParseProtoMessage(message)
+		if data == nil {
+			portal.log.Warnln("Message", message.GetKey().GetId(), "failed to parse during backfilling")
+			continue
+		}
 		if portal.privateChatBackfillInvitePuppet != nil && message.GetKey().GetFromMe() && portal.IsPrivateChat() {
 			portal.privateChatBackfillInvitePuppet()
 		}
