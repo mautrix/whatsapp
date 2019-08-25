@@ -5,7 +5,7 @@ import (
 )
 
 func init() {
-	upgrades[5] = upgrade{"Add columns to store custom puppet info", func(dialect Dialect, tx *sql.Tx, db *sql.DB) error {
+	upgrades[5] = upgrade{"Add columns to store custom puppet info", func(tx *sql.Tx, ctx context) error {
 		_, err := tx.Exec(`ALTER TABLE puppet ADD COLUMN custom_mxid VARCHAR(255)`)
 		if err != nil {
 			return err

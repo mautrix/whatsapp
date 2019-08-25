@@ -5,8 +5,8 @@ import (
 )
 
 func init() {
-	upgrades[1] = upgrade{"Add ON DELETE CASCADE to message table", func(dialect Dialect, tx *sql.Tx, db *sql.DB) error {
-		if dialect == SQLite {
+	upgrades[1] = upgrade{"Add ON DELETE CASCADE to message table", func(tx *sql.Tx, ctx context) error {
+		if ctx.dialect == SQLite {
 			// SQLite doesn't support constraint updates, but it isn't that careful with constraints anyway.
 			return nil
 		}

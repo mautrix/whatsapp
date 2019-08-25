@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"os"
 	"strings"
 
 	"maunium.net/go/mautrix"
@@ -78,15 +79,16 @@ func init() {
 		user_id VARCHAR(255) PRIMARY KEY
 	)`
 
-	upgrades[9] = upgrade{"Move state store to main DB", func(dialect Dialect, tx *sql.Tx, db *sql.DB) error {
+	upgrades[9] = upgrade{"Move state store to main DB", func(tx *sql.Tx, ctx context) error {
 		store := appservice.NewBasicStateStore().(*appservice.BasicStateStore)
 
-		if dialect == Postgres {
+		if ctx.dialect == Postgres {
 			roomStateTable = strings.Replace(roomStateTable, "TEXT", "JSONB", 1)
 		}
 
 		if data, err := ioutil.ReadFile("mx-state.json"); err != nil {
-			return err
+			ctx.log.Debugln("mx-state.json not found, not migrating state store")
+			return nil
 		} else if err = json.Unmarshal(data, &store); err != nil {
 			return err
 		} else if _, err := tx.Exec(userProfileTable); err != nil {
@@ -100,6 +102,8 @@ func init() {
 		} else if err = migrateMemberships(tx, store.Memberships); err != nil {
 			return err
 		} else if err = migratePowerLevels(tx, store.PowerLevels); err != nil {
+			return err
+		} else if err = os.Rename("mx-state.json", "mx-state.json.bak"); err != nil {
 			return err
 		}
 		return nil

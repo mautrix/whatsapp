@@ -43,7 +43,7 @@ type Config struct {
 			MaxIdleConns int `yaml:"max_idle_conns"`
 		} `yaml:"database"`
 
-		StateStore string `yaml:"state_store_path"`
+		StateStore string `yaml:"state_store_path,omitempty"`
 
 		ID  string `yaml:"id"`
 		Bot struct {

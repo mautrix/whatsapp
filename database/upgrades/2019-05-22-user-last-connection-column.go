@@ -5,7 +5,7 @@ import (
 )
 
 func init() {
-	upgrades[3] = upgrade{"Add last_connection column to users", func(dialect Dialect, tx *sql.Tx, db *sql.DB) error {
+	upgrades[3] = upgrade{"Add last_connection column to users", func(tx *sql.Tx, ctx context) error {
 		_, err := tx.Exec(`ALTER TABLE "user" ADD COLUMN last_connection BIGINT NOT NULL DEFAULT 0`)
 		if err != nil {
 			return err

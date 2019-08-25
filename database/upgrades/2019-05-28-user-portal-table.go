@@ -5,7 +5,7 @@ import (
 )
 
 func init() {
-	upgrades[6] = upgrade{"Add user-portal mapping table", func(dialect Dialect, tx *sql.Tx, db *sql.DB) error {
+	upgrades[6] = upgrade{"Add user-portal mapping table", func(tx *sql.Tx, ctx context) error {
 		_, err := tx.Exec(`CREATE TABLE user_portal (
 			user_jid        VARCHAR(255),
 			portal_jid      VARCHAR(255),

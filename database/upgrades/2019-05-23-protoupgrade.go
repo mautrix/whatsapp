@@ -8,8 +8,8 @@ import (
 
 func init() {
 	var keys = []string{"imageMessage", "contactMessage", "locationMessage", "extendedTextMessage", "documentMessage", "audioMessage", "videoMessage"}
-	upgrades[4] = upgrade{"Update message content to new protocol version. This may take a while.", func(dialect Dialect, tx *sql.Tx, db *sql.DB) error {
-		rows, err := db.Query("SELECT mxid, content FROM message")
+	upgrades[4] = upgrade{"Update message content to new protocol version. This may take a while.", func(tx *sql.Tx, ctx context) error {
+		rows, err := ctx.db.Query("SELECT mxid, content FROM message")
 		if err != nil {
 			return err
 		}

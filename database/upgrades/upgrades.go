@@ -15,11 +15,17 @@ const (
 	SQLite
 )
 
-type upgradeFunc func(Dialect, *sql.Tx, *sql.DB) error
+type upgradeFunc func(*sql.Tx, context) error
+
+type context struct {
+	dialect Dialect
+	db      *sql.DB
+	log     log.Logger
+}
 
 type upgrade struct {
 	message string
-	fn upgradeFunc
+	fn      upgradeFunc
 }
 
 const NumberOfUpgrades = 10
@@ -28,7 +34,7 @@ var upgrades [NumberOfUpgrades]upgrade
 
 var UnsupportedDatabaseVersion = fmt.Errorf("unsupported database version")
 
-func getVersion(dialect Dialect, db *sql.DB) (int, error) {
+func GetVersion(db *sql.DB) (int, error) {
 	_, err := db.Exec("CREATE TABLE IF NOT EXISTS version (version INTEGER)")
 	if err != nil {
 		return -1, err
@@ -42,7 +48,7 @@ func getVersion(dialect Dialect, db *sql.DB) (int, error) {
 	return version, nil
 }
 
-func setVersion(dialect Dialect, tx *sql.Tx, version int) error {
+func SetVersion(tx *sql.Tx, version int) error {
 	_, err := tx.Exec("DELETE FROM version")
 	if err != nil {
 		return err
@@ -62,7 +68,7 @@ func Run(log log.Logger, dialectName string, db *sql.DB) error {
 		return fmt.Errorf("unknown dialect %s", dialectName)
 	}
 
-	version, err := getVersion(dialect, db)
+	version, err := GetVersion(db)
 	if err != nil {
 		return err
 	}
@@ -78,11 +84,11 @@ func Run(log log.Logger, dialectName string, db *sql.DB) error {
 		if err != nil {
 			return err
 		}
-		err = upgrade.fn(dialect, tx, db)
+		err = upgrade.fn(tx, context{dialect, db, log})
 		if err != nil {
 			return err
 		}
-		err = setVersion(dialect, tx, version+i+1)
+		err = SetVersion(tx, version+i+1)
 		if err != nil {
 			return err
 		}

@@ -164,6 +164,15 @@ func (bridge *Bridge) Init() {
 		os.Exit(14)
 	}
 
+	if len(bridge.Config.AppService.StateStore) > 0 && bridge.Config.AppService.StateStore != "./mx-state.json" {
+		version, err := upgrades.GetVersion(bridge.DB.DB)
+		if version < 0 && err == nil {
+			bridge.Log.Fatalln("Non-standard state store path. Please move the state store to ./mx-state.json " +
+				"and update the config. The state store will be migrated into the db on the next launch.")
+			os.Exit(18)
+		}
+	}
+
 	bridge.Log.Debugln("Initializing state store")
 	bridge.StateStore = database.NewSQLStateStore(bridge.DB)
 	bridge.AS.StateStore = bridge.StateStore
