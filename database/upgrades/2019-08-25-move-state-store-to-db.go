@@ -86,16 +86,15 @@ func init() {
 			roomStateTable = strings.Replace(roomStateTable, "TEXT", "JSONB", 1)
 		}
 
-		if data, err := ioutil.ReadFile("mx-state.json"); err != nil {
-			ctx.log.Debugln("mx-state.json not found, not migrating state store")
-			return nil
-		} else if err = json.Unmarshal(data, &store); err != nil {
-			return err
-		} else if _, err := tx.Exec(userProfileTable); err != nil {
+		if _, err := tx.Exec(userProfileTable); err != nil {
 			return err
 		} else if _, err = tx.Exec(roomStateTable); err != nil {
 			return err
 		} else if _, err = tx.Exec(registrationsTable); err != nil {
+			return err
+		} else if data, err := ioutil.ReadFile("mx-state.json"); err != nil {
+			ctx.log.Debugln("mx-state.json not found, not migrating state store")
+		} else if err = json.Unmarshal(data, &store); err != nil {
 			return err
 		} else if err = migrateRegistrations(tx, store.Registrations); err != nil {
 			return err

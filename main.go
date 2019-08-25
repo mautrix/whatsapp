@@ -43,6 +43,7 @@ var configPath = flag.MakeFull("c", "config", "The path to your config file.", "
 var registrationPath = flag.MakeFull("r", "registration", "The path where to save the appservice registration.", "registration.yaml").String()
 var generateRegistration = flag.MakeFull("g", "generate-registration", "Generate registration and quit.", "false").Bool()
 var ignoreUnsupportedDatabase = flag.Make().LongKey("ignore-unsupported-database").Usage("Run even if database is too new").Default("false").Bool()
+var migrateFrom = flag.Make().LongKey("migrate-db").Usage("Source database type and URI to migrate from.").Bool()
 var wantHelp, _ = flag.MakeHelpFlag()
 
 func (bridge *Bridge) GenerateRegistration() {
@@ -65,6 +66,32 @@ func (bridge *Bridge) GenerateRegistration() {
 	}
 	fmt.Println("Registration generated. Add the path to the registration to your Synapse config, restart it, then start the bridge.")
 	os.Exit(0)
+}
+
+func (bridge *Bridge) MigrateDatabase() {
+	oldDB, err := database.New(flag.Arg(0), flag.Arg(1))
+	if err != nil {
+		fmt.Println("Failed to open old database:", err)
+		os.Exit(30)
+	}
+	err = oldDB.Init()
+	if err != nil {
+		fmt.Println("Failed to upgrade old database:", err)
+		os.Exit(31)
+	}
+
+	newDB, err := database.New(bridge.Config.AppService.Database.Type, bridge.Config.AppService.Database.URI)
+	if err != nil {
+		bridge.Log.Fatalln("Failed to open new database:", err)
+		os.Exit(32)
+	}
+	err = newDB.Init()
+	if err != nil {
+		fmt.Println("Failed to upgrade new database:", err)
+		os.Exit(33)
+	}
+
+	database.Migrate(oldDB, newDB)
 }
 
 type Bridge struct {
@@ -265,6 +292,9 @@ func (bridge *Bridge) Main() {
 	if *generateRegistration {
 		bridge.GenerateRegistration()
 		return
+	} else if *migrateFrom {
+		bridge.MigrateDatabase()
+		return
 	}
 
 	bridge.Init()
@@ -285,7 +315,7 @@ func (bridge *Bridge) Main() {
 func main() {
 	flag.SetHelpTitles(
 		"mautrix-whatsapp - A Matrix-WhatsApp puppeting bridge.",
-		"mautrix-whatsapp [-h] [-c <path>] [-r <path>] [-g]")
+		"mautrix-whatsapp [-h] [-c <path>] [-r <path>] [-g] [--migrate-db <source type> <source uri>]")
 	err := flag.Parse()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
