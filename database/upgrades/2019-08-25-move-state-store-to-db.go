@@ -30,19 +30,22 @@ func init() {
 	}
 
 	migrateMemberships := func(tx *sql.Tx, rooms map[string]map[string]mautrix.Membership) error {
-		var values []interface{}
-		var valueStrings []string
-		i := 1
 		for roomID, members := range rooms {
+			var values []interface{}
+			var valueStrings []string
+			i := 1
 			for userID, membership := range members {
 				values = append(values, roomID, userID, membership)
 				valueStrings = append(valueStrings, fmt.Sprintf("($%d, $%d, $%d)", i, i+1, i+2))
 				i += 3
 			}
+			valueString := strings.Join(valueStrings, ",")
+			_, err := tx.Exec("INSERT INTO mx_user_profile (room_id, user_id, membership) VALUES "+valueString, values...)
+			if err != nil {
+				return err
+			}
 		}
-		valueString := strings.Join(valueStrings, ",")
-		_, err := tx.Exec("INSERT INTO mx_user_profile (room_id, user_id, membership) VALUES "+valueString, values...)
-		return err
+		return nil
 	}
 
 	migratePowerLevels := func(tx *sql.Tx, rooms map[string]*mautrix.PowerLevels) error {
