@@ -210,6 +210,11 @@ func (user *User) RestoreSession() bool {
 			msg := format.RenderMarkdown("\u26a0 Failed to connect to WhatsApp. Make sure WhatsApp " +
 				"on your phone is reachable and use `reconnect` to try connecting again.")
 			_, _ = user.bridge.Bot.SendMessageEvent(user.ManagementRoom, mautrix.EventMessage, msg)
+			user.log.Debugln("Disconnecting due to failed session restore...")
+			_, err := user.Conn.Disconnect()
+			if err != nil {
+				user.log.Errorln("Failed to disconnect after failed session restore:", err)
+			}
 			return false
 		}
 		user.ConnectionErrors = 0
