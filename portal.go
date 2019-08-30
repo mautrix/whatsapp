@@ -1088,8 +1088,12 @@ func (portal *Portal) sendMatrixConnectionError(sender *User, eventID string) bo
 		return true
 	} else if !sender.IsConnected() {
 		portal.log.Debugln("Ignoring event", eventID, "from", sender.MXID, "as user is not connected")
+		inRoom := ""
+		if portal.IsPrivateChat() {
+			inRoom = " in your management room"
+		}
 		msg := format.RenderMarkdown(fmt.Sprintf("\u26a0 You are not connected to WhatsApp, so your message was not bridged. " +
-			"Use `%s reconnect` to reconnect.", portal.bridge.Config.Bridge.CommandPrefix))
+			"Use `%s reconnect`%s to reconnect.", portal.bridge.Config.Bridge.CommandPrefix, inRoom))
 		msg.MsgType = mautrix.MsgNotice
 		_, err := portal.MainIntent().SendMessageEvent(portal.MXID, mautrix.EventMessage, msg)
 		if err != nil {
