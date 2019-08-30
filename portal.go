@@ -920,6 +920,10 @@ func (portal *Portal) HandleMediaMessage(source *User, download func() ([]byte, 
 		return
 	}
 
+	// WhatsApp sends incorrect mime types 3:<
+	if detected := http.DetectContentType(data); detected != "application/octet-stream" {
+		mimeType = detected
+	}
 	uploaded, err := intent.UploadBytes(data, mimeType)
 	if err != nil {
 		portal.log.Errorfln("Failed to upload media for %s: %v", err)
