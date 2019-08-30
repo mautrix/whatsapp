@@ -267,12 +267,11 @@ func (handler *CommandHandler) CommandDisconnect(ce *CommandEvent) {
 const cmdPingHelp = `ping - Check your connection to WhatsApp.`
 
 func (handler *CommandHandler) CommandPing(ce *CommandEvent) {
-	if ce.User.Conn == nil {
+	if ce.User.Session == nil {
+		ce.Reply("You're not logged into WhatsApp.")
+	} else if ce.User.Conn == nil {
 		ce.Reply("You don't have a WhatsApp connection.")
-		return
-	}
-	ok, err := ce.User.Conn.AdminTest()
-	if err != nil {
+	} else if ok, err := ce.User.Conn.AdminTest(); err != nil {
 		ce.Reply("Connection not OK: %v", err)
 	} else if !ok {
 		ce.Reply("Connection not OK, but no error received")
