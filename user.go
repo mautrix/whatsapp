@@ -233,6 +233,10 @@ func (user *User) IsConnected() bool {
 	return user.Conn != nil && user.Conn.IsConnected() && user.Conn.IsLoggedIn()
 }
 
+func (user *User) IsLoginInProgress() bool {
+	return user.Conn != nil && user.Conn.IsLoginInProgress()
+}
+
 func (user *User) loginQrChannel(ce *CommandEvent, qrChan <-chan string, eventIDChan chan<- string) {
 	var qrEventID string
 	for code := range qrChan {

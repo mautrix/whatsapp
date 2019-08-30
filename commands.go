@@ -223,6 +223,13 @@ func (handler *CommandHandler) CommandReconnect(ce *CommandEvent) {
 		} else {
 			ce.Reply("Unknown error while reconnecting: %v", err)
 		}
+		ce.User.log.Debugln("Disconnecting due to failed session restore in reconnect command...")
+		sess, err := ce.User.Conn.Disconnect()
+		if err != nil {
+			ce.User.log.Errorln("Failed to disconnect after failed session restore in reconnect command:", err)
+		} else if len(sess.Wid) > 0 {
+			ce.User.SetSession(&sess)
+		}
 		return
 	}
 	ce.User.ConnectionErrors = 0
@@ -259,8 +266,9 @@ func (handler *CommandHandler) CommandDisconnect(ce *CommandEvent) {
 		ce.User.log.Warnln("Error while disconnecting:", err)
 		ce.Reply("Unknown error while disconnecting: %v", err)
 		return
+	} else if len(sess.Wid) > 0 {
+		ce.User.SetSession(&sess)
 	}
-	ce.User.SetSession(&sess)
 	ce.Reply("Successfully disconnected. Use the `reconnect` command to reconnect.")
 }
 
@@ -268,13 +276,25 @@ const cmdPingHelp = `ping - Check your connection to WhatsApp.`
 
 func (handler *CommandHandler) CommandPing(ce *CommandEvent) {
 	if ce.User.Session == nil {
-		ce.Reply("You're not logged into WhatsApp.")
+		if ce.User.IsLoginInProgress() {
+			ce.Reply("You're not logged into WhatsApp, but there's a login in progress.")
+		} else {
+			ce.Reply("You're not logged into WhatsApp.")
+		}
 	} else if ce.User.Conn == nil {
 		ce.Reply("You don't have a WhatsApp connection.")
 	} else if ok, err := ce.User.Conn.AdminTest(); err != nil {
-		ce.Reply("Connection not OK: %v", err)
+		if ce.User.IsLoginInProgress() {
+			ce.Reply("Connection not OK: %v, but login in progress", err)
+		} else {
+			ce.Reply("Connection not OK: %v", err)
+		}
 	} else if !ok {
-		ce.Reply("Connection not OK, but no error received")
+		if ce.User.IsLoginInProgress() {
+			ce.Reply("Connection not OK, but no error received and login in progress")
+		} else {
+			ce.Reply("Connection not OK, but no error received")
+		}
 	} else {
 		ce.Reply("Connection to WhatsApp OK")
 	}

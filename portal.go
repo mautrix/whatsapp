@@ -1092,8 +1092,11 @@ func (portal *Portal) sendMatrixConnectionError(sender *User, eventID string) bo
 		if portal.IsPrivateChat() {
 			inRoom = " in your management room"
 		}
-		msg := format.RenderMarkdown(fmt.Sprintf("\u26a0 You are not connected to WhatsApp, so your message was not bridged. " +
-			"Use `%s reconnect`%s to reconnect.", portal.bridge.Config.Bridge.CommandPrefix, inRoom))
+		reconnect := fmt.Sprintf("Use `%s reconnect`%s to reconnect.", portal.bridge.Config.Bridge.CommandPrefix, inRoom)
+		if sender.IsLoginInProgress() {
+			reconnect = "You have a login attempt in progress, please wait."
+		}
+		msg := format.RenderMarkdown("\u26a0 You are not connected to WhatsApp, so your message was not bridged. " + reconnect)
 		msg.MsgType = mautrix.MsgNotice
 		_, err := portal.MainIntent().SendMessageEvent(portal.MXID, mautrix.EventMessage, msg)
 		if err != nil {
@@ -1227,6 +1230,12 @@ func (portal *Portal) HandleMatrixMessage(sender *User, evt *mautrix.Event) {
 	_, err = sender.Conn.Send(info)
 	if err != nil {
 		portal.log.Errorfln("Error handling Matrix event %s: %v", evt.ID, err)
+		msg := format.RenderMarkdown(fmt.Sprintf("\u26a0 Your message may not have been bridged: %v", err))
+		msg.MsgType = mautrix.MsgNotice
+		_, err := portal.MainIntent().SendMessageEvent(portal.MXID, mautrix.EventMessage, msg)
+		if err != nil {
+			portal.log.Errorln("Failed to send bridging failure message:", err)
+		}
 	} else {
 		portal.log.Debugln("Handled Matrix event:", evt)
 	}

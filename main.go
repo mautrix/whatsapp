@@ -282,7 +282,7 @@ func (bridge *Bridge) Stop() {
 		sess, err := user.Conn.Disconnect()
 		if err != nil {
 			bridge.Log.Errorfln("Error while disconnecting %s: %v", user.MXID, err)
-		} else {
+		} else if len(sess.Wid) > 0 {
 			user.SetSession(&sess)
 		}
 	}
