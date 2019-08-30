@@ -460,7 +460,7 @@ func (user *User) updateLastConnectionIfNecessary() {
 
 func (user *User) HandleError(err error) {
 	if errors.Cause(err) != whatsapp.ErrInvalidWsData {
-		user.log.Errorln("WhatsApp error:", err)
+		user.log.Errorfln("WhatsApp error: %v", err)
 	}
 	if closed, ok := err.(*whatsapp.ErrConnectionClosed); ok {
 		if closed.Code == 1000 && user.cleanDisconnection {

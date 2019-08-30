@@ -62,3 +62,5 @@ maunium.net/go/mautrix-appservice v0.1.0-alpha.3.0.20190824195529-3507711d75aa h
 maunium.net/go/mautrix-appservice v0.1.0-alpha.3.0.20190824195529-3507711d75aa/go.mod h1:PZTnFsEUt4YALO/OGGyWXeQulBVGEPjI8FQ88XCbu/w=
 maunium.net/go/mautrix-appservice v0.1.0-alpha.3.0.20190825132837-ffcc1e3c7ed7 h1:0B3zGyfNVxdCcoFDgvDh8CW9U0gkCDvwKbP0a0UIUEQ=
 maunium.net/go/mautrix-appservice v0.1.0-alpha.3.0.20190825132837-ffcc1e3c7ed7/go.mod h1:FJRRpH5+p3wCfEt6u/3kMeu9aGX/pk2PqtvjRDRW74w=
+maunium.net/go/mautrix-appservice v0.1.0-alpha.3.0.20190830063827-e7dcd7e42e7c h1:jt0i4ZkHikhy0T5Lxe+ApvLChy1MdloxGjs/kaImHD4=
+maunium.net/go/mautrix-appservice v0.1.0-alpha.3.0.20190830063827-e7dcd7e42e7c/go.mod h1:FJRRpH5+p3wCfEt6u/3kMeu9aGX/pk2PqtvjRDRW74w=
