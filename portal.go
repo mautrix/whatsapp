@@ -35,6 +35,7 @@ import (
 
 	"github.com/Rhymen/go-whatsapp"
 	waProto "github.com/Rhymen/go-whatsapp/binary/proto"
+	"maunium.net/go/mautrix/format"
 
 	log "maunium.net/go/maulogger/v2"
 
@@ -1081,8 +1082,28 @@ type MediaUpload struct {
 	Thumbnail     []byte
 }
 
+func (portal *Portal) sendMatrixConnectionError(sender *User, eventID string) bool {
+	if !sender.HasSession() {
+		portal.log.Debugln("Ignoring event", eventID, "from", sender.MXID, "as user has no session")
+		return true
+	} else if !sender.IsConnected() {
+		portal.log.Debugln("Ignoring event", eventID, "from", sender.MXID, "as user is not connected")
+		msg := format.RenderMarkdown(fmt.Sprintf("\u26a0 You are not connected to WhatsApp, so your message was not bridged. " +
+			"Use `%s reconnect` to reconnect.", portal.bridge.Config.Bridge.CommandPrefix))
+		msg.MsgType = mautrix.MsgNotice
+		_, err := portal.MainIntent().SendMessageEvent(portal.MXID, mautrix.EventMessage, msg)
+		if err != nil {
+			portal.log.Errorln("Failed to send bridging failure message:", err)
+		}
+		return true
+	}
+	return false
+}
+
 func (portal *Portal) HandleMatrixMessage(sender *User, evt *mautrix.Event) {
 	if portal.IsPrivateChat() && sender.JID != portal.Key.Receiver {
+		return
+	} else if portal.sendMatrixConnectionError(sender, evt.ID) {
 		return
 	}
 	portal.log.Debugfln("Received event %s", evt.ID)

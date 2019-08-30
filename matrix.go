@@ -190,17 +190,6 @@ func (mx *MatrixHandler) HandleMessage(evt *mautrix.Event) {
 		}
 	}
 
-	if !user.HasSession() {
-		mx.log.Debugln("Ignoring message from", user.MXID, "in", evt.RoomID, "as user has no session")
-		return
-	} else if !user.IsConnected() {
-		msg := format.RenderMarkdown(fmt.Sprintf("\u26a0 You are not connected to WhatsApp, so your message was not bridged. " +
-			"Use `%s reconnect` to reconnect.", mx.bridge.Config.Bridge.CommandPrefix))
-		msg.MsgType = mautrix.MsgNotice
-		_, _ = mx.bridge.Bot.SendMessageEvent(roomID, mautrix.EventMessage, msg)
-		return
-	}
-
 	portal := mx.bridge.GetPortalByMXID(roomID)
 	if portal != nil {
 		portal.HandleMatrixMessage(user, evt)
