@@ -55,7 +55,8 @@ type User struct {
 
 	cleanDisconnection bool
 
-	syncPortalsDone chan struct{}
+	chatListReceived chan struct{}
+	syncPortalsDone  chan struct{}
 
 	messages chan PortalMessage
 	syncLock sync.Mutex
@@ -143,8 +144,9 @@ func (bridge *Bridge) NewUser(dbUser *database.User) *User {
 		bridge: bridge,
 		log:    bridge.Log.Sub("User").Sub(string(dbUser.MXID)),
 
+		chatListReceived: make(chan struct{}, 1),
 		syncPortalsDone: make(chan struct{}, 1),
-		messages: make(chan PortalMessage, 256),
+		messages:        make(chan PortalMessage, 256),
 	}
 	user.Whitelisted = user.bridge.Config.Bridge.Permissions.IsWhitelisted(user.MXID)
 	user.Admin = user.bridge.Config.Bridge.Permissions.IsAdmin(user.MXID)
@@ -350,23 +352,35 @@ func (user *User) PostLogin() {
 
 func (user *User) intPostLogin() {
 	user.createCommunity()
+	defer user.syncLock.Unlock()
 
 	select {
-	case <- user.syncPortalsDone:
+	case <-user.chatListReceived:
+		user.log.Debugln("Chat list receive confirmation received in PostLogin")
+	case <-time.After(time.Duration(user.bridge.Config.Bridge.ChatListWait) * time.Second):
+		user.log.Warnln("Timed out waiting for chat list to arrive! Unlocking processing of incoming messages.")
+		return
+	}
+	select {
+	case <-user.syncPortalsDone:
 		user.log.Debugln("Post-login portal sync complete, unlocking processing of incoming messages.")
-	case <- time.After(time.Duration(user.bridge.Config.Bridge.ContactWaitDelay) * time.Second):
+	case <-time.After(time.Duration(user.bridge.Config.Bridge.PortalSyncWait) * time.Second):
 		user.log.Warnln("Timed out waiting for chat list to arrive! Unlocking processing of incoming messages.")
 	}
-	user.syncLock.Unlock()
 }
 
 func (user *User) HandleChatList(chats []whatsapp.Chat) {
+	user.log.Infoln("Chat list received")
 	chatMap := make(map[string]whatsapp.Chat)
 	for _, chat := range user.Conn.Store.Chats {
 		chatMap[chat.Jid] = chat
 	}
 	for _, chat := range chats {
 		chatMap[chat.Jid] = chat
+	}
+	select {
+	case user.chatListReceived <- struct{}{}:
+	default:
 	}
 	go user.syncPortals(chatMap, false)
 }

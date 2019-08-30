@@ -17,6 +17,7 @@
 package database
 
 import (
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"sync"
@@ -91,11 +92,9 @@ func (store *SQLStateStore) GetRoomMemberships(roomID string) map[string]mautrix
 func (store *SQLStateStore) GetMembership(roomID, userID string) mautrix.Membership {
 	row := store.db.QueryRow("SELECT membership FROM mx_user_profile WHERE room_id=$1 AND user_id=$2", roomID, userID)
 	membership := mautrix.MembershipLeave
-	if row != nil {
-		err := row.Scan(&membership)
-		if err != nil {
-			store.log.Warnfln("Failed to scan membership of %s in %s: %v", userID, roomID, err)
-		}
+	err := row.Scan(&membership)
+	if err != nil && err != sql.ErrNoRows {
+		store.log.Warnfln("Failed to scan membership of %s in %s: %v", userID, roomID, err)
 	}
 	return membership
 }

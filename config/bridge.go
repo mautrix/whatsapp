@@ -39,7 +39,8 @@ type BridgeConfig struct {
 	MaxConnectionAttempts int  `yaml:"max_connection_attempts"`
 	ConnectionRetryDelay  int  `yaml:"connection_retry_delay"`
 	ReportConnectionRetry bool `yaml:"report_connection_retry"`
-	ContactWaitDelay      int  `yaml:"contact_wait_delay"`
+	ChatListWait          int  `yaml:"chat_list_wait"`
+	PortalSyncWait        int  `yaml:"portal_sync_wait"`
 
 	CallNotices struct {
 		Start bool `yaml:"start"`
@@ -74,7 +75,8 @@ func (bc *BridgeConfig) setDefaults() {
 	bc.MaxConnectionAttempts = 3
 	bc.ConnectionRetryDelay = -1
 	bc.ReportConnectionRetry = true
-	bc.ContactWaitDelay = 30
+	bc.ChatListWait = 30
+	bc.PortalSyncWait = 600
 
 	bc.CallNotices.Start = true
 	bc.CallNotices.End = true

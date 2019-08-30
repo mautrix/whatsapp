@@ -191,6 +191,7 @@ func (mx *MatrixHandler) HandleMessage(evt *mautrix.Event) {
 	}
 
 	if !user.HasSession() {
+		mx.log.Debugln("Ignoring message from", user.MXID, "in", evt.RoomID, "as user has no session")
 		return
 	} else if !user.IsConnected() {
 		msg := format.RenderMarkdown(fmt.Sprintf("\u26a0 You are not connected to WhatsApp, so your message was not bridged. " +

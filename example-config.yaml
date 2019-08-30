@@ -74,7 +74,10 @@ bridge:
     report_connection_retry: true
     # Maximum number of seconds to wait for chats to be sent at startup.
     # If this is too low and you have lots of chats, it could cause backfilling to fail.
-    contact_wait_delay: 30
+    chat_list_wait: 30
+    # Maximum number of seconds to wait to sync portals before force unlocking message processing.
+    # If this is too low and you have lots of chats, it could cause backfilling to fail.
+    portal_sync_wait: 600
 
     # Whether or not to send call start/end notices to Matrix.
     call_notices:

@@ -138,11 +138,9 @@ const cmdLoginHelp = `login - Authenticate this Bridge as WhatsApp Web Client`
 
 // CommandLogin handles login command
 func (handler *CommandHandler) CommandLogin(ce *CommandEvent) {
-	if ce.User.Conn == nil {
-		if !ce.User.Connect(true) {
-			ce.User.log.Debugln("Connect() returned false, assuming error was logged elsewhere and canceling login.")
-			return
-		}
+	if !ce.User.Connect(true) {
+		ce.User.log.Debugln("Connect() returned false, assuming error was logged elsewhere and canceling login.")
+		return
 	}
 	ce.User.Login(ce)
 }
