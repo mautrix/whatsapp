@@ -14,6 +14,9 @@ import (
 
 func init() {
 	migrateRegistrations := func(tx *sql.Tx, registrations map[string]bool) error {
+		if len(registrations) == 0 {
+			return nil
+		}
 		values := make([]interface{}, 0, len(registrations))
 		valueStrings := make([]string, 0, len(registrations))
 		i := 1
@@ -31,6 +34,9 @@ func init() {
 
 	migrateMemberships := func(tx *sql.Tx, rooms map[string]map[string]mautrix.Membership) error {
 		for roomID, members := range rooms {
+			if len(members) == 0 {
+				continue
+			}
 			var values []interface{}
 			var valueStrings []string
 			i := 1
@@ -49,6 +55,9 @@ func init() {
 	}
 
 	migratePowerLevels := func(tx *sql.Tx, rooms map[string]*mautrix.PowerLevels) error {
+		if len(rooms) == 0 {
+			return nil
+		}
 		var values []interface{}
 		var valueStrings []string
 		i := 1
