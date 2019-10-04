@@ -4,6 +4,7 @@ go 1.11
 
 require (
 	github.com/Rhymen/go-whatsapp v0.0.2-0.20190524185555-8d76e32a6d8e
+	github.com/chai2010/webp v1.1.0
 	github.com/lib/pq v1.1.1
 	github.com/mattn/go-sqlite3 v1.10.0
 	github.com/pkg/errors v0.8.1
@@ -16,6 +17,6 @@ require (
 )
 
 replace (
-	github.com/Rhymen/go-whatsapp => github.com/tulir/go-whatsapp v0.0.2-0.20190903182221-4e1a838ff3ba
+	github.com/Rhymen/go-whatsapp => github.com/tulir/go-whatsapp v0.0.2-0.20191004160943-faf0ee6fab98
 	gopkg.in/russross/blackfriday.v2 => github.com/russross/blackfriday/v2 v2.0.1
 )

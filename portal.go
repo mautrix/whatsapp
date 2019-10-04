@@ -33,6 +33,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/chai2010/webp"
+
 	"github.com/Rhymen/go-whatsapp"
 	waProto "github.com/Rhymen/go-whatsapp/binary/proto"
 	"maunium.net/go/mautrix/format"
@@ -189,13 +191,15 @@ func (portal *Portal) handleMessage(msg PortalMessage) {
 	case whatsapp.TextMessage:
 		portal.HandleTextMessage(msg.source, data)
 	case whatsapp.ImageMessage:
-		portal.HandleMediaMessage(msg.source, data.Download, data.Thumbnail, data.Info, data.Type, data.Caption)
+		portal.HandleMediaMessage(msg.source, data.Download, data.Thumbnail, data.Info, data.Type, data.Caption, false)
+	case whatsapp.StickerMessage:
+		portal.HandleMediaMessage(msg.source, data.Download, data.Thumbnail, data.Info, data.Type, "", true)
 	case whatsapp.VideoMessage:
-		portal.HandleMediaMessage(msg.source, data.Download, data.Thumbnail, data.Info, data.Type, data.Caption)
+		portal.HandleMediaMessage(msg.source, data.Download, data.Thumbnail, data.Info, data.Type, data.Caption, false)
 	case whatsapp.AudioMessage:
-		portal.HandleMediaMessage(msg.source, data.Download, nil, data.Info, data.Type, "")
+		portal.HandleMediaMessage(msg.source, data.Download, nil, data.Info, data.Type, "", false)
 	case whatsapp.DocumentMessage:
-		portal.HandleMediaMessage(msg.source, data.Download, data.Thumbnail, data.Info, data.Type, data.Title)
+		portal.HandleMediaMessage(msg.source, data.Download, data.Thumbnail, data.Info, data.Type, data.Title, false)
 	case whatsappExt.MessageRevocation:
 		portal.HandleMessageRevoke(msg.source, data)
 	case FakeMessage:
@@ -898,7 +902,7 @@ func (portal *Portal) HandleTextMessage(source *User, message whatsapp.TextMessa
 	portal.finishHandling(source, message.Info.Source, resp.EventID)
 }
 
-func (portal *Portal) HandleMediaMessage(source *User, download func() ([]byte, error), thumbnail []byte, info whatsapp.MessageInfo, mimeType, caption string) {
+func (portal *Portal) HandleMediaMessage(source *User, download func() ([]byte, error), thumbnail []byte, info whatsapp.MessageInfo, mimeType, caption string, sendAsSticker bool) {
 	if !portal.startHandling(info) {
 		return
 	}
@@ -924,6 +928,25 @@ func (portal *Portal) HandleMediaMessage(source *User, download func() ([]byte, 
 	if detected := http.DetectContentType(data); detected != "application/octet-stream" {
 		mimeType = detected
 	}
+
+	// synapse doesn't handle webp well, so we convert it. This can be dropped once https://github.com/matrix-org/synapse/issues/4382 is fixed
+	if mimeType == "image/webp" {
+		img, err := webp.Decode(bytes.NewReader(data))
+		if err != nil {
+			portal.log.Errorfln("Failed to decode media for %s: %v", err)
+			return
+		}
+
+		var buf bytes.Buffer
+		err = png.Encode(&buf, img)
+		if err != nil {
+			portal.log.Errorfln("Failed to convert media for %s: %v", err)
+			return
+		}
+		data = buf.Bytes()
+		mimeType = "image/png"
+	}
+
 	uploaded, err := intent.UploadBytes(data, mimeType)
 	if err != nil {
 		portal.log.Errorfln("Failed to upload media for %s: %v", err)
@@ -963,7 +986,9 @@ func (portal *Portal) HandleMediaMessage(source *User, download func() ([]byte, 
 
 	switch strings.ToLower(strings.Split(mimeType, "/")[0]) {
 	case "image":
-		content.MsgType = mautrix.MsgImage
+		if (!sendAsSticker) {
+			content.MsgType = mautrix.MsgImage
+		}
 		cfg, _, _ := image.DecodeConfig(bytes.NewReader(data))
 		content.Info.Width = cfg.Width
 		content.Info.Height = cfg.Height
@@ -977,7 +1002,11 @@ func (portal *Portal) HandleMediaMessage(source *User, download func() ([]byte, 
 
 	_, _ = intent.UserTyping(portal.MXID, false, 0)
 	ts := int64(info.Timestamp * 1000)
-	resp, err := intent.SendMassagedMessageEvent(portal.MXID, mautrix.EventMessage, &MessageContent{content, intent.IsCustomPuppet}, ts)
+	eventType := mautrix.EventMessage
+	if sendAsSticker {
+		eventType = mautrix.EventSticker
+	}
+	resp, err := intent.SendMassagedMessageEvent(portal.MXID, eventType, &MessageContent{content, intent.IsCustomPuppet}, ts)
 	if err != nil {
 		portal.log.Errorfln("Failed to handle message %s: %v", info.Id, err)
 		return
