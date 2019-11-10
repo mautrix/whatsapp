@@ -1,9 +1,9 @@
 # Homeserver details.
 homeserver:
     # The address that this appservice can use to connect to the homeserver.
-    address: https://matrix.org
+    address: https://example.com
     # The domain of the homeserver (for MXIDs, etc).
-    domain: matrix.org
+    domain: example.com
 
 # Application service host/registration related details.
 # Changing these values requires regeneration of the registration.
@@ -122,6 +122,7 @@ bridge:
 
     # Permissions for using the bridge.
     # Permitted values:
+    # relaybot - Talk through the relaybot (if enabled), no access otherwise
     #     user - Access to use the bridge to chat with a WhatsApp account.
     #    admin - User level and some additional administration tools
     # Permitted keys:
@@ -129,8 +130,29 @@ bridge:
     #   domain - All users on that homeserver
     #     mxid - Specific user
     permissions:
+        "*": relaybot
         "example.com": user
         "@admin:example.com": admin
+
+    relaybot:
+        # Whether or not relaybot support is enabled.
+        enabled: false
+        # The management room for the bot. This is where all status notifications are posted and
+        # in this room, you can use `!wa <command>` instead of `!wa relaybot <command>`. Omitting
+        # the command prefix completely like in user management rooms is not possible.
+        management: !foo:example.com
+        # List of users to invite to all created rooms that include the relaybot.
+        invites: []
+        # The formats to use when sending messages to WhatsApp via the relaybot.
+        message_formats:
+            m.text: "<b>{{ .Sender.Displayname }}</b>: {{ .Message }}"
+            m.notice: "<b>{{ .Sender.Displayname }}</b>: {{ .Message }}"
+            m.emote: "* <b>{{ .Sender.Displayname }}</b> {{ .Message }}"
+            m.file: "<b>{{ .Sender.Displayname }}</b> sent a file"
+            m.image: "<b>{{ .Sender.Displayname }}</b> sent an image"
+            m.audio: "<b>{{ .Sender.Displayname }}</b> sent an audio file"
+            m.video: "<b>{{ .Sender.Displayname }}</b> sent a video"
+            m.location: "<b>{{ .Sender.Displayname }}</b> sent a location"
 
 # Logging config.
 logging:

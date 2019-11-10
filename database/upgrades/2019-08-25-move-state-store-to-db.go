@@ -47,7 +47,7 @@ func init() {
 		return executeBatch(tx, valueStrings, values...)
 	}
 
-	migrateMemberships := func(tx *sql.Tx, rooms map[string]map[string]mautrix.Membership) error {
+	migrateMemberships := func(tx *sql.Tx, rooms map[string]map[string]mautrix.Member) error {
 		for roomID, members := range rooms {
 			if len(members) == 0 {
 				continue
@@ -125,7 +125,7 @@ func init() {
 			return err
 		} else if err = migrateRegistrations(tx, store.Registrations); err != nil {
 			return err
-		} else if err = migrateMemberships(tx, store.Memberships); err != nil {
+		} else if err = migrateMemberships(tx, store.Members); err != nil {
 			return err
 		} else if err = migratePowerLevels(tx, store.PowerLevels); err != nil {
 			return err

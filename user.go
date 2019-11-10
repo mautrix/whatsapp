@@ -47,8 +47,11 @@ type User struct {
 	bridge *Bridge
 	log    log.Logger
 
-	Admin       bool
-	Whitelisted bool
+	Admin               bool
+	Whitelisted         bool
+	RelaybotWhitelisted bool
+
+	IsRelaybot bool
 
 	ConnectionErrors int
 	CommunityID      string
@@ -144,10 +147,13 @@ func (bridge *Bridge) NewUser(dbUser *database.User) *User {
 		bridge: bridge,
 		log:    bridge.Log.Sub("User").Sub(string(dbUser.MXID)),
 
+		IsRelaybot: false,
+
 		chatListReceived: make(chan struct{}, 1),
-		syncPortalsDone: make(chan struct{}, 1),
-		messages:        make(chan PortalMessage, 256),
+		syncPortalsDone:  make(chan struct{}, 1),
+		messages:         make(chan PortalMessage, 256),
 	}
+	user.RelaybotWhitelisted = user.bridge.Config.Bridge.Permissions.IsRelaybotWhitelisted(user.MXID)
 	user.Whitelisted = user.bridge.Config.Bridge.Permissions.IsWhitelisted(user.MXID)
 	user.Admin = user.bridge.Config.Bridge.Permissions.IsAdmin(user.MXID)
 	go user.handleMessageLoop()
@@ -772,4 +778,8 @@ func (user *User) HandleJsonMessage(message string) {
 
 func (user *User) HandleRawMessage(message *waProto.WebMessageInfo) {
 	user.updateLastConnectionIfNecessary()
+}
+
+func (user *User) NeedsRelaybot(portal *Portal) bool {
+	return !user.HasSession() || user.IsInPortal(portal.Key.JID) || portal.IsPrivateChat()
 }

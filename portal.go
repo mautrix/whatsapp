@@ -21,6 +21,7 @@ import (
 	"encoding/gob"
 	"encoding/hex"
 	"fmt"
+	"html"
 	"image"
 	"image/gif"
 	"image/jpeg"
@@ -34,15 +35,14 @@ import (
 	"time"
 
 	"github.com/chai2010/webp"
+	log "maunium.net/go/maulogger/v2"
 
 	"github.com/Rhymen/go-whatsapp"
 	waProto "github.com/Rhymen/go-whatsapp/binary/proto"
-	"maunium.net/go/mautrix/format"
-
-	log "maunium.net/go/maulogger/v2"
 
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix-appservice"
+	"maunium.net/go/mautrix/format"
 
 	"maunium.net/go/mautrix-whatsapp/database"
 	"maunium.net/go/mautrix-whatsapp/types"
@@ -158,7 +158,8 @@ type Portal struct {
 
 	messages chan PortalMessage
 
-	isPrivate *bool
+	isPrivate   *bool
+	hasRelaybot *bool
 }
 
 const MaxMessageAgeToCreatePortal = 5 * 60 // 5 minutes
@@ -191,15 +192,15 @@ func (portal *Portal) handleMessage(msg PortalMessage) {
 	case whatsapp.TextMessage:
 		portal.HandleTextMessage(msg.source, data)
 	case whatsapp.ImageMessage:
-		portal.HandleMediaMessage(msg.source, data.Download, data.Thumbnail, data.Info, data.Type, data.Caption, false)
+		portal.HandleMediaMessage(msg.source, data.Download, data.Thumbnail, data.Info, data.ContextInfo, data.Type, data.Caption, false)
 	case whatsapp.StickerMessage:
-		portal.HandleMediaMessage(msg.source, data.Download, data.Thumbnail, data.Info, data.Type, "", true)
+		portal.HandleMediaMessage(msg.source, data.Download, nil, data.Info, data.ContextInfo, data.Type, "", true)
 	case whatsapp.VideoMessage:
-		portal.HandleMediaMessage(msg.source, data.Download, data.Thumbnail, data.Info, data.Type, data.Caption, false)
+		portal.HandleMediaMessage(msg.source, data.Download, data.Thumbnail, data.Info, data.ContextInfo, data.Type, data.Caption, false)
 	case whatsapp.AudioMessage:
-		portal.HandleMediaMessage(msg.source, data.Download, nil, data.Info, data.Type, "", false)
+		portal.HandleMediaMessage(msg.source, data.Download, nil, data.Info, data.ContextInfo, data.Type, "", false)
 	case whatsapp.DocumentMessage:
-		portal.HandleMediaMessage(msg.source, data.Download, data.Thumbnail, data.Info, data.Type, data.Title, false)
+		portal.HandleMediaMessage(msg.source, data.Download, data.Thumbnail, data.Info, data.ContextInfo, data.Type, data.Title, false)
 	case whatsappExt.MessageRevocation:
 		portal.HandleMessageRevoke(msg.source, data)
 	case FakeMessage:
@@ -281,14 +282,7 @@ func (portal *Portal) SyncParticipants(metadata *whatsappExt.GroupInfo) {
 	}
 	for _, participant := range metadata.Participants {
 		user := portal.bridge.GetUserByJID(participant.JID)
-		if user != nil && !portal.bridge.AS.StateStore.IsInvited(portal.MXID, user.MXID) {
-			_, err = portal.MainIntent().InviteUser(portal.MXID, &mautrix.ReqInviteUser{
-				UserID: user.MXID,
-			})
-			if err != nil {
-				portal.log.Warnfln("Failed to invite %s to %s: %v", user.MXID, portal.MXID, err)
-			}
-		}
+		portal.userMXIDAction(user, portal.ensureMXIDInvited)
 
 		puppet := portal.bridge.GetPuppetByJID(participant.JID)
 		err := puppet.IntentFor(portal).EnsureJoined(portal.MXID)
@@ -421,11 +415,30 @@ func (portal *Portal) UpdateMetadata(user *User) bool {
 	return update
 }
 
-func (portal *Portal) ensureUserInvited(user *User) {
-	err := portal.MainIntent().EnsureInvited(portal.MXID, user.MXID)
-	if err != nil {
-		portal.log.Warnfln("Failed to ensure %s is invited to %s: %v", user.MXID, portal.MXID, err)
+func (portal *Portal) userMXIDAction(user *User, fn func(mxid types.MatrixUserID)) {
+	if user == nil {
+		return
 	}
+
+	if user == portal.bridge.Relaybot {
+		for _, mxid := range portal.bridge.Config.Bridge.Relaybot.InviteUsers {
+			fn(mxid)
+		}
+	} else {
+		fn(user.MXID)
+	}
+}
+
+func (portal *Portal) ensureMXIDInvited(mxid types.MatrixUserID) {
+	err := portal.MainIntent().EnsureInvited(portal.MXID, mxid)
+	if err != nil {
+		portal.log.Warnfln("Failed to ensure %s is invited to %s: %v", mxid, portal.MXID, err)
+	}
+}
+
+func (portal *Portal) ensureUserInvited(user *User) {
+	portal.userMXIDAction(user, portal.ensureMXIDInvited)
+
 	customPuppet := portal.bridge.GetPuppetByCustomMXID(user.MXID)
 	if customPuppet != nil && customPuppet.CustomIntent() != nil {
 		_ = customPuppet.CustomIntent().EnsureJoined(portal.MXID)
@@ -434,6 +447,11 @@ func (portal *Portal) ensureUserInvited(user *User) {
 
 func (portal *Portal) Sync(user *User, contact whatsapp.Contact) {
 	portal.log.Infoln("Syncing portal for", user.MXID)
+
+	if user.IsRelaybot {
+		yes := true
+		portal.hasRelaybot = &yes
+	}
 
 	if len(portal.MXID) == 0 {
 		if !portal.IsPrivateChat() {
@@ -745,11 +763,16 @@ func (portal *Portal) CreateMatrixRoom(user *User) error {
 		})
 	}
 
+	invite := []string{user.MXID}
+	if user.IsRelaybot {
+		invite = portal.bridge.Config.Bridge.Relaybot.InviteUsers
+	}
+
 	resp, err := intent.CreateRoom(&mautrix.ReqCreateRoom{
 		Visibility:   "private",
 		Name:         portal.Name,
 		Topic:        portal.Topic,
-		Invite:       []string{user.MXID},
+		Invite:       invite,
 		Preset:       "private_chat",
 		IsDirect:     isPrivateChat,
 		InitialState: initialState,
@@ -783,6 +806,16 @@ func (portal *Portal) IsPrivateChat() bool {
 	return *portal.isPrivate
 }
 
+func (portal *Portal) HasRelaybot() bool {
+	if portal.bridge.Relaybot == nil {
+		return false
+	} else if portal.hasRelaybot == nil {
+		val := portal.bridge.Relaybot.IsInPortal(portal.Key.JID)
+		portal.hasRelaybot = &val
+	}
+	return *portal.hasRelaybot
+}
+
 func (portal *Portal) IsStatusBroadcastRoom() bool {
 	return portal.Key.JID == "status@broadcast"
 }
@@ -809,7 +842,7 @@ func (portal *Portal) GetMessageIntent(user *User, info whatsapp.MessageInfo) *a
 	return portal.bridge.GetPuppetByJID(info.SenderJid).IntentFor(portal)
 }
 
-func (portal *Portal) SetReply(content *mautrix.Content, info whatsapp.MessageInfo) {
+func (portal *Portal) SetReply(content *mautrix.Content, info whatsapp.ContextInfo) {
 	if len(info.QuotedMessageID) == 0 {
 		return
 	}
@@ -891,7 +924,7 @@ func (portal *Portal) HandleTextMessage(source *User, message whatsapp.TextMessa
 	}
 
 	portal.bridge.Formatter.ParseWhatsApp(content)
-	portal.SetReply(content, message.Info)
+	portal.SetReply(content, message.ContextInfo)
 
 	_, _ = intent.UserTyping(portal.MXID, false, 0)
 	resp, err := intent.SendMassagedMessageEvent(portal.MXID, mautrix.EventMessage, &MessageContent{content, intent.IsCustomPuppet}, int64(message.Info.Timestamp*1000))
@@ -902,7 +935,7 @@ func (portal *Portal) HandleTextMessage(source *User, message whatsapp.TextMessa
 	portal.finishHandling(source, message.Info.Source, resp.EventID)
 }
 
-func (portal *Portal) HandleMediaMessage(source *User, download func() ([]byte, error), thumbnail []byte, info whatsapp.MessageInfo, mimeType, caption string, sendAsSticker bool) {
+func (portal *Portal) HandleMediaMessage(source *User, download func() ([]byte, error), thumbnail []byte, info whatsapp.MessageInfo, context whatsapp.ContextInfo, mimeType, caption string, sendAsSticker bool) {
 	if !portal.startHandling(info) {
 		return
 	}
@@ -967,7 +1000,7 @@ func (portal *Portal) HandleMediaMessage(source *User, download func() ([]byte, 
 			MimeType: mimeType,
 		},
 	}
-	portal.SetReply(content, info)
+	portal.SetReply(content, context)
 
 	if thumbnail != nil {
 		thumbnailMime := http.DetectContentType(thumbnail)
@@ -986,7 +1019,7 @@ func (portal *Portal) HandleMediaMessage(source *User, download func() ([]byte, 
 
 	switch strings.ToLower(strings.Split(mimeType, "/")[0]) {
 	case "image":
-		if (!sendAsSticker) {
+		if !sendAsSticker {
 			content.MsgType = mautrix.MsgImage
 		}
 		cfg, _, _ := image.DecodeConfig(bytes.NewReader(data))
@@ -1070,18 +1103,15 @@ func (portal *Portal) downloadThumbnail(evt *mautrix.Event) []byte {
 	return buf.Bytes()
 }
 
-func (portal *Portal) preprocessMatrixMedia(sender *User, evt *mautrix.Event, mediaType whatsapp.MediaType) *MediaUpload {
+func (portal *Portal) preprocessMatrixMedia(sender *User, relaybotFormatted bool, evt *mautrix.Event, mediaType whatsapp.MediaType) *MediaUpload {
 	if evt.Content.Info == nil {
 		evt.Content.Info = &mautrix.FileInfo{}
 	}
-	caption := evt.Content.Body
-	exts, err := mime.ExtensionsByType(evt.Content.Info.MimeType)
-	for _, ext := range exts {
-		if strings.HasSuffix(caption, ext) {
-			caption = ""
-			break
-		}
+	var caption string
+	if relaybotFormatted {
+		caption = portal.bridge.Formatter.ParseMatrix(evt.Content.FormattedBody)
 	}
+
 	content, err := portal.MainIntent().DownloadBytes(evt.Content.URL)
 	if err != nil {
 		portal.log.Errorfln("Failed to download media in %s: %v", evt.ID, err)
@@ -1140,10 +1170,28 @@ func (portal *Portal) sendMatrixConnectionError(sender *User, eventID string) bo
 	return false
 }
 
+func (portal *Portal) addRelaybotFormat(user *User, evt *mautrix.Event) bool {
+	member := portal.MainIntent().Member(portal.MXID, evt.Sender)
+	if len(member.Displayname) == 0 {
+		member.Displayname = evt.Sender
+	}
+
+	if evt.Content.Format != mautrix.FormatHTML {
+		evt.Content.FormattedBody = strings.ReplaceAll(html.EscapeString(evt.Content.Body), "\n", "<br/>")
+		evt.Content.Format = mautrix.FormatHTML
+	}
+	data, err := portal.bridge.Config.Bridge.Relaybot.FormatMessage(evt, member)
+	if err != nil {
+		portal.log.Errorln("Failed to apply relaybot format:", err)
+	}
+	evt.Content.FormattedBody = data
+	return true
+}
+
 func (portal *Portal) HandleMatrixMessage(sender *User, evt *mautrix.Event) {
-	if portal.IsPrivateChat() && sender.JID != portal.Key.Receiver {
-		return
-	} else if portal.sendMatrixConnectionError(sender, evt.ID) {
+	if !portal.HasRelaybot() && (
+		(portal.IsPrivateChat() && sender.JID != portal.Key.Receiver) ||
+			portal.sendMatrixConnectionError(sender, evt.ID)) {
 		return
 	}
 	portal.log.Debugfln("Received event %s", evt.ID)
@@ -1172,6 +1220,15 @@ func (portal *Portal) HandleMatrixMessage(sender *User, evt *mautrix.Event) {
 			ctxInfo.QuotedMessage = msg.Content
 		}
 	}
+	relaybotFormatted := false
+	if sender.NeedsRelaybot(portal) {
+		if !portal.HasRelaybot() {
+			portal.log.Debugln("Ignoring message from", sender.MXID, "in chat with no relaybot")
+			return
+		}
+		relaybotFormatted = portal.addRelaybotFormat(sender, evt)
+		sender = portal.bridge.Relaybot
+	}
 	var err error
 	switch evt.Content.MsgType {
 	case mautrix.MsgText, mautrix.MsgEmote:
@@ -1179,7 +1236,7 @@ func (portal *Portal) HandleMatrixMessage(sender *User, evt *mautrix.Event) {
 		if evt.Content.Format == mautrix.FormatHTML {
 			text = portal.bridge.Formatter.ParseMatrix(evt.Content.FormattedBody)
 		}
-		if evt.Content.MsgType == mautrix.MsgEmote {
+		if evt.Content.MsgType == mautrix.MsgEmote && !relaybotFormatted {
 			text = "/me " + text
 		}
 		ctxInfo.MentionedJid = mentionRegex.FindAllString(text, -1)
@@ -1195,7 +1252,7 @@ func (portal *Portal) HandleMatrixMessage(sender *User, evt *mautrix.Event) {
 			info.Message.Conversation = &text
 		}
 	case mautrix.MsgImage:
-		media := portal.preprocessMatrixMedia(sender, evt, whatsapp.MediaImage)
+		media := portal.preprocessMatrixMedia(sender, relaybotFormatted, evt, whatsapp.MediaImage)
 		if media == nil {
 			return
 		}
@@ -1210,7 +1267,7 @@ func (portal *Portal) HandleMatrixMessage(sender *User, evt *mautrix.Event) {
 			FileLength:    &media.FileLength,
 		}
 	case mautrix.MsgVideo:
-		media := portal.preprocessMatrixMedia(sender, evt, whatsapp.MediaVideo)
+		media := portal.preprocessMatrixMedia(sender, relaybotFormatted, evt, whatsapp.MediaVideo)
 		if media == nil {
 			return
 		}
@@ -1227,7 +1284,7 @@ func (portal *Portal) HandleMatrixMessage(sender *User, evt *mautrix.Event) {
 			FileLength:    &media.FileLength,
 		}
 	case mautrix.MsgAudio:
-		media := portal.preprocessMatrixMedia(sender, evt, whatsapp.MediaAudio)
+		media := portal.preprocessMatrixMedia(sender, relaybotFormatted, evt, whatsapp.MediaAudio)
 		if media == nil {
 			return
 		}
@@ -1242,12 +1299,13 @@ func (portal *Portal) HandleMatrixMessage(sender *User, evt *mautrix.Event) {
 			FileLength:    &media.FileLength,
 		}
 	case mautrix.MsgFile:
-		media := portal.preprocessMatrixMedia(sender, evt, whatsapp.MediaDocument)
+		media := portal.preprocessMatrixMedia(sender, relaybotFormatted, evt, whatsapp.MediaDocument)
 		if media == nil {
 			return
 		}
 		info.Message.DocumentMessage = &waProto.DocumentMessage{
 			Url:           &media.URL,
+			FileName:      &evt.Content.Body,
 			MediaKey:      media.MediaKey,
 			Mimetype:      &evt.Content.GetInfo().MimeType,
 			FileEncSha256: media.FileEncSHA256,

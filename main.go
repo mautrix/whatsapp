@@ -18,23 +18,23 @@ package main
 
 import (
 	"fmt"
+	"net/http"
 	"os"
 	"os/signal"
 	"sync"
 	"syscall"
+	"time"
 
 	flag "maunium.net/go/mauflag"
 	log "maunium.net/go/maulogger/v2"
 
+	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix-appservice"
-	"maunium.net/go/mautrix-whatsapp/database/upgrades"
 
 	"maunium.net/go/mautrix-whatsapp/config"
 	"maunium.net/go/mautrix-whatsapp/database"
+	"maunium.net/go/mautrix-whatsapp/database/upgrades"
 	"maunium.net/go/mautrix-whatsapp/types"
-	"net/http"
-	"maunium.net/go/mautrix"
-	"time"
 )
 
 var configPath = flag.MakeFull("c", "config", "The path to your config file.", "config.yaml").String()
@@ -104,6 +104,7 @@ type Bridge struct {
 	StateStore     *database.SQLStateStore
 	Bot            *appservice.IntentAPI
 	Formatter      *Formatter
+	Relaybot       *User
 
 	usersByMXID         map[types.MatrixUserID]*User
 	usersByJID          map[types.WhatsAppID]*User
@@ -220,6 +221,7 @@ func (bridge *Bridge) Start() {
 		bridge.Log.Fatalln("Failed to initialize database:", err)
 		os.Exit(15)
 	}
+	bridge.LoadRelaybot()
 	bridge.Log.Debugln("Checking connection to homeserver")
 	bridge.ensureConnection()
 	bridge.Log.Debugln("Starting application service HTTP server")
@@ -228,6 +230,21 @@ func (bridge *Bridge) Start() {
 	go bridge.EventProcessor.Start()
 	go bridge.UpdateBotProfile()
 	go bridge.StartUsers()
+}
+
+func (bridge *Bridge) LoadRelaybot() {
+	if !bridge.Config.Bridge.Relaybot.Enabled {
+		return
+	}
+	bridge.Relaybot = bridge.GetUserByMXID("relaybot")
+	if bridge.Relaybot.HasSession() {
+		bridge.Log.Debugln("Relaybot is enabled")
+	} else {
+		bridge.Log.Debugln("Relaybot is enabled, but not logged in")
+	}
+	bridge.Relaybot.ManagementRoom = bridge.Config.Bridge.Relaybot.ManagementRoom
+	bridge.Relaybot.IsRelaybot = true
+	bridge.Relaybot.Connect(false)
 }
 
 func (bridge *Bridge) UpdateBotProfile() {

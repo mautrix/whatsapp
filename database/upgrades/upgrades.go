@@ -28,7 +28,7 @@ type upgrade struct {
 	fn      upgradeFunc
 }
 
-const NumberOfUpgrades = 10
+const NumberOfUpgrades = 11
 
 var upgrades [NumberOfUpgrades]upgrade
 

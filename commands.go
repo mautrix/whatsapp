@@ -20,13 +20,13 @@ import (
 	"fmt"
 	"strings"
 
-	"maunium.net/go/mautrix"
-	"maunium.net/go/mautrix/format"
-
 	"github.com/Rhymen/go-whatsapp"
 
 	"maunium.net/go/maulogger/v2"
+
+	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix-appservice"
+	"maunium.net/go/mautrix/format"
 
 	"maunium.net/go/mautrix-whatsapp/database"
 	"maunium.net/go/mautrix-whatsapp/types"
@@ -53,6 +53,7 @@ type CommandEvent struct {
 	Handler *CommandHandler
 	RoomID  types.MatrixRoomID
 	User    *User
+	Command string
 	Args    []string
 }
 
@@ -60,7 +61,11 @@ type CommandEvent struct {
 func (ce *CommandEvent) Reply(msg string, args ...interface{}) {
 	content := format.RenderMarkdown(fmt.Sprintf(msg, args...))
 	content.MsgType = mautrix.MsgNotice
-	_, err := ce.Bot.SendMessageEvent(ce.User.ManagementRoom, mautrix.EventMessage, content)
+	room := ce.User.ManagementRoom
+	if len(room) == 0 {
+		room = ce.RoomID
+	}
+	_, err := ce.Bot.SendMessageEvent(room, mautrix.EventMessage, content)
 	if err != nil {
 		ce.Handler.log.Warnfln("Failed to reply to command from %s: %v", ce.User.MXID, err)
 	}
@@ -69,17 +74,27 @@ func (ce *CommandEvent) Reply(msg string, args ...interface{}) {
 // Handle handles messages to the bridge
 func (handler *CommandHandler) Handle(roomID types.MatrixRoomID, user *User, message string) {
 	args := strings.Split(message, " ")
-	cmd := strings.ToLower(args[0])
 	ce := &CommandEvent{
 		Bot:     handler.bridge.Bot,
 		Bridge:  handler.bridge,
 		Handler: handler,
 		RoomID:  roomID,
 		User:    user,
+		Command: strings.ToLower(args[0]),
 		Args:    args[1:],
 	}
 	handler.log.Debugfln("%s sent '%s' in %s", user.MXID, message, roomID)
-	switch cmd {
+	if roomID == handler.bridge.Config.Bridge.Relaybot.ManagementRoom {
+		handler.CommandRelaybot(ce)
+	} else {
+		handler.CommandMux(ce)
+	}
+}
+
+func (handler *CommandHandler) CommandMux(ce *CommandEvent) {
+	switch ce.Command {
+	case "relaybot":
+		handler.CommandRelaybot(ce)
 	case "login":
 		handler.CommandLogin(ce)
 	case "logout-matrix":
@@ -111,7 +126,7 @@ func (handler *CommandHandler) Handle(roomID types.MatrixRoomID, user *User, mes
 			return
 		}
 
-		switch cmd {
+		switch ce.Command {
 		case "login-matrix":
 			handler.CommandLoginMatrix(ce)
 		case "logout":
@@ -127,6 +142,21 @@ func (handler *CommandHandler) Handle(roomID types.MatrixRoomID, user *User, mes
 		}
 	default:
 		ce.Reply("Unknown Command")
+	}
+}
+
+func (handler *CommandHandler) CommandRelaybot(ce *CommandEvent) {
+	if handler.bridge.Relaybot == nil {
+		ce.Reply("The relaybot is disabled")
+	} else if !ce.User.Admin {
+		ce.Reply("Only admins can manage the relaybot")
+	} else {
+		if ce.Command == "relaybot" {
+			ce.Command = strings.ToLower(ce.Args[0])
+			ce.Args = ce.Args[1:]
+		}
+		ce.User = handler.bridge.Relaybot
+		handler.CommandMux(ce)
 	}
 }
 
@@ -305,7 +335,7 @@ const cmdHelpHelp = `help - Prints this help`
 // CommandHelp handles help command
 func (handler *CommandHandler) CommandHelp(ce *CommandEvent) {
 	cmdPrefix := ""
-	if ce.User.ManagementRoom != ce.RoomID {
+	if ce.User.ManagementRoom != ce.RoomID || ce.User.IsRelaybot {
 		cmdPrefix = handler.bridge.Config.Bridge.CommandPrefix + " "
 	}
 

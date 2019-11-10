@@ -24,6 +24,7 @@ import (
 
 	"github.com/Rhymen/go-whatsapp"
 
+	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix-appservice"
 
 	"maunium.net/go/mautrix-whatsapp/types"
@@ -63,6 +64,8 @@ type BridgeConfig struct {
 	CommandPrefix string `yaml:"command_prefix"`
 
 	Permissions PermissionConfig `yaml:"permissions"`
+
+	Relaybot RelaybotConfig `yaml:"relaybot"`
 
 	usernameTemplate    *template.Template `yaml:"-"`
 	displaynameTemplate *template.Template `yaml:"-"`
@@ -171,9 +174,10 @@ type PermissionConfig map[string]PermissionLevel
 type PermissionLevel int
 
 const (
-	PermissionLevelDefault PermissionLevel = 0
-	PermissionLevelUser    PermissionLevel = 10
-	PermissionLevelAdmin   PermissionLevel = 100
+	PermissionLevelDefault  PermissionLevel = 0
+	PermissionLevelRelaybot PermissionLevel = 5
+	PermissionLevelUser     PermissionLevel = 10
+	PermissionLevelAdmin    PermissionLevel = 100
 )
 
 func (pc *PermissionConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
@@ -188,6 +192,8 @@ func (pc *PermissionConfig) UnmarshalYAML(unmarshal func(interface{}) error) err
 	}
 	for key, value := range rawPC {
 		switch strings.ToLower(value) {
+		case "relaybot":
+			(*pc)[key] = PermissionLevelRelaybot
 		case "user":
 			(*pc)[key] = PermissionLevelUser
 		case "admin":
@@ -211,6 +217,8 @@ func (pc *PermissionConfig) MarshalYAML() (interface{}, error) {
 	rawPC := make(map[string]string)
 	for key, value := range *pc {
 		switch value {
+		case PermissionLevelRelaybot:
+			rawPC[key] = "relaybot"
 		case PermissionLevelUser:
 			rawPC[key] = "user"
 		case PermissionLevelAdmin:
@@ -222,12 +230,16 @@ func (pc *PermissionConfig) MarshalYAML() (interface{}, error) {
 	return rawPC, nil
 }
 
+func (pc PermissionConfig) IsRelaybotWhitelisted(userID string) bool {
+	return pc.GetPermissionLevel(userID) >= PermissionLevelRelaybot
+}
+
 func (pc PermissionConfig) IsWhitelisted(userID string) bool {
-	return pc.GetPermissionLevel(userID) >= 10
+	return pc.GetPermissionLevel(userID) >= PermissionLevelUser
 }
 
 func (pc PermissionConfig) IsAdmin(userID string) bool {
-	return pc.GetPermissionLevel(userID) >= 100
+	return pc.GetPermissionLevel(userID) >= PermissionLevelAdmin
 }
 
 func (pc PermissionConfig) GetPermissionLevel(userID string) PermissionLevel {
@@ -248,4 +260,56 @@ func (pc PermissionConfig) GetPermissionLevel(userID string) PermissionLevel {
 	}
 
 	return PermissionLevelDefault
+}
+
+type RelaybotConfig struct {
+	Enabled        bool                 `yaml:"enabled"`
+	ManagementRoom string               `yaml:"management"`
+	InviteUsers    []types.MatrixUserID `yaml:"invites"`
+
+	MessageFormats   map[mautrix.MessageType]string `yaml:"message_formats"`
+	messageTemplates *template.Template             `yaml:"-"`
+}
+
+type umRelaybotConfig RelaybotConfig
+
+func (rc *RelaybotConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	err := unmarshal((*umRelaybotConfig)(rc))
+	if err != nil {
+		return err
+	}
+
+	rc.messageTemplates = template.New("messageTemplates")
+	for key, format := range rc.MessageFormats {
+		_, err := rc.messageTemplates.New(string(key)).Parse(format)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+type Sender struct {
+	UserID types.MatrixUserID
+	mautrix.Member
+}
+
+type formatData struct {
+	Sender  Sender
+	Message string
+	Content mautrix.Content
+}
+
+func (rc *RelaybotConfig) FormatMessage(evt *mautrix.Event, member mautrix.Member) (string, error) {
+	var output strings.Builder
+	err := rc.messageTemplates.ExecuteTemplate(&output, string(evt.Content.MsgType), formatData{
+		Sender: Sender{
+			UserID: evt.Sender,
+			Member: member,
+		},
+		Content: evt.Content,
+		Message: evt.Content.FormattedBody,
+	})
+	return output.String(), err
 }

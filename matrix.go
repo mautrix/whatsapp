@@ -21,6 +21,7 @@ import (
 	"strings"
 
 	"maunium.net/go/maulogger/v2"
+
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix-appservice"
 	"maunium.net/go/mautrix/format"
@@ -85,6 +86,12 @@ func (mx *MatrixHandler) HandleBotInvite(evt *mautrix.Event) {
 		return
 	}
 
+	if evt.RoomID == mx.bridge.Config.Bridge.Relaybot.ManagementRoom {
+		intent.SendNotice(evt.RoomID, "This is the relaybot management room. Send `!wa help` to get a list of commands.")
+		mx.log.Debugln("Joined relaybot management room", evt.RoomID, "after invite from", evt.Sender)
+		return
+	}
+
 	hasPuppets := false
 	for mxid, _ := range members.Joined {
 		if mxid == intent.UserID || mxid == evt.Sender {
@@ -135,7 +142,7 @@ func (mx *MatrixHandler) HandleMembership(evt *mautrix.Event) {
 
 func (mx *MatrixHandler) HandleRoomMetadata(evt *mautrix.Event) {
 	user := mx.bridge.GetUserByMXID(types.MatrixUserID(evt.Sender))
-	if user == nil || !user.Whitelisted || !user.IsConnected()  {
+	if user == nil || !user.Whitelisted || !user.IsConnected() {
 		return
 	}
 
@@ -174,11 +181,11 @@ func (mx *MatrixHandler) HandleMessage(evt *mautrix.Event) {
 	roomID := types.MatrixRoomID(evt.RoomID)
 	user := mx.bridge.GetUserByMXID(types.MatrixUserID(evt.Sender))
 
-	if !user.Whitelisted {
+	if !user.RelaybotWhitelisted {
 		return
 	}
 
-	if evt.Content.MsgType == mautrix.MsgText {
+	if user.Whitelisted && evt.Content.MsgType == mautrix.MsgText {
 		commandPrefix := mx.bridge.Config.Bridge.CommandPrefix
 		hasCommandPrefix := strings.HasPrefix(evt.Content.Body, commandPrefix)
 		if hasCommandPrefix {
@@ -191,7 +198,7 @@ func (mx *MatrixHandler) HandleMessage(evt *mautrix.Event) {
 	}
 
 	portal := mx.bridge.GetPortalByMXID(roomID)
-	if portal != nil {
+	if portal != nil && (user.Whitelisted || portal.HasRelaybot()) {
 		portal.HandleMatrixMessage(user, evt)
 	}
 }
@@ -211,8 +218,8 @@ func (mx *MatrixHandler) HandleRedaction(evt *mautrix.Event) {
 	if !user.HasSession() {
 		return
 	} else if !user.IsConnected() {
-		msg := format.RenderMarkdown(fmt.Sprintf("[%[1]s](https://matrix.to/#/%[1]s): \u26a0 " +
-			"You are not connected to WhatsApp, so your redaction was not bridged. " +
+		msg := format.RenderMarkdown(fmt.Sprintf("[%[1]s](https://matrix.to/#/%[1]s): \u26a0 "+
+			"You are not connected to WhatsApp, so your redaction was not bridged. "+
 			"Use `%[2]s reconnect` to reconnect.", user.MXID, mx.bridge.Config.Bridge.CommandPrefix))
 		msg.MsgType = mautrix.MsgNotice
 		_, _ = mx.bridge.Bot.SendMessageEvent(roomID, mautrix.EventMessage, msg)

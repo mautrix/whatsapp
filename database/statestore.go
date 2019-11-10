@@ -70,23 +70,23 @@ func (store *SQLStateStore) MarkRegistered(userID string) {
 	}
 }
 
-func (store *SQLStateStore) GetRoomMemberships(roomID string) map[string]mautrix.Membership {
-	memberships := make(map[string]mautrix.Membership)
-	rows, err := store.db.Query("SELECT user_id, membership FROM mx_user_profile WHERE room_id=$1", roomID)
+func (store *SQLStateStore) GetRoomMembers(roomID string) map[string]mautrix.Member {
+	members := make(map[string]mautrix.Member)
+	rows, err := store.db.Query("SELECT user_id, membership, displayname, avatar_url FROM mx_user_profile WHERE room_id=$1", roomID)
 	if err != nil {
-		return memberships
+		return members
 	}
 	var userID string
-	var membership mautrix.Membership
+	var member mautrix.Member
 	for rows.Next() {
-		err := rows.Scan(&userID, &membership)
+		err := rows.Scan(&userID, &member.Membership, &member.Displayname, &member.AvatarURL)
 		if err != nil {
-			store.log.Warnfln("Failed to scan membership in %s: %v", roomID, err)
+			store.log.Warnfln("Failed to scan member in %s: %v", roomID, err)
 		} else {
-			memberships[userID] = membership
+			members[userID] = member
 		}
 	}
-	return memberships
+	return members
 }
 
 func (store *SQLStateStore) GetMembership(roomID, userID string) mautrix.Membership {
@@ -97,6 +97,24 @@ func (store *SQLStateStore) GetMembership(roomID, userID string) mautrix.Members
 		store.log.Warnfln("Failed to scan membership of %s in %s: %v", userID, roomID, err)
 	}
 	return membership
+}
+
+func (store *SQLStateStore) GetMember(roomID, userID string) mautrix.Member {
+	member, ok := store.TryGetMember(roomID, userID)
+	if !ok {
+		member.Membership = mautrix.MembershipLeave
+	}
+	return member
+}
+
+func (store *SQLStateStore) TryGetMember(roomID, userID string) (mautrix.Member, bool) {
+	row := store.db.QueryRow("SELECT membership, displayname, avatar_url FROM mx_user_profile WHERE room_id=$1 AND user_id=$2", roomID, userID)
+	var member mautrix.Member
+	err := row.Scan(&member.Membership, &member.Displayname, &member.AvatarURL)
+	if err != nil && err != sql.ErrNoRows {
+		store.log.Warnfln("Failed to scan member info of %s in %s: %v", userID, roomID, err)
+	}
+	return member, err == nil
 }
 
 func (store *SQLStateStore) IsInRoom(roomID, userID string) bool {
@@ -116,6 +134,7 @@ func (store *SQLStateStore) IsMembership(roomID, userID string, allowedMembershi
 	}
 	return false
 }
+
 func (store *SQLStateStore) SetMembership(roomID, userID string, membership mautrix.Membership) {
 	var err error
 	if store.db.dialect == "postgres" {
@@ -128,6 +147,22 @@ func (store *SQLStateStore) SetMembership(roomID, userID string, membership maut
 	}
 	if err != nil {
 		store.log.Warnfln("Failed to set membership of %s in %s to %s: %v", userID, roomID, membership, err)
+	}
+}
+
+func (store *SQLStateStore) SetMember(roomID, userID string, member mautrix.Member) {
+	var err error
+	if store.db.dialect == "postgres" {
+		_, err = store.db.Exec(`INSERT INTO mx_user_profile (room_id, user_id, membership, displayname, avatar_url) VALUES ($1, $2, $3, $4, $5)
+			ON CONFLICT (room_id, user_id) DO UPDATE SET membership=$3`, roomID, userID, member.Membership, member.Displayname, member.AvatarURL)
+	} else if store.db.dialect == "sqlite3" {
+		_, err = store.db.Exec("INSERT OR REPLACE INTO mx_user_profile (room_id, user_id, membership, displayname, avatar_url) VALUES ($1, $2, $3, $4, $5)",
+			roomID, userID, member.Membership, member.Displayname, member.AvatarURL)
+	} else {
+		err = fmt.Errorf("unsupported dialect %s", store.db.dialect)
+	}
+	if err != nil {
+		store.log.Warnfln("Failed to set membership of %s in %s to %s: %v", userID, roomID, member, err)
 	}
 }
 
