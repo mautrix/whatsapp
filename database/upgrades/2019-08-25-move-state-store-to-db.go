@@ -17,19 +17,34 @@ func init() {
 		if len(registrations) == 0 {
 			return nil
 		}
-		values := make([]interface{}, 0, len(registrations))
-		valueStrings := make([]string, 0, len(registrations))
+
+		executeBatch := func(tx *sql.Tx, valueStrings []string, values ...interface{}) error {
+			valueString := strings.Join(valueStrings, ",")
+			_, err := tx.Exec("INSERT INTO mx_registrations (user_id) VALUES "+valueString, values...)
+			return err
+		}
+
+		batchSize := 100
+		values := make([]interface{}, 0, batchSize)
+		valueStrings := make([]string, 0, batchSize)
 		i := 1
 		for userID, registered := range registrations {
+			if i == batchSize {
+				err := executeBatch(tx, valueStrings, values...)
+				if err != nil {
+					return err
+				}
+				i = 1
+				values = make([]interface{}, 0, batchSize)
+				valueStrings = make([]string, 0, batchSize)
+			}
 			if registered {
 				values = append(values, userID)
 				valueStrings = append(valueStrings, fmt.Sprintf("($%d)", i))
 				i++
 			}
 		}
-		valueString := strings.Join(valueStrings, ",")
-		_, err := tx.Exec("INSERT INTO mx_registrations (user_id) VALUES "+valueString, values...)
-		return err
+		return executeBatch(tx, valueStrings, values...)
 	}
 
 	migrateMemberships := func(tx *sql.Tx, rooms map[string]map[string]mautrix.Membership) error {
