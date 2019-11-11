@@ -152,6 +152,10 @@ func (handler *CommandHandler) CommandRelaybot(ce *CommandEvent) {
 		ce.Reply("Only admins can manage the relaybot")
 	} else {
 		if ce.Command == "relaybot" {
+			if len(ce.Args) == 0 {
+				ce.Reply("**Usage:** `relaybot <command>`")
+				return
+			}
 			ce.Command = strings.ToLower(ce.Args[0])
 			ce.Args = ce.Args[1:]
 		}

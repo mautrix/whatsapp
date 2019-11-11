@@ -47,7 +47,7 @@ func (user *User) updateCommunityProfile() {
 }
 
 func (user *User) createCommunity() {
-	if !user.bridge.Config.Bridge.EnableCommunities() {
+	if user.IsRelaybot || !user.bridge.Config.Bridge.EnableCommunities() {
 		return
 	}
 
@@ -84,7 +84,7 @@ func (user *User) createCommunity() {
 }
 
 func (user *User) addPortalToCommunity(portal *Portal) bool {
-	if len(user.CommunityID) == 0 || len(portal.MXID) == 0 {
+	if user.IsRelaybot || len(user.CommunityID) == 0 || len(portal.MXID) == 0 {
 		return false
 	}
 	bot := user.bridge.Bot
