@@ -781,5 +781,5 @@ func (user *User) HandleRawMessage(message *waProto.WebMessageInfo) {
 }
 
 func (user *User) NeedsRelaybot(portal *Portal) bool {
-	return !user.HasSession() || (user.IsInPortal(portal.Key.JID) && (!portal.IsPrivateChat() || portal.Key.Receiver == user.JID))
+	return !user.HasSession() || !user.IsInPortal(portal.Key)
 }

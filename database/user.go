@@ -201,11 +201,11 @@ func (user *User) SetPortalKeys(newKeys []PortalKeyWithMeta) error {
 	return tx.Commit()
 }
 
-func (user *User) IsInPortal(jid types.WhatsAppID) bool {
-	row := user.db.QueryRow(`SELECT portal_jid, portal_receiver FROM user_portal WHERE user_jid=$1 AND portal_jid=$2 AND (portal_receiver=$1 OR portal_receiver=$2)`, user.jidPtr(), &jid)
-	var scanJid, scanReceiver types.WhatsAppID
-	_ = row.Scan(&scanJid, &scanReceiver)
-	return scanJid == jid && (scanReceiver == jid || scanReceiver == user.JID)
+func (user *User) IsInPortal(key PortalKey) bool {
+	row := user.db.QueryRow(`SELECT EXISTS(SELECT 1 FROM user_portal WHERE user_jid=$1 AND portal_jid=$2 AND portal_receiver=$3)`, user.jidPtr(), &key.JID, &key.Receiver)
+	var exists bool
+	_ = row.Scan(&exists)
+	return exists
 }
 
 func (user *User) GetPortalKeys() []PortalKey {

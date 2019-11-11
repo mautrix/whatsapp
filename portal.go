@@ -810,7 +810,7 @@ func (portal *Portal) HasRelaybot() bool {
 	if portal.bridge.Relaybot == nil {
 		return false
 	} else if portal.hasRelaybot == nil {
-		val := portal.bridge.Relaybot.IsInPortal(portal.Key.JID)
+		val := portal.bridge.Relaybot.IsInPortal(portal.Key)
 		portal.hasRelaybot = &val
 	}
 	return *portal.hasRelaybot
