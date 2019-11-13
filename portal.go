@@ -1223,7 +1223,7 @@ func (portal *Portal) HandleMatrixMessage(sender *User, evt *mautrix.Event) {
 	relaybotFormatted := false
 	if sender.NeedsRelaybot(portal) {
 		if !portal.HasRelaybot() {
-			if user.HasSession() {
+			if sender.HasSession() {
 				portal.log.Debugln("Database says", sender.MXID, "not in chat and no relaybot, but trying to send anyway")
 			} else {
 				portal.log.Debugln("Ignoring message from", sender.MXID, "in chat with no relaybot")
