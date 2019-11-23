@@ -6,6 +6,10 @@ implementation of the [sigalor/whatsapp-web-reveng](https://github.com/sigalor/w
 
 See the [docs](https://github.com/tulir/mautrix-whatsapp/blob/master/docs/bridge_setup.md) for setting up the bridge.
 
+### Connecting the brdige to WhatsApp
+
+See the [docs](https://github.com/tulir/mautrix-whatsapp/blob/master/docs/authentication.md) for setting up the bridge.
+
 ### [Wiki](https://github.com/tulir/mautrix-whatsapp/wiki)
 
 ### [Features & Roadmap](https://github.com/tulir/mautrix-whatsapp/blob/master/ROADMAP.md)
