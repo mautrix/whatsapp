@@ -948,11 +948,14 @@ func (portal *Portal) HandleMediaMessage(source *User, download func() ([]byte, 
 	data, err := download()
 	if err != nil {
 		portal.log.Errorfln("Failed to download media for %s: %v", info.Id, err)
-		resp, err := portal.MainIntent().SendNotice(portal.MXID, "Failed to bridge media")
-		if err != nil {
-			portal.log.Errorfln("Failed to send media download error message for %s: %v", info.Id, err)
-		} else {
-			portal.finishHandling(source, info.Source, resp.EventID)
+		// This is terrible but the library doesn't actually return a specific error
+		if err.Error() != "no url present" {
+			resp, err := portal.MainIntent().SendNotice(portal.MXID, "Failed to bridge media")
+			if err != nil {
+				portal.log.Errorfln("Failed to send media download error message for %s: %v", info.Id, err)
+			} else {
+				portal.finishHandling(source, info.Source, resp.EventID)
+			}
 		}
 		return
 	}
