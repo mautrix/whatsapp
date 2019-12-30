@@ -365,9 +365,35 @@ func (user *User) PostLogin() {
 	go user.intPostLogin()
 }
 
+func (user *User) tryAutomaticDoublePuppeting(){
+	if len(user.bridge.Config.Bridge.LoginSharedSecret) == 0 {
+		// Automatic login not enabled
+		return
+	}
+
+	puppet := user.bridge.GetPuppetByJID(user.JID)
+	if len(puppet.CustomMXID) > 0 {
+		// Custom puppet already enabled
+		return
+	}
+	accessToken, err := puppet.loginWithSharedSecret(user.MXID)
+	if err != nil {
+		user.log.Warnln("Failed to login with shared secret:", err)
+		return
+	}
+	err = puppet.SwitchCustomMXID(accessToken, user.MXID)
+	if err != nil {
+		puppet.log.Warnln("Failed to switch to auto-logined custom puppet:", err)
+		return
+	}
+	user.log.Infoln("Successfully automatically enabled custom puppet")
+}
+
 func (user *User) intPostLogin() {
-	user.createCommunity()
 	defer user.syncLock.Unlock()
+	user.createCommunity()
+	user.tryAutomaticDoublePuppeting()
+
 
 	select {
 	case <-user.chatListReceived:

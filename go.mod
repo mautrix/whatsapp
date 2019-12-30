@@ -12,8 +12,8 @@ require (
 	gopkg.in/yaml.v2 v2.2.2
 	maunium.net/go/mauflag v1.0.0
 	maunium.net/go/maulogger/v2 v2.0.0
-	maunium.net/go/mautrix v0.1.0-alpha.3.0.20191110191816-178ce1f1561d
-	maunium.net/go/mautrix-appservice v0.1.0-alpha.3.0.20191110192030-cd699619a163
+	maunium.net/go/mautrix v0.1.0-alpha.3.0.20191230181907-055c3acd81cd
+	maunium.net/go/mautrix-appservice v0.1.0-alpha.3.0.20191230181948-bf5d2e16a792
 )
 
 replace (

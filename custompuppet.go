@@ -17,6 +17,9 @@
 package main
 
 import (
+	"crypto/hmac"
+	"crypto/sha512"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -56,6 +59,22 @@ func (puppet *Puppet) SwitchCustomMXID(accessToken string, mxid string) error {
 	puppet.Update()
 	// TODO leave rooms with default puppet
 	return nil
+}
+
+func (puppet *Puppet) loginWithSharedSecret(mxid string) (string, error) {
+	mac := hmac.New(sha512.New, []byte(puppet.bridge.Config.Bridge.LoginSharedSecret))
+	mac.Write([]byte(mxid))
+	resp, err := puppet.bridge.AS.BotClient().Login(&mautrix.ReqLogin{
+		Type:                     "m.login.password",
+		Identifier:               mautrix.UserIdentifier{Type: "m.id.user", User: mxid},
+		Password:                 hex.EncodeToString(mac.Sum(nil)),
+		DeviceID:                 "WhatsApp Bridge",
+		InitialDeviceDisplayName: "WhatsApp Bridge",
+	})
+	if err != nil {
+		return "", err
+	}
+	return resp.AccessToken, nil
 }
 
 func (puppet *Puppet) newCustomIntent() (*appservice.IntentAPI, error) {
