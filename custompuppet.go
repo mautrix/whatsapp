@@ -56,6 +56,7 @@ func (puppet *Puppet) SwitchCustomMXID(accessToken string, mxid string) error {
 	if len(puppet.CustomMXID) > 0 {
 		puppet.bridge.puppetsByCustomMXID[puppet.CustomMXID] = puppet
 	}
+	puppet.bridge.AS.StateStore.MarkRegistered(puppet.CustomMXID)
 	puppet.Update()
 	// TODO leave rooms with default puppet
 	return nil
