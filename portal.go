@@ -1180,7 +1180,7 @@ func (portal *Portal) addRelaybotFormat(user *User, evt *mautrix.Event) bool {
 	}
 
 	if evt.Content.Format != mautrix.FormatHTML {
-		evt.Content.FormattedBody = strings.ReplaceAll(html.EscapeString(evt.Content.Body), "\n", "<br/>")
+		evt.Content.FormattedBody = strings.Replace(html.EscapeString(evt.Content.Body), "\n", "<br/>", -1)
 		evt.Content.Format = mautrix.FormatHTML
 	}
 	data, err := portal.bridge.Config.Bridge.Relaybot.FormatMessage(evt, member)
