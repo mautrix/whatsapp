@@ -1237,6 +1237,10 @@ func (portal *Portal) HandleMatrixMessage(sender *User, evt *mautrix.Event) {
 			sender = portal.bridge.Relaybot
 		}
 	}
+	if evt.Type.Type == "m.sticker" {
+		portal.log.Debugln("Converting sticker to image")
+		evt.Content.MsgType = mautrix.MsgImage
+	}
 	var err error
 	switch evt.Content.MsgType {
 	case mautrix.MsgText, mautrix.MsgEmote:
