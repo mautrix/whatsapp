@@ -365,9 +365,9 @@ func (user *User) PostLogin() {
 	go user.intPostLogin()
 }
 
-func (user *User) tryAutomaticDoublePuppeting(){
-	if len(user.bridge.Config.Bridge.LoginSharedSecret) == 0 {
-		// Automatic login not enabled
+func (user *User) tryAutomaticDoublePuppeting() {
+	if len(user.bridge.Config.Bridge.LoginSharedSecret) == 0 || !strings.HasSuffix(user.MXID, user.bridge.Config.Homeserver.Domain) {
+		// Automatic login not enabled or user is on another homeserver
 		return
 	}
 
@@ -393,7 +393,6 @@ func (user *User) intPostLogin() {
 	defer user.syncLock.Unlock()
 	user.createCommunity()
 	user.tryAutomaticDoublePuppeting()
-
 
 	select {
 	case <-user.chatListReceived:
@@ -630,6 +629,10 @@ func (user *User) HandleTextMessage(message whatsapp.TextMessage) {
 }
 
 func (user *User) HandleImageMessage(message whatsapp.ImageMessage) {
+	user.putMessage(PortalMessage{message.Info.RemoteJid, user, message, message.Info.Timestamp})
+}
+
+func (user *User) HandleStickerMessage(message whatsapp.StickerMessage) {
 	user.putMessage(PortalMessage{message.Info.RemoteJid, user, message, message.Info.Timestamp})
 }
 

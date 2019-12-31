@@ -13,6 +13,9 @@ github.com/gorilla/mux v1.7.2 h1:zoNxOV7WjqXptQOVngLmcSQgXmgk4NMz1HibBchjl/I=
 github.com/gorilla/mux v1.7.2/go.mod h1:1lud6UwP+6orDFRuTfBEV8e9/aOM/c4fVVCaMa2zaAs=
 github.com/gorilla/websocket v1.4.0 h1:WDFjx/TMzVgy9VdMMQi2K2Emtwi2QcUQsztZ/zLaH/Q=
 github.com/gorilla/websocket v1.4.0/go.mod h1:E7qHFY5m1UJ88s3WnNqhKjPHQ0heANvMoAMk2YaljkQ=
+github.com/kr/pretty v0.1.0/go.mod h1:dAy3ld7l9f0ibDNOQOHHMYYIIbhfbHSm3C4ZsoJORNo=
+github.com/kr/pty v1.1.1/go.mod h1:pFQYn66WHrOpPYNljwOMqo10TkYh1fy3cYio2l3bCsQ=
+github.com/kr/text v0.1.0/go.mod h1:4Jbv+DJW3UT/LiOwJeYQe1efqtUx/iVham/4vfdArNI=
 github.com/lib/pq v1.1.1 h1:sJZmqHoEaY7f+NPP8pgLB/WxulyR3fewgCM2qaSlBb4=
 github.com/lib/pq v1.1.1/go.mod h1:5WUZQaWbwv1U+lTReE5YruASi9Al49XbQIvNi/34Woo=
 github.com/mattn/go-colorable v0.1.1/go.mod h1:FuOcm+DKB9mbwrcAfNl7/TZVBZ6rcnceauSikq3lYCQ=
@@ -47,6 +50,8 @@ github.com/tulir/go-whatsapp v0.0.2-0.20190903182221-4e1a838ff3ba h1:exEcedSHn0q
 github.com/tulir/go-whatsapp v0.0.2-0.20190903182221-4e1a838ff3ba/go.mod h1:u3Hdptbz3iB5y/NEoSKgsp9hBzUlm0A5OrLMVdENAX8=
 github.com/tulir/go-whatsapp v0.0.2-0.20191109203156-c477dae1c7e9 h1:WyLOadcpkAvoyaGfUvBgj/mTHetzliBGFioEEtM+Ac8=
 github.com/tulir/go-whatsapp v0.0.2-0.20191109203156-c477dae1c7e9/go.mod h1:ustkccVUt0hOuKikjFb6b4Eray6At5djkcKYYu4+Lco=
+github.com/tulir/go-whatsapp v0.0.2-0.20191231181428-a986c510d200 h1:CWqIgkDM96F9s4V536FZr/WoN+LL3ywUZLH9Feir3kY=
+github.com/tulir/go-whatsapp v0.0.2-0.20191231181428-a986c510d200/go.mod h1:ustkccVUt0hOuKikjFb6b4Eray6At5djkcKYYu4+Lco=
 golang.org/x/crypto v0.0.0-20190131182504-b8fe1690c613/go.mod h1:6SG95UA2DQfeDnfUPMdvaQW0Q7yPrPDi9nlGo2tz2b4=
 golang.org/x/crypto v0.0.0-20190308221718-c2843e01d9a2 h1:VklqNMn3ovrHsnt90PveolxSbWFaJdECFbxSq0Mqo2M=
 golang.org/x/crypto v0.0.0-20190308221718-c2843e01d9a2/go.mod h1:djNgcEr1/C05ACkg1iLfiJU5Ep61QUkGW8qpdssI0+w=
@@ -92,3 +97,5 @@ maunium.net/go/mautrix-appservice v0.1.0-alpha.3.0.20190901152202-40639f5932be/g
 maunium.net/go/mautrix-appservice v0.1.0-alpha.3.0.20191110192030-cd699619a163/go.mod h1:ST7YYCoHtFC4c7/Iga8W5wwKXyxjwVh4DlsnyIU6rYw=
 maunium.net/go/mautrix-appservice v0.1.0-alpha.3.0.20191230181948-bf5d2e16a792 h1:7Lxt/h4TnC6Z9PfnggdD4e7IasxdnYzrXmtTmedbSpU=
 maunium.net/go/mautrix-appservice v0.1.0-alpha.3.0.20191230181948-bf5d2e16a792/go.mod h1:ek/PBMaq4AxuI5NP+XAq5Ma2u+ZTjUUaUr6dh4w9zSw=
+maunium.net/go/mautrix-appservice v0.1.0-alpha.3.0.20191230184104-a0aaaf14b728 h1:pJXS+GUB5zClAB8cIJ/bjf9tKFJtjt+VbTfdLZm6qzA=
+maunium.net/go/mautrix-appservice v0.1.0-alpha.3.0.20191230184104-a0aaaf14b728/go.mod h1:RfFZ/Z6uBSbpUQVkiEhG3P1EBaPK5kc+AGKtuMMbg9k=

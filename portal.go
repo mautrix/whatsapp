@@ -946,7 +946,10 @@ func (portal *Portal) HandleMediaMessage(source *User, download func() ([]byte, 
 	}
 
 	data, err := download()
-	if err != nil {
+	if err == whatsapp.ErrNoURLPresent {
+		portal.log.Debugln("No URL present error for media message %s, ignoring...", info.Id)
+		return
+	} else if err != nil {
 		portal.log.Errorfln("Failed to download media for %s: %v", info.Id, err)
 		resp, err := portal.MainIntent().SendNotice(portal.MXID, "Failed to bridge media")
 		if err != nil {
@@ -1233,6 +1236,9 @@ func (portal *Portal) HandleMatrixMessage(sender *User, evt *mautrix.Event) {
 			relaybotFormatted = portal.addRelaybotFormat(sender, evt)
 			sender = portal.bridge.Relaybot
 		}
+	}
+	if evt.Type == mautrix.EventSticker {
+		evt.Content.MsgType = mautrix.MsgImage
 	}
 	var err error
 	switch evt.Content.MsgType {

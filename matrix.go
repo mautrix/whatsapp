@@ -44,6 +44,7 @@ func NewMatrixHandler(bridge *Bridge) *MatrixHandler {
 		cmd:    NewCommandHandler(bridge),
 	}
 	bridge.EventProcessor.On(mautrix.EventMessage, handler.HandleMessage)
+	bridge.EventProcessor.On(mautrix.EventSticker, handler.HandleMessage)
 	bridge.EventProcessor.On(mautrix.EventRedaction, handler.HandleRedaction)
 	bridge.EventProcessor.On(mautrix.StateMember, handler.HandleMembership)
 	bridge.EventProcessor.On(mautrix.StateRoomName, handler.HandleRoomMetadata)
