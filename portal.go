@@ -20,6 +20,7 @@ import (
 	"bytes"
 	"encoding/gob"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"html"
 	"image"
@@ -910,6 +911,27 @@ func (portal *Portal) HandleFakeMessage(source *User, message FakeMessage) {
 type MessageContent struct {
 	*mautrix.Content
 	IsCustomPuppet bool `json:"net.maunium.whatsapp.puppet,omitempty"`
+}
+
+type serializableContent mautrix.Content
+
+type serializableMessageContent struct {
+	*serializableContent
+	IsCustomPuppet bool `json:"net.maunium.whatsapp.puppet,omitempty"`
+}
+
+// Hacky bypass for mautrix.Content's MarshalSJSON
+func (content *MessageContent) MarshalJSON() ([]byte, error) {
+	if mautrix.DisableFancyEventParsing {
+		if content.IsCustomPuppet {
+			content.Raw["net.maunium.whatsapp.puppet"] = content.IsCustomPuppet
+		}
+		return json.Marshal(content.Raw)
+	}
+	return json.Marshal(&serializableMessageContent{
+		serializableContent: (*serializableContent)(content.Content),
+		IsCustomPuppet:      content.IsCustomPuppet,
+	})
 }
 
 func (portal *Portal) HandleTextMessage(source *User, message whatsapp.TextMessage) {
