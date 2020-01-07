@@ -89,7 +89,11 @@ func (user *User) addPortalToCommunity(portal *Portal) bool {
 	}
 	bot := user.bridge.Bot
 	url := bot.BuildURL("groups", user.CommunityID, "admin", "rooms", portal.MXID)
-	reqBody := map[string]interface{}{}
+	reqBody := map[string]map[string]string{
+		"m.visibility": {
+			"type": "private",
+		},
+	}
 	_, err := bot.MakeRequest(http.MethodPut, url, &reqBody, nil)
 	if err != nil {
 		user.log.Warnfln("Failed to add %s to %s: %v", portal.MXID, user.CommunityID, err)
