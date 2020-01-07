@@ -791,6 +791,10 @@ func (portal *Portal) CreateMatrixRoom(user *User) error {
 		}
 	}
 	user.addPortalToCommunity(portal)
+	if portal.IsPrivateChat() {
+		puppet := user.bridge.GetPuppetByJID(portal.Key.JID)
+		user.addPuppetToCommunity(puppet)
+	}
 	err = portal.FillInitialHistory(user)
 	if err != nil {
 		portal.log.Errorln("Failed to fill history:", err)

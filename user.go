@@ -449,6 +449,10 @@ func (user *User) syncPortals(chatMap map[string]whatsapp.Chat, createAll bool) 
 		var inCommunity, ok bool
 		if inCommunity, ok = existingKeys[portal.Key]; !ok || !inCommunity {
 			inCommunity = user.addPortalToCommunity(portal)
+			if portal.IsPrivateChat() {
+				puppet := user.bridge.GetPuppetByJID(portal.Key.JID)
+				user.addPuppetToCommunity(puppet)
+			}
 		}
 		portalKeys = append(portalKeys, database.PortalKeyWithMeta{PortalKey: portal.Key, InCommunity: inCommunity})
 	}

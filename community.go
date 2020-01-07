@@ -83,6 +83,35 @@ func (user *User) createCommunity() {
 	}
 }
 
+func (user *User) addPuppetToCommunity(puppet *Puppet) bool {
+	if user.IsRelaybot || len(user.CommunityID) == 0 {
+		return false
+	}
+	bot := user.bridge.Bot
+	url := bot.BuildURL("groups", user.CommunityID, "admin", "users", "invite", puppet.MXID)
+	blankReqBody := map[string]interface{}{}
+	_, err := bot.MakeRequest(http.MethodPut, url, &blankReqBody, nil)
+	if err != nil {
+		user.log.Warnfln("Failed to invite %s to %s: %v", puppet.MXID, user.CommunityID, err)
+		return false
+	}
+	reqBody := map[string]map[string]string{
+		"m.visibility": {
+			"type": "private",
+		},
+	}
+	url = bot.BuildURLWithQuery([]string{"groups", user.CommunityID, "self", "accept_invite"}, map[string]string{
+		"user_id": puppet.MXID,
+	})
+	_, err = bot.MakeRequest(http.MethodPut, url, &reqBody, nil)
+	if err != nil {
+		user.log.Warnfln("Failed to join %s as %s: %v", user.CommunityID, puppet.MXID, err)
+		return false
+	}
+	user.log.Debugln("Added", puppet.MXID, "to", user.CommunityID)
+	return true
+}
+
 func (user *User) addPortalToCommunity(portal *Portal) bool {
 	if user.IsRelaybot || len(user.CommunityID) == 0 || len(portal.MXID) == 0 {
 		return false
