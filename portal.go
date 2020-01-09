@@ -986,12 +986,6 @@ func (portal *Portal) HandleMediaMessage(source *User, download func() ([]byte, 
 		return
 	}
 
-	// WhatsApp sends incorrect mime types 3:<
-	portal.log.Debugfln("Before conversion: %s", mimeType)
-	//if detected := http.DetectContentType(data); detected != "application/octet-stream" {
-	//	mimeType = detected
-	//}
-
 	// synapse doesn't handle webp well, so we convert it. This can be dropped once https://github.com/matrix-org/synapse/issues/4382 is fixed
 	if mimeType == "image/webp" {
 		img, err := webp.Decode(bytes.NewReader(data))
