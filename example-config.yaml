@@ -62,7 +62,10 @@ bridge:
     # {{.Short}}  - short display name from contact list
     displayname_template: "{{if .Notify}}{{.Notify}}{{else}}{{.Jid}}{{end}} (WA)"
     # Localpart template for per-user room grouping community IDs.
-    # The bridge will create these communities and add all of the specific user's portals to the community.
+    # On startup, the bridge will try to create these communities, add all of the specific user's
+    # portals to the community, and invite the Matrix user to it.
+    # (Note that, by default, non-admins might not have your homeserver's permission to create
+    #  communities.)
     # {{.Localpart}} is the MXID localpart and {{.Server}} is the MXID server part of the user.
     community_template: whatsapp_{{.Localpart}}={{.Server}}
 
