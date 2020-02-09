@@ -309,7 +309,7 @@ func (prov *ProvisioningAPI) Login(w http.ResponseWriter, r *http.Request) {
 			})
 		}
 	}()
-	session, err := user.Conn.LoginWithRetry(qrChan, 0) //user.bridge.Config.Bridge.LoginQRRegenCount)
+	session, err := user.Conn.LoginWithRetry(qrChan, user.bridge.Config.Bridge.LoginQRRegenCount)
 	qrChan <- "stop"
 	if err != nil {
 		var msg string
