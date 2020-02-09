@@ -45,6 +45,11 @@ type Config struct {
 
 		StateStore string `yaml:"state_store_path,omitempty"`
 
+		Provisioning struct {
+			Prefix       string `yaml:"prefix"`
+			SharedSecret string `yaml:"shared_secret"`
+		} `yaml:"provisioning"`
+
 		ID  string `yaml:"id"`
 		Bot struct {
 			Username    string `yaml:"username"`

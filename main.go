@@ -102,6 +102,7 @@ type Bridge struct {
 	DB             *database.Database
 	Log            log.Logger
 	StateStore     *database.SQLStateStore
+	Provisioning   *ProvisioningAPI
 	Bot            *appservice.IntentAPI
 	Formatter      *Formatter
 	Relaybot       *User
@@ -208,6 +209,11 @@ func (bridge *Bridge) Init() {
 	bridge.DB.SetMaxOpenConns(bridge.Config.AppService.Database.MaxOpenConns)
 	bridge.DB.SetMaxIdleConns(bridge.Config.AppService.Database.MaxIdleConns)
 
+	ss := bridge.Config.AppService.Provisioning.SharedSecret
+	if len(ss) > 0 && ss != "disable" {
+		bridge.Provisioning = &ProvisioningAPI{bridge: bridge}
+	}
+
 	bridge.Log.Debugln("Initializing Matrix event processor")
 	bridge.EventProcessor = appservice.NewEventProcessor(bridge.AS)
 	bridge.Log.Debugln("Initializing Matrix event handler")
@@ -220,6 +226,10 @@ func (bridge *Bridge) Start() {
 	if err != nil {
 		bridge.Log.Fatalln("Failed to initialize database:", err)
 		os.Exit(15)
+	}
+	if bridge.Provisioning != nil {
+		bridge.Log.Debugln("Initializing provisioning API")
+		bridge.Provisioning.Init()
 	}
 	bridge.LoadRelaybot()
 	bridge.Log.Debugln("Checking connection to homeserver")

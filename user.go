@@ -246,7 +246,6 @@ func (user *User) IsLoginInProgress() bool {
 func (user *User) loginQrChannel(ce *CommandEvent, qrChan <-chan string, eventIDChan chan<- string) {
 	var qrEventID string
 	for code := range qrChan {
-		fmt.Println("qrChan:", code)
 		if code == "stop" {
 			return
 		}

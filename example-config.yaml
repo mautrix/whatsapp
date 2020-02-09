@@ -27,6 +27,13 @@ appservice:
         max_open_conns: 20
         max_idle_conns: 2
 
+    # Settings for provisioning API
+    provisioning:
+        # Prefix for the provisioning API paths.
+        prefix: /_matrix/provision/v1
+        # Shared secret for authentication. If set to "disable", the provisioning API will be disabled.
+        shared_secret: disable
+
     # The unique ID of this appservice.
     id: whatsapp
     # Appservice bot details.

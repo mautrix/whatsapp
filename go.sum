@@ -82,6 +82,8 @@ maunium.net/go/mautrix v0.1.0-alpha.3.0.20190825132810-9d870654e9d2/go.mod h1:O+
 maunium.net/go/mautrix v0.1.0-alpha.3.0.20191110191816-178ce1f1561d/go.mod h1:O+QWJP3H7BZEzIBSrECKpnpRnEKBwaoWVEu/yZwVwxg=
 maunium.net/go/mautrix v0.1.0-alpha.3.0.20191230181907-055c3acd81cd h1:stoHlgxDA3AKrULnJo1Ubmrb/Yk7iz2ucb0JA3YNMDM=
 maunium.net/go/mautrix v0.1.0-alpha.3.0.20191230181907-055c3acd81cd/go.mod h1:O+QWJP3H7BZEzIBSrECKpnpRnEKBwaoWVEu/yZwVwxg=
+maunium.net/go/mautrix v0.1.0-alpha.3.0.20200209182939-9df6760d40d2 h1:Ewvf0/4z0OQ7IyySxP5rjhzpL01Slxhup7ugHieAlrI=
+maunium.net/go/mautrix v0.1.0-alpha.3.0.20200209182939-9df6760d40d2/go.mod h1:O+QWJP3H7BZEzIBSrECKpnpRnEKBwaoWVEu/yZwVwxg=
 maunium.net/go/mautrix-appservice v0.1.0-alpha.3.0.20190618052224-6e6c9bb47548 h1:ni1nqs+2AOO+g1ND6f2W0pMcb6sIDVqzerXosO+pI2g=
 maunium.net/go/mautrix-appservice v0.1.0-alpha.3.0.20190618052224-6e6c9bb47548/go.mod h1:yVWU0gvIHIXClgyVnShiufiDksFbFrBqHG9lDAYcmGI=
 maunium.net/go/mautrix-appservice v0.1.0-alpha.3.0.20190822210104-3e49344e186b h1:/03X0PPgtk4pqXcdH86xMzOl891whG5A1hFXQ+xXons=
@@ -99,3 +101,5 @@ maunium.net/go/mautrix-appservice v0.1.0-alpha.3.0.20191230181948-bf5d2e16a792 h
 maunium.net/go/mautrix-appservice v0.1.0-alpha.3.0.20191230181948-bf5d2e16a792/go.mod h1:ek/PBMaq4AxuI5NP+XAq5Ma2u+ZTjUUaUr6dh4w9zSw=
 maunium.net/go/mautrix-appservice v0.1.0-alpha.3.0.20191230184104-a0aaaf14b728 h1:pJXS+GUB5zClAB8cIJ/bjf9tKFJtjt+VbTfdLZm6qzA=
 maunium.net/go/mautrix-appservice v0.1.0-alpha.3.0.20191230184104-a0aaaf14b728/go.mod h1:RfFZ/Z6uBSbpUQVkiEhG3P1EBaPK5kc+AGKtuMMbg9k=
+maunium.net/go/mautrix-appservice v0.1.0-alpha.3.0.20200209183024-a3d12dc80898 h1:tWHXTNREuGry2xXS1hGOg+FIUwRxGXie5fymiGD3YoA=
+maunium.net/go/mautrix-appservice v0.1.0-alpha.3.0.20200209183024-a3d12dc80898/go.mod h1:RfFZ/Z6uBSbpUQVkiEhG3P1EBaPK5kc+AGKtuMMbg9k=
