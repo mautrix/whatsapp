@@ -22,5 +22,4 @@ require (
 replace (
 	github.com/Rhymen/go-whatsapp => github.com/tulir/go-whatsapp v0.0.2-0.20191231181428-a986c510d200
 	gopkg.in/russross/blackfriday.v2 => github.com/russross/blackfriday/v2 v2.0.1
-	maunium.net/go/mautrix-appservice => /home/admin/mautrix-appservice-go
 )
