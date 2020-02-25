@@ -3,7 +3,7 @@ stages:
 - build docker
 - manifest
 
-build amd64:
+build:
   image: golang:1-alpine
   stage: build
   tags:
@@ -16,28 +16,11 @@ build amd64:
   - mkdir -p .cache
   - export GOPATH="$CI_PROJECT_DIR/.cache"
   script:
-  - go build -o mautrix-whatsapp
+  - GOARCH=amd64 go build -o mautrix-whatsapp-amd64
+  - GOARCH=arm64 go build -o mautrix-whatsapp-arm64
   artifacts:
     paths:
     - mautrix-whatsapp-amd64
-    - example-config.yaml
-
-build arm64:
-  image: golang:1-alpine
-  stage: build
-  tags:
-  - arm64
-  cache:
-    paths:
-    - .cache
-  before_script:
-  - apk add git build-base
-  - mkdir -p .cache
-  - export GOPATH="$CI_PROJECT_DIR/.cache"
-  script:
-  - go build -o mautrix-whatsapp
-  artifacts:
-    paths:
     - mautrix-whatsapp-arm64
     - example-config.yaml
 
