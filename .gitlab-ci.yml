@@ -1,11 +1,13 @@
 stages:
 - build
 - build docker
-- push docker
+- manifest
 
-build:
+build amd64:
   image: golang:1-alpine
   stage: build
+  tags:
+  - amd64
   cache:
     paths:
     - .cache
@@ -17,45 +19,62 @@ build:
   - go build -o mautrix-whatsapp
   artifacts:
     paths:
-    - mautrix-whatsapp
+    - mautrix-whatsapp-amd64
     - example-config.yaml
 
-build docker:
+build arm64:
+  image: golang:1-alpine
+  stage: build
+  tags:
+  - arm64
+  cache:
+    paths:
+    - .cache
+  before_script:
+  - apk add git build-base
+  - mkdir -p .cache
+  - export GOPATH="$CI_PROJECT_DIR/.cache"
+  script:
+  - go build -o mautrix-whatsapp
+  artifacts:
+    paths:
+    - mautrix-whatsapp-arm64
+    - example-config.yaml
+
+build docker amd64:
   image: docker:stable
   stage: build docker
+  tags:
+  - amd64
   before_script:
   - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
   script:
   - docker pull $CI_REGISTRY_IMAGE:latest || true
-  - docker build --pull --cache-from $CI_REGISTRY_IMAGE:latest --tag $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA . --file Dockerfile.ci
-  - docker push $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA
+  - docker build --pull --cache-from $CI_REGISTRY_IMAGE:latest --tag $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA-amd64 . --file Dockerfile.ci --build-args EXECUTABLE=./mautrix-whatsapp-amd64
+  - docker push $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA-amd64
+  - docker rmi $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA-amd64
 
-push latest:
+build docker arm64:
   image: docker:stable
-  stage: push docker
-  only:
-  - master
-  variables:
-    GIT_STRATEGY: none
+  stage: build docker
+  tags:
+  - arm64
   before_script:
   - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
   script:
-  - docker pull $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA
-  - docker tag $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA $CI_REGISTRY_IMAGE:latest
-  - docker push $CI_REGISTRY_IMAGE:latest
-  dependencies: []
+  - docker pull $CI_REGISTRY_IMAGE:latest || true
+  - docker build --pull --cache-from $CI_REGISTRY_IMAGE:latest --tag $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA-amd64 . --file Dockerfile.ci --build-args EXECUTABLE=./mautrix-whatsapp-arm64
+  - docker push $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA-amd64
+  - docker rmi $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA-arm64
 
-push tag:
-  image: docker:stable
-  stage: push docker
-  except:
-  - master
-  variables:
-    GIT_STRATEGY: none
+manifest:
+  stage: manifest
   before_script:
+  - "mkdir -p $HOME/.docker && echo '{\"experimental\": \"enabled\"}' > $HOME/.docker/config.json"
   - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
   script:
-  - docker pull $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA
-  - docker tag $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA $CI_REGISTRY_IMAGE:$CI_COMMIT_REF_NAME
-  - docker push $CI_REGISTRY_IMAGE:$CI_COMMIT_REF_NAME
-  dependencies: []
+  - docker pull $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA-amd64
+  - docker pull $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA-arm64
+  - if [ $CI_COMMIT_BRANCH == "master" ]; then docker manifest create $CI_REGISTRY_IMAGE:latest $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA-amd64 $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA-arm64 && docker manifest push $CI_REGISTRY_IMAGE:latest; fi
+  - if [ $CI_COMMIT_BRANCH != "master" ]; then docker manifest create $CI_REGISTRY_IMAGE:$CI_COMMIT_REF_NAME $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA-amd64 $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA-arm64 && docker manifest push $CI_REGISTRY_IMAGE:$CI_COMMIT_REF_NAME; fi
+  - docker rmi $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA-amd64 $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA-arm64

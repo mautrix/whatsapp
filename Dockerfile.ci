@@ -5,7 +5,8 @@ ENV UID=1337 \
 
 RUN apk add --no-cache su-exec ca-certificates
 
-COPY ./mautrix-whatsapp /usr/bin/mautrix-whatsapp
+ARG EXECUTABLE=./mautrix-whatsapp
+COPY $EXECUTABLE /usr/bin/mautrix-whatsapp
 COPY ./example-config.yaml /opt/mautrix-whatsapp/example-config.yaml
 COPY ./docker-run.sh /docker-run.sh
 VOLUME /data
