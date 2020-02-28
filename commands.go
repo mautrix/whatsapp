@@ -464,7 +464,31 @@ func (handler *CommandHandler) CommandList(ce *CommandEvent) {
 			_, _ = fmt.Fprintf(&groups, "* %s - `%s`\n", contact.Name, contact.Jid)
 		}
 	}
-	ce.Reply("### Contacts\n%s\n\n### Groups\n%s", contacts.String(), groups.String())
+
+	if len(ce.Args) == 0 {
+		ce.Reply("### Contacts\n%s", contacts.String())
+		ce.Reply("### Groups\n%s", groups.String())
+		return
+	} else if len(ce.Args) >= 2 {
+		cnt := ce.Args[0] == "--contacts"
+		if cnt {
+			ce.Reply("### Contacts\n%s", contacts.String())
+			ce.Reply("### Groups\n%s", groups.String())
+		} else {
+			ce.Reply("### Groups\n%s", groups.String())
+			ce.Reply("### Contacts\n%s", contacts.String())
+		}
+		return
+	}
+	
+	cnt := ce.Args[0] == "--contacts"
+	grp := ce.Args[0] == "--groups"
+	if cnt {
+		ce.Reply("### Contacts\n%s", contacts.String())
+	}
+	if grp {
+		ce.Reply("### Groups\n%s", groups.String())
+	}
 }
 
 const cmdOpenHelp = `open <_group JID_> - Open a group chat portal.`
