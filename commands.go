@@ -451,7 +451,7 @@ func (handler *CommandHandler) CommandDeleteAllPortals(ce *CommandEvent) {
 	}()
 }
 
-const cmdListHelp = `list - Get a list of all contacts and groups.`
+const cmdListHelp = `list [--contacts] [--groups] - Get a list of all contacts and groups.`
 
 func (handler *CommandHandler) CommandList(ce *CommandEvent) {
 	var contacts strings.Builder
