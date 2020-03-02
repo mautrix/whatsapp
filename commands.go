@@ -464,30 +464,55 @@ func (handler *CommandHandler) CommandList(ce *CommandEvent) {
 			_, _ = fmt.Fprintf(&groups, "* %s - `%s`\n", contact.Name, contact.Jid)
 		}
 	}
-
-	if len(ce.Args) == 0 {
-		ce.Reply("### Contacts\n%s", contacts.String())
-		ce.Reply("### Groups\n%s", groups.String())
-		return
-	} else if len(ce.Args) >= 2 {
-		cnt := ce.Args[0] == "--contacts"
-		if cnt {
-			ce.Reply("### Contacts\n%s", contacts.String())
-			ce.Reply("### Groups\n%s", groups.String())
-		} else {
-			ce.Reply("### Groups\n%s", groups.String())
-			ce.Reply("### Contacts\n%s", contacts.String())
-		}
+if (len(ce.Args) == 0) || (len(ce.Args) >= 2) {
+		ce.Reply("**Usage:** `list --contacts` or `list --groups`")
 		return
 	}
 	
 	cnt := ce.Args[0] == "--contacts"
 	grp := ce.Args[0] == "--groups"
+	
 	if cnt {
-		ce.Reply("### Contacts\n%s", contacts.String())
+		ce.Reply("### Contacts")
+		var contacts_array = strings.Split(contacts.String(), "\n")
+		var message_string = ""
+		var counter int = 0
+		var msgnr int = len(contacts_array)/200
+		var message_counter int = 0
+		for _,x := range contacts_array {
+			message_string = strings.Join([]string{message_string, x}, "\n")
+			counter++
+			if (counter >= 200) {
+				counter = 0
+				ce.Reply("%s", message_string)
+				message_string = ""
+				message_counter++
+			} else if (message_counter >= msgnr) && (x == contacts_array[len(contacts_array)-1]) {
+				ce.Reply("%s", message_string)
+			}
+		}
 	}
 	if grp {
-		ce.Reply("### Groups\n%s", groups.String())
+		ce.Reply("### Groups")
+		
+		var groups_array = strings.Split(groups.String(), "\n")
+		var message_string = ""
+		var counter int = 0
+		var message_counter int = 0
+		var msgnr int = len(groups_array)/200
+		
+		for _,x := range groups_array {
+			message_string = strings.Join([]string{message_string, x}, "\n")
+			counter++
+			if (counter >= 200) {
+				counter = 0
+				ce.Reply("%s", message_string)
+				message_string = ""
+				message_counter++
+			} else if (message_counter >= msgnr) && (x == groups_array[len(groups_array)-1]) {
+				ce.Reply("%s", message_string)
+			}
+		}
 	}
 }
 
