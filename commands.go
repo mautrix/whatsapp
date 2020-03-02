@@ -464,14 +464,17 @@ func (handler *CommandHandler) CommandList(ce *CommandEvent) {
 			_, _ = fmt.Fprintf(&groups, "* %s - `%s`\n", contact.Name, contact.Jid)
 		}
 	}
-if (len(ce.Args) == 0) || (len(ce.Args) >= 2) {
-		ce.Reply("**Usage:** `list --contacts` or `list --groups`")
+	var cnt, grp = false, false
+	if (len(ce.Args) == 0) || (len(ce.Args) == 2) {
+		cnt = true
+		grp = true
+	} else if len(ce.Args) > 2 {
+		ce.Reply("**Usage:** `list [--contacts] [--groups]`")
 		return
+	} else {
+		cnt = ce.Args[0] == "--contacts"
+		grp = ce.Args[0] == "--groups"
 	}
-	
-	cnt := ce.Args[0] == "--contacts"
-	grp := ce.Args[0] == "--groups"
-	
 	if cnt {
 		ce.Reply("### Contacts")
 		var contacts_array = strings.Split(contacts.String(), "\n")
