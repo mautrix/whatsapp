@@ -178,15 +178,16 @@ func (prov *ProvisioningAPI) Reconnect(w http.ResponseWriter, r *http.Request) {
 			ErrCode: "login in progress",
 		})
 		return
+	} else if err == whatsapp.ErrAlreadyLoggedIn {
+		jsonResponse(w, http.StatusConflict, Error{
+			Error:   "You were already connected.",
+			ErrCode: err.Error(),
+		})
+		return
 	}
 	if err != nil {
 		user.log.Warnln("Error while reconnecting:", err)
-		if err == whatsapp.ErrAlreadyLoggedIn {
-			jsonResponse(w, http.StatusConflict, Error{
-				Error:   "You were already connected.",
-				ErrCode: err.Error(),
-			})
-		} else if err.Error() == "restore session connection timed out" {
+		if err.Error() == "restore session connection timed out" {
 			jsonResponse(w, http.StatusForbidden, Error{
 				Error:   "Reconnection timed out. Is WhatsApp on your phone reachable?",
 				ErrCode: err.Error(),
