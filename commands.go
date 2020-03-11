@@ -247,12 +247,13 @@ func (handler *CommandHandler) CommandReconnect(ce *CommandEvent) {
 	} else if err == whatsapp.ErrLoginInProgress {
 		ce.Reply("A login or reconnection is already in progress.")
 		return
+	} else if err == whatsapp.ErrAlreadyLoggedIn {
+		ce.Reply("You were already connected.")
+		return
 	}
 	if err != nil {
 		ce.User.log.Warnln("Error while reconnecting:", err)
-		if err == whatsapp.ErrAlreadyLoggedIn {
-			ce.Reply("You were already connected.")
-		} else if err.Error() == "restore session connection timed out" {
+		if err.Error() == "restore session connection timed out" {
 			ce.Reply("Reconnection timed out. Is WhatsApp on your phone reachable?")
 		} else {
 			ce.Reply("Unknown error while reconnecting: %v", err)
