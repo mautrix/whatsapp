@@ -231,7 +231,18 @@ func (handler *CommandHandler) CommandReconnect(ce *CommandEvent) {
 		}
 		return
 	}
-	err := ce.User.Conn.Restore()
+
+	wasConnected := true
+	sess, err := ce.User.Conn.Disconnect()
+	if err == whatsapp.ErrNotConnected {
+		wasConnected = false
+	} else if err != nil {
+		ce.User.log.Warnln("Error while disconnecting:", err)
+	} else if len(sess.Wid) > 0 {
+		ce.User.SetSession(&sess)
+	}
+
+	err = ce.User.Conn.Restore()
 	if err == whatsapp.ErrInvalidSession {
 		if ce.User.Session != nil {
 			ce.User.log.Debugln("Got invalid session error when reconnecting, but user has session. Retrying using RestoreWithSession()...")
@@ -247,12 +258,13 @@ func (handler *CommandHandler) CommandReconnect(ce *CommandEvent) {
 	} else if err == whatsapp.ErrLoginInProgress {
 		ce.Reply("A login or reconnection is already in progress.")
 		return
+	} else if err == whatsapp.ErrAlreadyLoggedIn {
+		ce.Reply("You were already connected.")
+		return
 	}
 	if err != nil {
 		ce.User.log.Warnln("Error while reconnecting:", err)
-		if err == whatsapp.ErrAlreadyLoggedIn {
-			ce.Reply("You were already connected.")
-		} else if err.Error() == "restore session connection timed out" {
+		if err.Error() == "restore session connection timed out" {
 			ce.Reply("Reconnection timed out. Is WhatsApp on your phone reachable?")
 		} else {
 			ce.Reply("Unknown error while reconnecting: %v", err)
@@ -267,7 +279,14 @@ func (handler *CommandHandler) CommandReconnect(ce *CommandEvent) {
 		return
 	}
 	ce.User.ConnectionErrors = 0
-	ce.Reply("Reconnected successfully.")
+
+	var msg string
+	if wasConnected {
+		msg = "Reconnected successfully."
+	} else {
+		msg = "Connected successfully."
+	}
+	ce.Reply(msg)
 	ce.User.PostLogin()
 }
 

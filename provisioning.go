@@ -156,7 +156,18 @@ func (prov *ProvisioningAPI) Reconnect(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	err := user.Conn.Restore()
+
+	wasConnected := true
+	sess, err := user.Conn.Disconnect()
+	if err == whatsapp.ErrNotConnected {
+		wasConnected = false
+	} else if err != nil {
+		user.log.Warnln("Error while disconnecting:", err)
+	} else if len(sess.Wid) > 0 {
+		user.SetSession(&sess)
+	}
+
+	err = user.Conn.Restore()
 	if err == whatsapp.ErrInvalidSession {
 		if user.Session != nil {
 			user.log.Debugln("Got invalid session error when reconnecting, but user has session. Retrying using RestoreWithSession()...")
@@ -178,15 +189,16 @@ func (prov *ProvisioningAPI) Reconnect(w http.ResponseWriter, r *http.Request) {
 			ErrCode: "login in progress",
 		})
 		return
+	} else if err == whatsapp.ErrAlreadyLoggedIn {
+		jsonResponse(w, http.StatusConflict, Error{
+			Error:   "You were already connected.",
+			ErrCode: err.Error(),
+		})
+		return
 	}
 	if err != nil {
 		user.log.Warnln("Error while reconnecting:", err)
-		if err == whatsapp.ErrAlreadyLoggedIn {
-			jsonResponse(w, http.StatusConflict, Error{
-				Error:   "You were already connected.",
-				ErrCode: err.Error(),
-			})
-		} else if err.Error() == "restore session connection timed out" {
+		if err.Error() == "restore session connection timed out" {
 			jsonResponse(w, http.StatusForbidden, Error{
 				Error:   "Reconnection timed out. Is WhatsApp on your phone reachable?",
 				ErrCode: err.Error(),
@@ -208,7 +220,15 @@ func (prov *ProvisioningAPI) Reconnect(w http.ResponseWriter, r *http.Request) {
 	}
 	user.ConnectionErrors = 0
 	user.PostLogin()
-	jsonResponse(w, http.StatusOK, Response{true, "Reconnected successfully."})
+
+	var msg string
+	if wasConnected {
+		msg = "Reconnected successfully."
+	} else {
+		msg = "Connected successfully."
+	}
+
+	jsonResponse(w, http.StatusOK, Response{true, msg})
 }
 
 func (prov *ProvisioningAPI) Ping(w http.ResponseWriter, r *http.Request) {
