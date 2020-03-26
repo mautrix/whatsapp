@@ -9,7 +9,6 @@ import (
 	"strings"
 
 	"maunium.net/go/mautrix"
-	"maunium.net/go/mautrix-appservice"
 )
 
 func init() {
@@ -47,7 +46,7 @@ func init() {
 		return executeBatch(tx, valueStrings, values...)
 	}
 
-	migrateMemberships := func(tx *sql.Tx, rooms map[string]map[string]mautrix.Member) error {
+	migrateMemberships := func(tx *sql.Tx, rooms map[string]map[string]mautrix.Membership) error {
 		for roomID, members := range rooms {
 			if len(members) == 0 {
 				continue
@@ -106,13 +105,18 @@ func init() {
 		user_id VARCHAR(255) PRIMARY KEY
 	)`
 
-	upgrades[9] = upgrade{"Move state store to main DB", func(tx *sql.Tx, ctx context) error {
-		store := appservice.NewBasicStateStore().(*appservice.BasicStateStore)
+	type TempStateStore struct {
+		Registrations map[string]bool                          `json:"registrations"`
+		Members       map[string]map[string]mautrix.Membership `json:"memberships"`
+		PowerLevels   map[string]*mautrix.PowerLevels          `json:"power_levels"`
+	}
 
+	upgrades[9] = upgrade{"Move state store to main DB", func(tx *sql.Tx, ctx context) error {
 		if ctx.dialect == Postgres {
 			roomStateTable = strings.Replace(roomStateTable, "TEXT", "JSONB", 1)
 		}
 
+		var store TempStateStore
 		if _, err := tx.Exec(userProfileTable); err != nil {
 			return err
 		} else if _, err = tx.Exec(roomStateTable); err != nil {
