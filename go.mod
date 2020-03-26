@@ -3,7 +3,7 @@ module maunium.net/go/mautrix-whatsapp
 go 1.14
 
 require (
-	github.com/Rhymen/go-whatsapp v0.0.2-0.20190524185555-8d76e32a6d8e
+	github.com/Rhymen/go-whatsapp v0.1.1-0.20200311074336-484cfe758705
 	github.com/chai2010/webp v1.1.0
 	github.com/gorilla/mux v1.7.2
 	github.com/gorilla/websocket v1.4.1
@@ -19,4 +19,4 @@ require (
 	maunium.net/go/mautrix-appservice v0.1.0-alpha.5
 )
 
-replace github.com/Rhymen/go-whatsapp => github.com/tulir/go-whatsapp v0.0.2-0.20200326181432-0904cc134550
+replace github.com/Rhymen/go-whatsapp => github.com/tulir/go-whatsapp v0.0.2-0.20200326194619-346fcc9759ff
