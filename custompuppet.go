@@ -22,6 +22,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -29,7 +30,7 @@ import (
 
 	"github.com/Rhymen/go-whatsapp"
 	"maunium.net/go/mautrix"
-	"maunium.net/go/mautrix-appservice"
+	appservice "maunium.net/go/mautrix-appservice"
 )
 
 var (
@@ -117,7 +118,9 @@ func (puppet *Puppet) StartCustomMXID() error {
 		return err
 	}
 	urlPath := intent.BuildURL("account", "whoami")
-	var resp struct{ UserID string `json:"user_id"` }
+	var resp struct {
+		UserID string `json:"user_id"`
+	}
 	_, err = intent.MakeRequest("GET", urlPath, nil, &resp)
 	if err != nil {
 		puppet.clearCustomMXID()
@@ -155,6 +158,28 @@ func (puppet *Puppet) stopSyncing() {
 	puppet.customIntent.StopSync()
 }
 
+func parseEvent(roomID string, data json.RawMessage) *mautrix.Event {
+	event := &mautrix.Event{}
+	err := json.Unmarshal(data, event)
+	if err != nil {
+		// TODO add separate handler for these
+		_, _ = fmt.Fprintf(os.Stderr, "Failed to unmarshal event: %v\n%s\n", err, string(data))
+		return nil
+	}
+	return event
+}
+
+func parsePresenceEvent(data json.RawMessage) *mautrix.Event {
+	event := &mautrix.Event{}
+	err := json.Unmarshal(data, event)
+	if err != nil {
+		// TODO add separate handler for these
+		_, _ = fmt.Fprintf(os.Stderr, "Failed to unmarshal event: %v\n%s\n", err, string(data))
+		return nil
+	}
+	return event
+}
+
 func (puppet *Puppet) ProcessResponse(resp *mautrix.RespSync, since string) error {
 	if !puppet.customUser.IsConnected() {
 		puppet.log.Debugln("Skipping sync processing: custom user not connected to whatsapp")
@@ -165,20 +190,26 @@ func (puppet *Puppet) ProcessResponse(resp *mautrix.RespSync, since string) erro
 		if portal == nil {
 			continue
 		}
-		for _, event := range events.Ephemeral.Events {
-			switch event.Type {
-			case mautrix.EphemeralEventReceipt:
-				go puppet.handleReceiptEvent(portal, event)
-			case mautrix.EphemeralEventTyping:
-				go puppet.handleTypingEvent(portal, event)
+		for _, data := range events.Ephemeral.Events {
+			event := parseEvent(roomID, data)
+			if event != nil {
+				switch event.Type {
+				case mautrix.EphemeralEventReceipt:
+					go puppet.handleReceiptEvent(portal, event)
+				case mautrix.EphemeralEventTyping:
+					go puppet.handleTypingEvent(portal, event)
+				}
 			}
 		}
 	}
-	for _, event := range resp.Presence.Events {
-		if event.Sender != puppet.CustomMXID {
-			continue
+	for _, data := range resp.Presence.Events {
+		event := parsePresenceEvent(data)
+		if event != nil {
+			if event.Sender != puppet.CustomMXID {
+				continue
+			}
+			go puppet.handlePresenceEvent(event)
 		}
-		go puppet.handlePresenceEvent(event)
 	}
 	return nil
 }
