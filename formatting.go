@@ -74,7 +74,7 @@ func NewFormatter(bridge *Bridge) *Formatter {
 			MonospaceConverter: func(text string) string {
 				return fmt.Sprintf("```%s```", text)
 			},
-			MonospaceBlockConverter: func(text string) string {
+			MonospaceBlockConverter: func(text, language string) string {
 				return fmt.Sprintf("```%s```", text)
 			},
 		},
