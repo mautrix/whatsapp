@@ -157,9 +157,9 @@ func (mx *MatrixHandler) HandleRoomMetadata(evt *mautrix.Event) {
 	switch evt.Type {
 	case mautrix.StateRoomName:
 		resp, err = user.Conn.UpdateGroupSubject(evt.Content.Name, portal.Key.JID)
-	case mautrix.StateRoomAvatar:
-		return
 	case mautrix.StateTopic:
+		resp, err = user.Conn.UpdateGroupDescription(portal.Key.JID, evt.Content.Topic)
+	case mautrix.StateRoomAvatar:
 		return
 	}
 	if err != nil {

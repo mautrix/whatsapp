@@ -5,8 +5,7 @@ go 1.14
 require (
 	github.com/Rhymen/go-whatsapp v0.1.0
 	github.com/chai2010/webp v1.1.0
-	github.com/gorilla/mux v1.7.4
-	github.com/gorilla/websocket v1.4.2
+	github.com/gorilla/websocket v1.4.1
 	github.com/lib/pq v1.3.0
 	github.com/mattn/go-sqlite3 v2.0.3+incompatible
 	github.com/pkg/errors v0.9.1
@@ -19,4 +18,4 @@ require (
 	maunium.net/go/mautrix-appservice v0.1.0-alpha.6
 )
 
-replace github.com/Rhymen/go-whatsapp => github.com/tulir/go-whatsapp v0.2.1
+replace github.com/Rhymen/go-whatsapp => github.com/tulir/go-whatsapp v0.2.2
