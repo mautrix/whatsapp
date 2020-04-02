@@ -12,7 +12,7 @@ func init() {
 		}
 		_, err := tx.Exec("ALTER TABLE message DROP CONSTRAINT message_chat_jid_fkey")
 		if err != nil {
-			return err
+			return nil
 		}
 		_, err = tx.Exec(`ALTER TABLE message ADD CONSTRAINT message_chat_jid_fkey
 				FOREIGN KEY (chat_jid, chat_receiver) REFERENCES portal(jid, receiver)
