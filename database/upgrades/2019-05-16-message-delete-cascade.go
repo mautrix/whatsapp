@@ -10,8 +10,8 @@ func init() {
 			// SQLite doesn't support constraint updates, but it isn't that careful with constraints anyway.
 			return nil
 		}
-		res, _ := tx.Query(`SELECT EXISTS(SELECT constraint_name FROM information_schema.table_constraints
-			WHERE table_name='message' AND constraint_name='message_chat_jid_fkey');`)
+		res, _ := ctx.db.Query(`SELECT EXISTS(SELECT constraint_name FROM information_schema.table_constraints
+			WHERE table_name='message' AND constraint_name='message_chat_jid_fkey')`)
 		var exists bool
 		_ = res.Scan(&exists)
 		if exists {
