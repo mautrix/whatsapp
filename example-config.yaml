@@ -21,7 +21,7 @@ appservice:
         type: sqlite3
         # The database URI.
         #   SQLite: File name is enough. https://github.com/mattn/go-sqlite3#connection-string
-        #   Postgres: Connection string. For example, postgres://user:password@host/database
+        #   Postgres: Connection string. For example, uri: 'host=host user=user password=password dbname=database sslmode=disable'
         uri: mautrix-whatsapp.db
         # Maximum number of connections. Mostly relevant for Postgres.
         max_open_conns: 20
