@@ -1263,7 +1263,7 @@ func (portal *Portal) HandleMatrixMessage(sender *User, evt *mautrix.Event) {
 	}
 	var err error
 	switch evt.Content.MsgType {
-	case mautrix.MsgText, mautrix.MsgEmote:
+	case mautrix.MsgText, mautrix.MsgEmote, mautrix.MsgNotice:
 		text := evt.Content.Body
 		if evt.Content.Format == mautrix.FormatHTML {
 			text = portal.bridge.Formatter.ParseMatrix(evt.Content.FormattedBody)
