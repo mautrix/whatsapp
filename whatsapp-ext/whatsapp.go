@@ -161,3 +161,45 @@ func (ext *ExtendedConn) GetProfilePicThumb(jid string) (*ProfilePicInfo, error)
 	}
 	return info, nil
 }
+
+func (ext *ExtendedConn) HandleGroupInvite(groupJid string, numbers[]string) (err error) {
+	var parts []string
+	parts = append(parts, numbers...)
+	_, err = ext.Conn.AddMember(groupJid, parts)
+	if err != nil {
+		fmt.Printf("%s Handle Invite err", err)
+	}
+	return
+}
+
+func (ext *ExtendedConn) HandleGroupJoin(code string) (jid string, err error)  {
+	return ext.Conn.GroupAcceptInviteCode(code)
+}
+
+func (ext *ExtendedConn) HandleGroupKick(groupJid string, numbers[]string) (err error) {
+	var parts []string
+	parts = append(parts, numbers...)
+	_, err = ext.Conn.RemoveMember(groupJid, parts)
+	if err != nil {
+		fmt.Printf("%s Handle kick err", err)
+	}
+	return
+}
+
+func (ext *ExtendedConn) HandleGroupCreate(groupTopic string, numbers[]string) (err error)  {
+	var parts []string
+	parts = append(parts, numbers...)
+	_, err = ext.Conn.CreateGroup(groupTopic, parts)
+	if err != nil {
+		fmt.Printf("%s HandleGroupCreate err", err)
+	}
+	return
+}
+
+func (ext *ExtendedConn) HandleGroupLeave(groupJid string) (err error)  {
+	_, err = ext.Conn.LeaveGroup(groupJid)
+	if err != nil {
+		fmt.Printf("%s HandleGroupLeave err", err)
+	}
+	return
+}
