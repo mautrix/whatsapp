@@ -533,6 +533,34 @@ func (portal *Portal) ChangeAdminStatus(jids []string, setAdmin bool) {
 	}
 }
 
+func (portal *Portal) membershipRemove(jids []string, action whatsappExt.ChatActionType) {
+	for _, jid := range jids {
+		jidArr := strings.Split(jid, "@c.")
+		jid = jidArr[0]
+		member := portal.bridge.GetPuppetByJID(jid)
+		if member == nil {
+			portal.log.Errorln("%s is not exist", jid)
+			continue
+		}
+		_, err := portal.MainIntent().KickUser(portal.MXID, &mautrix.ReqKickUser{
+			UserID: member.MXID,
+		})
+		if err != nil {
+			portal.log.Errorln("Error %s member from whatsapp: %v", action, err)
+		}
+	}
+}
+
+func (portal *Portal) membershipAdd(user *User, jid string) {
+	chatMap := make(map[string]whatsapp.Chat)
+	for _, chat := range user.Conn.Store.Chats {
+		if chat.Jid == jid {
+			chatMap[chat.Jid] = chat
+		}
+	}
+	user.syncPortals(chatMap, false)
+}
+
 func (portal *Portal) RestrictMessageSending(restrict bool) {
 	levels, err := portal.MainIntent().PowerLevels(portal.MXID)
 	if err != nil {
@@ -958,6 +986,7 @@ func (portal *Portal) HandleTextMessage(source *User, message whatsapp.TextMessa
 		portal.log.Errorfln("Failed to handle message %s: %v", message.Info.Id, err)
 		return
 	}
+	fmt.Println("\n11111111111\n")
 	portal.finishHandling(source, message.Info.Source, resp.EventID)
 }
 
@@ -981,6 +1010,7 @@ func (portal *Portal) HandleMediaMessage(source *User, download func() ([]byte, 
 		if err != nil {
 			portal.log.Errorfln("Failed to send media download error message for %s: %v", info.Id, err)
 		} else {
+			fmt.Println("\n22222222222\n")
 			portal.finishHandling(source, info.Source, resp.EventID)
 		}
 		return
@@ -1083,7 +1113,7 @@ func (portal *Portal) HandleMediaMessage(source *User, download func() ([]byte, 
 		}
 		// TODO store caption mxid?
 	}
-
+	fmt.Println("\n3333333333333\n")
 	portal.finishHandling(source, info.Source, resp.EventID)
 }
 

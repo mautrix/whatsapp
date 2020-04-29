@@ -45,6 +45,9 @@ const (
 	ChatActionAnnounce    ChatActionType = "announce"
 	ChatActionPromote     ChatActionType = "promote"
 	ChatActionDemote      ChatActionType = "demote"
+	ChatActionRemove      ChatActionType = "remove"
+	ChatActionAdd         ChatActionType = "add"
+	ChatActionIntroduce   ChatActionType = "introduce"
 )
 
 type ChatUpdateData struct {
@@ -72,6 +75,10 @@ type ChatUpdateData struct {
 	Announce bool
 
 	PermissionChange struct {
+		JIDs []string `json:"participants"`
+	}
+
+	MemberAction struct {
 		JIDs []string `json:"participants"`
 	}
 }
@@ -110,6 +117,8 @@ func (cud *ChatUpdateData) UnmarshalJSON(data []byte) error {
 		unmarshalTo = &cud.Announce
 	case ChatActionPromote, ChatActionDemote:
 		unmarshalTo = &cud.PermissionChange
+	case ChatActionAdd, ChatActionRemove:
+		unmarshalTo = &cud.MemberAction
 	default:
 		return nil
 	}
