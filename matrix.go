@@ -1,5 +1,5 @@
 // mautrix-whatsapp - A Matrix-WhatsApp puppeting bridge.
-// Copyright (C) 2019 Tulir Asokan
+// Copyright (C) 2020 Tulir Asokan
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as published by
@@ -22,11 +22,10 @@ import (
 
 	"maunium.net/go/maulogger/v2"
 
-	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix-appservice"
+	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/format"
-
-	"maunium.net/go/mautrix-whatsapp/types"
+	"maunium.net/go/mautrix/id"
 )
 
 type MatrixHandler struct {
@@ -43,17 +42,17 @@ func NewMatrixHandler(bridge *Bridge) *MatrixHandler {
 		log:    bridge.Log.Sub("Matrix"),
 		cmd:    NewCommandHandler(bridge),
 	}
-	bridge.EventProcessor.On(mautrix.EventMessage, handler.HandleMessage)
-	bridge.EventProcessor.On(mautrix.EventSticker, handler.HandleMessage)
-	bridge.EventProcessor.On(mautrix.EventRedaction, handler.HandleRedaction)
-	bridge.EventProcessor.On(mautrix.StateMember, handler.HandleMembership)
-	bridge.EventProcessor.On(mautrix.StateRoomName, handler.HandleRoomMetadata)
-	bridge.EventProcessor.On(mautrix.StateRoomAvatar, handler.HandleRoomMetadata)
-	bridge.EventProcessor.On(mautrix.StateTopic, handler.HandleRoomMetadata)
+	bridge.EventProcessor.On(event.EventMessage, handler.HandleMessage)
+	bridge.EventProcessor.On(event.EventSticker, handler.HandleMessage)
+	bridge.EventProcessor.On(event.EventRedaction, handler.HandleRedaction)
+	bridge.EventProcessor.On(event.StateMember, handler.HandleMembership)
+	bridge.EventProcessor.On(event.StateRoomName, handler.HandleRoomMetadata)
+	bridge.EventProcessor.On(event.StateRoomAvatar, handler.HandleRoomMetadata)
+	bridge.EventProcessor.On(event.StateTopic, handler.HandleRoomMetadata)
 	return handler
 }
 
-func (mx *MatrixHandler) HandleBotInvite(evt *mautrix.Event) {
+func (mx *MatrixHandler) HandleBotInvite(evt *event.Event) {
 	intent := mx.as.BotIntent()
 
 	user := mx.bridge.GetUserByMXID(evt.Sender)
@@ -61,7 +60,7 @@ func (mx *MatrixHandler) HandleBotInvite(evt *mautrix.Event) {
 		return
 	}
 
-	resp, err := intent.JoinRoom(evt.RoomID, "", nil)
+	resp, err := intent.JoinRoomByID(evt.RoomID)
 	if err != nil {
 		mx.log.Debugln("Failed to join room", evt.RoomID, "with invite from", evt.Sender)
 		return
@@ -97,7 +96,7 @@ func (mx *MatrixHandler) HandleBotInvite(evt *mautrix.Event) {
 	for mxid, _ := range members.Joined {
 		if mxid == intent.UserID || mxid == evt.Sender {
 			continue
-		} else if _, ok := mx.bridge.ParsePuppetMXID(types.MatrixUserID(mxid)); ok {
+		} else if _, ok := mx.bridge.ParsePuppetMXID(mxid); ok {
 			hasPuppets = true
 			continue
 		}
@@ -108,15 +107,16 @@ func (mx *MatrixHandler) HandleBotInvite(evt *mautrix.Event) {
 	}
 
 	if !hasPuppets {
-		user := mx.bridge.GetUserByMXID(types.MatrixUserID(evt.Sender))
-		user.SetManagementRoom(types.MatrixRoomID(resp.RoomID))
-		intent.SendNotice(string(user.ManagementRoom), "This room has been registered as your bridge management/status room. Send `help` to get a list of commands.")
+		user := mx.bridge.GetUserByMXID(evt.Sender)
+		user.SetManagementRoom(resp.RoomID)
+		intent.SendNotice(user.ManagementRoom, "This room has been registered as your bridge management/status room. Send `help` to get a list of commands.")
 		mx.log.Debugln(resp.RoomID, "registered as a management room with", evt.Sender)
 	}
 }
 
-func (mx *MatrixHandler) HandleMembership(evt *mautrix.Event) {
-	if evt.Content.Membership == "invite" && evt.GetStateKey() == mx.as.BotMXID() {
+func (mx *MatrixHandler) HandleMembership(evt *event.Event) {
+	content := evt.Content.AsMember()
+	if content.Membership == event.MembershipInvite && id.UserID(evt.GetStateKey()) == mx.as.BotMXID() {
 		mx.HandleBotInvite(evt)
 	}
 
@@ -125,15 +125,21 @@ func (mx *MatrixHandler) HandleMembership(evt *mautrix.Event) {
 		return
 	}
 
-	user := mx.bridge.GetUserByMXID(types.MatrixUserID(evt.Sender))
+	user := mx.bridge.GetUserByMXID(id.UserID(evt.Sender))
 	if user == nil || !user.Whitelisted || !user.IsConnected() {
 		return
 	}
 
-	if evt.Content.Membership == "leave" {
-		if evt.GetStateKey() == evt.Sender {
-			if portal.IsPrivateChat() || evt.Unsigned.PrevContent.Membership == "join" {
-				portal.HandleMatrixLeave(user)
+	if content.Membership == event.MembershipLeave {
+		if id.UserID(evt.GetStateKey()) == evt.Sender {
+			if evt.Unsigned.PrevContent != nil {
+				_ = evt.Unsigned.PrevContent.ParseRaw(evt.Type)
+				prevContent, ok := evt.Unsigned.PrevContent.Parsed.(*event.MemberEventContent)
+				if ok {
+					if portal.IsPrivateChat() || prevContent.Membership == "join" {
+						portal.HandleMatrixLeave(user)
+					}
+				}
 			}
 		} else {
 			portal.HandleMatrixKick(user, evt)
@@ -141,8 +147,8 @@ func (mx *MatrixHandler) HandleMembership(evt *mautrix.Event) {
 	}
 }
 
-func (mx *MatrixHandler) HandleRoomMetadata(evt *mautrix.Event) {
-	user := mx.bridge.GetUserByMXID(types.MatrixUserID(evt.Sender))
+func (mx *MatrixHandler) HandleRoomMetadata(evt *event.Event) {
+	user := mx.bridge.GetUserByMXID(id.UserID(evt.Sender))
 	if user == nil || !user.Whitelisted || !user.IsConnected() {
 		return
 	}
@@ -154,12 +160,12 @@ func (mx *MatrixHandler) HandleRoomMetadata(evt *mautrix.Event) {
 
 	var resp <-chan string
 	var err error
-	switch evt.Type {
-	case mautrix.StateRoomName:
-		resp, err = user.Conn.UpdateGroupSubject(evt.Content.Name, portal.Key.JID)
-	case mautrix.StateTopic:
-		resp, err = user.Conn.UpdateGroupDescription(portal.Key.JID, evt.Content.Topic)
-	case mautrix.StateRoomAvatar:
+	switch content := evt.Content.Parsed.(type) {
+	case *event.RoomNameEventContent:
+		resp, err = user.Conn.UpdateGroupSubject(content.Name, portal.Key.JID)
+	case *event.TopicEventContent:
+		resp, err = user.Conn.UpdateGroupDescription(portal.Key.JID, content.Topic)
+	case *event.RoomAvatarEventContent:
 		return
 	}
 	if err != nil {
@@ -170,7 +176,7 @@ func (mx *MatrixHandler) HandleRoomMetadata(evt *mautrix.Event) {
 	}
 }
 
-func (mx *MatrixHandler) HandleMessage(evt *mautrix.Event) {
+func (mx *MatrixHandler) HandleMessage(evt *event.Event) {
 	if _, isPuppet := mx.bridge.ParsePuppetMXID(evt.Sender); evt.Sender == mx.bridge.Bot.UserID || isPuppet {
 		return
 	}
@@ -179,38 +185,37 @@ func (mx *MatrixHandler) HandleMessage(evt *mautrix.Event) {
 		return
 	}
 
-	roomID := types.MatrixRoomID(evt.RoomID)
-	user := mx.bridge.GetUserByMXID(types.MatrixUserID(evt.Sender))
+	user := mx.bridge.GetUserByMXID(evt.Sender)
 
 	if !user.RelaybotWhitelisted {
 		return
 	}
 
-	if user.Whitelisted && evt.Content.MsgType == mautrix.MsgText {
+	content := evt.Content.AsMessage()
+	if user.Whitelisted && content.MsgType == event.MsgText {
 		commandPrefix := mx.bridge.Config.Bridge.CommandPrefix
-		hasCommandPrefix := strings.HasPrefix(evt.Content.Body, commandPrefix)
+		hasCommandPrefix := strings.HasPrefix(content.Body, commandPrefix)
 		if hasCommandPrefix {
-			evt.Content.Body = strings.TrimLeft(evt.Content.Body[len(commandPrefix):], " ")
+			content.Body = strings.TrimLeft(content.Body[len(commandPrefix):], " ")
 		}
-		if hasCommandPrefix || roomID == user.ManagementRoom {
-			mx.cmd.Handle(roomID, user, evt.Content.Body)
+		if hasCommandPrefix || evt.RoomID == user.ManagementRoom {
+			mx.cmd.Handle(evt.RoomID, user, content.Body)
 			return
 		}
 	}
 
-	portal := mx.bridge.GetPortalByMXID(roomID)
+	portal := mx.bridge.GetPortalByMXID(evt.RoomID)
 	if portal != nil && (user.Whitelisted || portal.HasRelaybot()) {
 		portal.HandleMatrixMessage(user, evt)
 	}
 }
 
-func (mx *MatrixHandler) HandleRedaction(evt *mautrix.Event) {
+func (mx *MatrixHandler) HandleRedaction(evt *event.Event) {
 	if _, isPuppet := mx.bridge.ParsePuppetMXID(evt.Sender); evt.Sender == mx.bridge.Bot.UserID || isPuppet {
 		return
 	}
 
-	roomID := types.MatrixRoomID(evt.RoomID)
-	user := mx.bridge.GetUserByMXID(types.MatrixUserID(evt.Sender))
+	user := mx.bridge.GetUserByMXID(id.UserID(evt.Sender))
 
 	if !user.Whitelisted {
 		return
@@ -221,13 +226,13 @@ func (mx *MatrixHandler) HandleRedaction(evt *mautrix.Event) {
 	} else if !user.IsConnected() {
 		msg := format.RenderMarkdown(fmt.Sprintf("[%[1]s](https://matrix.to/#/%[1]s): \u26a0 "+
 			"You are not connected to WhatsApp, so your redaction was not bridged. "+
-			"Use `%[2]s reconnect` to reconnect.", user.MXID, mx.bridge.Config.Bridge.CommandPrefix))
-		msg.MsgType = mautrix.MsgNotice
-		_, _ = mx.bridge.Bot.SendMessageEvent(roomID, mautrix.EventMessage, msg)
+			"Use `%[2]s reconnect` to reconnect.", user.MXID, mx.bridge.Config.Bridge.CommandPrefix), true, false)
+		msg.MsgType = event.MsgNotice
+		_, _ = mx.bridge.Bot.SendMessageEvent(evt.RoomID, event.EventMessage, msg)
 		return
 	}
 
-	portal := mx.bridge.GetPortalByMXID(roomID)
+	portal := mx.bridge.GetPortalByMXID(evt.RoomID)
 	if portal != nil {
 		portal.HandleMatrixRedaction(user, evt)
 	}

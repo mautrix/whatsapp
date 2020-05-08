@@ -1,5 +1,5 @@
 // mautrix-whatsapp - A Matrix-WhatsApp puppeting bridge.
-// Copyright (C) 2019 Tulir Asokan
+// Copyright (C) 2020 Tulir Asokan
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as published by
@@ -23,6 +23,7 @@ import (
 	log "maunium.net/go/maulogger/v2"
 
 	"maunium.net/go/mautrix-whatsapp/types"
+	"maunium.net/go/mautrix/id"
 )
 
 type PortalKey struct {
@@ -74,7 +75,7 @@ func (pq *PortalQuery) GetByJID(key PortalKey) *Portal {
 	return pq.get("SELECT * FROM portal WHERE jid=$1 AND receiver=$2", key.JID, key.Receiver)
 }
 
-func (pq *PortalQuery) GetByMXID(mxid types.MatrixRoomID) *Portal {
+func (pq *PortalQuery) GetByMXID(mxid id.RoomID) *Portal {
 	return pq.get("SELECT * FROM portal WHERE mxid=$1", mxid)
 }
 
@@ -107,12 +108,12 @@ type Portal struct {
 	log log.Logger
 
 	Key  PortalKey
-	MXID types.MatrixRoomID
+	MXID id.RoomID
 
 	Name      string
 	Topic     string
 	Avatar    string
-	AvatarURL string
+	AvatarURL id.ContentURI
 }
 
 func (portal *Portal) Scan(row Scannable) *Portal {
@@ -124,12 +125,12 @@ func (portal *Portal) Scan(row Scannable) *Portal {
 		}
 		return nil
 	}
-	portal.MXID = mxid.String
-	portal.AvatarURL = avatarURL.String
+	portal.MXID = id.RoomID(mxid.String)
+	portal.AvatarURL, _ = id.ParseContentURI(avatarURL.String)
 	return portal
 }
 
-func (portal *Portal) mxidPtr() *string {
+func (portal *Portal) mxidPtr() *id.RoomID {
 	if len(portal.MXID) > 0 {
 		return &portal.MXID
 	}
@@ -138,19 +139,19 @@ func (portal *Portal) mxidPtr() *string {
 
 func (portal *Portal) Insert() {
 	_, err := portal.db.Exec("INSERT INTO portal VALUES ($1, $2, $3, $4, $5, $6, $7)",
-		portal.Key.JID, portal.Key.Receiver, portal.mxidPtr(), portal.Name, portal.Topic, portal.Avatar, portal.AvatarURL)
+		portal.Key.JID, portal.Key.Receiver, portal.mxidPtr(), portal.Name, portal.Topic, portal.Avatar, portal.AvatarURL.String())
 	if err != nil {
 		portal.log.Warnfln("Failed to insert %s: %v", portal.Key, err)
 	}
 }
 
 func (portal *Portal) Update() {
-	var mxid *string
+	var mxid *id.RoomID
 	if len(portal.MXID) > 0 {
 		mxid = &portal.MXID
 	}
 	_, err := portal.db.Exec("UPDATE portal SET mxid=$1, name=$2, topic=$3, avatar=$4, avatar_url=$5 WHERE jid=$6 AND receiver=$7",
-		mxid, portal.Name, portal.Topic, portal.Avatar, portal.AvatarURL, portal.Key.JID, portal.Key.Receiver)
+		mxid, portal.Name, portal.Topic, portal.Avatar, portal.AvatarURL.String(), portal.Key.JID, portal.Key.Receiver)
 	if err != nil {
 		portal.log.Warnfln("Failed to update %s: %v", portal.Key, err)
 	}
@@ -163,7 +164,7 @@ func (portal *Portal) Delete() {
 	}
 }
 
-func (portal *Portal) GetUserIDs() []types.MatrixUserID {
+func (portal *Portal) GetUserIDs() []id.UserID {
 	rows, err := portal.db.Query(`SELECT "user".mxid FROM "user", user_portal
 		WHERE "user".jid=user_portal.user_jid
 			AND user_portal.portal_jid=$1
@@ -173,9 +174,9 @@ func (portal *Portal) GetUserIDs() []types.MatrixUserID {
 		portal.log.Debugln("Failed to get portal user ids:", err)
 		return nil
 	}
-	var userIDs []types.MatrixUserID
+	var userIDs []id.UserID
 	for rows.Next() {
-		var userID types.MatrixUserID
+		var userID id.UserID
 		err = rows.Scan(&userID)
 		if err != nil {
 			portal.log.Warnln("Failed to scan row:", err)

@@ -26,8 +26,8 @@ import (
 	"github.com/gorilla/websocket"
 	log "maunium.net/go/maulogger/v2"
 
-	"maunium.net/go/mautrix-whatsapp/types"
 	whatsappExt "maunium.net/go/mautrix-whatsapp/whatsapp-ext"
+	"maunium.net/go/mautrix/id"
 )
 
 type ProvisioningAPI struct {
@@ -61,7 +61,7 @@ func (prov *ProvisioningAPI) AuthMiddleware(h http.Handler) http.Handler {
 			return
 		}
 		userID := r.URL.Query().Get("user_id")
-		user := prov.bridge.GetUserByMXID(types.MatrixUserID(userID))
+		user := prov.bridge.GetUserByMXID(id.UserID(userID))
 		h.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), "user", user)))
 	})
 }
@@ -300,7 +300,7 @@ var upgrader = websocket.Upgrader{}
 
 func (prov *ProvisioningAPI) Login(w http.ResponseWriter, r *http.Request) {
 	userID := r.URL.Query().Get("user_id")
-	user := prov.bridge.GetUserByMXID(types.MatrixUserID(userID))
+	user := prov.bridge.GetUserByMXID(id.UserID(userID))
 
 	c, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {

@@ -1,5 +1,5 @@
 // mautrix-whatsapp - A Matrix-WhatsApp puppeting bridge.
-// Copyright (C) 2019 Tulir Asokan
+// Copyright (C) 2020 Tulir Asokan
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as published by
@@ -26,10 +26,11 @@ import (
 
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix-appservice"
+	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/format"
+	"maunium.net/go/mautrix/id"
 
 	"maunium.net/go/mautrix-whatsapp/database"
-	"maunium.net/go/mautrix-whatsapp/types"
 	"maunium.net/go/mautrix-whatsapp/whatsapp-ext"
 )
 
@@ -51,7 +52,7 @@ type CommandEvent struct {
 	Bot     *appservice.IntentAPI
 	Bridge  *Bridge
 	Handler *CommandHandler
-	RoomID  types.MatrixRoomID
+	RoomID  id.RoomID
 	User    *User
 	Command string
 	Args    []string
@@ -59,20 +60,20 @@ type CommandEvent struct {
 
 // Reply sends a reply to command as notice
 func (ce *CommandEvent) Reply(msg string, args ...interface{}) {
-	content := format.RenderMarkdown(fmt.Sprintf(msg, args...))
-	content.MsgType = mautrix.MsgNotice
+	content := format.RenderMarkdown(fmt.Sprintf(msg, args...), true, false)
+	content.MsgType = event.MsgNotice
 	room := ce.User.ManagementRoom
 	if len(room) == 0 {
 		room = ce.RoomID
 	}
-	_, err := ce.Bot.SendMessageEvent(room, mautrix.EventMessage, content)
+	_, err := ce.Bot.SendMessageEvent(room, event.EventMessage, content)
 	if err != nil {
 		ce.Handler.log.Warnfln("Failed to reply to command from %s: %v", ce.User.MXID, err)
 	}
 }
 
 // Handle handles messages to the bridge
-func (handler *CommandHandler) Handle(roomID types.MatrixRoomID, user *User, message string) {
+func (handler *CommandHandler) Handle(roomID id.RoomID, user *User, message string) {
 	args := strings.Split(message, " ")
 	ce := &CommandEvent{
 		Bot:     handler.bridge.Bot,
