@@ -311,7 +311,7 @@ func (portal *Portal) SyncParticipants(metadata *whatsappExt.GroupInfo) {
 }
 
 func (portal *Portal) UpdateAvatar(user *User, avatar *whatsappExt.ProfilePicInfo) bool {
-	if avatar == nil {
+	if avatar == nil || strings.Count(avatar.URL, "")-1 < 1 {
 		var err error
 		avatar, err = user.Conn.GetProfilePicThumb(portal.Key.JID)
 		if err != nil {
