@@ -21,7 +21,6 @@ import (
 	"strings"
 
 	"maunium.net/go/maulogger/v2"
-
 	"maunium.net/go/mautrix-appservice"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/format"
@@ -43,13 +42,28 @@ func NewMatrixHandler(bridge *Bridge) *MatrixHandler {
 		cmd:    NewCommandHandler(bridge),
 	}
 	bridge.EventProcessor.On(event.EventMessage, handler.HandleMessage)
+	bridge.EventProcessor.On(event.EventEncrypted, handler.HandleEncrypted)
 	bridge.EventProcessor.On(event.EventSticker, handler.HandleMessage)
 	bridge.EventProcessor.On(event.EventRedaction, handler.HandleRedaction)
 	bridge.EventProcessor.On(event.StateMember, handler.HandleMembership)
 	bridge.EventProcessor.On(event.StateRoomName, handler.HandleRoomMetadata)
 	bridge.EventProcessor.On(event.StateRoomAvatar, handler.HandleRoomMetadata)
 	bridge.EventProcessor.On(event.StateTopic, handler.HandleRoomMetadata)
+	bridge.EventProcessor.On(event.StateEncryption, handler.HandleEncryption)
 	return handler
+}
+
+func (mx *MatrixHandler) HandleEncryption(evt *event.Event) {
+	if evt.Content.AsEncryption().Algorithm != id.AlgorithmMegolmV1 {
+		return
+	}
+	portal := mx.bridge.GetPortalByMXID(evt.RoomID)
+	mx.log.Debugln(portal)
+	if portal != nil && !portal.Encrypted {
+		mx.log.Debugfln("%s enabled encryption in %s", evt.Sender, evt.RoomID)
+		portal.Encrypted = true
+		portal.Update()
+	}
 }
 
 func (mx *MatrixHandler) HandleBotInvite(evt *event.Event) {
@@ -115,6 +129,10 @@ func (mx *MatrixHandler) HandleBotInvite(evt *event.Event) {
 }
 
 func (mx *MatrixHandler) HandleMembership(evt *event.Event) {
+	if mx.bridge.Crypto != nil {
+		mx.bridge.Crypto.HandleMemberEvent(evt)
+	}
+
 	content := evt.Content.AsMember()
 	if content.Membership == event.MembershipInvite && id.UserID(evt.GetStateKey()) == mx.as.BotMXID() {
 		mx.HandleBotInvite(evt)
@@ -125,7 +143,7 @@ func (mx *MatrixHandler) HandleMembership(evt *event.Event) {
 		return
 	}
 
-	user := mx.bridge.GetUserByMXID(id.UserID(evt.Sender))
+	user := mx.bridge.GetUserByMXID(evt.Sender)
 	if user == nil || !user.Whitelisted || !user.IsConnected() {
 		return
 	}
@@ -148,7 +166,7 @@ func (mx *MatrixHandler) HandleMembership(evt *event.Event) {
 }
 
 func (mx *MatrixHandler) HandleRoomMetadata(evt *event.Event) {
-	user := mx.bridge.GetUserByMXID(id.UserID(evt.Sender))
+	user := mx.bridge.GetUserByMXID(evt.Sender)
 	if user == nil || !user.Whitelisted || !user.IsConnected() {
 		return
 	}
@@ -176,21 +194,40 @@ func (mx *MatrixHandler) HandleRoomMetadata(evt *event.Event) {
 	}
 }
 
-func (mx *MatrixHandler) HandleMessage(evt *event.Event) {
+func (mx *MatrixHandler) shouldIgnoreEvent(evt *event.Event) bool {
 	if _, isPuppet := mx.bridge.ParsePuppetMXID(evt.Sender); evt.Sender == mx.bridge.Bot.UserID || isPuppet {
-		return
+		return true
 	}
 	isCustomPuppet, ok := evt.Content.Raw["net.maunium.whatsapp.puppet"].(bool)
 	if ok && isCustomPuppet && mx.bridge.GetPuppetByCustomMXID(evt.Sender) != nil {
+		return true
+	}
+	user := mx.bridge.GetUserByMXID(evt.Sender)
+	if !user.RelaybotWhitelisted {
+		return true
+	}
+	return false
+}
+
+func (mx *MatrixHandler) HandleEncrypted(evt *event.Event) {
+	if mx.shouldIgnoreEvent(evt) || mx.bridge.Crypto == nil {
+		return
+	}
+
+	decrypted, err := mx.bridge.Crypto.Decrypt(evt)
+	if err != nil {
+		mx.log.Warnln("Failed to decrypt %s: %v", evt.ID, err)
+		return
+	}
+	mx.bridge.EventProcessor.Dispatch(decrypted)
+}
+
+func (mx *MatrixHandler) HandleMessage(evt *event.Event) {
+	if mx.shouldIgnoreEvent(evt) {
 		return
 	}
 
 	user := mx.bridge.GetUserByMXID(evt.Sender)
-
-	if !user.RelaybotWhitelisted {
-		return
-	}
-
 	content := evt.Content.AsMessage()
 	if user.Whitelisted && content.MsgType == event.MsgText {
 		commandPrefix := mx.bridge.Config.Bridge.CommandPrefix
@@ -215,7 +252,7 @@ func (mx *MatrixHandler) HandleRedaction(evt *event.Event) {
 		return
 	}
 
-	user := mx.bridge.GetUserByMXID(id.UserID(evt.Sender))
+	user := mx.bridge.GetUserByMXID(evt.Sender)
 
 	if !user.Whitelisted {
 		return

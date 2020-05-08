@@ -64,6 +64,11 @@ type BridgeConfig struct {
 
 	CommandPrefix string `yaml:"command_prefix"`
 
+	Encryption struct {
+		Allow   bool `yaml:"allow"`
+		Default bool `yaml:"default"`
+	} `yaml:"encryption"`
+
 	Permissions PermissionConfig `yaml:"permissions"`
 
 	Relaybot RelaybotConfig `yaml:"relaybot"`

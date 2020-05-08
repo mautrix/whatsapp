@@ -26,6 +26,7 @@ import (
 
 	flag "maunium.net/go/mauflag"
 	log "maunium.net/go/maulogger/v2"
+	"maunium.net/go/mautrix/event"
 
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix-appservice"
@@ -106,6 +107,7 @@ type Bridge struct {
 	Bot            *appservice.IntentAPI
 	Formatter      *Formatter
 	Relaybot       *User
+	Crypto         Crypto
 
 	usersByMXID         map[id.UserID]*User
 	usersByJID          map[types.WhatsAppID]*User
@@ -118,6 +120,14 @@ type Bridge struct {
 	puppets             map[types.WhatsAppID]*Puppet
 	puppetsByCustomMXID map[id.UserID]*Puppet
 	puppetsLock         sync.Mutex
+}
+
+type Crypto interface {
+	HandleMemberEvent(*event.Event)
+	Decrypt(*event.Event) (*event.Event, error)
+	Encrypt(id.RoomID, event.Type, event.Content) (*event.EncryptedEventContent, error)
+	Start()
+	Stop()
 }
 
 func NewBridge() *Bridge {
@@ -215,6 +225,11 @@ func (bridge *Bridge) Init() {
 	bridge.Log.Debugln("Initializing Matrix event handler")
 	bridge.MatrixHandler = NewMatrixHandler(bridge)
 	bridge.Formatter = NewFormatter(bridge)
+	err = bridge.initCrypto()
+	if err != nil {
+		bridge.Log.Fatalln("Error initializing end-to-bridge encryption:", err)
+		os.Exit(19)
+	}
 }
 
 func (bridge *Bridge) Start() {
@@ -235,6 +250,7 @@ func (bridge *Bridge) Start() {
 	bridge.Log.Debugln("Starting event processor")
 	go bridge.EventProcessor.Start()
 	go bridge.UpdateBotProfile()
+	go bridge.Crypto.Start()
 	go bridge.StartUsers()
 }
 
@@ -299,6 +315,7 @@ func (bridge *Bridge) StartUsers() {
 }
 
 func (bridge *Bridge) Stop() {
+	bridge.Crypto.Stop()
 	bridge.AS.Stop()
 	bridge.EventProcessor.Stop()
 	for _, user := range bridge.usersByJID {

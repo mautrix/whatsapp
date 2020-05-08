@@ -22,8 +22,9 @@ import (
 
 	log "maunium.net/go/maulogger/v2"
 
-	"maunium.net/go/mautrix-whatsapp/types"
 	"maunium.net/go/mautrix/id"
+
+	"maunium.net/go/mautrix-whatsapp/types"
 )
 
 type PortalKey struct {
@@ -114,11 +115,12 @@ type Portal struct {
 	Topic     string
 	Avatar    string
 	AvatarURL id.ContentURI
+	Encrypted bool
 }
 
 func (portal *Portal) Scan(row Scannable) *Portal {
 	var mxid, avatarURL sql.NullString
-	err := row.Scan(&portal.Key.JID, &portal.Key.Receiver, &mxid, &portal.Name, &portal.Topic, &portal.Avatar, &avatarURL)
+	err := row.Scan(&portal.Key.JID, &portal.Key.Receiver, &mxid, &portal.Name, &portal.Topic, &portal.Avatar, &avatarURL, &portal.Encrypted)
 	if err != nil {
 		if err != sql.ErrNoRows {
 			portal.log.Errorln("Database scan failed:", err)
@@ -138,8 +140,8 @@ func (portal *Portal) mxidPtr() *id.RoomID {
 }
 
 func (portal *Portal) Insert() {
-	_, err := portal.db.Exec("INSERT INTO portal VALUES ($1, $2, $3, $4, $5, $6, $7)",
-		portal.Key.JID, portal.Key.Receiver, portal.mxidPtr(), portal.Name, portal.Topic, portal.Avatar, portal.AvatarURL.String())
+	_, err := portal.db.Exec("INSERT INTO portal (jid, receiver, mxid, name, topic, avatar, avatar_url, encrypted) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
+		portal.Key.JID, portal.Key.Receiver, portal.mxidPtr(), portal.Name, portal.Topic, portal.Avatar, portal.AvatarURL.String(), portal.Encrypted)
 	if err != nil {
 		portal.log.Warnfln("Failed to insert %s: %v", portal.Key, err)
 	}
@@ -150,8 +152,8 @@ func (portal *Portal) Update() {
 	if len(portal.MXID) > 0 {
 		mxid = &portal.MXID
 	}
-	_, err := portal.db.Exec("UPDATE portal SET mxid=$1, name=$2, topic=$3, avatar=$4, avatar_url=$5 WHERE jid=$6 AND receiver=$7",
-		mxid, portal.Name, portal.Topic, portal.Avatar, portal.AvatarURL.String(), portal.Key.JID, portal.Key.Receiver)
+	_, err := portal.db.Exec("UPDATE portal SET mxid=$1, name=$2, topic=$3, avatar=$4, avatar_url=$5, encrypted=$6 WHERE jid=$7 AND receiver=$8",
+		mxid, portal.Name, portal.Topic, portal.Avatar, portal.AvatarURL.String(), portal.Encrypted, portal.Key.JID, portal.Key.Receiver)
 	if err != nil {
 		portal.log.Warnfln("Failed to update %s: %v", portal.Key, err)
 	}

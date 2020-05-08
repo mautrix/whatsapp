@@ -35,6 +35,7 @@ import (
 	"time"
 
 	"github.com/chai2010/webp"
+	"github.com/pkg/errors"
 	log "maunium.net/go/maulogger/v2"
 
 	"github.com/Rhymen/go-whatsapp"
@@ -908,6 +909,32 @@ func (portal *Portal) HandleFakeMessage(source *User, message FakeMessage) {
 	portal.recentlyHandled[index] = message.ID
 }
 
+func (portal *Portal) sendMainIntentMessage(content interface{}) (*mautrix.RespSendEvent, error) {
+	return portal.sendMessage(portal.MainIntent(), event.EventMessage, content, 0)
+}
+
+func (portal *Portal) sendMessage(intent *appservice.IntentAPI, eventType event.Type, content interface{}, timestamp int64) (*mautrix.RespSendEvent, error) {
+	wrappedContent := event.Content{Parsed: content}
+	if timestamp != 0 && intent.IsCustomPuppet {
+		wrappedContent.Raw = map[string]interface{}{
+			"net.maunium.whatsapp.puppet": intent.IsCustomPuppet,
+		}
+	}
+	if portal.Encrypted && portal.bridge.Crypto != nil {
+		encrypted, err := portal.bridge.Crypto.Encrypt(portal.MXID, eventType, wrappedContent)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to encrypt event")
+		}
+		eventType = event.EventEncrypted
+		wrappedContent.Parsed = encrypted
+	}
+	if timestamp == 0 {
+		return intent.SendMessageEvent(portal.MXID, eventType, &wrappedContent)
+	} else {
+		return intent.SendMassagedMessageEvent(portal.MXID, eventType, &wrappedContent, timestamp)
+	}
+}
+
 func (portal *Portal) HandleTextMessage(source *User, message whatsapp.TextMessage) {
 	if !portal.startHandling(message.Info) {
 		return
@@ -927,12 +954,7 @@ func (portal *Portal) HandleTextMessage(source *User, message whatsapp.TextMessa
 	portal.SetReply(content, message.ContextInfo)
 
 	_, _ = intent.UserTyping(portal.MXID, false, 0)
-	resp, err := intent.SendMassagedMessageEvent(portal.MXID, event.EventMessage, &event.Content{
-		Parsed: content,
-		Raw: map[string]interface{}{
-			"net.maunium.whatsapp.puppet": intent.IsCustomPuppet,
-		},
-	}, int64(message.Info.Timestamp*1000))
+	resp, err := portal.sendMessage(intent, event.EventMessage, content, int64(message.Info.Timestamp*1000))
 	if err != nil {
 		portal.log.Errorfln("Failed to handle message %s: %v", message.Info.Id, err)
 		return
@@ -1042,12 +1064,7 @@ func (portal *Portal) HandleMediaMessage(source *User, download func() ([]byte, 
 	if sendAsSticker {
 		eventType = event.EventSticker
 	}
-	resp, err := intent.SendMassagedMessageEvent(portal.MXID, eventType, &event.Content{
-		Parsed: content,
-		Raw: map[string]interface{}{
-			"net.maunium.whatsapp.puppet": intent.IsCustomPuppet,
-		},
-	}, ts)
+	resp, err := portal.sendMessage(intent, eventType, content, ts)
 	if err != nil {
 		portal.log.Errorfln("Failed to handle message %s: %v", info.Id, err)
 		return
@@ -1061,12 +1078,7 @@ func (portal *Portal) HandleMediaMessage(source *User, download func() ([]byte, 
 
 		portal.bridge.Formatter.ParseWhatsApp(captionContent)
 
-		_, err := intent.SendMassagedMessageEvent(portal.MXID, event.EventMessage, &event.Content{
-			Parsed: content,
-			Raw: map[string]interface{}{
-				"net.maunium.whatsapp.puppet": intent.IsCustomPuppet,
-			},
-		}, ts)
+		_, err := portal.sendMessage(intent, event.EventMessage, content, ts)
 		if err != nil {
 			portal.log.Warnfln("Failed to handle caption of message %s: %v", info.Id, err)
 		}
@@ -1178,7 +1190,7 @@ func (portal *Portal) sendMatrixConnectionError(sender *User, eventID id.EventID
 		}
 		msg := format.RenderMarkdown("\u26a0 You are not connected to WhatsApp, so your message was not bridged. " + reconnect, true, false)
 		msg.MsgType = event.MsgNotice
-		_, err := portal.MainIntent().SendMessageEvent(portal.MXID, event.EventMessage, msg)
+		_, err := portal.sendMainIntentMessage(msg)
 		if err != nil {
 			portal.log.Errorln("Failed to send bridging failure message:", err)
 		}
@@ -1353,7 +1365,7 @@ func (portal *Portal) HandleMatrixMessage(sender *User, evt *event.Event) {
 		portal.log.Errorfln("Error handling Matrix event %s: %v", evt.ID, err)
 		msg := format.RenderMarkdown(fmt.Sprintf("\u26a0 Your message may not have been bridged: %v", err), false, false)
 		msg.MsgType = event.MsgNotice
-		_, err := portal.MainIntent().SendMessageEvent(portal.MXID, event.EventMessage, msg)
+		_, err := portal.sendMainIntentMessage(msg)
 		if err != nil {
 			portal.log.Errorln("Failed to send bridging failure message:", err)
 		}

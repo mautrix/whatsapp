@@ -18,6 +18,7 @@ package main
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/Rhymen/go-whatsapp"
@@ -118,6 +119,8 @@ func (handler *CommandHandler) CommandMux(ce *CommandEvent) {
 		handler.CommandDeleteAllPortals(ce)
 	case "dev-test":
 		handler.CommandDevTest(ce)
+	case "set-pl":
+		handler.CommandSetPowerLevel(ce)
 	case "login-matrix", "logout", "sync", "list", "open", "pm":
 		if !ce.User.HasSession() {
 			ce.Reply("You are not logged in. Use the `login` command to log into WhatsApp.")
@@ -167,6 +170,45 @@ func (handler *CommandHandler) CommandRelaybot(ce *CommandEvent) {
 
 func (handler *CommandHandler) CommandDevTest(ce *CommandEvent) {
 
+}
+
+func (handler *CommandHandler) CommandSetPowerLevel(ce *CommandEvent) {
+	portal := ce.Bridge.GetPortalByMXID(ce.RoomID)
+	if portal == nil {
+		ce.Reply("Not a portal room")
+		return
+	}
+	var level int
+	var userID id.UserID
+	var err error
+	if len(ce.Args) == 1 {
+		level, err = strconv.Atoi(ce.Args[0])
+		if err != nil {
+			ce.Reply("Invalid power level \"%s\"", ce.Args[0])
+			return
+		}
+		userID = ce.User.MXID
+	} else if len(ce.Args) == 2 {
+		userID = id.UserID(ce.Args[0])
+		_, _, err := userID.Parse()
+		if err != nil {
+			ce.Reply("Invalid user ID \"%s\"", ce.Args[0])
+			return
+		}
+		level, err = strconv.Atoi(ce.Args[1])
+		if err != nil {
+			ce.Reply("Invalid power level \"%s\"", ce.Args[1])
+			return
+		}
+	} else {
+		ce.Reply("**Usage:** `set-pl [user] <level>`")
+		return
+	}
+	intent := portal.MainIntent()
+	_, err = intent.SetPowerLevel(ce.RoomID, userID, level)
+	if err != nil {
+		ce.Reply("Failed to set power levels: %v", err)
+	}
 }
 
 const cmdLoginHelp = `login - Authenticate this Bridge as WhatsApp Web Client`
