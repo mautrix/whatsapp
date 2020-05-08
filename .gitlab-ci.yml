@@ -11,7 +11,7 @@ stages:
     - .cache
   before_script:
   - echo "@edge_community http://dl-cdn.alpinelinux.org/alpine/edge/community" >> /etc/apk/repositories
-  - apk add git build-base olm-dev@edge_community
+  - apk add build-base olm-dev@edge_community
   - mkdir -p .cache
   - export GOPATH="$CI_PROJECT_DIR/.cache"
   script:
@@ -31,6 +31,24 @@ stages:
   - docker build --pull --cache-from $CI_REGISTRY_IMAGE:latest --tag $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA-$DOCKER_ARCH . --file Dockerfile.ci
   - docker push $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA-$DOCKER_ARCH
   - docker rmi $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA-$DOCKER_ARCH
+
+build static amd64:
+  image: golang:1-alpine
+  stage: build
+  tags:
+  - amd64
+  cache:
+    paths:
+    - .cache
+  before_script:
+  - mkdir -p .cache
+  - export GOPATH="$CI_PROJECT_DIR/.cache"
+  script:
+  - CGO_ENABLED=0 go build -o mautrix-whatsapp
+  artifacts:
+    paths:
+    - mautrix-whatsapp
+    - example-config.yaml
 
 build amd64:
   <<: *build
