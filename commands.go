@@ -676,7 +676,7 @@ func (handler *CommandHandler) CommandInvite(ce *CommandEvent) {
 	ce.Reply("Syncing room puppet completed")
 }
 
-const cmdKickHelp = `kick <_group JID_> <_international phone number_>,... <_reason_> - Invite members to a group.`
+const cmdKickHelp = `kick <_group JID_> <_international phone number_>,... <_reason_> - Remove members from the group.`
 
 func (handler *CommandHandler) CommandKick(ce *CommandEvent) {
 	if len(ce.Args) < 2 {
