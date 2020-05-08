@@ -3,7 +3,8 @@ FROM alpine:latest
 ENV UID=1337 \
     GID=1337
 
-RUN apk add --no-cache su-exec ca-certificates
+RUN echo "@edge_community http://dl-cdn.alpinelinux.org/alpine/edge/community" >> /etc/apk/repositories
+RUN apk add --no-cache su-exec ca-certificates olm@edge_community
 
 ARG EXECUTABLE=./mautrix-whatsapp
 COPY $EXECUTABLE /usr/bin/mautrix-whatsapp
