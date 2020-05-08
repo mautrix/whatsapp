@@ -34,7 +34,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/chai2010/webp"
 	"github.com/pkg/errors"
 	log "maunium.net/go/maulogger/v2"
 
@@ -989,7 +988,7 @@ func (portal *Portal) HandleMediaMessage(source *User, download func() ([]byte, 
 
 	// synapse doesn't handle webp well, so we convert it. This can be dropped once https://github.com/matrix-org/synapse/issues/4382 is fixed
 	if mimeType == "image/webp" {
-		img, err := webp.Decode(bytes.NewReader(data))
+		img, err := decodeWebp(bytes.NewReader(data))
 		if err != nil {
 			portal.log.Errorfln("Failed to decode media for %s: %v", err)
 			return
@@ -1188,7 +1187,7 @@ func (portal *Portal) sendMatrixConnectionError(sender *User, eventID id.EventID
 		if sender.IsLoginInProgress() {
 			reconnect = "You have a login attempt in progress, please wait."
 		}
-		msg := format.RenderMarkdown("\u26a0 You are not connected to WhatsApp, so your message was not bridged. " + reconnect, true, false)
+		msg := format.RenderMarkdown("\u26a0 You are not connected to WhatsApp, so your message was not bridged. "+reconnect, true, false)
 		msg.MsgType = event.MsgNotice
 		_, err := portal.sendMainIntentMessage(msg)
 		if err != nil {
@@ -1228,7 +1227,6 @@ func (portal *Portal) HandleMatrixMessage(sender *User, evt *event.Event) {
 		return
 	}
 	portal.log.Debugfln("Received event %s", evt.ID)
-
 
 	ts := uint64(evt.Timestamp / 1000)
 	status := waProto.WebMessageInfo_ERROR

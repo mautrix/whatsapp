@@ -11,6 +11,7 @@ require (
 	github.com/pkg/errors v0.9.1
 	github.com/shurcooL/sanitized_anchor_name v1.0.0 // indirect
 	github.com/skip2/go-qrcode v0.0.0-20191027152451-9434209cb086
+	golang.org/x/image v0.0.0-20200430140353-33d19683fad8
 	gopkg.in/yaml.v2 v2.2.8
 	maunium.net/go/mauflag v1.0.0
 	maunium.net/go/maulogger/v2 v2.1.1
