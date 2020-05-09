@@ -49,7 +49,7 @@ type CryptoHelper struct {
 	baseLog maulogger.Logger
 }
 
-func NewCryptoHelper(bridge *Bridge) *CryptoHelper {
+func NewCryptoHelper(bridge *Bridge) Crypto {
 	if !bridge.Config.Bridge.Encryption.Allow {
 		bridge.Log.Debugln("Bridge built with end-to-bridge encryption, but disabled in config")
 		return nil
