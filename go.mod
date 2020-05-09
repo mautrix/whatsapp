@@ -15,8 +15,7 @@ require (
 	gopkg.in/yaml.v2 v2.2.8
 	maunium.net/go/mauflag v1.0.0
 	maunium.net/go/maulogger/v2 v2.1.1
-	maunium.net/go/mautrix v0.3.7
-	maunium.net/go/mautrix-appservice v0.2.1
+	maunium.net/go/mautrix v0.4.0
 )
 
 replace github.com/Rhymen/go-whatsapp => github.com/tulir/go-whatsapp v0.2.6

@@ -26,7 +26,7 @@ import (
 
 	log "maunium.net/go/maulogger/v2"
 
-	"maunium.net/go/mautrix-appservice"
+	"maunium.net/go/mautrix/appservice"
 	"maunium.net/go/mautrix/id"
 
 	"maunium.net/go/mautrix-whatsapp/database"

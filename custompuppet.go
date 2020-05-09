@@ -27,7 +27,7 @@ import (
 	"github.com/Rhymen/go-whatsapp"
 
 	"maunium.net/go/mautrix"
-	appservice "maunium.net/go/mautrix-appservice"
+	"maunium.net/go/mautrix/appservice"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 )
@@ -270,6 +270,6 @@ func (puppet *Puppet) GetFilterJSON(_ id.UserID) *mautrix.Filter {
 func (puppet *Puppet) SaveFilterID(_ id.UserID, _ string)      {}
 func (puppet *Puppet) SaveNextBatch(_ id.UserID, nbt string)   { puppet.NextBatch = nbt; puppet.Update() }
 func (puppet *Puppet) SaveRoom(room *mautrix.Room)             {}
-func (puppet *Puppet) LoadFilterID(_ id.UserID) string            { return "" }
-func (puppet *Puppet) LoadNextBatch(_ id.UserID) string           { return puppet.NextBatch }
+func (puppet *Puppet) LoadFilterID(_ id.UserID) string         { return "" }
+func (puppet *Puppet) LoadNextBatch(_ id.UserID) string        { return puppet.NextBatch }
 func (puppet *Puppet) LoadRoom(roomID id.RoomID) *mautrix.Room { return nil }

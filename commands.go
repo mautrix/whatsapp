@@ -26,7 +26,7 @@ import (
 	"maunium.net/go/maulogger/v2"
 
 	"maunium.net/go/mautrix"
-	"maunium.net/go/mautrix-appservice"
+	"maunium.net/go/mautrix/appservice"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/format"
 	"maunium.net/go/mautrix/id"
