@@ -19,11 +19,11 @@ func init() {
 		_, err = tx.Exec(`CREATE TABLE crypto_message_index (
 			sender_key CHAR(43),
 			session_id VARCHAR(255),
-			index      INTEGER,
+			"index"    INTEGER,
 			event_id   VARCHAR(255) NOT NULL,
 			timestamp  BIGINT       NOT NULL,
 
-			PRIMARY KEY (sender_key, session_id, index)
+			PRIMARY KEY (sender_key, session_id, "index")
 		)`)
 		if err != nil {
 			return err

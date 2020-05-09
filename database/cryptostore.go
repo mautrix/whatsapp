@@ -126,7 +126,7 @@ func (store *SQLCryptoStore) PutAccount(account *crypto.OlmAccount) error {
 			ON CONFLICT (device_id) DO UPDATE SET shared=$2, sync_token=$3, account=$4`,
 			store.DeviceID, account.Shared, store.SyncToken, bytes)
 	} else if store.db.dialect == "sqlite3" {
-		_, err = store.db.Exec("INSERT OR REPLACE INTO crypto_account (deivce_id, shared, sync_token, account) VALUES ($1, $2, $3, $4)",
+		_, err = store.db.Exec("INSERT OR REPLACE INTO crypto_account (device_id, shared, sync_token, account) VALUES ($1, $2, $3, $4)",
 			store.DeviceID, account.Shared, store.SyncToken, bytes)
 	} else {
 		err = fmt.Errorf("unsupported dialect %s", store.db.dialect)
@@ -270,11 +270,11 @@ func (store *SQLCryptoStore) ValidateMessageIndex(senderKey id.SenderKey, sessio
 	var resultEventID id.EventID
 	var resultTimestamp int64
 	err := store.db.QueryRow(
-		"SELECT event_id, timestamp FROM crypto_message_index WHERE sender_key=$1 AND session_id=$2 AND index=$3",
+		`SELECT event_id, timestamp FROM crypto_message_index WHERE sender_key=$1 AND session_id=$2 AND "index"=$3`,
 		senderKey, sessionID, index,
 	).Scan(&resultEventID, &resultTimestamp)
 	if err == sql.ErrNoRows {
-		_, err := store.db.Exec("INSERT INTO crypto_message_index (sender_key, session_id, index, event_id, timestamp) VALUES ($1, $2, $3, $4, $5)",
+		_, err := store.db.Exec(`INSERT INTO crypto_message_index (sender_key, session_id, "index", event_id, timestamp) VALUES ($1, $2, $3, $4, $5)`,
 			senderKey, sessionID, index, eventID, timestamp)
 		if err != nil {
 			store.log.Warnln("Failed to store message index:", err)
@@ -325,7 +325,7 @@ func (store *SQLCryptoStore) PutDevices(userID id.UserID, devices map[id.DeviceI
 	if store.db.dialect == "postgres" {
 		_, err = tx.Exec("INSERT INTO crypto_tracked_user (user_id) VALUES ($1) ON CONFLICT (user_id) DO NOTHING", userID)
 	} else if store.db.dialect == "sqlite3" {
-		_, err = tx.Exec("INSERT OR IGNORE INTO crypto_tracked_users (user_id) VALUES ($1)", userID)
+		_, err = tx.Exec("INSERT OR IGNORE INTO crypto_tracked_user (user_id) VALUES ($1)", userID)
 	} else {
 		err = fmt.Errorf("unsupported dialect %s", store.db.dialect)
 	}
@@ -374,7 +374,13 @@ func (store *SQLCryptoStore) FilterTrackedUsers(users []id.UserID) []id.UserID {
 	if store.db.dialect == "postgres" {
 		rows, err = store.db.Query("SELECT user_id FROM crypto_tracked_user WHERE user_id = ANY($1)", pq.Array(users))
 	} else {
-		rows, err = store.db.Query("SELECT user_id FROM crypto_tracked_user WHERE user_id IN ($1)", users)
+		queryString := make([]string, len(users))
+		params := make([]interface{}, len(users))
+		for i, user := range users {
+			queryString[i] = fmt.Sprintf("$%d", i+1)
+			params[i] = user
+		}
+		rows, err = store.db.Query("SELECT user_id FROM crypto_tracked_user WHERE user_id IN (" + strings.Join(queryString, ",") + ")", params...)
 	}
 	if err != nil {
 		store.log.Warnln("Failed to filter tracked users:", err)

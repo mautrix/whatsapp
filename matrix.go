@@ -217,7 +217,7 @@ func (mx *MatrixHandler) HandleEncrypted(evt *event.Event) {
 
 	decrypted, err := mx.bridge.Crypto.Decrypt(evt)
 	if err != nil {
-		mx.log.Warnln("Failed to decrypt %s: %v", evt.ID, err)
+		mx.log.Warnfln("Failed to decrypt %s: %v", evt.ID, err)
 		return
 	}
 	mx.bridge.EventProcessor.Dispatch(decrypted)
