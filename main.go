@@ -126,6 +126,7 @@ type Crypto interface {
 	HandleMemberEvent(*event.Event)
 	Decrypt(*event.Event) (*event.Event, error)
 	Encrypt(id.RoomID, event.Type, event.Content) (*event.EncryptedEventContent, error)
+	Init() error
 	Start()
 	Stop()
 }
@@ -225,11 +226,7 @@ func (bridge *Bridge) Init() {
 	bridge.Log.Debugln("Initializing Matrix event handler")
 	bridge.MatrixHandler = NewMatrixHandler(bridge)
 	bridge.Formatter = NewFormatter(bridge)
-	err = bridge.initCrypto()
-	if err != nil {
-		bridge.Log.Fatalln("Error initializing end-to-bridge encryption:", err)
-		os.Exit(19)
-	}
+	bridge.Crypto = NewCryptoHelper(bridge)
 }
 
 func (bridge *Bridge) Start() {
@@ -237,6 +234,13 @@ func (bridge *Bridge) Start() {
 	if err != nil {
 		bridge.Log.Fatalln("Failed to initialize database:", err)
 		os.Exit(15)
+	}
+	if bridge.Crypto != nil {
+		err := bridge.Crypto.Init()
+		if err != nil {
+			bridge.Log.Fatalln("Error initializing end-to-bridge encryption:", err)
+			os.Exit(19)
+		}
 	}
 	if bridge.Provisioning != nil {
 		bridge.Log.Debugln("Initializing provisioning API")

@@ -39,11 +39,13 @@ type SQLStateStore struct {
 	typingLock sync.RWMutex
 }
 
+var _ appservice.StateStore = (*SQLStateStore)(nil)
+
 func NewSQLStateStore(db *Database) *SQLStateStore {
 	return &SQLStateStore{
 		TypingStateStore: appservice.NewTypingStateStore(),
 		db:               db,
-		log:              log.Sub("StateStore"),
+		log:              db.log.Sub("StateStore"),
 	}
 }
 
@@ -90,24 +92,6 @@ func (store *SQLStateStore) GetRoomMembers(roomID id.RoomID) map[id.UserID]*even
 	return members
 }
 
-func (store *SQLStateStore) GetRoomMemberList(roomID id.RoomID) (members []id.UserID, err error) {
-	var rows *sql.Rows
-	rows, err = store.db.Query("SELECT user_id FROM mx_user_profile WHERE room_id=$1", roomID)
-	if err != nil {
-		return
-	}
-	for rows.Next() {
-		var userID id.UserID
-		err := rows.Scan(&userID)
-		if err != nil {
-			store.log.Warnfln("Failed to scan member in %s: %v", roomID, err)
-		} else {
-			members = append(members, userID)
-		}
-	}
-	return
-}
-
 func (store *SQLStateStore) GetMembership(roomID id.RoomID, userID id.UserID) event.Membership {
 	row := store.db.QueryRow("SELECT membership FROM mx_user_profile WHERE room_id=$1 AND user_id=$2", roomID, userID)
 	membership := event.MembershipLeave
@@ -138,8 +122,10 @@ func (store *SQLStateStore) TryGetMember(roomID id.RoomID, userID id.UserID) (*e
 
 func (store *SQLStateStore) FindSharedRooms(userID id.UserID) (rooms []id.RoomID) {
 	rows, err := store.db.Query(`
-			SELECT room_id FROM mx_user_profile WHERE user_id=$2 AND portal.encrypted=true
-			LEFT JOIN portal WHEN portal.mxid=mx_user_profile.room_id`, userID)
+			SELECT room_id FROM mx_user_profile
+			LEFT JOIN portal ON portal.mxid=mx_user_profile.room_id
+			WHERE user_id=$1 AND portal.encrypted=true
+	`, userID)
 	if err != nil {
 		store.log.Warnfln("Failed to query shared rooms with %s: %v", userID, err)
 		return

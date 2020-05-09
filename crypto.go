@@ -28,6 +28,7 @@ import (
 	"maunium.net/go/maulogger/v2"
 
 	"maunium.net/go/mautrix"
+	"maunium.net/go/mautrix-whatsapp/database"
 	"maunium.net/go/mautrix/crypto"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
@@ -40,13 +41,15 @@ var levelTrace = maulogger.Level{
 }
 
 type CryptoHelper struct {
-	bridge *Bridge
-	client *mautrix.Client
-	mach   *crypto.OlmMachine
-	log    maulogger.Logger
+	bridge  *Bridge
+	client  *mautrix.Client
+	mach    *crypto.OlmMachine
+	store   *database.SQLCryptoStore
+	log     maulogger.Logger
+	baseLog maulogger.Logger
 }
 
-func (bridge *Bridge) initCrypto() error {
+func NewCryptoHelper(bridge *Bridge) *CryptoHelper {
 	if !bridge.Config.Bridge.Encryption.Allow {
 		bridge.Log.Debugln("Bridge built with end-to-bridge encryption, but disabled in config")
 		return nil
@@ -54,39 +57,60 @@ func (bridge *Bridge) initCrypto() error {
 		bridge.Log.Warnln("End-to-bridge encryption enabled, but login_shared_secret not set")
 		return nil
 	}
-	bridge.Log.Debugln("Initializing end-to-bridge encryption...")
-	client, err := bridge.loginBot()
-	if err != nil {
-		return err
+	baseLog := bridge.Log.Sub("Crypto")
+	return &CryptoHelper{
+		bridge:  bridge,
+		log:     baseLog.Sub("Helper"),
+		baseLog: baseLog,
 	}
-	// TODO put this in the database
-	cryptoStore, err := crypto.NewGobStore("crypto.gob")
-	if err != nil {
-		return err
-	}
+}
 
-	log := bridge.Log.Sub("Crypto")
-	logger := &cryptoLogger{log}
-	stateStore := &cryptoStateStore{bridge}
-	helper := &CryptoHelper{
-		bridge: bridge,
-		client: client,
-		log: log.Sub("Helper"),
-		mach: crypto.NewOlmMachine(client, logger, cryptoStore, stateStore),
-	}
-
-	client.Logger = logger.int.Sub("Bot")
-	client.Syncer = &cryptoSyncer{helper.mach}
-	// TODO put this in the database too
-	client.Store = mautrix.NewInMemoryStore()
-
-	err = helper.mach.Load()
+func (helper *CryptoHelper) Init() error {
+	helper.log.Debugln("Initializing end-to-bridge encryption...")
+	var err error
+	helper.client, err = helper.loginBot()
 	if err != nil {
 		return err
 	}
 
-	bridge.Crypto = helper
-	return nil
+	helper.log.Debugln("Logged in as bridge bot with device ID", helper.client.DeviceID)
+	logger := &cryptoLogger{helper.baseLog}
+	stateStore := &cryptoStateStore{helper.bridge}
+	helper.store = database.NewSQLCryptoStore(helper.bridge.DB, helper.client.DeviceID)
+	helper.store.UserID = helper.client.UserID
+	helper.store.GhostIDFormat = helper.bridge.Config.Bridge.FormatUsername("%")
+	helper.mach = crypto.NewOlmMachine(helper.client, logger, helper.store, stateStore)
+
+	helper.client.Logger = logger.int.Sub("Bot")
+	helper.client.Syncer = &cryptoSyncer{helper.mach}
+	helper.client.Store = &cryptoClientStore{helper.store}
+
+	return helper.mach.Load()
+}
+
+func (helper *CryptoHelper) loginBot() (*mautrix.Client, error) {
+	deviceID := helper.bridge.DB.FindDeviceID()
+	if len(deviceID) > 0 {
+		helper.log.Debugln("Found existing device ID for bot in database:", deviceID)
+	}
+	mac := hmac.New(sha512.New, []byte(helper.bridge.Config.Bridge.LoginSharedSecret))
+	mac.Write([]byte(helper.bridge.AS.BotMXID()))
+	resp, err := helper.bridge.AS.BotClient().Login(&mautrix.ReqLogin{
+		Type:                     "m.login.password",
+		Identifier:               mautrix.UserIdentifier{Type: "m.id.user", User: string(helper.bridge.AS.BotMXID())},
+		Password:                 hex.EncodeToString(mac.Sum(nil)),
+		DeviceID:                 deviceID,
+		InitialDeviceDisplayName: "WhatsApp Bridge",
+	})
+	if err != nil {
+		return nil, err
+	}
+	client, err := mautrix.NewClient(helper.bridge.AS.HomeserverURL, helper.bridge.AS.BotMXID(), resp.AccessToken)
+	if err != nil {
+		return nil, err
+	}
+	client.DeviceID = resp.DeviceID
+	return client, nil
 }
 
 func (helper *CryptoHelper) Start() {
@@ -101,27 +125,6 @@ func (helper *CryptoHelper) Stop() {
 	helper.client.StopSync()
 }
 
-func (bridge *Bridge) loginBot() (*mautrix.Client, error) {
-	mac := hmac.New(sha512.New, []byte(bridge.Config.Bridge.LoginSharedSecret))
-	mac.Write([]byte(bridge.AS.BotMXID()))
-	resp, err := bridge.AS.BotClient().Login(&mautrix.ReqLogin{
-		Type:                     "m.login.password",
-		Identifier:               mautrix.UserIdentifier{Type: "m.id.user", User: string(bridge.AS.BotMXID())},
-		Password:                 hex.EncodeToString(mac.Sum(nil)),
-		DeviceID:                 "WhatsApp Bridge",
-		InitialDeviceDisplayName: "WhatsApp Bridge",
-	})
-	if err != nil {
-		return nil, err
-	}
-	client, err := mautrix.NewClient(bridge.AS.HomeserverURL, bridge.AS.BotMXID(), resp.AccessToken)
-	if err != nil {
-		return nil, err
-	}
-	client.DeviceID = "WhatsApp Bridge"
-	return client, nil
-}
-
 func (helper *CryptoHelper) Decrypt(evt *event.Event) (*event.Event, error) {
 	return helper.mach.DecryptMegolmEvent(evt)
 }
@@ -133,7 +136,7 @@ func (helper *CryptoHelper) Encrypt(roomID id.RoomID, evtType event.Type, conten
 			return nil, err
 		}
 		helper.log.Debugfln("Got %v while encrypting event for %s, sharing group session and trying again...", err, roomID)
-		users, err := helper.bridge.StateStore.GetRoomMemberList(roomID)
+		users, err := helper.store.GetRoomMembers(roomID)
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to get room member list")
 		}
@@ -201,6 +204,25 @@ func (c *cryptoLogger) Debug(message string, args ...interface{}) {
 func (c *cryptoLogger) Trace(message string, args ...interface{}) {
 	c.int.Logfln(levelTrace, message, args...)
 }
+
+type cryptoClientStore struct {
+	int *database.SQLCryptoStore
+}
+
+func (c cryptoClientStore) SaveFilterID(_ id.UserID, _ string) {}
+func (c cryptoClientStore) LoadFilterID(_ id.UserID) string    { return "" }
+func (c cryptoClientStore) SaveRoom(_ *mautrix.Room)           {}
+func (c cryptoClientStore) LoadRoom(_ id.RoomID) *mautrix.Room { return nil }
+
+func (c cryptoClientStore) SaveNextBatch(_ id.UserID, nextBatchToken string) {
+	c.int.PutNextBatch(nextBatchToken)
+}
+
+func (c cryptoClientStore) LoadNextBatch(_ id.UserID) string {
+	return c.int.GetNextBatch()
+}
+
+var _ mautrix.Storer = (*cryptoClientStore)(nil)
 
 type cryptoStateStore struct {
 	bridge *Bridge
