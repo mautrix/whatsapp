@@ -768,7 +768,7 @@ func (handler *CommandHandler) CommandLeave(ce *CommandEvent) {
 	}
 }
 
-const cmdJoinHelp = `join <_Invitation link|code_> - leave a group.`
+const cmdJoinHelp = `join <_Invitation link|code_> - Join the group via the invitation link.`
 
 func (handler *CommandHandler) CommandJoin(ce *CommandEvent) {
 	if len(ce.Args) == 0 {
