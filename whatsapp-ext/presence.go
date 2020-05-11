@@ -45,6 +45,9 @@ func (ext *ExtendedConn) handleMessagePresence(message []byte) {
 	}
 	event.JID = strings.Replace(event.JID, OldUserSuffix, NewUserSuffix, 1)
 	if len(event.SenderJID) == 0 {
+		if strings.Index(event.JID,"@g.us") > -1 {
+			return
+		}
 		event.SenderJID = event.JID
 	} else {
 		event.SenderJID = strings.Replace(event.SenderJID, OldUserSuffix, NewUserSuffix, 1)
