@@ -655,6 +655,14 @@ func (user *User) HandleMessageRevoke(message whatsappExt.MessageRevocation) {
 	user.putMessage(PortalMessage{message.RemoteJid, user, message, 0})
 }
 
+func (user *User) HandleContactMessage(message whatsapp.ContactMessage) {
+	user.putMessage(PortalMessage{message.Info.RemoteJid, user, message, message.Info.Timestamp})
+}
+
+func (user *User) HandleLocationMessage(message whatsapp.LocationMessage) {
+	user.putMessage(PortalMessage{message.Info.RemoteJid, user, message, message.Info.Timestamp})
+}
+
 type FakeMessage struct {
 	Text string
 	ID   string
