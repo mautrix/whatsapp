@@ -31,6 +31,7 @@ import (
 	"mime"
 	"net/http"
 	"reflect"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -204,6 +205,10 @@ func (portal *Portal) handleMessage(msg PortalMessage) {
 		portal.HandleMediaMessage(msg.source, data.Download, data.Thumbnail, data.Info, data.ContextInfo, data.Type, data.Title, false)
 	case whatsappExt.MessageRevocation:
 		portal.HandleMessageRevoke(msg.source, data)
+	case whatsapp.LocationMessage:
+		portal.HandleMessageLocation(msg.source, data, data.JpegThumbnail)
+	case whatsapp.ContactMessage:
+		portal.HandleMessageContact(msg.source, data)
 	case FakeMessage:
 		portal.HandleFakeMessage(msg.source, data)
 	default:
@@ -934,6 +939,91 @@ func (portal *Portal) HandleFakeMessage(source *User, message FakeMessage) {
 	portal.recentlyHandledIndex = (portal.recentlyHandledIndex + 1) % recentlyHandledLength
 	portal.recentlyHandledLock.Unlock()
 	portal.recentlyHandled[index] = message.ID
+}
+
+func (portal *Portal) HandleMessageLocation(source *User, message whatsapp.LocationMessage, thumbnail []byte) {
+	if !portal.startHandling(message.Info) {
+		return
+	}
+
+	intent := portal.GetMessageIntent(source, message.Info)
+	if intent == nil {
+		return
+	}
+
+	lat:= strconv.FormatFloat(message.DegreesLatitude, 'E', -1, 64)
+	lon:= strconv.FormatFloat(message.DegreesLongitude, 'E', -1, 64)
+	content := &mautrix.Content{
+		Name:    message.Name,
+		Body:    message.Name+"\n"+message.Address+"\n"+message.Url+"\n"+lat+"\n"+lon,
+		URL: "",
+		MsgType: mautrix.MsgLocation,
+		Info: &mautrix.FileInfo{
+			Size:     len(thumbnail),
+			MimeType: "image/jpeg",
+		},
+	}
+
+	if thumbnail != nil {
+		thumbnailMime := http.DetectContentType(thumbnail)
+		uploadedThumbnail, _ := intent.UploadBytes(thumbnail, thumbnailMime)
+		if uploadedThumbnail != nil {
+			content.Info.ThumbnailURL = uploadedThumbnail.ContentURI
+			cfg, _, _ := image.DecodeConfig(bytes.NewReader(thumbnail))
+			content.Info.ThumbnailInfo = &mautrix.FileInfo{
+				Size:     len(thumbnail),
+				Width:    cfg.Width,
+				Height:   cfg.Height,
+				MimeType: thumbnailMime,
+			}
+		}
+	}
+
+	content.URL = content.Info.ThumbnailURL
+	portal.bridge.Formatter.ParseWhatsApp(content)
+	portal.SetReply(content, message.ContextInfo)
+
+	_, _ = intent.UserTyping(portal.MXID, false, 0)
+	resp, err := intent.SendMassagedMessageEvent(portal.MXID, mautrix.EventMessage, &MessageContent{content, intent.IsCustomPuppet}, int64(message.Info.Timestamp*1000))
+	if err != nil {
+		portal.log.Errorfln("Failed to handle message %s: %v", message.Info.Id, err)
+		return
+	}
+	portal.finishHandling(source, message.Info.Source, resp.EventID)
+}
+
+func (portal *Portal) HandleMessageContact(source *User, message whatsapp.ContactMessage) {
+	if !portal.startHandling(message.Info) {
+		return
+	}
+
+	intent := portal.GetMessageIntent(source, message.Info)
+	if intent == nil {
+		return
+	}
+	infos := strings.Split(message.Vcard, "\n")
+	vCard := ""
+	for index, info := range infos {
+		if index > 2 && index < 6 {
+			infoArr := strings.Split(info, ":")
+			vCard += infoArr[1]+"\n"
+		}
+	}
+	content := &mautrix.Content{
+		Body:    vCard,
+		MsgType: "m.contact", // mautrix.MsgLocation
+	}
+
+	portal.bridge.Formatter.ParseWhatsApp(content)
+	portal.SetReply(content, message.ContextInfo)
+
+	_, _ = intent.UserTyping(portal.MXID, false, 0)
+	resp, err := intent.SendMassagedMessageEvent(portal.MXID, mautrix.EventMessage, &MessageContent{content, intent.IsCustomPuppet}, int64(message.Info.Timestamp*1000))
+	if err != nil {
+		portal.log.Errorfln("Failed to handle message %s: %v", message.Info.Id, err)
+		return
+	}
+	portal.finishHandling(source, message.Info.Source, resp.EventID)
 }
 
 type MessageContent struct {
