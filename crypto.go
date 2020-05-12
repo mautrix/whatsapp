@@ -22,6 +22,7 @@ import (
 	"crypto/hmac"
 	"crypto/sha512"
 	"encoding/hex"
+	"fmt"
 	"time"
 
 	"github.com/pkg/errors"
@@ -78,7 +79,7 @@ func (helper *CryptoHelper) Init() error {
 	stateStore := &cryptoStateStore{helper.bridge}
 	helper.store = database.NewSQLCryptoStore(helper.bridge.DB, helper.client.DeviceID)
 	helper.store.UserID = helper.client.UserID
-	helper.store.GhostIDFormat = helper.bridge.Config.Bridge.FormatUsername("%")
+	helper.store.GhostIDFormat = fmt.Sprintf("@%s:%s", helper.bridge.Config.Bridge.FormatUsername("%"), helper.bridge.AS.HomeserverDomain)
 	helper.mach = crypto.NewOlmMachine(helper.client, logger, helper.store, stateStore)
 
 	helper.client.Logger = logger.int.Sub("Bot")

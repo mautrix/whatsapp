@@ -18,7 +18,7 @@ func init() {
 		}
 		_, err = tx.Exec(`CREATE TABLE crypto_message_index (
 			sender_key CHAR(43),
-			session_id VARCHAR(255),
+			session_id CHAR(43),
 			"index"    INTEGER,
 			event_id   VARCHAR(255) NOT NULL,
 			timestamp  BIGINT       NOT NULL,
@@ -49,11 +49,11 @@ func init() {
 			return err
 		}
 		_, err = tx.Exec(`CREATE TABLE crypto_olm_session (
-			session_id   CHAR(43)     PRIMARY KEY,
-			sender_key   VARCHAR(255) NOT NULL,
-			session      bytea        NOT NULL,
-			created_at   timestamp    NOT NULL,
-			last_used    timestamp    NOT NULL
+			session_id   CHAR(43)  PRIMARY KEY,
+			sender_key   CHAR(43)  NOT NULL,
+			session      bytea     NOT NULL,
+			created_at   timestamp NOT NULL,
+			last_used    timestamp NOT NULL
 		)`)
 		if err != nil {
 			return err

@@ -725,7 +725,6 @@ func (portal *Portal) CreateMatrixRoom(user *User) error {
 	portal.log.Infoln("Creating Matrix room. Info source:", user.MXID)
 
 	var metadata *whatsappExt.GroupInfo
-	isPrivateChat := false
 	if portal.IsPrivateChat() {
 		puppet := portal.bridge.GetPuppetByJID(portal.Key.JID)
 		if portal.bridge.Config.Bridge.PrivateChatPortalMeta {
@@ -736,7 +735,6 @@ func (portal *Portal) CreateMatrixRoom(user *User) error {
 			portal.Name = ""
 		}
 		portal.Topic = "WhatsApp private chat"
-		isPrivateChat = true
 	} else if portal.IsStatusBroadcastRoom() {
 		portal.Name = "WhatsApp Status Broadcast"
 		portal.Topic = "WhatsApp status updates from your contacts"
@@ -770,13 +768,26 @@ func (portal *Portal) CreateMatrixRoom(user *User) error {
 		invite = portal.bridge.Config.Bridge.Relaybot.InviteUsers
 	}
 
+	if portal.bridge.Config.Bridge.Encryption.Default {
+		initialState = append(initialState, &event.Event{
+			Type: event.StateEncryption,
+			Content: event.Content{
+				Parsed: event.EncryptionEventContent{Algorithm: id.AlgorithmMegolmV1},
+			},
+		})
+		portal.Encrypted = true
+		if portal.IsPrivateChat() {
+			invite = append(invite, portal.bridge.Bot.UserID)
+		}
+	}
+
 	resp, err := intent.CreateRoom(&mautrix.ReqCreateRoom{
 		Visibility:   "private",
 		Name:         portal.Name,
 		Topic:        portal.Topic,
 		Invite:       invite,
 		Preset:       "private_chat",
-		IsDirect:     isPrivateChat,
+		IsDirect:     portal.IsPrivateChat(),
 		InitialState: initialState,
 	})
 	if err != nil {
@@ -784,6 +795,12 @@ func (portal *Portal) CreateMatrixRoom(user *User) error {
 	}
 	portal.MXID = resp.RoomID
 	portal.Update()
+
+	// We set the memberships beforehand to make sure the encryption key exchange in initial backfill knows the users are here.
+	for _, user := range invite {
+		portal.bridge.StateStore.SetMembership(portal.MXID, user, event.MembershipInvite)
+	}
+
 	if metadata != nil {
 		portal.SyncParticipants(metadata)
 	} else {
@@ -796,6 +813,13 @@ func (portal *Portal) CreateMatrixRoom(user *User) error {
 	if portal.IsPrivateChat() {
 		puppet := user.bridge.GetPuppetByJID(portal.Key.JID)
 		user.addPuppetToCommunity(puppet)
+
+		if portal.bridge.Config.Bridge.Encryption.Default {
+			err = portal.bridge.Bot.EnsureJoined(portal.MXID)
+			if err != nil {
+				portal.log.Errorln("Failed to join created portal with bridge bot for e2be:", err)
+			}
+		}
 	}
 	err = portal.FillInitialHistory(user)
 	if err != nil {

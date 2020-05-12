@@ -130,6 +130,10 @@ func (mx *MatrixHandler) HandleBotInvite(evt *event.Event) {
 }
 
 func (mx *MatrixHandler) HandleMembership(evt *event.Event) {
+	if _, isPuppet := mx.bridge.ParsePuppetMXID(evt.Sender); evt.Sender == mx.bridge.Bot.UserID || isPuppet {
+		return
+	}
+
 	if mx.bridge.Crypto != nil {
 		mx.bridge.Crypto.HandleMemberEvent(evt)
 	}

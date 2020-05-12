@@ -211,6 +211,13 @@ func (store *SQLCryptoStore) AddSession(key id.SenderKey, session *crypto.OlmSes
 	return err
 }
 
+func (store *SQLCryptoStore) UpdateSession(key id.SenderKey, session *crypto.OlmSession) error {
+	sessionBytes := session.Internal.Pickle(store.PickleKey)
+	_, err := store.db.Exec("UPDATE crypto_olm_session SET session=$1, last_used=$2 WHERE session_id=$3",
+		sessionBytes, session.UseTime, session.ID())
+	return err
+}
+
 func (store *SQLCryptoStore) PutGroupSession(roomID id.RoomID, senderKey id.SenderKey, sessionID id.SessionID, session *crypto.InboundGroupSession) error {
 	sessionBytes := session.Internal.Pickle(store.PickleKey)
 	forwardingChains := strings.Join(session.ForwardingChains, ",")
