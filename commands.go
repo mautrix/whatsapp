@@ -559,6 +559,7 @@ func (handler *CommandHandler) CommandOpen(ce *CommandEvent) {
 		portal.Sync(user, contact)
 		ce.Reply("Portal room created.")
 	}
+	_, _ = portal.MainIntent().InviteUser(portal.MXID, &mautrix.ReqInviteUser{UserID: user.MXID})
 }
 
 const cmdPMHelp = `pm [--force] <_international phone number_> - Open a private chat with the given phone number.`
