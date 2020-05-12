@@ -1001,7 +1001,10 @@ func (portal *Portal) HandleMediaMessage(source *User, download func() ([]byte, 
 		return
 	} else if err != nil {
 		portal.log.Errorfln("Failed to download media for %s: %v", info.Id, err)
-		resp, err := portal.MainIntent().SendNotice(portal.MXID, "Failed to bridge media")
+		resp, err := portal.sendMainIntentMessage(event.MessageEventContent{
+			MsgType:       event.MsgNotice,
+			Body:          "Failed to bridge media",
+		})
 		if err != nil {
 			portal.log.Errorfln("Failed to send media download error message for %s: %v", info.Id, err)
 		} else {
