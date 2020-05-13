@@ -31,7 +31,6 @@ import (
 	"mime"
 	"net/http"
 	"reflect"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -961,12 +960,29 @@ func (portal *Portal) HandleMessageLocation(source *User, message whatsapp.Locat
 		return
 	}
 
-	lat:= strconv.FormatFloat(message.DegreesLatitude, 'E', -1, 64)
-	lon:= strconv.FormatFloat(message.DegreesLongitude, 'E', -1, 64)
+	fmt.Println("\nHandleMessageLocation>\n")
+	fmt.Printf("%+v", message)
+	fmt.Println("\nHandleMessageLocation>\n")
+
+	lat:= fmt.Sprintf("%.14f", message.DegreesLatitude)
+	lon:= fmt.Sprintf("%.14f", message.DegreesLongitude)
+
+	name := ""
+	address := ""
+	url := ""
+	if len(message.Name) > 0 {
+		name = message.Name + "\n"
+	}
+	if len(message.Address) > 0 {
+		address = message.Address + "\n"
+	}
+	if len(message.Url) > 0 {
+		url = message.Url + "\n"
+	}
 	content := &mautrix.Content{
-		Name:    message.Name,
-		Body:    message.Name+"\n"+message.Address+"\n"+message.Url+"\n"+lat+"\n"+lon,
-		URL: "",
+		Name: message.Name,
+		Body: name + address + url + lat + "\n" + lon,
+		//URL: "",
 		MsgType: mautrix.MsgLocation,
 		Info: &mautrix.FileInfo{
 			Size:     len(thumbnail),
@@ -974,22 +990,22 @@ func (portal *Portal) HandleMessageLocation(source *User, message whatsapp.Locat
 		},
 	}
 
-	if thumbnail != nil {
-		thumbnailMime := http.DetectContentType(thumbnail)
-		uploadedThumbnail, _ := intent.UploadBytes(thumbnail, thumbnailMime)
-		if uploadedThumbnail != nil {
-			content.Info.ThumbnailURL = uploadedThumbnail.ContentURI
-			cfg, _, _ := image.DecodeConfig(bytes.NewReader(thumbnail))
-			content.Info.ThumbnailInfo = &mautrix.FileInfo{
-				Size:     len(thumbnail),
-				Width:    cfg.Width,
-				Height:   cfg.Height,
-				MimeType: thumbnailMime,
-			}
-		}
-	}
-
-	content.URL = content.Info.ThumbnailURL
+	//if thumbnail != nil {
+	//	thumbnailMime := http.DetectContentType(thumbnail)
+	//	uploadedThumbnail, _ := intent.UploadBytes(thumbnail, thumbnailMime)
+	//	if uploadedThumbnail != nil {
+	//		content.Info.ThumbnailURL = uploadedThumbnail.ContentURI
+	//		cfg, _, _ := image.DecodeConfig(bytes.NewReader(thumbnail))
+	//		content.Info.ThumbnailInfo = &mautrix.FileInfo{
+	//			Size:     len(thumbnail),
+	//			Width:    cfg.Width,
+	//			Height:   cfg.Height,
+	//			MimeType: thumbnailMime,
+	//		}
+	//	}
+	//}
+	//
+	//content.URL = content.Info.ThumbnailURL
 	portal.bridge.Formatter.ParseWhatsApp(content)
 	portal.SetReply(content, message.ContextInfo)
 

@@ -74,7 +74,7 @@ func (ce *CommandEvent) Reply(msg string, args ...interface{}) {
 
 // Handle handles messages to the bridge
 func (handler *CommandHandler) Handle(roomID types.MatrixRoomID, user *User, message string) {
-	args := strings.Split(message, " ")
+	args := strings.Fields(message)
 	ce := &CommandEvent{
 		Bot:     handler.bridge.Bot,
 		Bridge:  handler.bridge,
