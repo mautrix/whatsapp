@@ -785,6 +785,9 @@ func (user *User) HandleChatUpdate(cmd whatsappExt.ChatUpdate) {
 
 	portal := user.GetPortalByJID(cmd.JID)
 	if len(portal.MXID) == 0 {
+		if cmd.Data.Action == whatsappExt.ChatActionCreate {
+			go portal.membershipCreate(user, cmd.Data)
+		}
 		return
 	}
 

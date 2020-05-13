@@ -186,10 +186,10 @@ func (ext *ExtendedConn) HandleGroupKick(groupJid string, numbers[]string) (err 
 	return
 }
 
-func (ext *ExtendedConn) HandleGroupCreate(groupTopic string, numbers[]string) (err error)  {
+func (ext *ExtendedConn) HandleGroupCreate(subject string, numbers[]string) (err error)  {
 	var parts []string
 	parts = append(parts, numbers...)
-	_, err = ext.Conn.CreateGroup(groupTopic, parts)
+	_, err = ext.Conn.CreateGroup(subject, parts)
 	if err != nil {
 		fmt.Printf("%s HandleGroupCreate err", err)
 	}

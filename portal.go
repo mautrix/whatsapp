@@ -566,6 +566,16 @@ func (portal *Portal) membershipAdd(user *User, jid string) {
 	user.syncPortals(chatMap, false)
 }
 
+func (portal *Portal) membershipCreate(user *User, data whatsappExt.ChatUpdateData) {
+	contact := whatsapp.Contact{
+		Jid:    data.SenderJID,
+		Notify: "",
+		Name:   data.Create.Name,
+		Short:  "",
+	}
+	portal.Sync(user, contact)
+}
+
 func (portal *Portal) RestrictMessageSending(restrict bool) {
 	levels, err := portal.MainIntent().PowerLevels(portal.MXID)
 	if err != nil {

@@ -118,7 +118,7 @@ func (handler *CommandHandler) CommandMux(ce *CommandEvent) {
 		handler.CommandDeleteAllPortals(ce)
 	case "dev-test":
 		handler.CommandDevTest(ce)
-	case "login-matrix", "logout", "sync", "list", "open", "pm", "invite", "kick", "leave", "join":
+	case "login-matrix", "logout", "sync", "list", "open", "pm", "invite", "kick", "leave", "join", "create":
 		if !ce.User.HasSession() {
 			ce.Reply("You are not logged in. Use the `login` command to log into WhatsApp.")
 			return
@@ -148,6 +148,8 @@ func (handler *CommandHandler) CommandMux(ce *CommandEvent) {
 			handler.CommandLeave(ce)
 		case "join":
 			handler.CommandJoin(ce)
+		case "create":
+			handler.CommandCreate(ce)
 		}
 	default:
 		ce.Reply("Unknown Command")
@@ -385,6 +387,7 @@ func (handler *CommandHandler) CommandHelp(ce *CommandEvent) {
 		cmdPrefix + cmdListHelp,
 		cmdPrefix + cmdOpenHelp,
 		cmdPrefix + cmdPMHelp,
+		cmdPrefix + cmdCreateHelp,
 		cmdPrefix + cmdInviteHelp,
 		cmdPrefix + cmdKickHelp,
 		cmdPrefix + cmdLeaveHelp,
@@ -625,7 +628,7 @@ const cmdInviteHelp = `invite <_group JID_> <_international phone number_>,... -
 
 func (handler *CommandHandler) CommandInvite(ce *CommandEvent) {
 	if len(ce.Args) < 2 {
-		ce.Reply("**Usage:** `invite <group JID> <international phone number>,... reason`")
+		ce.Reply("**Usage:** `invite <group JID> <international phone number>,...`")
 		return
 	}
 
@@ -634,7 +637,7 @@ func (handler *CommandHandler) CommandInvite(ce *CommandEvent) {
 	userNumbers := strings.Split(ce.Args[1], ",")
 
 	if strings.HasSuffix(jid, whatsappExt.NewUserSuffix) {
-		ce.Reply("**Usage:** `invite <group JID> <international phone number>,... reason`")
+		ce.Reply("**Usage:** `invite <group JID> <international phone number>,...`")
 		return
 	}
 
@@ -797,5 +800,28 @@ func (handler *CommandHandler) CommandJoin(ce *CommandEvent) {
 	} else {
 		portal.Sync(user, contact)
 		ce.Reply("Portal room created.")
+	}
+}
+
+const cmdCreateHelp = `create <_subject_> <_international phone number_>,... - Create the group.`
+
+func (handler *CommandHandler) CommandCreate(ce *CommandEvent) {
+	if len(ce.Args) < 2 {
+		ce.Reply("**Usage:** `create <subject> <international phone number>,...`")
+		return
+	}
+
+	user := ce.User
+	subject := ce.Args[0]
+	userNumbers := strings.Split(ce.Args[1], ",")
+
+	for i, number := range userNumbers {
+		userNumbers[i] = number + whatsappExt.NewUserSuffix
+	}
+
+	handler.log.Debugln("Create Group", subject, "with", userNumbers)
+	err := user.Conn.HandleGroupCreate(subject, userNumbers)
+	if err != nil {
+		ce.Reply("Please confirm that parameters is correct.")
 	}
 }

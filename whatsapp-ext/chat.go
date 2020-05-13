@@ -48,6 +48,7 @@ const (
 	ChatActionRemove      ChatActionType = "remove"
 	ChatActionAdd         ChatActionType = "add"
 	ChatActionIntroduce   ChatActionType = "introduce"
+	ChatActionCreate      ChatActionType = "create"
 )
 
 type ChatUpdateData struct {
@@ -80,6 +81,16 @@ type ChatUpdateData struct {
 
 	MemberAction struct {
 		JIDs []string `json:"participants"`
+	}
+
+	Create struct {
+		Creation    int64    `json:"creation"`
+		Name        string   `json:"subject"`
+		SetAt       int64    `json:"s_t"`
+		SetBy       string   `json:"s_o"`
+		Admins      []string `json:"admins"`
+		SuperAdmins []string `json:"superadmins"`
+		Regulars    []string `json:"regulars"`
 	}
 }
 
@@ -119,6 +130,8 @@ func (cud *ChatUpdateData) UnmarshalJSON(data []byte) error {
 		unmarshalTo = &cud.PermissionChange
 	case ChatActionAdd, ChatActionRemove:
 		unmarshalTo = &cud.MemberAction
+	case ChatActionCreate:
+		unmarshalTo = &cud.Create
 	default:
 		return nil
 	}
