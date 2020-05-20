@@ -1002,8 +1002,8 @@ func (portal *Portal) HandleMediaMessage(source *User, download func() ([]byte, 
 	} else if err != nil {
 		portal.log.Errorfln("Failed to download media for %s: %v", info.Id, err)
 		resp, err := portal.sendMainIntentMessage(event.MessageEventContent{
-			MsgType:       event.MsgNotice,
-			Body:          "Failed to bridge media",
+			MsgType: event.MsgNotice,
+			Body:    "Failed to bridge media",
 		})
 		if err != nil {
 			portal.log.Errorfln("Failed to send media download error message for %s: %v", info.Id, err)
@@ -1157,25 +1157,38 @@ func (portal *Portal) downloadThumbnail(content *event.MessageEventContent, id i
 	return buf.Bytes()
 }
 
-func (portal *Portal) preprocessMatrixMedia(sender *User, relaybotFormatted bool, content *event.MessageEventContent, id id.EventID, mediaType whatsapp.MediaType) *MediaUpload {
+func (portal *Portal) preprocessMatrixMedia(sender *User, relaybotFormatted bool, content *event.MessageEventContent, eventID id.EventID, mediaType whatsapp.MediaType) *MediaUpload {
 	var caption string
 	if relaybotFormatted {
 		caption = portal.bridge.Formatter.ParseMatrix(content.FormattedBody)
 	}
 
-	mxc, err := content.URL.Parse()
+	var file *event.EncryptedFileInfo
+	rawMXC := content.URL
+	if content.File != nil {
+		file = content.File
+		rawMXC = file.URL
+	}
+	mxc, err := rawMXC.Parse()
 	if err != nil {
-		portal.log.Errorln("Malformed content URL in %s: %v", id, err)
+		portal.log.Errorln("Malformed content URL in %s: %v", eventID, err)
 	}
 	data, err := portal.MainIntent().DownloadBytes(mxc)
 	if err != nil {
-		portal.log.Errorfln("Failed to download media in %s: %v", id, err)
+		portal.log.Errorfln("Failed to download media in %s: %v", eventID, err)
 		return nil
+	}
+	if file != nil {
+		data, err = file.Decrypt(data)
+		if err != nil {
+			portal.log.Errorfln("Failed to decrypt media in %s: %v", eventID, err)
+			return nil
+		}
 	}
 
 	url, mediaKey, fileEncSHA256, fileSHA256, fileLength, err := sender.Conn.Upload(bytes.NewReader(data), mediaType)
 	if err != nil {
-		portal.log.Errorfln("Failed to upload media in %s: %v", id, err)
+		portal.log.Errorfln("Failed to upload media in %s: %v", eventID, err)
 		return nil
 	}
 
@@ -1186,7 +1199,7 @@ func (portal *Portal) preprocessMatrixMedia(sender *User, relaybotFormatted bool
 		FileEncSHA256: fileEncSHA256,
 		FileSHA256:    fileSHA256,
 		FileLength:    fileLength,
-		Thumbnail:     portal.downloadThumbnail(content, id),
+		Thumbnail:     portal.downloadThumbnail(content, eventID),
 	}
 }
 
