@@ -565,14 +565,16 @@ func (portal *Portal) membershipAdd(user *User, jid string) {
 	user.syncPortals(chatMap, false)
 }
 
-func (portal *Portal) membershipCreate(user *User, data whatsappExt.ChatUpdateData) {
+func (portal *Portal) membershipCreate(user *User, cmd whatsappExt.ChatUpdate) {
 	contact := whatsapp.Contact{
-		Jid:    data.SenderJID,
+		Jid:    cmd.Data.SenderJID,
 		Notify: "",
-		Name:   data.Create.Name,
+		Name:   cmd.Data.Create.Name,
 		Short:  "",
 	}
 	portal.Sync(user, contact)
+	contact.Jid = cmd.JID
+	user.Conn.Store.Contacts[cmd.JID] = contact
 }
 
 func (portal *Portal) RestrictMessageSending(restrict bool) {

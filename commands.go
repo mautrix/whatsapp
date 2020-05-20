@@ -803,7 +803,7 @@ func (handler *CommandHandler) CommandJoin(ce *CommandEvent) {
 	}
 }
 
-const cmdCreateHelp = `create <_subject_> <_international phone number_>,... - Create the group.`
+const cmdCreateHelp = `create <_subject_> <_international phone number_>,... - Create a group.`
 
 func (handler *CommandHandler) CommandCreate(ce *CommandEvent) {
 	if len(ce.Args) < 2 {
@@ -823,5 +823,9 @@ func (handler *CommandHandler) CommandCreate(ce *CommandEvent) {
 	err := user.Conn.HandleGroupCreate(subject, userNumbers)
 	if err != nil {
 		ce.Reply("Please confirm that parameters is correct.")
+	} else {
+		ce.Reply("Syncing group list...")
+		time.Sleep(time.Duration(3)*time.Second)
+		ce.Reply("Syncing group list completed")
 	}
 }
