@@ -258,7 +258,7 @@ func (store *SQLCryptoStore) AddOutboundGroupSession(session *crypto.OutboundGro
 			) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 			ON CONFLICT (room_id) DO UPDATE SET session_id=$2, session=$3, shared=$4, max_messages=$5, message_count=$6, max_age=$7, created_at=$8, last_used=$9`,
 			session.RoomID, session.ID(), sessionBytes, session.Shared, session.MaxMessages, session.MessageCount, session.MaxAge, session.CreationTime, session.UseTime)
-	} else if store.db.dialect == "sqlite" {
+	} else if store.db.dialect == "sqlite3" {
 		_, err = store.db.Exec(`
 			INSERT OR REPLACE INTO crypto_megolm_outbound_session (
 				room_id, session_id, session, shared, max_messages, message_count, max_age, created_at, last_used

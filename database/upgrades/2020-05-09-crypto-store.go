@@ -6,7 +6,6 @@ import (
 
 func init() {
 	upgrades[13] = upgrade{"Add crypto store to database", func(tx *sql.Tx, ctx context) error {
-		// TODO use DATETIME instead of timestamp and BLOB instead of bytea for sqlite
 		_, err := tx.Exec(`CREATE TABLE crypto_account (
 			device_id  VARCHAR(255) PRIMARY KEY,
 			shared     BOOLEAN      NOT NULL,

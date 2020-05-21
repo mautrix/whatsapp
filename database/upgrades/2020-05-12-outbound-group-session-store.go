@@ -6,7 +6,6 @@ import (
 
 func init() {
 	upgrades[14] = upgrade{"Add outbound group sessions to database", func(tx *sql.Tx, ctx context) error {
-		// TODO use DATETIME instead of timestamp and BLOB instead of bytea for sqlite
 		_, err := tx.Exec(`CREATE TABLE crypto_megolm_outbound_session (
 			room_id       VARCHAR(255) PRIMARY KEY,
 			session_id    CHAR(43)     NOT NULL UNIQUE,

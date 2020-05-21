@@ -145,4 +145,8 @@ func Migrate(old *Database, new *Database) {
 	if err != nil {
 		panic(err)
 	}
+	err = migrateTable(old, new, "crypto_megolm_outbound_session", "room_id", "session_id", "session", "shared", "max_messages", "message_count", "max_age", "created_at", "last_used")
+	if err != nil {
+		panic(err)
+	}
 }
