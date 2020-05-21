@@ -1,5 +1,5 @@
 // mautrix-whatsapp - A Matrix-WhatsApp puppeting bridge.
-// Copyright (C) 2019 Tulir Asokan
+// Copyright (C) 2020 Tulir Asokan
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as published by
@@ -28,6 +28,7 @@ import (
 
 	"maunium.net/go/mautrix-whatsapp/types"
 	"maunium.net/go/mautrix-whatsapp/whatsapp-ext"
+	"maunium.net/go/mautrix/id"
 )
 
 type UserQuery struct {
@@ -54,7 +55,7 @@ func (uq *UserQuery) GetAll() (users []*User) {
 	return
 }
 
-func (uq *UserQuery) GetByMXID(userID types.MatrixUserID) *User {
+func (uq *UserQuery) GetByMXID(userID id.UserID) *User {
 	row := uq.db.QueryRow(`SELECT mxid, jid, management_room, last_connection, client_id, client_token, server_token, enc_key, mac_key FROM "user" WHERE mxid=$1`, userID)
 	if row == nil {
 		return nil
@@ -74,9 +75,9 @@ type User struct {
 	db  *Database
 	log log.Logger
 
-	MXID           types.MatrixUserID
+	MXID           id.UserID
 	JID            types.WhatsAppID
-	ManagementRoom types.MatrixRoomID
+	ManagementRoom id.RoomID
 	Session        *whatsapp.Session
 	LastConnection uint64
 }

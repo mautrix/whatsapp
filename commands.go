@@ -1,5 +1,5 @@
 // mautrix-whatsapp - A Matrix-WhatsApp puppeting bridge.
-// Copyright (C) 2019 Tulir Asokan
+// Copyright (C) 2020 Tulir Asokan
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as published by
@@ -18,6 +18,7 @@ package main
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/Rhymen/go-whatsapp"
@@ -25,11 +26,12 @@ import (
 	"maunium.net/go/maulogger/v2"
 
 	"maunium.net/go/mautrix"
-	"maunium.net/go/mautrix-appservice"
+	"maunium.net/go/mautrix/appservice"
+	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/format"
+	"maunium.net/go/mautrix/id"
 
 	"maunium.net/go/mautrix-whatsapp/database"
-	"maunium.net/go/mautrix-whatsapp/types"
 	"maunium.net/go/mautrix-whatsapp/whatsapp-ext"
 )
 
@@ -51,7 +53,7 @@ type CommandEvent struct {
 	Bot     *appservice.IntentAPI
 	Bridge  *Bridge
 	Handler *CommandHandler
-	RoomID  types.MatrixRoomID
+	RoomID  id.RoomID
 	User    *User
 	Command string
 	Args    []string
@@ -59,20 +61,20 @@ type CommandEvent struct {
 
 // Reply sends a reply to command as notice
 func (ce *CommandEvent) Reply(msg string, args ...interface{}) {
-	content := format.RenderMarkdown(fmt.Sprintf(msg, args...))
-	content.MsgType = mautrix.MsgNotice
+	content := format.RenderMarkdown(fmt.Sprintf(msg, args...), true, false)
+	content.MsgType = event.MsgNotice
 	room := ce.User.ManagementRoom
 	if len(room) == 0 {
 		room = ce.RoomID
 	}
-	_, err := ce.Bot.SendMessageEvent(room, mautrix.EventMessage, content)
+	_, err := ce.Bot.SendMessageEvent(room, event.EventMessage, content)
 	if err != nil {
 		ce.Handler.log.Warnfln("Failed to reply to command from %s: %v", ce.User.MXID, err)
 	}
 }
 
 // Handle handles messages to the bridge
-func (handler *CommandHandler) Handle(roomID types.MatrixRoomID, user *User, message string) {
+func (handler *CommandHandler) Handle(roomID id.RoomID, user *User, message string) {
 	args := strings.Split(message, " ")
 	ce := &CommandEvent{
 		Bot:     handler.bridge.Bot,
@@ -117,7 +119,11 @@ func (handler *CommandHandler) CommandMux(ce *CommandEvent) {
 		handler.CommandDeleteAllPortals(ce)
 	case "dev-test":
 		handler.CommandDevTest(ce)
-	case "login-matrix", "logout", "sync", "list", "open", "pm":
+	case "set-pl":
+		handler.CommandSetPowerLevel(ce)
+	case "logout":
+		handler.CommandLogout(ce)
+	case "login-matrix", "sync", "list", "open", "pm":
 		if !ce.User.HasSession() {
 			ce.Reply("You are not logged in. Use the `login` command to log into WhatsApp.")
 			return
@@ -129,8 +135,6 @@ func (handler *CommandHandler) CommandMux(ce *CommandEvent) {
 		switch ce.Command {
 		case "login-matrix":
 			handler.CommandLoginMatrix(ce)
-		case "logout":
-			handler.CommandLogout(ce)
 		case "sync":
 			handler.CommandSync(ce)
 		case "list":
@@ -168,6 +172,45 @@ func (handler *CommandHandler) CommandDevTest(ce *CommandEvent) {
 
 }
 
+func (handler *CommandHandler) CommandSetPowerLevel(ce *CommandEvent) {
+	portal := ce.Bridge.GetPortalByMXID(ce.RoomID)
+	if portal == nil {
+		ce.Reply("Not a portal room")
+		return
+	}
+	var level int
+	var userID id.UserID
+	var err error
+	if len(ce.Args) == 1 {
+		level, err = strconv.Atoi(ce.Args[0])
+		if err != nil {
+			ce.Reply("Invalid power level \"%s\"", ce.Args[0])
+			return
+		}
+		userID = ce.User.MXID
+	} else if len(ce.Args) == 2 {
+		userID = id.UserID(ce.Args[0])
+		_, _, err := userID.Parse()
+		if err != nil {
+			ce.Reply("Invalid user ID \"%s\"", ce.Args[0])
+			return
+		}
+		level, err = strconv.Atoi(ce.Args[1])
+		if err != nil {
+			ce.Reply("Invalid power level \"%s\"", ce.Args[1])
+			return
+		}
+	} else {
+		ce.Reply("**Usage:** `set-pl [user] <level>`")
+		return
+	}
+	intent := portal.MainIntent()
+	_, err = intent.SetPowerLevel(ce.RoomID, userID, level)
+	if err != nil {
+		ce.Reply("Failed to set power levels: %v", err)
+	}
+}
+
 const cmdLoginHelp = `login - Authenticate this Bridge as WhatsApp Web Client`
 
 // CommandLogin handles login command
@@ -186,6 +229,16 @@ func (handler *CommandHandler) CommandLogout(ce *CommandEvent) {
 	if ce.User.Session == nil {
 		ce.Reply("You're not logged in.")
 		return
+	} else if !ce.User.IsConnected() {
+		ce.Reply("You are not connected to WhatsApp. Use the `reconnect` command to reconnect, or `delete-session` to forget all login information.")
+		return
+	}
+	puppet := handler.bridge.GetPuppetByJID(ce.User.JID)
+	if puppet.CustomMXID != "" {
+		err := puppet.SwitchCustomMXID("", "")
+		if err != nil {
+			ce.User.log.Warnln("Failed to logout-matrix while logging out of WhatsApp:", err)
+		}
 	}
 	err := ce.User.Conn.Logout()
 	if err != nil {
@@ -199,6 +252,9 @@ func (handler *CommandHandler) CommandLogout(ce *CommandEvent) {
 	}
 	ce.User.Conn.RemoveHandlers()
 	ce.User.Conn = nil
+	ce.User.removeFromJIDMap()
+	// TODO this causes a foreign key violation, which should be fixed
+	//ce.User.JID = ""
 	ce.User.SetSession(nil)
 	ce.Reply("Logged out successfully.")
 }
@@ -516,6 +572,7 @@ func (handler *CommandHandler) CommandOpen(ce *CommandEvent) {
 		portal.Sync(user, contact)
 		ce.Reply("Portal room created.")
 	}
+	_, _ = portal.MainIntent().InviteUser(portal.MXID, &mautrix.ReqInviteUser{UserID: user.MXID})
 }
 
 const cmdPMHelp = `pm [--force] <_international phone number_> - Open a private chat with the given phone number.`

@@ -1,5 +1,5 @@
 // mautrix-whatsapp - A Matrix-WhatsApp puppeting bridge.
-// Copyright (C) 2019 Tulir Asokan
+// Copyright (C) 2020 Tulir Asokan
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as published by
@@ -32,8 +32,9 @@ import (
 	"github.com/Rhymen/go-whatsapp"
 	waProto "github.com/Rhymen/go-whatsapp/binary/proto"
 
-	"maunium.net/go/mautrix"
+	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/format"
+	"maunium.net/go/mautrix/id"
 
 	"maunium.net/go/mautrix-whatsapp/database"
 	"maunium.net/go/mautrix-whatsapp/types"
@@ -65,7 +66,7 @@ type User struct {
 	syncLock sync.Mutex
 }
 
-func (bridge *Bridge) GetUserByMXID(userID types.MatrixUserID) *User {
+func (bridge *Bridge) GetUserByMXID(userID id.UserID) *User {
 	_, isPuppet := bridge.ParsePuppetMXID(userID)
 	if isPuppet || userID == bridge.Bot.UserID {
 		return nil
@@ -89,6 +90,18 @@ func (bridge *Bridge) GetUserByJID(userID types.WhatsAppID) *User {
 	return user
 }
 
+func (user *User) addToJIDMap() {
+	user.bridge.usersLock.Lock()
+	user.bridge.usersByJID[user.JID] = user
+	user.bridge.usersLock.Unlock()
+}
+
+func (user *User) removeFromJIDMap() {
+	user.bridge.usersLock.Lock()
+	delete(user.bridge.usersByJID, user.JID)
+	user.bridge.usersLock.Unlock()
+}
+
 func (bridge *Bridge) GetAllUsers() []*User {
 	bridge.usersLock.Lock()
 	defer bridge.usersLock.Unlock()
@@ -104,7 +117,7 @@ func (bridge *Bridge) GetAllUsers() []*User {
 	return output
 }
 
-func (bridge *Bridge) loadDBUser(dbUser *database.User, mxid *types.MatrixUserID) *User {
+func (bridge *Bridge) loadDBUser(dbUser *database.User, mxid *id.UserID) *User {
 	if dbUser == nil {
 		if mxid == nil {
 			return nil
@@ -160,7 +173,7 @@ func (bridge *Bridge) NewUser(dbUser *database.User) *User {
 	return user
 }
 
-func (user *User) SetManagementRoom(roomID types.MatrixRoomID) {
+func (user *User) SetManagementRoom(roomID id.RoomID) {
 	existingUser, ok := user.bridge.managementRooms[roomID]
 	if ok {
 		existingUser.ManagementRoom = ""
@@ -194,9 +207,9 @@ func (user *User) Connect(evenIfNoSession bool) bool {
 	conn, err := whatsapp.NewConn(timeout * time.Second)
 	if err != nil {
 		user.log.Errorln("Failed to connect to WhatsApp:", err)
-		msg := format.RenderMarkdown("\u26a0 Failed to connect to WhatsApp server. " +
-			"This indicates a network problem on the bridge server. See bridge logs for more info.")
-		_, _ = user.bridge.Bot.SendMessageEvent(user.ManagementRoom, mautrix.EventMessage, msg)
+		msg := format.RenderMarkdown("\u26a0 Failed to connect to WhatsApp server. "+
+			"This indicates a network problem on the bridge server. See bridge logs for more info.", true, false)
+		_, _ = user.bridge.Bot.SendMessageEvent(user.ManagementRoom, event.EventMessage, msg)
 		return false
 	}
 	user.Conn = whatsappExt.ExtendConn(conn)
@@ -213,9 +226,9 @@ func (user *User) RestoreSession() bool {
 			return true
 		} else if err != nil {
 			user.log.Errorln("Failed to restore session:", err)
-			msg := format.RenderMarkdown("\u26a0 Failed to connect to WhatsApp. Make sure WhatsApp " +
-				"on your phone is reachable and use `reconnect` to try connecting again.")
-			_, _ = user.bridge.Bot.SendMessageEvent(user.ManagementRoom, mautrix.EventMessage, msg)
+			msg := format.RenderMarkdown("\u26a0 Failed to connect to WhatsApp. Make sure WhatsApp "+
+				"on your phone is reachable and use `reconnect` to try connecting again.", true, false)
+			_, _ = user.bridge.Bot.SendMessageEvent(user.ManagementRoom, event.EventMessage, msg)
 			user.log.Debugln("Disconnecting due to failed session restore...")
 			_, err := user.Conn.Disconnect()
 			if err != nil {
@@ -243,8 +256,8 @@ func (user *User) IsLoginInProgress() bool {
 	return user.Conn != nil && user.Conn.IsLoginInProgress()
 }
 
-func (user *User) loginQrChannel(ce *CommandEvent, qrChan <-chan string, eventIDChan chan<- string) {
-	var qrEventID string
+func (user *User) loginQrChannel(ce *CommandEvent, qrChan <-chan string, eventIDChan chan<- id.EventID) {
+	var qrEventID id.EventID
 	for code := range qrChan {
 		if code == "stop" {
 			return
@@ -274,17 +287,17 @@ func (user *User) loginQrChannel(ce *CommandEvent, qrChan <-chan string, eventID
 			qrEventID = sendResp.EventID
 			eventIDChan <- qrEventID
 		} else {
-			_, err = bot.SendMessageEvent(ce.RoomID, mautrix.EventMessage, &mautrix.Content{
-				MsgType: mautrix.MsgImage,
+			_, err = bot.SendMessageEvent(ce.RoomID, event.EventMessage, &event.MessageEventContent{
+				MsgType: event.MsgImage,
 				Body:    code,
-				URL:     resp.ContentURI,
-				NewContent: &mautrix.Content{
-					MsgType: mautrix.MsgImage,
+				URL:     resp.ContentURI.CUString(),
+				NewContent: &event.MessageEventContent{
+					MsgType: event.MsgImage,
 					Body:    code,
-					URL:     resp.ContentURI,
+					URL:     resp.ContentURI.CUString(),
 				},
-				RelatesTo: &mautrix.RelatesTo{
-					Type:    mautrix.RelReplace,
+				RelatesTo: &event.RelatesTo{
+					Type:    event.RelReplace,
 					EventID: qrEventID,
 				},
 			})
@@ -297,18 +310,18 @@ func (user *User) loginQrChannel(ce *CommandEvent, qrChan <-chan string, eventID
 
 func (user *User) Login(ce *CommandEvent) {
 	qrChan := make(chan string, 3)
-	eventIDChan := make(chan string, 1)
+	eventIDChan := make(chan id.EventID, 1)
 	go user.loginQrChannel(ce, qrChan, eventIDChan)
 	session, err := user.Conn.LoginWithRetry(qrChan, user.bridge.Config.Bridge.LoginQRRegenCount)
 	qrChan <- "stop"
 	if err != nil {
-		var eventID string
+		var eventID id.EventID
 		select {
 		case eventID = <-eventIDChan:
 		default:
 		}
-		reply := mautrix.Content{
-			MsgType: mautrix.MsgText,
+		reply := event.MessageEventContent{
+			MsgType: event.MsgText,
 		}
 		if err == whatsapp.ErrAlreadyLoggedIn {
 			reply.Body = "You're already logged in"
@@ -323,16 +336,19 @@ func (user *User) Login(ce *CommandEvent) {
 		msg := reply
 		if eventID != "" {
 			msg.NewContent = &reply
-			msg.RelatesTo = &mautrix.RelatesTo{
-				Type:    mautrix.RelReplace,
+			msg.RelatesTo = &event.RelatesTo{
+				Type:    event.RelReplace,
 				EventID: eventID,
 			}
 		}
-		_, _ = ce.Bot.SendMessageEvent(ce.RoomID, mautrix.EventMessage, &msg)
+		_, _ = ce.Bot.SendMessageEvent(ce.RoomID, event.EventMessage, &msg)
 		return
 	}
+	// TODO there's a bit of duplication between this and the provisioning API login method
+	//      Also between the two logout methods (commands.go and provisioning.go)
 	user.ConnectionErrors = 0
 	user.JID = strings.Replace(user.Conn.Info.Wid, whatsappExt.OldUserSuffix, whatsappExt.NewUserSuffix, 1)
+	user.addToJIDMap()
 	user.SetSession(&session)
 	ce.Reply("Successfully logged in, synchronizing chats...")
 	user.PostLogin()
@@ -365,8 +381,11 @@ func (user *User) PostLogin() {
 }
 
 func (user *User) tryAutomaticDoublePuppeting() {
-	if len(user.bridge.Config.Bridge.LoginSharedSecret) == 0 || !strings.HasSuffix(user.MXID, user.bridge.Config.Homeserver.Domain) {
-		// Automatic login not enabled or user is on another homeserver
+	if len(user.bridge.Config.Bridge.LoginSharedSecret) == 0 {
+		// Automatic login not enabled
+		return
+	} else if _, homeserver, _ := user.MXID.Parse(); homeserver != user.bridge.Config.Homeserver.Domain {
+		// user is on another homeserver
 		return
 	}
 
@@ -535,8 +554,8 @@ func (user *User) HandleError(err error) {
 
 func (user *User) tryReconnect(msg string) {
 	if user.ConnectionErrors > user.bridge.Config.Bridge.MaxConnectionAttempts {
-		content := format.RenderMarkdown(fmt.Sprintf("%s. Use the `reconnect` command to reconnect.", msg))
-		_, _ = user.bridge.Bot.SendMessageEvent(user.ManagementRoom, mautrix.EventMessage, content)
+		content := format.RenderMarkdown(fmt.Sprintf("%s. Use the `reconnect` command to reconnect.", msg), true, false)
+		_, _ = user.bridge.Bot.SendMessageEvent(user.ManagementRoom, event.EventMessage, content)
 		return
 	}
 	if user.bridge.Config.Bridge.ReportConnectionRetry {
@@ -591,8 +610,8 @@ func (user *User) tryReconnect(msg string) {
 			"Use the `reconnect` command to try to reconnect.", msg, tries)
 	}
 
-	content := format.RenderMarkdown(msg)
-	_, _ = user.bridge.Bot.SendMessageEvent(user.ManagementRoom, mautrix.EventMessage, content)
+	content := format.RenderMarkdown(msg, true, false)
+	_, _ = user.bridge.Bot.SendMessageEvent(user.ManagementRoom, event.EventMessage, content)
 }
 
 func (user *User) ShouldCallSynchronously() bool {
@@ -656,8 +675,9 @@ func (user *User) HandleMessageRevoke(message whatsappExt.MessageRevocation) {
 }
 
 type FakeMessage struct {
-	Text string
-	ID   string
+	Text  string
+	ID    string
+	Alert bool
 }
 
 func (user *User) HandleCallInfo(info whatsappExt.CallInfo) {
@@ -673,11 +693,13 @@ func (user *User) HandleCallInfo(info whatsappExt.CallInfo) {
 			return
 		}
 		data.Text = "Incoming call"
+		data.Alert = true
 	case whatsappExt.CallOfferVideo:
 		if !user.bridge.Config.Bridge.CallNotices.Start {
 			return
 		}
 		data.Text = "Incoming video call"
+		data.Alert = true
 	case whatsappExt.CallTerminate:
 		if !user.bridge.Config.Bridge.CallNotices.End {
 			return
@@ -766,7 +788,7 @@ func (user *User) HandleCommand(cmd whatsappExt.Command) {
 				"Use the `reconnect` command to reconnect.", cmd.Kind)
 		}
 		user.cleanDisconnection = true
-		go user.bridge.Bot.SendMessageEvent(user.ManagementRoom, mautrix.EventMessage, format.RenderMarkdown(msg))
+		go user.bridge.Bot.SendMessageEvent(user.ManagementRoom, event.EventMessage, format.RenderMarkdown(msg, true, false))
 	}
 }
 

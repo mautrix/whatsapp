@@ -3,16 +3,15 @@ stages:
 - build docker
 - manifest
 
-build:
+.build: &build
   image: golang:1-alpine
   stage: build
-  tags:
-  - amd64
   cache:
     paths:
     - .cache
   before_script:
-  - apk add git build-base
+  - echo "@edge_community http://dl-cdn.alpinelinux.org/alpine/edge/community" >> /etc/apk/repositories
+  - apk add build-base olm-dev@edge_community
   - mkdir -p .cache
   - export GOPATH="$CI_PROJECT_DIR/.cache"
   script:
@@ -22,31 +21,62 @@ build:
     - mautrix-whatsapp
     - example-config.yaml
 
-build docker amd64:
+.build-docker: &build-docker
   image: docker:stable
   stage: build docker
+  before_script:
+  - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+  script:
+  - docker pull $CI_REGISTRY_IMAGE:latest || true
+  - docker build --pull --cache-from $CI_REGISTRY_IMAGE:latest --tag $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA-$DOCKER_ARCH . --file Dockerfile.ci
+  - docker push $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA-$DOCKER_ARCH
+  - docker rmi $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA-$DOCKER_ARCH
+
+build static amd64:
+  image: golang:1-alpine
+  stage: build
   tags:
   - amd64
+  cache:
+    paths:
+    - .cache
   before_script:
-  - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+  - mkdir -p .cache
+  - export GOPATH="$CI_PROJECT_DIR/.cache"
   script:
-  - docker pull $CI_REGISTRY_IMAGE:latest || true
-  - docker build --pull --cache-from $CI_REGISTRY_IMAGE:latest --tag $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA-amd64 . --file Dockerfile.ci
-  - docker push $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA-amd64
-  - docker rmi $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA-amd64
+  - CGO_ENABLED=0 go build -o mautrix-whatsapp
+  artifacts:
+    paths:
+    - mautrix-whatsapp
+    - example-config.yaml
 
-build docker arm64:
-  image: docker:stable
-  stage: build docker
+build amd64:
+  <<: *build
+  tags:
+  - amd64
+
+build arm64:
+  <<: *build
   tags:
   - arm64
-  before_script:
-  - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
-  script:
-  - docker pull $CI_REGISTRY_IMAGE:latest || true
-  - docker build --pull --cache-from $CI_REGISTRY_IMAGE:latest --tag $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA-arm64 .
-  - docker push $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA-arm64
-  - docker rmi $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA-arm64
+
+build docker amd64:
+  <<: *build-docker
+  tags:
+  - amd64
+  dependencies:
+  - build amd64
+  variables:
+    DOCKER_ARCH: amd64
+
+build docker arm64:
+  <<: *build-docker
+  tags:
+  - arm64
+  dependencies:
+  - build arm64
+  variables:
+    DOCKER_ARCH: arm64
 
 manifest:
   stage: manifest
