@@ -161,7 +161,9 @@ func (puppet *Puppet) PhoneNumber() string {
 }
 
 func (puppet *Puppet) IntentFor(portal *Portal) *appservice.IntentAPI {
-	if (!portal.IsPrivateChat() && puppet.customIntent == nil) || portal.backfilling || portal.Key.JID == puppet.JID {
+	if (!portal.IsPrivateChat() && puppet.customIntent == nil) ||
+		(portal.backfilling && portal.bridge.Config.Bridge.InviteOwnPuppetForBackfilling) ||
+		portal.Key.JID == puppet.JID {
 		return puppet.DefaultIntent()
 	}
 	return puppet.customIntent
