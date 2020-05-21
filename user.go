@@ -675,8 +675,9 @@ func (user *User) HandleMessageRevoke(message whatsappExt.MessageRevocation) {
 }
 
 type FakeMessage struct {
-	Text string
-	ID   string
+	Text  string
+	ID    string
+	Alert bool
 }
 
 func (user *User) HandleCallInfo(info whatsappExt.CallInfo) {
@@ -692,11 +693,13 @@ func (user *User) HandleCallInfo(info whatsappExt.CallInfo) {
 			return
 		}
 		data.Text = "Incoming call"
+		data.Alert = true
 	case whatsappExt.CallOfferVideo:
 		if !user.bridge.Config.Bridge.CallNotices.Start {
 			return
 		}
 		data.Text = "Incoming video call"
+		data.Alert = true
 	case whatsappExt.CallTerminate:
 		if !user.bridge.Config.Bridge.CallNotices.End {
 			return

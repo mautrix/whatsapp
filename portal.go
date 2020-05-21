@@ -919,7 +919,14 @@ func (portal *Portal) HandleFakeMessage(source *User, message FakeMessage) {
 		return
 	}
 
-	_, err := portal.MainIntent().SendNotice(portal.MXID, message.Text)
+	content := event.MessageEventContent{
+		MsgType: event.MsgNotice,
+		Body:    message.Text,
+	}
+	if message.Alert {
+		content.MsgType = event.MsgText
+	}
+	_, err := portal.sendMainIntentMessage(content)
 	if err != nil {
 		portal.log.Errorfln("Failed to handle fake message %s: %v", message.ID, err)
 		return
