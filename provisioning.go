@@ -292,6 +292,9 @@ func (prov *ProvisioningAPI) Logout(w http.ResponseWriter, r *http.Request) {
 	}
 	user.Conn.RemoveHandlers()
 	user.Conn = nil
+	user.removeFromJIDMap()
+	// TODO this causes a foreign key violation, which should be fixed
+	//ce.User.JID = ""
 	user.SetSession(nil)
 	jsonResponse(w, http.StatusOK, Response{true, "Logged out successfully."})
 }
@@ -351,6 +354,7 @@ func (prov *ProvisioningAPI) Login(w http.ResponseWriter, r *http.Request) {
 	}
 	user.ConnectionErrors = 0
 	user.JID = strings.Replace(user.Conn.Info.Wid, whatsappExt.OldUserSuffix, whatsappExt.NewUserSuffix, 1)
+	user.addToJIDMap()
 	user.SetSession(&session)
 	_ = c.WriteJSON(map[string]interface{}{
 		"success": true,

@@ -90,6 +90,18 @@ func (bridge *Bridge) GetUserByJID(userID types.WhatsAppID) *User {
 	return user
 }
 
+func (user *User) addToJIDMap() {
+	user.bridge.usersLock.Lock()
+	user.bridge.usersByJID[user.JID] = user
+	user.bridge.usersLock.Unlock()
+}
+
+func (user *User) removeFromJIDMap() {
+	user.bridge.usersLock.Lock()
+	delete(user.bridge.usersByJID, user.JID)
+	user.bridge.usersLock.Unlock()
+}
+
 func (bridge *Bridge) GetAllUsers() []*User {
 	bridge.usersLock.Lock()
 	defer bridge.usersLock.Unlock()
@@ -332,8 +344,11 @@ func (user *User) Login(ce *CommandEvent) {
 		_, _ = ce.Bot.SendMessageEvent(ce.RoomID, event.EventMessage, &msg)
 		return
 	}
+	// TODO there's a bit of duplication between this and the provisioning API login method
+	//      Also between the two logout methods (commands.go and provisioning.go)
 	user.ConnectionErrors = 0
 	user.JID = strings.Replace(user.Conn.Info.Wid, whatsappExt.OldUserSuffix, whatsappExt.NewUserSuffix, 1)
+	user.addToJIDMap()
 	user.SetSession(&session)
 	ce.Reply("Successfully logged in, synchronizing chats...")
 	user.PostLogin()

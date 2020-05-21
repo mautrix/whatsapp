@@ -230,6 +230,13 @@ func (handler *CommandHandler) CommandLogout(ce *CommandEvent) {
 		ce.Reply("You're not logged in.")
 		return
 	}
+	puppet := handler.bridge.GetPuppetByJID(ce.User.JID)
+	if puppet.CustomMXID != "" {
+		err := puppet.SwitchCustomMXID("", "")
+		if err != nil {
+			ce.User.log.Warnln("Failed to logout-matrix while logging out of WhatsApp:", err)
+		}
+	}
 	err := ce.User.Conn.Logout()
 	if err != nil {
 		ce.User.log.Warnln("Error while logging out:", err)
@@ -242,6 +249,9 @@ func (handler *CommandHandler) CommandLogout(ce *CommandEvent) {
 	}
 	ce.User.Conn.RemoveHandlers()
 	ce.User.Conn = nil
+	ce.User.removeFromJIDMap()
+	// TODO this causes a foreign key violation, which should be fixed
+	//ce.User.JID = ""
 	ce.User.SetSession(nil)
 	ce.Reply("Logged out successfully.")
 }
