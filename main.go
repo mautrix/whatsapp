@@ -254,7 +254,9 @@ func (bridge *Bridge) Start() {
 	bridge.Log.Debugln("Starting event processor")
 	go bridge.EventProcessor.Start()
 	go bridge.UpdateBotProfile()
-	go bridge.Crypto.Start()
+	if bridge.Crypto != nil {
+		go bridge.Crypto.Start()
+	}
 	go bridge.StartUsers()
 }
 
@@ -319,7 +321,9 @@ func (bridge *Bridge) StartUsers() {
 }
 
 func (bridge *Bridge) Stop() {
-	bridge.Crypto.Stop()
+	if bridge.Crypto != nil {
+		bridge.Crypto.Stop()
+	}
 	bridge.AS.Stop()
 	bridge.EventProcessor.Stop()
 	for _, user := range bridge.usersByJID {
