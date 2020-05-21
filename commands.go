@@ -121,7 +121,9 @@ func (handler *CommandHandler) CommandMux(ce *CommandEvent) {
 		handler.CommandDevTest(ce)
 	case "set-pl":
 		handler.CommandSetPowerLevel(ce)
-	case "login-matrix", "logout", "sync", "list", "open", "pm":
+	case "logout":
+		handler.CommandLogout(ce)
+	case "login-matrix", "sync", "list", "open", "pm":
 		if !ce.User.HasSession() {
 			ce.Reply("You are not logged in. Use the `login` command to log into WhatsApp.")
 			return
@@ -133,8 +135,6 @@ func (handler *CommandHandler) CommandMux(ce *CommandEvent) {
 		switch ce.Command {
 		case "login-matrix":
 			handler.CommandLoginMatrix(ce)
-		case "logout":
-			handler.CommandLogout(ce)
 		case "sync":
 			handler.CommandSync(ce)
 		case "list":
@@ -228,6 +228,9 @@ const cmdLogoutHelp = `logout - Logout from WhatsApp`
 func (handler *CommandHandler) CommandLogout(ce *CommandEvent) {
 	if ce.User.Session == nil {
 		ce.Reply("You're not logged in.")
+		return
+	} else if !ce.User.IsConnected() {
+		ce.Reply("You are not connected to WhatsApp. Use the `reconnect` command to reconnect, or `delete-session` to forget all login information.")
 		return
 	}
 	puppet := handler.bridge.GetPuppetByJID(ce.User.JID)
