@@ -8,7 +8,7 @@ import (
 	"os"
 	"strings"
 
-	"maunium.net/go/mautrix"
+	"maunium.net/go/mautrix/event"
 )
 
 func init() {
@@ -46,7 +46,7 @@ func init() {
 		return executeBatch(tx, valueStrings, values...)
 	}
 
-	migrateMemberships := func(tx *sql.Tx, rooms map[string]map[string]mautrix.Membership) error {
+	migrateMemberships := func(tx *sql.Tx, rooms map[string]map[string]event.Membership) error {
 		for roomID, members := range rooms {
 			if len(members) == 0 {
 				continue
@@ -68,7 +68,7 @@ func init() {
 		return nil
 	}
 
-	migratePowerLevels := func(tx *sql.Tx, rooms map[string]*mautrix.PowerLevels) error {
+	migratePowerLevels := func(tx *sql.Tx, rooms map[string]*event.PowerLevelsEventContent) error {
 		if len(rooms) == 0 {
 			return nil
 		}
@@ -106,9 +106,9 @@ func init() {
 	)`
 
 	type TempStateStore struct {
-		Registrations map[string]bool                          `json:"registrations"`
-		Members       map[string]map[string]mautrix.Membership `json:"memberships"`
-		PowerLevels   map[string]*mautrix.PowerLevels          `json:"power_levels"`
+		Registrations map[string]bool                           `json:"registrations"`
+		Members       map[string]map[string]event.Membership    `json:"memberships"`
+		PowerLevels   map[string]*event.PowerLevelsEventContent `json:"power_levels"`
 	}
 
 	upgrades[9] = upgrade{"Move state store to main DB", func(tx *sql.Tx, ctx context) error {

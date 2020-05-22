@@ -1,5 +1,5 @@
 // mautrix-whatsapp - A Matrix-WhatsApp puppeting bridge.
-// Copyright (C) 2019 Tulir Asokan
+// Copyright (C) 2020 Tulir Asokan
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as published by
@@ -22,8 +22,9 @@ import (
 	"regexp"
 	"strings"
 
-	"maunium.net/go/mautrix"
+	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/format"
+	"maunium.net/go/mautrix/id"
 
 	"maunium.net/go/mautrix-whatsapp/types"
 	"maunium.net/go/mautrix-whatsapp/whatsapp-ext"
@@ -54,8 +55,7 @@ func NewFormatter(bridge *Bridge) *Formatter {
 
 			PillConverter: func(mxid, eventID string) string {
 				if mxid[0] == '@' {
-					puppet := bridge.GetPuppetByMXID(mxid)
-					fmt.Println(mxid, puppet)
+					puppet := bridge.GetPuppetByMXID(id.UserID(mxid))
 					if puppet != nil {
 						return "@" + puppet.PhoneNumber()
 					}
@@ -106,10 +106,10 @@ func NewFormatter(bridge *Bridge) *Formatter {
 	return formatter
 }
 
-func (formatter *Formatter) getMatrixInfoByJID(jid types.WhatsAppID) (mxid, displayname string) {
+func (formatter *Formatter) getMatrixInfoByJID(jid types.WhatsAppID) (mxid id.UserID, displayname string) {
 	if user := formatter.bridge.GetUserByJID(jid); user != nil {
 		mxid = user.MXID
-		displayname = user.MXID
+		displayname = string(user.MXID)
 	} else if puppet := formatter.bridge.GetPuppetByJID(jid); puppet != nil {
 		mxid = puppet.MXID
 		displayname = puppet.Displayname
@@ -117,7 +117,7 @@ func (formatter *Formatter) getMatrixInfoByJID(jid types.WhatsAppID) (mxid, disp
 	return
 }
 
-func (formatter *Formatter) ParseWhatsApp(content *mautrix.Content) {
+func (formatter *Formatter) ParseWhatsApp(content *event.MessageEventContent) {
 	output := html.EscapeString(content.Body)
 	for regex, replacement := range formatter.waReplString {
 		output = regex.ReplaceAllString(output, replacement)
@@ -128,7 +128,7 @@ func (formatter *Formatter) ParseWhatsApp(content *mautrix.Content) {
 	if output != content.Body {
 		output = strings.Replace(output, "\n", "<br/>", -1)
 		content.FormattedBody = output
-		content.Format = mautrix.FormatHTML
+		content.Format = event.FormatHTML
 		for regex, replacer := range formatter.waReplFuncText {
 			content.Body = regex.ReplaceAllStringFunc(content.Body, replacer)
 		}

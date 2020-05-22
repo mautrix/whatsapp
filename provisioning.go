@@ -26,8 +26,8 @@ import (
 	"github.com/gorilla/websocket"
 	log "maunium.net/go/maulogger/v2"
 
-	"maunium.net/go/mautrix-whatsapp/types"
 	whatsappExt "maunium.net/go/mautrix-whatsapp/whatsapp-ext"
+	"maunium.net/go/mautrix/id"
 )
 
 type ProvisioningAPI struct {
@@ -61,7 +61,7 @@ func (prov *ProvisioningAPI) AuthMiddleware(h http.Handler) http.Handler {
 			return
 		}
 		userID := r.URL.Query().Get("user_id")
-		user := prov.bridge.GetUserByMXID(types.MatrixUserID(userID))
+		user := prov.bridge.GetUserByMXID(id.UserID(userID))
 		h.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), "user", user)))
 	})
 }
@@ -292,6 +292,9 @@ func (prov *ProvisioningAPI) Logout(w http.ResponseWriter, r *http.Request) {
 	}
 	user.Conn.RemoveHandlers()
 	user.Conn = nil
+	user.removeFromJIDMap()
+	// TODO this causes a foreign key violation, which should be fixed
+	//ce.User.JID = ""
 	user.SetSession(nil)
 	jsonResponse(w, http.StatusOK, Response{true, "Logged out successfully."})
 }
@@ -300,7 +303,7 @@ var upgrader = websocket.Upgrader{}
 
 func (prov *ProvisioningAPI) Login(w http.ResponseWriter, r *http.Request) {
 	userID := r.URL.Query().Get("user_id")
-	user := prov.bridge.GetUserByMXID(types.MatrixUserID(userID))
+	user := prov.bridge.GetUserByMXID(id.UserID(userID))
 
 	c, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
@@ -351,6 +354,7 @@ func (prov *ProvisioningAPI) Login(w http.ResponseWriter, r *http.Request) {
 	}
 	user.ConnectionErrors = 0
 	user.JID = strings.Replace(user.Conn.Info.Wid, whatsappExt.OldUserSuffix, whatsappExt.NewUserSuffix, 1)
+	user.addToJIDMap()
 	user.SetSession(&session)
 	_ = c.WriteJSON(map[string]interface{}{
 		"success": true,

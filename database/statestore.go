@@ -1,5 +1,5 @@
 // mautrix-whatsapp - A Matrix-WhatsApp puppeting bridge.
-// Copyright (C) 2019 Tulir Asokan
+// Copyright (C) 2020 Tulir Asokan
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as published by
@@ -24,8 +24,9 @@ import (
 
 	log "maunium.net/go/maulogger/v2"
 
-	"maunium.net/go/mautrix"
-	"maunium.net/go/mautrix-appservice"
+	"maunium.net/go/mautrix/appservice"
+	"maunium.net/go/mautrix/event"
+	"maunium.net/go/mautrix/id"
 )
 
 type SQLStateStore struct {
@@ -34,19 +35,21 @@ type SQLStateStore struct {
 	db  *Database
 	log log.Logger
 
-	Typing     map[string]map[string]int64
+	Typing     map[id.RoomID]map[id.UserID]int64
 	typingLock sync.RWMutex
 }
+
+var _ appservice.StateStore = (*SQLStateStore)(nil)
 
 func NewSQLStateStore(db *Database) *SQLStateStore {
 	return &SQLStateStore{
 		TypingStateStore: appservice.NewTypingStateStore(),
 		db:               db,
-		log:              log.Sub("StateStore"),
+		log:              db.log.Sub("StateStore"),
 	}
 }
 
-func (store *SQLStateStore) IsRegistered(userID string) bool {
+func (store *SQLStateStore) IsRegistered(userID id.UserID) bool {
 	row := store.db.QueryRow("SELECT EXISTS(SELECT 1 FROM mx_registrations WHERE user_id=$1)", userID)
 	var isRegistered bool
 	err := row.Scan(&isRegistered)
@@ -56,7 +59,7 @@ func (store *SQLStateStore) IsRegistered(userID string) bool {
 	return isRegistered
 }
 
-func (store *SQLStateStore) MarkRegistered(userID string) {
+func (store *SQLStateStore) MarkRegistered(userID id.UserID) {
 	var err error
 	if store.db.dialect == "postgres" {
 		_, err = store.db.Exec("INSERT INTO mx_registrations (user_id) VALUES ($1) ON CONFLICT (user_id) DO NOTHING", userID)
@@ -70,28 +73,28 @@ func (store *SQLStateStore) MarkRegistered(userID string) {
 	}
 }
 
-func (store *SQLStateStore) GetRoomMembers(roomID string) map[string]mautrix.Member {
-	members := make(map[string]mautrix.Member)
+func (store *SQLStateStore) GetRoomMembers(roomID id.RoomID) map[id.UserID]*event.MemberEventContent {
+	members := make(map[id.UserID]*event.MemberEventContent)
 	rows, err := store.db.Query("SELECT user_id, membership, displayname, avatar_url FROM mx_user_profile WHERE room_id=$1", roomID)
 	if err != nil {
 		return members
 	}
-	var userID string
-	var member mautrix.Member
+	var userID id.UserID
+	var member event.MemberEventContent
 	for rows.Next() {
 		err := rows.Scan(&userID, &member.Membership, &member.Displayname, &member.AvatarURL)
 		if err != nil {
 			store.log.Warnfln("Failed to scan member in %s: %v", roomID, err)
 		} else {
-			members[userID] = member
+			members[userID] = &member
 		}
 	}
 	return members
 }
 
-func (store *SQLStateStore) GetMembership(roomID, userID string) mautrix.Membership {
+func (store *SQLStateStore) GetMembership(roomID id.RoomID, userID id.UserID) event.Membership {
 	row := store.db.QueryRow("SELECT membership FROM mx_user_profile WHERE room_id=$1 AND user_id=$2", roomID, userID)
-	membership := mautrix.MembershipLeave
+	membership := event.MembershipLeave
 	err := row.Scan(&membership)
 	if err != nil && err != sql.ErrNoRows {
 		store.log.Warnfln("Failed to scan membership of %s in %s: %v", userID, roomID, err)
@@ -99,33 +102,55 @@ func (store *SQLStateStore) GetMembership(roomID, userID string) mautrix.Members
 	return membership
 }
 
-func (store *SQLStateStore) GetMember(roomID, userID string) mautrix.Member {
+func (store *SQLStateStore) GetMember(roomID id.RoomID, userID id.UserID) *event.MemberEventContent {
 	member, ok := store.TryGetMember(roomID, userID)
 	if !ok {
-		member.Membership = mautrix.MembershipLeave
+		member.Membership = event.MembershipLeave
 	}
 	return member
 }
 
-func (store *SQLStateStore) TryGetMember(roomID, userID string) (mautrix.Member, bool) {
+func (store *SQLStateStore) TryGetMember(roomID id.RoomID, userID id.UserID) (*event.MemberEventContent, bool) {
 	row := store.db.QueryRow("SELECT membership, displayname, avatar_url FROM mx_user_profile WHERE room_id=$1 AND user_id=$2", roomID, userID)
-	var member mautrix.Member
+	var member event.MemberEventContent
 	err := row.Scan(&member.Membership, &member.Displayname, &member.AvatarURL)
 	if err != nil && err != sql.ErrNoRows {
 		store.log.Warnfln("Failed to scan member info of %s in %s: %v", userID, roomID, err)
 	}
-	return member, err == nil
+	return &member, err == nil
 }
 
-func (store *SQLStateStore) IsInRoom(roomID, userID string) bool {
+func (store *SQLStateStore) FindSharedRooms(userID id.UserID) (rooms []id.RoomID) {
+	rows, err := store.db.Query(`
+			SELECT room_id FROM mx_user_profile
+			LEFT JOIN portal ON portal.mxid=mx_user_profile.room_id
+			WHERE user_id=$1 AND portal.encrypted=true
+	`, userID)
+	if err != nil {
+		store.log.Warnfln("Failed to query shared rooms with %s: %v", userID, err)
+		return
+	}
+	for rows.Next() {
+		var roomID id.RoomID
+		err := rows.Scan(&roomID)
+		if err != nil {
+			store.log.Warnfln("Failed to scan room ID: %v", err)
+		} else {
+			rooms = append(rooms, roomID)
+		}
+	}
+	return
+}
+
+func (store *SQLStateStore) IsInRoom(roomID id.RoomID, userID id.UserID) bool {
 	return store.IsMembership(roomID, userID, "join")
 }
 
-func (store *SQLStateStore) IsInvited(roomID, userID string) bool {
+func (store *SQLStateStore) IsInvited(roomID id.RoomID, userID id.UserID) bool {
 	return store.IsMembership(roomID, userID, "join", "invite")
 }
 
-func (store *SQLStateStore) IsMembership(roomID, userID string, allowedMemberships ...mautrix.Membership) bool {
+func (store *SQLStateStore) IsMembership(roomID id.RoomID, userID id.UserID, allowedMemberships ...event.Membership) bool {
 	membership := store.GetMembership(roomID, userID)
 	for _, allowedMembership := range allowedMemberships {
 		if allowedMembership == membership {
@@ -135,7 +160,7 @@ func (store *SQLStateStore) IsMembership(roomID, userID string, allowedMembershi
 	return false
 }
 
-func (store *SQLStateStore) SetMembership(roomID, userID string, membership mautrix.Membership) {
+func (store *SQLStateStore) SetMembership(roomID id.RoomID, userID id.UserID, membership event.Membership) {
 	var err error
 	if store.db.dialect == "postgres" {
 		_, err = store.db.Exec(`INSERT INTO mx_user_profile (room_id, user_id, membership) VALUES ($1, $2, $3)
@@ -150,7 +175,7 @@ func (store *SQLStateStore) SetMembership(roomID, userID string, membership maut
 	}
 }
 
-func (store *SQLStateStore) SetMember(roomID, userID string, member mautrix.Member) {
+func (store *SQLStateStore) SetMember(roomID id.RoomID, userID id.UserID, member *event.MemberEventContent) {
 	var err error
 	if store.db.dialect == "postgres" {
 		_, err = store.db.Exec(`INSERT INTO mx_user_profile (room_id, user_id, membership, displayname, avatar_url) VALUES ($1, $2, $3, $4, $5)
@@ -166,7 +191,7 @@ func (store *SQLStateStore) SetMember(roomID, userID string, member mautrix.Memb
 	}
 }
 
-func (store *SQLStateStore) SetPowerLevels(roomID string, levels *mautrix.PowerLevels) {
+func (store *SQLStateStore) SetPowerLevels(roomID id.RoomID, levels *event.PowerLevelsEventContent) {
 	levelsBytes, err := json.Marshal(levels)
 	if err != nil {
 		store.log.Errorfln("Failed to marshal power levels of %s: %v", roomID, err)
@@ -185,7 +210,7 @@ func (store *SQLStateStore) SetPowerLevels(roomID string, levels *mautrix.PowerL
 	}
 }
 
-func (store *SQLStateStore) GetPowerLevels(roomID string) (levels *mautrix.PowerLevels) {
+func (store *SQLStateStore) GetPowerLevels(roomID id.RoomID) (levels *event.PowerLevelsEventContent) {
 	row := store.db.QueryRow("SELECT power_levels FROM mx_room_state WHERE room_id=$1", roomID)
 	if row == nil {
 		return
@@ -196,7 +221,7 @@ func (store *SQLStateStore) GetPowerLevels(roomID string) (levels *mautrix.Power
 		store.log.Errorln("Failed to scan power levels of %s: %v", roomID, err)
 		return
 	}
-	levels = &mautrix.PowerLevels{}
+	levels = &event.PowerLevelsEventContent{}
 	err = json.Unmarshal(data, levels)
 	if err != nil {
 		store.log.Errorln("Failed to parse power levels of %s: %v", roomID, err)
@@ -205,7 +230,7 @@ func (store *SQLStateStore) GetPowerLevels(roomID string) (levels *mautrix.Power
 	return
 }
 
-func (store *SQLStateStore) GetPowerLevel(roomID, userID string) int {
+func (store *SQLStateStore) GetPowerLevel(roomID id.RoomID, userID id.UserID) int {
 	if store.db.dialect == "postgres" {
 		row := store.db.QueryRow(`SELECT
 			COALESCE((power_levels->'users'->$2)::int, (power_levels->'users_default')::int, 0)
@@ -224,7 +249,7 @@ func (store *SQLStateStore) GetPowerLevel(roomID, userID string) int {
 	return store.GetPowerLevels(roomID).GetUserLevel(userID)
 }
 
-func (store *SQLStateStore) GetPowerLevelRequirement(roomID string, eventType mautrix.EventType) int {
+func (store *SQLStateStore) GetPowerLevelRequirement(roomID id.RoomID, eventType event.Type) int {
 	if store.db.dialect == "postgres" {
 		defaultType := "events_default"
 		defaultValue := 0
@@ -249,7 +274,7 @@ func (store *SQLStateStore) GetPowerLevelRequirement(roomID string, eventType ma
 	return store.GetPowerLevels(roomID).GetEventLevel(eventType)
 }
 
-func (store *SQLStateStore) HasPowerLevel(roomID, userID string, eventType mautrix.EventType) bool {
+func (store *SQLStateStore) HasPowerLevel(roomID id.RoomID, userID id.UserID, eventType event.Type) bool {
 	if store.db.dialect == "postgres" {
 		defaultType := "events_default"
 		defaultValue := 0

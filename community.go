@@ -1,5 +1,5 @@
 // mautrix-whatsapp - A Matrix-WhatsApp puppeting bridge.
-// Copyright (C) 2019 Tulir Asokan
+// Copyright (C) 2020 Tulir Asokan
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as published by
@@ -21,7 +21,6 @@ import (
 	"net/http"
 
 	"maunium.net/go/mautrix"
-	appservice "maunium.net/go/mautrix-appservice"
 )
 
 func (user *User) inviteToCommunity() {
@@ -51,7 +50,7 @@ func (user *User) createCommunity() {
 		return
 	}
 
-	localpart, server := appservice.ParseUserID(user.MXID)
+	localpart, server, _ := user.MXID.Parse()
 	community := user.bridge.Config.Bridge.FormatCommunity(localpart, server)
 	user.log.Debugln("Creating personal filtering community", community)
 	bot := user.bridge.Bot
@@ -100,8 +99,8 @@ func (user *User) addPuppetToCommunity(puppet *Puppet) bool {
 			"type": "private",
 		},
 	}
-	url = bot.BuildURLWithQuery([]string{"groups", user.CommunityID, "self", "accept_invite"}, map[string]string{
-		"user_id": puppet.MXID,
+	url = bot.BuildURLWithQuery(mautrix.URLPath{"groups", user.CommunityID, "self", "accept_invite"}, map[string]string{
+		"user_id": puppet.MXID.String(),
 	})
 	_, err = bot.MakeRequest(http.MethodPut, url, &reqBody, nil)
 	if err != nil {
