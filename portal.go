@@ -1111,7 +1111,7 @@ func (portal *Portal) HandleMediaMessage(source *User, download func() ([]byte, 
 
 		portal.bridge.Formatter.ParseWhatsApp(captionContent)
 
-		_, err := portal.sendMessage(intent, event.EventMessage, content, ts)
+		_, err := portal.sendMessage(intent, event.EventMessage, captionContent, ts)
 		if err != nil {
 			portal.log.Warnfln("Failed to handle caption of message %s: %v", info.Id, err)
 		}
