@@ -578,7 +578,7 @@ func (handler *CommandHandler) CommandList(ce *CommandEvent) {
 		ce.Reply("**Usage:** `list <contacts|groups> [page] [items per page]`")
 	}
 	var err error
-	page := 0
+	page := 1
 	max := 100
 	if len(ce.Args) > 1 {
 		page, err = strconv.Atoi(ce.Args[1])
