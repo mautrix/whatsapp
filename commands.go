@@ -18,6 +18,8 @@ package main
 
 import (
 	"fmt"
+	"math"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -528,18 +530,65 @@ func (handler *CommandHandler) CommandDeleteAllPortals(ce *CommandEvent) {
 
 const cmdListHelp = `list - Get a list of all contacts and groups.`
 
-func (handler *CommandHandler) CommandList(ce *CommandEvent) {
-	var contacts strings.Builder
-	var groups strings.Builder
+func formatContacts(contacts bool, skip, max int, input map[string]whatsapp.Contact) (result []string, total int) {
+	skipped := 0
+	for jid, contact := range input {
+		if strings.HasSuffix(jid, whatsappExt.NewUserSuffix) != contacts {
+			continue
+		}
 
-	for jid, contact := range ce.User.Conn.Store.Contacts {
-		if strings.HasSuffix(jid, whatsappExt.NewUserSuffix) {
-			_, _ = fmt.Fprintf(&contacts, "* %s / %s - `%s`\n", contact.Name, contact.Notify, contact.Jid[:len(contact.Jid)-len(whatsappExt.NewUserSuffix)])
+		total++
+		if skipped < skip || len(result) >= max {
+			skipped++
+			continue
+		}
+
+		if contacts {
+			result = append(result, fmt.Sprintf("* %s / %s - `%s`", contact.Name, contact.Notify, contact.Jid[:len(contact.Jid)-len(whatsappExt.NewUserSuffix)]))
 		} else {
-			_, _ = fmt.Fprintf(&groups, "* %s - `%s`\n", contact.Name, contact.Jid)
+			result = append(result, fmt.Sprintf("* %s - `%s`", contact.Name, contact.Jid))
 		}
 	}
-	ce.Reply("### Contacts\n%s\n\n### Groups\n%s", contacts.String(), groups.String())
+	sort.Sort(sort.StringSlice(result))
+	return
+}
+
+func (handler *CommandHandler) CommandList(ce *CommandEvent) {
+	if len(ce.Args) == 0 {
+		ce.Reply("**Usage:** `list <contacts|groups> [page] [items per page]`")
+		return
+	}
+	mode := strings.ToLower(ce.Args[0])
+	if mode[0] != 'g' && mode[0] != 'c' {
+		ce.Reply("**Usage:** `list <contacts|groups> [page] [items per page]`")
+	}
+	var err error
+	page := 0
+	max := 100
+	if len(ce.Args) > 1 {
+		page, err = strconv.Atoi(ce.Args[1])
+		if err != nil || page <= 0 {
+			ce.Reply("\"%s\" isn't a valid page number", ce.Args[1])
+			return
+		}
+	}
+	if len(ce.Args) > 2 {
+		max, err = strconv.Atoi(ce.Args[2])
+		if err != nil || max <= 0 {
+			ce.Reply("\"%s\" isn't a valid number of items per page", ce.Args[2])
+			return
+		} else if max > 400 {
+			ce.Reply("Warning: a high number of items per page may fail to send a reply")
+		}
+	}
+	contacts := mode[0] == 'c'
+	typeName := "Groups"
+	if contacts {
+		typeName = "Contacts"
+	}
+	result, totalItems := formatContacts(contacts, (page-1)*max, max, ce.User.Conn.Store.Contacts)
+	pages := int(math.Ceil(float64(totalItems) / float64(max)))
+	ce.Reply("### %s (page %d of %d)\n\n%s", typeName, page, pages, strings.Join(result, "\n"))
 }
 
 const cmdOpenHelp = `open <_group JID_> - Open a group chat portal.`
