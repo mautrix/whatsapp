@@ -545,16 +545,9 @@ func (handler *CommandHandler) CommandDeleteAllPortals(ce *CommandEvent) {
 
 const cmdListHelp = `list <contacts|groups> [page] [items per page] - Get a list of all contacts and groups.`
 
-func formatContacts(contacts bool, skip, max int, input map[string]whatsapp.Contact) (result []string, total int) {
-	skipped := 0
+func formatContacts(contacts bool, input map[string]whatsapp.Contact) (result []string) {
 	for jid, contact := range input {
 		if strings.HasSuffix(jid, whatsappExt.NewUserSuffix) != contacts {
-			continue
-		}
-
-		total++
-		if skipped < skip || len(result) >= max {
-			skipped++
 			continue
 		}
 
@@ -576,6 +569,7 @@ func (handler *CommandHandler) CommandList(ce *CommandEvent) {
 	mode := strings.ToLower(ce.Args[0])
 	if mode[0] != 'g' && mode[0] != 'c' {
 		ce.Reply("**Usage:** `list <contacts|groups> [page] [items per page]`")
+		return
 	}
 	var err error
 	page := 1
@@ -601,8 +595,21 @@ func (handler *CommandHandler) CommandList(ce *CommandEvent) {
 	if contacts {
 		typeName = "Contacts"
 	}
-	result, totalItems := formatContacts(contacts, (page-1)*max, max, ce.User.Conn.Store.Contacts)
-	pages := int(math.Ceil(float64(totalItems) / float64(max)))
+	result := formatContacts(contacts, ce.User.Conn.Store.Contacts)
+	if len(result) == 0 {
+		ce.Reply("No %s found", strings.ToLower(typeName))
+		return
+	}
+	pages := int(math.Ceil(float64(len(result)) / float64(max)))
+	if (page - 1) * max >= len(result) {
+		if pages == 1 {
+			ce.Reply("There is only 1 page of %s", strings.ToLower(typeName))
+		} else {
+			ce.Reply("There are only %d pages of %s", pages, strings.ToLower(typeName))
+		}
+		return
+	}
+	result = result[(page-1)*max : page*max]
 	ce.Reply("### %s (page %d of %d)\n\n%s", typeName, page, pages, strings.Join(result, "\n"))
 }
 
