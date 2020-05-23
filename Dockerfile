@@ -1,6 +1,7 @@
-FROM golang:1.12-alpine AS builder
+FROM golang:1-alpine AS builder
 
-RUN apk add --no-cache git ca-certificates build-base su-exec
+RUN echo "@edge_community http://dl-cdn.alpinelinux.org/alpine/edge/community" >> /etc/apk/repositories
+RUN apk add --no-cache git ca-certificates build-base su-exec olm-dev@edge_community
 
 WORKDIR /build
 COPY go.mod go.sum /build/
@@ -14,7 +15,8 @@ FROM alpine:latest
 ENV UID=1337 \
     GID=1337
 
-RUN apk add --no-cache su-exec ca-certificates
+RUN echo "@edge_community http://dl-cdn.alpinelinux.org/alpine/edge/community" >> /etc/apk/repositories
+RUN apk add --no-cache su-exec ca-certificates olm@edge_community
 
 COPY --from=builder /usr/bin/mautrix-whatsapp /usr/bin/mautrix-whatsapp
 COPY --from=builder /build/example-config.yaml /opt/mautrix-whatsapp/example-config.yaml

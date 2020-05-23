@@ -1,5 +1,5 @@
 // mautrix-whatsapp - A Matrix-WhatsApp puppeting bridge.
-// Copyright (C) 2019 Tulir Asokan
+// Copyright (C) 2020 Tulir Asokan
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as published by
@@ -18,7 +18,6 @@ package main
 
 import (
 	"fmt"
-	"net/http"
 	"os"
 	"os/signal"
 	"sync"
@@ -29,7 +28,9 @@ import (
 	log "maunium.net/go/maulogger/v2"
 
 	"maunium.net/go/mautrix"
-	"maunium.net/go/mautrix-appservice"
+	"maunium.net/go/mautrix/appservice"
+	"maunium.net/go/mautrix/event"
+	"maunium.net/go/mautrix/id"
 
 	"maunium.net/go/mautrix-whatsapp/config"
 	"maunium.net/go/mautrix-whatsapp/database"
@@ -106,29 +107,39 @@ type Bridge struct {
 	Bot            *appservice.IntentAPI
 	Formatter      *Formatter
 	Relaybot       *User
+	Crypto         Crypto
 
-	usersByMXID         map[types.MatrixUserID]*User
+	usersByMXID         map[id.UserID]*User
 	usersByJID          map[types.WhatsAppID]*User
 	usersLock           sync.Mutex
-	managementRooms     map[types.MatrixRoomID]*User
+	managementRooms     map[id.RoomID]*User
 	managementRoomsLock sync.Mutex
-	portalsByMXID       map[types.MatrixRoomID]*Portal
+	portalsByMXID       map[id.RoomID]*Portal
 	portalsByJID        map[database.PortalKey]*Portal
 	portalsLock         sync.Mutex
 	puppets             map[types.WhatsAppID]*Puppet
-	puppetsByCustomMXID map[types.MatrixUserID]*Puppet
+	puppetsByCustomMXID map[id.UserID]*Puppet
 	puppetsLock         sync.Mutex
+}
+
+type Crypto interface {
+	HandleMemberEvent(*event.Event)
+	Decrypt(*event.Event) (*event.Event, error)
+	Encrypt(id.RoomID, event.Type, event.Content) (*event.EncryptedEventContent, error)
+	Init() error
+	Start()
+	Stop()
 }
 
 func NewBridge() *Bridge {
 	bridge := &Bridge{
-		usersByMXID:         make(map[types.MatrixUserID]*User),
+		usersByMXID:         make(map[id.UserID]*User),
 		usersByJID:          make(map[types.WhatsAppID]*User),
-		managementRooms:     make(map[types.MatrixRoomID]*User),
-		portalsByMXID:       make(map[types.MatrixRoomID]*Portal),
+		managementRooms:     make(map[id.RoomID]*User),
+		portalsByMXID:       make(map[id.RoomID]*Portal),
 		portalsByJID:        make(map[database.PortalKey]*Portal),
 		puppets:             make(map[types.WhatsAppID]*Puppet),
-		puppetsByCustomMXID: make(map[types.MatrixUserID]*Puppet),
+		puppetsByCustomMXID: make(map[id.UserID]*Puppet),
 	}
 
 	var err error
@@ -141,12 +152,8 @@ func NewBridge() *Bridge {
 }
 
 func (bridge *Bridge) ensureConnection() {
-	url := bridge.Bot.BuildURL("account", "whoami")
-	resp := struct {
-		UserID string `json:"user_id"`
-	}{}
 	for {
-		_, err := bridge.Bot.MakeRequest(http.MethodGet, url, nil, &resp)
+		resp, err := bridge.Bot.Whoami()
 		if err != nil {
 			if httpErr, ok := err.(mautrix.HTTPError); ok && httpErr.RespError != nil && httpErr.RespError.ErrCode == "M_UNKNOWN_ACCESS_TOKEN" {
 				bridge.Log.Fatalln("Access token invalid. Is the registration installed in your homeserver correctly?")
@@ -219,6 +226,7 @@ func (bridge *Bridge) Init() {
 	bridge.Log.Debugln("Initializing Matrix event handler")
 	bridge.MatrixHandler = NewMatrixHandler(bridge)
 	bridge.Formatter = NewFormatter(bridge)
+	bridge.Crypto = NewCryptoHelper(bridge)
 }
 
 func (bridge *Bridge) Start() {
@@ -226,6 +234,13 @@ func (bridge *Bridge) Start() {
 	if err != nil {
 		bridge.Log.Fatalln("Failed to initialize database:", err)
 		os.Exit(15)
+	}
+	if bridge.Crypto != nil {
+		err := bridge.Crypto.Init()
+		if err != nil {
+			bridge.Log.Fatalln("Error initializing end-to-bridge encryption:", err)
+			os.Exit(19)
+		}
 	}
 	if bridge.Provisioning != nil {
 		bridge.Log.Debugln("Initializing provisioning API")
@@ -239,6 +254,9 @@ func (bridge *Bridge) Start() {
 	bridge.Log.Debugln("Starting event processor")
 	go bridge.EventProcessor.Start()
 	go bridge.UpdateBotProfile()
+	if bridge.Crypto != nil {
+		go bridge.Crypto.Start()
+	}
 	go bridge.StartUsers()
 }
 
@@ -262,10 +280,14 @@ func (bridge *Bridge) UpdateBotProfile() {
 	botConfig := bridge.Config.AppService.Bot
 
 	var err error
+	var mxc id.ContentURI
 	if botConfig.Avatar == "remove" {
-		err = bridge.Bot.SetAvatarURL("")
+		err = bridge.Bot.SetAvatarURL(mxc)
 	} else if len(botConfig.Avatar) > 0 {
-		err = bridge.Bot.SetAvatarURL(botConfig.Avatar)
+		mxc, err = id.ParseContentURI(botConfig.Avatar)
+		if err == nil {
+			err = bridge.Bot.SetAvatarURL(mxc)
+		}
 	}
 	if err != nil {
 		bridge.Log.Warnln("Failed to update bot avatar:", err)
@@ -299,6 +321,9 @@ func (bridge *Bridge) StartUsers() {
 }
 
 func (bridge *Bridge) Stop() {
+	if bridge.Crypto != nil {
+		bridge.Crypto.Stop()
+	}
 	bridge.AS.Stop()
 	bridge.EventProcessor.Stop()
 	for _, user := range bridge.usersByJID {

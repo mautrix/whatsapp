@@ -1,5 +1,5 @@
 // mautrix-whatsapp - A Matrix-WhatsApp puppeting bridge.
-// Copyright (C) 2019 Tulir Asokan
+// Copyright (C) 2020 Tulir Asokan
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as published by
@@ -25,14 +25,16 @@ import (
 	"github.com/Rhymen/go-whatsapp"
 
 	log "maunium.net/go/maulogger/v2"
-	"maunium.net/go/mautrix-appservice"
+
+	"maunium.net/go/mautrix/appservice"
+	"maunium.net/go/mautrix/id"
 
 	"maunium.net/go/mautrix-whatsapp/database"
 	"maunium.net/go/mautrix-whatsapp/types"
 	"maunium.net/go/mautrix-whatsapp/whatsapp-ext"
 )
 
-func (bridge *Bridge) ParsePuppetMXID(mxid types.MatrixUserID) (types.WhatsAppID, bool) {
+func (bridge *Bridge) ParsePuppetMXID(mxid id.UserID) (types.WhatsAppID, bool) {
 	userIDRegex, err := regexp.Compile(fmt.Sprintf("^@%s:%s$",
 		bridge.Config.Bridge.FormatUsername("([0-9]+)"),
 		bridge.Config.Homeserver.Domain))
@@ -49,7 +51,7 @@ func (bridge *Bridge) ParsePuppetMXID(mxid types.MatrixUserID) (types.WhatsAppID
 	return jid, true
 }
 
-func (bridge *Bridge) GetPuppetByMXID(mxid types.MatrixUserID) *Puppet {
+func (bridge *Bridge) GetPuppetByMXID(mxid id.UserID) *Puppet {
 	jid, ok := bridge.ParsePuppetMXID(mxid)
 	if !ok {
 		return nil
@@ -78,7 +80,7 @@ func (bridge *Bridge) GetPuppetByJID(jid types.WhatsAppID) *Puppet {
 	return puppet
 }
 
-func (bridge *Bridge) GetPuppetByCustomMXID(mxid types.MatrixUserID) *Puppet {
+func (bridge *Bridge) GetPuppetByCustomMXID(mxid id.UserID) *Puppet {
 	bridge.puppetsLock.Lock()
 	defer bridge.puppetsLock.Unlock()
 	puppet, ok := bridge.puppetsByCustomMXID[mxid]
@@ -129,7 +131,7 @@ func (bridge *Bridge) NewPuppet(dbPuppet *database.Puppet) *Puppet {
 		bridge: bridge,
 		log:    bridge.Log.Sub(fmt.Sprintf("Puppet/%s", dbPuppet.JID)),
 
-		MXID: fmt.Sprintf("@%s:%s",
+		MXID: id.NewUserID(
 			bridge.Config.Bridge.FormatUsername(
 				strings.Replace(
 					dbPuppet.JID,
@@ -144,13 +146,13 @@ type Puppet struct {
 	bridge *Bridge
 	log    log.Logger
 
-	typingIn types.MatrixRoomID
+	typingIn id.RoomID
 	typingAt int64
 
-	MXID types.MatrixUserID
+	MXID id.UserID
 
 	customIntent   *appservice.IntentAPI
-	customTypingIn map[string]bool
+	customTypingIn map[id.RoomID]bool
 	customUser     *User
 }
 
@@ -159,7 +161,9 @@ func (puppet *Puppet) PhoneNumber() string {
 }
 
 func (puppet *Puppet) IntentFor(portal *Portal) *appservice.IntentAPI {
-	if (!portal.IsPrivateChat() && puppet.customIntent == nil) || portal.backfilling || portal.Key.JID == puppet.JID {
+	if (!portal.IsPrivateChat() && puppet.customIntent == nil) ||
+		(portal.backfilling && portal.bridge.Config.Bridge.InviteOwnPuppetForBackfilling) ||
+		portal.Key.JID == puppet.JID {
 		return puppet.DefaultIntent()
 	}
 	return puppet.customIntent
@@ -192,11 +196,11 @@ func (puppet *Puppet) UpdateAvatar(source *User, avatar *whatsappExt.ProfilePicI
 	}
 
 	if len(avatar.URL) == 0 {
-		err := puppet.DefaultIntent().SetAvatarURL("")
+		err := puppet.DefaultIntent().SetAvatarURL(id.ContentURI{})
 		if err != nil {
 			puppet.log.Warnln("Failed to remove avatar:", err)
 		}
-		puppet.AvatarURL = ""
+		puppet.AvatarURL = id.ContentURI{}
 		puppet.Avatar = avatar.Tag
 		go puppet.updatePortalAvatar()
 		return true

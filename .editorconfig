@@ -10,3 +10,6 @@ insert_final_newline = true
 
 [*.{yaml,yml}]
 indent_style = space
+
+[.gitlab-ci.yml]
+indent_size = 2

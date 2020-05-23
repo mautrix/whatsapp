@@ -18,7 +18,7 @@
   * [ ] Room metadata changes
     * [x] Name
     * [ ] Avatar<sup>[1]</sup>
-    * [ ] Topic<sup>[1]</sup>
+    * [x] Topic
   * [ ] Initial room metadata
 * WhatsApp → Matrix
   * [x] Message content

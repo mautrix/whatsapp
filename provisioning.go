@@ -26,8 +26,8 @@ import (
 	"github.com/gorilla/websocket"
 	log "maunium.net/go/maulogger/v2"
 
-	"maunium.net/go/mautrix-whatsapp/types"
 	whatsappExt "maunium.net/go/mautrix-whatsapp/whatsapp-ext"
+	"maunium.net/go/mautrix/id"
 )
 
 type ProvisioningAPI struct {
@@ -61,7 +61,7 @@ func (prov *ProvisioningAPI) AuthMiddleware(h http.Handler) http.Handler {
 			return
 		}
 		userID := r.URL.Query().Get("user_id")
-		user := prov.bridge.GetUserByMXID(types.MatrixUserID(userID))
+		user := prov.bridge.GetUserByMXID(id.UserID(userID))
 		h.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), "user", user)))
 	})
 }
@@ -156,7 +156,18 @@ func (prov *ProvisioningAPI) Reconnect(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	err := user.Conn.Restore()
+
+	wasConnected := true
+	sess, err := user.Conn.Disconnect()
+	if err == whatsapp.ErrNotConnected {
+		wasConnected = false
+	} else if err != nil {
+		user.log.Warnln("Error while disconnecting:", err)
+	} else if len(sess.Wid) > 0 {
+		user.SetSession(&sess)
+	}
+
+	err = user.Conn.Restore()
 	if err == whatsapp.ErrInvalidSession {
 		if user.Session != nil {
 			user.log.Debugln("Got invalid session error when reconnecting, but user has session. Retrying using RestoreWithSession()...")
@@ -178,15 +189,16 @@ func (prov *ProvisioningAPI) Reconnect(w http.ResponseWriter, r *http.Request) {
 			ErrCode: "login in progress",
 		})
 		return
+	} else if err == whatsapp.ErrAlreadyLoggedIn {
+		jsonResponse(w, http.StatusConflict, Error{
+			Error:   "You were already connected.",
+			ErrCode: err.Error(),
+		})
+		return
 	}
 	if err != nil {
 		user.log.Warnln("Error while reconnecting:", err)
-		if err == whatsapp.ErrAlreadyLoggedIn {
-			jsonResponse(w, http.StatusConflict, Error{
-				Error:   "You were already connected.",
-				ErrCode: err.Error(),
-			})
-		} else if err.Error() == "restore session connection timed out" {
+		if err.Error() == "restore session connection timed out" {
 			jsonResponse(w, http.StatusForbidden, Error{
 				Error:   "Reconnection timed out. Is WhatsApp on your phone reachable?",
 				ErrCode: err.Error(),
@@ -208,7 +220,15 @@ func (prov *ProvisioningAPI) Reconnect(w http.ResponseWriter, r *http.Request) {
 	}
 	user.ConnectionErrors = 0
 	user.PostLogin()
-	jsonResponse(w, http.StatusOK, Response{true, "Reconnected successfully."})
+
+	var msg string
+	if wasConnected {
+		msg = "Reconnected successfully."
+	} else {
+		msg = "Connected successfully."
+	}
+
+	jsonResponse(w, http.StatusOK, Response{true, msg})
 }
 
 func (prov *ProvisioningAPI) Ping(w http.ResponseWriter, r *http.Request) {
@@ -272,6 +292,9 @@ func (prov *ProvisioningAPI) Logout(w http.ResponseWriter, r *http.Request) {
 	}
 	user.Conn.RemoveHandlers()
 	user.Conn = nil
+	user.removeFromJIDMap()
+	// TODO this causes a foreign key violation, which should be fixed
+	//ce.User.JID = ""
 	user.SetSession(nil)
 	jsonResponse(w, http.StatusOK, Response{true, "Logged out successfully."})
 }
@@ -280,7 +303,7 @@ var upgrader = websocket.Upgrader{}
 
 func (prov *ProvisioningAPI) Login(w http.ResponseWriter, r *http.Request) {
 	userID := r.URL.Query().Get("user_id")
-	user := prov.bridge.GetUserByMXID(types.MatrixUserID(userID))
+	user := prov.bridge.GetUserByMXID(id.UserID(userID))
 
 	c, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
@@ -331,6 +354,7 @@ func (prov *ProvisioningAPI) Login(w http.ResponseWriter, r *http.Request) {
 	}
 	user.ConnectionErrors = 0
 	user.JID = strings.Replace(user.Conn.Info.Wid, whatsappExt.OldUserSuffix, whatsappExt.NewUserSuffix, 1)
+	user.addToJIDMap()
 	user.SetSession(&session)
 	_ = c.WriteJSON(map[string]interface{}{
 		"success": true,
