@@ -170,9 +170,11 @@ func (handler *CommandHandler) CommandRelaybot(ce *CommandEvent) {
 	}
 }
 
-func (handler *CommandHandler) CommandDevTest(ce *CommandEvent) {
+func (handler *CommandHandler) CommandDevTest(_ *CommandEvent) {
 
 }
+
+const cmdSetPowerLevelHelp = `set-pl [user ID] <power level> - Change the power level in a portal room. Only for bridge admins.`
 
 func (handler *CommandHandler) CommandSetPowerLevel(ce *CommandEvent) {
 	portal := ce.Bridge.GetPortalByMXID(ce.RoomID)
@@ -348,6 +350,8 @@ func (handler *CommandHandler) CommandReconnect(ce *CommandEvent) {
 	ce.User.PostLogin()
 }
 
+const cmdDeleteConnectionHelp = `delete-connection - Disconnect ignoring errors and delete internal connection state.`
+
 func (handler *CommandHandler) CommandDeleteConnection(ce *CommandEvent) {
 	if ce.User.Conn == nil {
 		ce.Reply("You don't have a WhatsApp connection.")
@@ -427,6 +431,7 @@ func (handler *CommandHandler) CommandHelp(ce *CommandEvent) {
 		cmdPrefix + cmdDeleteSessionHelp,
 		cmdPrefix + cmdReconnectHelp,
 		cmdPrefix + cmdDisconnectHelp,
+		cmdPrefix + cmdDeleteConnectionHelp,
 		cmdPrefix + cmdPingHelp,
 		cmdPrefix + cmdLoginMatrixHelp,
 		cmdPrefix + cmdLogoutMatrixHelp,
@@ -434,6 +439,9 @@ func (handler *CommandHandler) CommandHelp(ce *CommandEvent) {
 		cmdPrefix + cmdListHelp,
 		cmdPrefix + cmdOpenHelp,
 		cmdPrefix + cmdPMHelp,
+		cmdPrefix + cmdSetPowerLevelHelp,
+		cmdPrefix + cmdDeletePortalHelp,
+		cmdPrefix + cmdDeleteAllPortalsHelp,
 	}, "\n* "))
 }
 
@@ -468,22 +476,29 @@ func (handler *CommandHandler) CommandSync(ce *CommandEvent) {
 	ce.Reply("Sync complete.")
 }
 
-func (handler *CommandHandler) CommandDeletePortal(ce *CommandEvent) {
-	if !ce.User.Admin {
-		ce.Reply("Only bridge admins can delete portals")
-		return
-	}
+const cmdDeletePortalHelp = `delete-portal - Delete the current portal. If the portal is used by other people, this is limited to bridge admins.`
 
+func (handler *CommandHandler) CommandDeletePortal(ce *CommandEvent) {
 	portal := ce.Bridge.GetPortalByMXID(ce.RoomID)
 	if portal == nil {
 		ce.Reply("You must be in a portal room to use that command")
 		return
 	}
 
+	if !ce.User.Admin {
+		users := portal.GetUserIDs()
+		if len(users) > 1 || (len(users) == 1 && users[0] != ce.User.MXID) {
+			ce.Reply("Only bridge admins can delete portals with other Matrix users")
+			return
+		}
+	}
+
 	portal.log.Infoln(ce.User.MXID, "requested deletion of portal.")
 	portal.Delete()
 	portal.Cleanup(false)
 }
+
+const cmdDeleteAllPortalsHelp = `delete-all-portals - Delete all your portals that aren't used by any other user.'`
 
 func (handler *CommandHandler) CommandDeleteAllPortals(ce *CommandEvent) {
 	portals := ce.User.GetPortals()
@@ -528,7 +543,7 @@ func (handler *CommandHandler) CommandDeleteAllPortals(ce *CommandEvent) {
 	}()
 }
 
-const cmdListHelp = `list - Get a list of all contacts and groups.`
+const cmdListHelp = `list <contacts|groups> [page] [items per page] - Get a list of all contacts and groups.`
 
 func formatContacts(contacts bool, skip, max int, input map[string]whatsapp.Contact) (result []string, total int) {
 	skipped := 0
