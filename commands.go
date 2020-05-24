@@ -78,6 +78,14 @@ func (ce *CommandEvent) Reply(msg string, args ...interface{}) {
 // Handle handles messages to the bridge
 func (handler *CommandHandler) Handle(roomID id.RoomID, user *User, message string) {
 	args := strings.Split(message, " ")
+	ptr := 0
+	for i := 0; i < len(args); i++ {
+		if args[i] != "" {
+			args[ptr] = args[i]
+			ptr++
+		}
+	}
+	args = args[:ptr]
 	ce := &CommandEvent{
 		Bot:     handler.bridge.Bot,
 		Bridge:  handler.bridge,
@@ -601,7 +609,7 @@ func (handler *CommandHandler) CommandList(ce *CommandEvent) {
 		return
 	}
 	pages := int(math.Ceil(float64(len(result)) / float64(max)))
-	if (page - 1) * max >= len(result) {
+	if (page-1)*max >= len(result) {
 		if pages == 1 {
 			ce.Reply("There is only 1 page of %s", strings.ToLower(typeName))
 		} else {
@@ -609,7 +617,7 @@ func (handler *CommandHandler) CommandList(ce *CommandEvent) {
 		}
 		return
 	}
-	lastIndex := page*max
+	lastIndex := page * max
 	if lastIndex > len(result) {
 		lastIndex = len(result)
 	}
