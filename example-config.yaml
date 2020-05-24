@@ -73,6 +73,10 @@ bridge:
 
     # WhatsApp connection timeout in seconds.
     connection_timeout: 20
+    # If WhatsApp doesn't respond within connection_timeout, should the bridge try to fetch the message
+    # to see if it was actually bridged? Use this if you have problems with sends timing out but actually
+    # succeeding.
+    fetch_message_on_timeout: false
     # Number of times to regenerate QR code when logging in.
     # The regenerated QR code is sent as an edit and essentially multiplies the login timeout (20 seconds)
     login_qr_regen_count: 2

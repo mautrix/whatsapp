@@ -36,6 +36,7 @@ type BridgeConfig struct {
 	CommunityTemplate   string `yaml:"community_template"`
 
 	ConnectionTimeout     int  `yaml:"connection_timeout"`
+	FetchMessageOnTimeout bool `yaml:"fetch_message_on_timeout"`
 	LoginQRRegenCount     int  `yaml:"login_qr_regen_count"`
 	MaxConnectionAttempts int  `yaml:"max_connection_attempts"`
 	ConnectionRetryDelay  int  `yaml:"connection_retry_delay"`
