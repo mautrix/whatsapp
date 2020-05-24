@@ -32,7 +32,7 @@ stages:
   - docker push $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA-$DOCKER_ARCH
   - docker rmi $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA-$DOCKER_ARCH
 
-build static amd64:
+build static:
   image: golang:1-alpine
   stage: build
   tags:
@@ -43,11 +43,19 @@ build static amd64:
   before_script:
   - mkdir -p .cache
   - export GOPATH="$CI_PROJECT_DIR/.cache"
+  variables:
+    CGO_ENABLED: 0
   script:
-  - CGO_ENABLED=0 go build -o mautrix-whatsapp
+  - GOOS=linux GOARCH=amd64 go build -o mautrix-whatsapp_linux_amd64
+  - GOOS=linux GOARCH=arm64 go build -o mautrix-whatsapp_linux_arm64
+  - GOOS=linux GOARCH=arm go build -o mautrix-whatsapp_linux_arm
+  - GOOS=linux GOARCH=386 go build -o mautrix-whatsapp_linux_386
   artifacts:
     paths:
-    - mautrix-whatsapp
+    - mautrix-whatsapp_linux_amd64
+    - mautrix-whatsapp_linux_arm64
+    - mautrix-whatsapp_linux_arm
+    - mautrix-whatsapp_linux_386
     - example-config.yaml
 
 build amd64:
