@@ -609,7 +609,11 @@ func (handler *CommandHandler) CommandList(ce *CommandEvent) {
 		}
 		return
 	}
-	result = result[(page-1)*max : page*max]
+	lastIndex := page*max
+	if lastIndex > len(result) {
+		lastIndex = len(result)
+	}
+	result = result[(page-1)*max : lastIndex]
 	ce.Reply("### %s (page %d of %d)\n\n%s", typeName, page, pages, strings.Join(result, "\n"))
 }
 
