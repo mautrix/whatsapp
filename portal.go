@@ -1416,15 +1416,22 @@ func (portal *Portal) HandleMatrixMessage(sender *User, evt *event.Event) {
 		portal.log.Warnfln("Response when bridging Matrix event %s is taking long to arrive", evt.ID)
 		errorSendResp, err = portal.sendMainIntentMessage(event.MessageEventContent{
 			MsgType: event.MsgNotice,
-			Body: fmt.Sprintf("\u26a0 Your message may not have been bridged: %v", err),
+			Body: fmt.Sprintf("\u26a0 Your message may not have been bridged: message sending timed out"),
 		})
 		if err != nil {
-			portal.log.Warnfln("Failed to send bridging failure message:", err)
+			portal.log.Warnfln("Failed to send bridging timeout message:", err)
 		}
 		err = <-errChan
 	}
 	if err != nil {
 		portal.log.Errorfln("Error handling Matrix event %s: %v", evt.ID, err)
+		_, err = portal.sendMainIntentMessage(event.MessageEventContent{
+			MsgType: event.MsgNotice,
+			Body: fmt.Sprintf("\u26a0 Your message may not have been bridged: %v", err),
+		})
+		if err != nil {
+			portal.log.Warnfln("Failed to send bridging failure message:", err)
+		}
 	} else {
 		portal.log.Debugln("Handled Matrix event %s", evt.ID)
 	}
