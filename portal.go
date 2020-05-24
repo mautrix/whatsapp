@@ -992,6 +992,19 @@ func (portal *Portal) HandleTextMessage(source *User, message whatsapp.TextMessa
 	portal.finishHandling(source, message.Info.Source, resp.EventID)
 }
 
+func (portal *Portal) sendMediaBridgeFailure(source *User, intent *appservice.IntentAPI, info whatsapp.MessageInfo, downloadErr error) {
+	portal.log.Errorfln("Failed to download media for %s: %v", info.Id, downloadErr)
+	resp, err := portal.sendMessage(intent, event.EventMessage, &event.MessageEventContent{
+		MsgType: event.MsgNotice,
+		Body:    "Failed to bridge media",
+	}, int64(info.Timestamp*1000))
+	if err != nil {
+		portal.log.Errorfln("Failed to send media download error message for %s: %v", info.Id, err)
+	} else {
+		portal.finishHandling(source, info.Source, resp.EventID)
+	}
+}
+
 func (portal *Portal) HandleMediaMessage(source *User, download func() ([]byte, error), thumbnail []byte, info whatsapp.MessageInfo, context whatsapp.ContextInfo, mimeType, caption string, sendAsSticker bool) {
 	if !portal.startHandling(info) {
 		return
@@ -1003,20 +1016,20 @@ func (portal *Portal) HandleMediaMessage(source *User, download func() ([]byte, 
 	}
 
 	data, err := download()
+	if err == whatsapp.ErrMediaDownloadFailedWith404 || err == whatsapp.ErrMediaDownloadFailedWith410 {
+		portal.log.Warnfln("Failed to download media for %s: %v. Calling LoadMediaInfo and retrying download...", info.Id, err)
+		_, err = source.Conn.LoadMediaInfo(info.RemoteJid, info.Id, info.FromMe)
+		if err != nil {
+			portal.sendMediaBridgeFailure(source, intent, info, errors.Wrap(err, "failed to load media info"))
+			return
+		}
+		data, err = download()
+	}
 	if err == whatsapp.ErrNoURLPresent {
-		portal.log.Debugln("No URL present error for media message %s, ignoring...", info.Id)
+		portal.log.Debugfln("No URL present error for media message %s, ignoring...", info.Id)
 		return
 	} else if err != nil {
-		portal.log.Errorfln("Failed to download media for %s: %v", info.Id, err)
-		resp, err := portal.sendMainIntentMessage(event.MessageEventContent{
-			MsgType: event.MsgNotice,
-			Body:    "Failed to bridge media",
-		})
-		if err != nil {
-			portal.log.Errorfln("Failed to send media download error message for %s: %v", info.Id, err)
-		} else {
-			portal.finishHandling(source, info.Source, resp.EventID)
-		}
+		portal.sendMediaBridgeFailure(source, intent, info, err)
 		return
 	}
 
