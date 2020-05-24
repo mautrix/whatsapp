@@ -1405,17 +1405,34 @@ func (portal *Portal) HandleMatrixMessage(sender *User, evt *event.Event) {
 	}
 	portal.markHandled(sender, info, evt.ID)
 	portal.log.Debugln("Sending event", evt.ID, "to WhatsApp")
-	_, err = sender.Conn.Send(info)
+
+	errChan := make(chan error, 1)
+	go sender.Conn.SendRaw(info, errChan)
+
+	var errorSendResp *mautrix.RespSendEvent
+	select {
+	case err = <-errChan:
+	case <-time.After(time.Duration(portal.bridge.Config.Bridge.ConnectionTimeout) * time.Second):
+		portal.log.Warnfln("Response when bridging Matrix event %s is taking long to arrive", evt.ID)
+		errorSendResp, err = portal.sendMainIntentMessage(event.MessageEventContent{
+			MsgType: event.MsgNotice,
+			Body: fmt.Sprintf("\u26a0 Your message may not have been bridged: %v", err),
+		})
+		if err != nil {
+			portal.log.Warnfln("Failed to send bridging failure message:", err)
+		}
+		err = <-errChan
+	}
 	if err != nil {
 		portal.log.Errorfln("Error handling Matrix event %s: %v", evt.ID, err)
-		msg := format.RenderMarkdown(fmt.Sprintf("\u26a0 Your message may not have been bridged: %v", err), false, false)
-		msg.MsgType = event.MsgNotice
-		_, err := portal.sendMainIntentMessage(msg)
-		if err != nil {
-			portal.log.Errorln("Failed to send bridging failure message:", err)
-		}
 	} else {
-		portal.log.Debugln("Handled Matrix event:", evt)
+		portal.log.Debugln("Handled Matrix event %s", evt.ID)
+	}
+	if errorSendResp != nil {
+		_, err = portal.MainIntent().RedactEvent(portal.MXID, errorSendResp.EventID)
+		if err != nil {
+			portal.log.Warnfln("Failed to redact timeout warning message %s: %v", errorSendResp.EventID, err)
+		}
 	}
 }
 
@@ -1452,11 +1469,20 @@ func (portal *Portal) HandleMatrixRedaction(sender *User, evt *event.Event) {
 		},
 		Status: &status,
 	}
-	_, err := sender.Conn.Send(info)
+	errChan := make(chan error, 1)
+	go sender.Conn.SendRaw(info, errChan)
+
+	var err error
+	select {
+	case err = <-errChan:
+	case <-time.After(time.Duration(portal.bridge.Config.Bridge.ConnectionTimeout) * time.Second):
+		portal.log.Warnfln("Response when bridging Matrix redaction %s is taking long to arrive", evt.ID)
+		err = <-errChan
+	}
 	if err != nil {
-		portal.log.Errorfln("Error handling Matrix redaction: %s: %v", evt.ID, err)
+		portal.log.Errorfln("Error handling Matrix redaction %s: %v", evt.ID, err)
 	} else {
-		portal.log.Debugln("Handled Matrix redaction:", evt)
+		portal.log.Debugln("Handled Matrix redaction %s of %s", evt.ID, evt.Redacts)
 	}
 }
 
