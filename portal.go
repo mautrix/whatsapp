@@ -1192,6 +1192,7 @@ func (portal *Portal) preprocessMatrixMedia(sender *User, relaybotFormatted bool
 	mxc, err := rawMXC.Parse()
 	if err != nil {
 		portal.log.Errorln("Malformed content URL in %s: %v", eventID, err)
+		return nil
 	}
 	data, err := portal.MainIntent().DownloadBytes(mxc)
 	if err != nil {
@@ -1276,10 +1277,11 @@ func (portal *Portal) addRelaybotFormat(sender *User, content *event.MessageEven
 	return true
 }
 
-func (portal *Portal) convertMatrixMessage(sender *User, evt *event.Event) *waProto.WebMessageInfo {
-	content := evt.Content.AsMessage()
-	if content == nil {
-		return nil
+func (portal *Portal) convertMatrixMessage(sender *User, evt *event.Event) (*waProto.WebMessageInfo, *User) {
+	content, ok := evt.Content.Parsed.(*event.MessageEventContent)
+	if !ok {
+		portal.log.Debugfln("Failed to handle event %s: unexpected parsed content type %T", evt.ID, evt.Content.Parsed)
+		return nil, sender
 	}
 
 	ts := uint64(evt.Timestamp / 1000)
@@ -1313,7 +1315,7 @@ func (portal *Portal) convertMatrixMessage(sender *User, evt *event.Event) *waPr
 				portal.log.Debugln("Database says", sender.MXID, "not in chat and no relaybot, but trying to send anyway")
 			} else {
 				portal.log.Debugln("Ignoring message from", sender.MXID, "in chat with no relaybot")
-				return nil
+				return nil, sender
 			}
 		} else {
 			relaybotFormatted = portal.addRelaybotFormat(sender, content)
@@ -1348,7 +1350,7 @@ func (portal *Portal) convertMatrixMessage(sender *User, evt *event.Event) *waPr
 	case event.MsgImage:
 		media := portal.preprocessMatrixMedia(sender, relaybotFormatted, content, evt.ID, whatsapp.MediaImage)
 		if media == nil {
-			return nil
+			return nil, sender
 		}
 		info.Message.ImageMessage = &waProto.ImageMessage{
 			Caption:       &media.Caption,
@@ -1363,7 +1365,7 @@ func (portal *Portal) convertMatrixMessage(sender *User, evt *event.Event) *waPr
 	case event.MsgVideo:
 		media := portal.preprocessMatrixMedia(sender, relaybotFormatted, content, evt.ID, whatsapp.MediaVideo)
 		if media == nil {
-			return nil
+			return nil, sender
 		}
 		duration := uint32(content.GetInfo().Duration)
 		info.Message.VideoMessage = &waProto.VideoMessage{
@@ -1380,7 +1382,7 @@ func (portal *Portal) convertMatrixMessage(sender *User, evt *event.Event) *waPr
 	case event.MsgAudio:
 		media := portal.preprocessMatrixMedia(sender, relaybotFormatted, content, evt.ID, whatsapp.MediaAudio)
 		if media == nil {
-			return nil
+			return nil, sender
 		}
 		duration := uint32(content.GetInfo().Duration)
 		info.Message.AudioMessage = &waProto.AudioMessage{
@@ -1395,7 +1397,7 @@ func (portal *Portal) convertMatrixMessage(sender *User, evt *event.Event) *waPr
 	case event.MsgFile:
 		media := portal.preprocessMatrixMedia(sender, relaybotFormatted, content, evt.ID, whatsapp.MediaDocument)
 		if media == nil {
-			return nil
+			return nil, sender
 		}
 		info.Message.DocumentMessage = &waProto.DocumentMessage{
 			Url:           &media.URL,
@@ -1407,10 +1409,10 @@ func (portal *Portal) convertMatrixMessage(sender *User, evt *event.Event) *waPr
 			FileLength:    &media.FileLength,
 		}
 	default:
-		portal.log.Debugln("Unhandled Matrix event:", evt)
-		return nil
+		portal.log.Debugln("Unhandled Matrix event %s: unknown msgtype %s", evt.ID, content.MsgType)
+		return nil, sender
 	}
-	return info
+	return info, sender
 }
 
 func (portal *Portal) wasMessageSent(sender *User, id string) bool {
@@ -1454,7 +1456,10 @@ func (portal *Portal) HandleMatrixMessage(sender *User, evt *event.Event) {
 		return
 	}
 	portal.log.Debugfln("Received event %s", evt.ID)
-	info := portal.convertMatrixMessage(sender, evt)
+	info, sender := portal.convertMatrixMessage(sender, evt)
+	if info == nil {
+		return
+	}
 	portal.markHandled(sender, info, evt.ID)
 	portal.log.Debugln("Sending event", evt.ID, "to WhatsApp")
 
