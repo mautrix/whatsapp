@@ -1436,6 +1436,15 @@ func (portal *Portal) sendErrorMessage(sendErr error) id.EventID {
 	return resp.EventID
 }
 
+func (portal *Portal) sendDeliveryReceipt(eventID id.EventID) {
+	if portal.bridge.Config.Bridge.DeliveryReceipts {
+		err := portal.bridge.Bot.MarkRead(portal.MXID, eventID)
+		if err != nil {
+			portal.log.Debugfln("Failed to send delivery receipt for %s: %v", eventID, err)
+		}
+	}
+}
+
 var timeout = errors.New("message sending timed out")
 
 func (portal *Portal) HandleMatrixMessage(sender *User, evt *event.Event) {
@@ -1459,6 +1468,7 @@ func (portal *Portal) HandleMatrixMessage(sender *User, evt *event.Event) {
 	case <-time.After(time.Duration(portal.bridge.Config.Bridge.ConnectionTimeout) * time.Second):
 		if portal.bridge.Config.Bridge.FetchMessageOnTimeout && portal.wasMessageSent(sender, info.Key.GetId()) {
 			portal.log.Debugln("Matrix event %s was bridged, but response didn't arrive within timeout")
+			portal.sendDeliveryReceipt(evt.ID)
 		} else {
 			portal.log.Warnfln("Response when bridging Matrix event %s is taking long to arrive", evt.ID)
 			errorEventID = portal.sendErrorMessage(timeout)
@@ -1470,6 +1480,7 @@ func (portal *Portal) HandleMatrixMessage(sender *User, evt *event.Event) {
 		portal.sendErrorMessage(err)
 	} else {
 		portal.log.Debugfln("Handled Matrix event %s", evt.ID)
+		portal.sendDeliveryReceipt(evt.ID)
 	}
 	if errorEventID != "" {
 		_, err = portal.MainIntent().RedactEvent(portal.MXID, errorEventID)
@@ -1526,6 +1537,7 @@ func (portal *Portal) HandleMatrixRedaction(sender *User, evt *event.Event) {
 		portal.log.Errorfln("Error handling Matrix redaction %s: %v", evt.ID, err)
 	} else {
 		portal.log.Debugln("Handled Matrix redaction %s of %s", evt.ID, evt.Redacts)
+		portal.sendDeliveryReceipt(evt.ID)
 	}
 }
 
