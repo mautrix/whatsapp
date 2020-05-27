@@ -28,6 +28,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/skip2/go-qrcode"
 	log "maunium.net/go/maulogger/v2"
+	"maunium.net/go/mautrix"
 
 	"github.com/Rhymen/go-whatsapp"
 	waProto "github.com/Rhymen/go-whatsapp/binary/proto"
@@ -64,6 +65,8 @@ type User struct {
 
 	messages chan PortalMessage
 	syncLock sync.Mutex
+
+	mgmtCreateLock sync.Mutex
 }
 
 func (bridge *Bridge) GetUserByMXID(userID id.UserID) *User {
@@ -173,6 +176,26 @@ func (bridge *Bridge) NewUser(dbUser *database.User) *User {
 	return user
 }
 
+func (user *User) GetManagementRoom() id.RoomID {
+	if len(user.ManagementRoom) == 0 {
+		user.mgmtCreateLock.Lock()
+		defer user.mgmtCreateLock.Unlock()
+		if len(user.ManagementRoom) > 0 {
+			return user.ManagementRoom
+		}
+		resp, err := user.bridge.Bot.CreateRoom(&mautrix.ReqCreateRoom{
+			Topic:    "WhatsApp bridge notices",
+			IsDirect: true,
+		})
+		if err != nil {
+			user.log.Errorln("Failed to auto-create management room:", err)
+		} else {
+			user.SetManagementRoom(resp.RoomID)
+		}
+	}
+	return user.ManagementRoom
+}
+
 func (user *User) SetManagementRoom(roomID id.RoomID) {
 	existingUser, ok := user.bridge.managementRooms[roomID]
 	if ok {
@@ -209,7 +232,7 @@ func (user *User) Connect(evenIfNoSession bool) bool {
 		user.log.Errorln("Failed to connect to WhatsApp:", err)
 		msg := format.RenderMarkdown("\u26a0 Failed to connect to WhatsApp server. "+
 			"This indicates a network problem on the bridge server. See bridge logs for more info.", true, false)
-		_, _ = user.bridge.Bot.SendMessageEvent(user.ManagementRoom, event.EventMessage, msg)
+		_, _ = user.bridge.Bot.SendMessageEvent(user.GetManagementRoom(), event.EventMessage, msg)
 		return false
 	}
 	user.Conn = whatsappExt.ExtendConn(conn)
@@ -228,7 +251,7 @@ func (user *User) RestoreSession() bool {
 			user.log.Errorln("Failed to restore session:", err)
 			msg := format.RenderMarkdown("\u26a0 Failed to connect to WhatsApp. Make sure WhatsApp "+
 				"on your phone is reachable and use `reconnect` to try connecting again.", true, false)
-			_, _ = user.bridge.Bot.SendMessageEvent(user.ManagementRoom, event.EventMessage, msg)
+			_, _ = user.bridge.Bot.SendMessageEvent(user.GetManagementRoom(), event.EventMessage, msg)
 			user.log.Debugln("Disconnecting due to failed session restore...")
 			_, err := user.Conn.Disconnect()
 			if err != nil {
@@ -555,11 +578,11 @@ func (user *User) HandleError(err error) {
 func (user *User) tryReconnect(msg string) {
 	if user.ConnectionErrors > user.bridge.Config.Bridge.MaxConnectionAttempts {
 		content := format.RenderMarkdown(fmt.Sprintf("%s. Use the `reconnect` command to reconnect.", msg), true, false)
-		_, _ = user.bridge.Bot.SendMessageEvent(user.ManagementRoom, event.EventMessage, content)
+		_, _ = user.bridge.Bot.SendMessageEvent(user.GetManagementRoom(), event.EventMessage, content)
 		return
 	}
 	if user.bridge.Config.Bridge.ReportConnectionRetry {
-		_, _ = user.bridge.Bot.SendNotice(user.ManagementRoom, fmt.Sprintf("%s. Reconnecting...", msg))
+		_, _ = user.bridge.Bot.SendNotice(user.GetManagementRoom(), fmt.Sprintf("%s. Reconnecting...", msg))
 		// Don't want the same error to be repeated
 		msg = ""
 	}
@@ -575,7 +598,7 @@ func (user *User) tryReconnect(msg string) {
 		err := user.Conn.Restore()
 		if err == nil {
 			user.ConnectionErrors = 0
-			_, _ = user.bridge.Bot.SendNotice(user.ManagementRoom, "Reconnected successfully")
+			_, _ = user.bridge.Bot.SendNotice(user.GetManagementRoom(), "Reconnected successfully")
 			user.PostLogin()
 			return
 		} else if err.Error() == "init responded with 400" {
@@ -596,7 +619,7 @@ func (user *User) tryReconnect(msg string) {
 				delay = (1 << tries) + baseDelay
 			}
 			if user.bridge.Config.Bridge.ReportConnectionRetry {
-				_, _ = user.bridge.Bot.SendNotice(user.ManagementRoom,
+				_, _ = user.bridge.Bot.SendNotice(user.GetManagementRoom(),
 					fmt.Sprintf("Reconnection attempt failed: %v. Retrying in %d seconds...", err, delay))
 			}
 			time.Sleep(delay * time.Second)
@@ -611,7 +634,7 @@ func (user *User) tryReconnect(msg string) {
 	}
 
 	content := format.RenderMarkdown(msg, true, false)
-	_, _ = user.bridge.Bot.SendMessageEvent(user.ManagementRoom, event.EventMessage, content)
+	_, _ = user.bridge.Bot.SendMessageEvent(user.GetManagementRoom(), event.EventMessage, content)
 }
 
 func (user *User) ShouldCallSynchronously() bool {
@@ -788,7 +811,7 @@ func (user *User) HandleCommand(cmd whatsappExt.Command) {
 				"Use the `reconnect` command to reconnect.", cmd.Kind)
 		}
 		user.cleanDisconnection = true
-		go user.bridge.Bot.SendMessageEvent(user.ManagementRoom, event.EventMessage, format.RenderMarkdown(msg, true, false))
+		go user.bridge.Bot.SendMessageEvent(user.GetManagementRoom(), event.EventMessage, format.RenderMarkdown(msg, true, false))
 	}
 }
 
