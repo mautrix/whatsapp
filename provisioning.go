@@ -26,8 +26,9 @@ import (
 	"github.com/gorilla/websocket"
 	log "maunium.net/go/maulogger/v2"
 
-	whatsappExt "maunium.net/go/mautrix-whatsapp/whatsapp-ext"
 	"maunium.net/go/mautrix/id"
+
+	whatsappExt "maunium.net/go/mautrix-whatsapp/whatsapp-ext"
 )
 
 type ProvisioningAPI struct {
@@ -236,6 +237,7 @@ func (prov *ProvisioningAPI) Ping(w http.ResponseWriter, r *http.Request) {
 	wa := map[string]interface{}{
 		"has_session":     user.Session != nil,
 		"management_room": user.ManagementRoom,
+		"jid":             user.JID,
 		"conn":            nil,
 		"ping":            nil,
 	}
