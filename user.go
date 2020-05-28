@@ -145,8 +145,6 @@ func (user *User) GetPortals() []*Portal {
 	portals := make([]*Portal, len(keys))
 
 	user.bridge.portalsLock.Lock()
-	defer user.bridge.portalsLock.Unlock()
-
 	for i, key := range keys {
 		portal, ok := user.bridge.portalsByJID[key]
 		if !ok {
@@ -154,6 +152,7 @@ func (user *User) GetPortals() []*Portal {
 		}
 		portals[i] = portal
 	}
+	user.bridge.portalsLock.Unlock()
 	return portals
 }
 

@@ -173,6 +173,7 @@ func (portal *Portal) handleMessageLoop() {
 				portal.log.Debugln("Not creating portal room for incoming message as the message is too old.")
 				continue
 			}
+			portal.log.Debugln("Creating Matrix room from incoming message")
 			err := portal.CreateMatrixRoom(msg.source)
 			if err != nil {
 				portal.log.Errorln("Failed to create portal room:", err)
@@ -261,13 +262,19 @@ func (portal *Portal) markHandled(source *User, message *waProto.WebMessageInfo,
 }
 
 func (portal *Portal) startHandling(info whatsapp.MessageInfo) bool {
-	if portal.lastMessageTs > info.Timestamp+1 ||
-		portal.isRecentlyHandled(info.Id) ||
-		portal.isDuplicate(info.Id) {
-		return false
+	// TODO these should all be trace logs
+	if portal.lastMessageTs > info.Timestamp+1 {
+		portal.log.Debugfln("Not handling %s: message is older (%d) than last bridge message (%d)", info.Id, info.Timestamp, portal.lastMessageTs)
+	} else if portal.isRecentlyHandled(info.Id) {
+		portal.log.Debugfln("Not handling %s: message was recently handled", info.Id)
+	} else if portal.isDuplicate(info.Id) {
+		portal.log.Debugfln("Not handling %s: message is duplicate", info.Id)
+	} else {
+		portal.log.Debugfln("Starting handling of %s (ts: %d)", info.Id, info.Timestamp)
+		portal.lastMessageTs = info.Timestamp
+		return true
 	}
-	portal.lastMessageTs = info.Timestamp
-	return true
+	return false
 }
 
 func (portal *Portal) finishHandling(source *User, message *waProto.WebMessageInfo, mxid id.EventID) {
@@ -795,6 +802,9 @@ func (portal *Portal) CreateMatrixRoom(user *User) error {
 	}
 	portal.MXID = resp.RoomID
 	portal.Update()
+	portal.bridge.portalsLock.Lock()
+	portal.bridge.portalsByMXID[portal.MXID] = portal
+	portal.bridge.portalsLock.Unlock()
 
 	// We set the memberships beforehand to make sure the encryption key exchange in initial backfill knows the users are here.
 	for _, user := range invite {
@@ -1548,10 +1558,12 @@ func (portal *Portal) HandleMatrixRedaction(sender *User, evt *event.Event) {
 
 func (portal *Portal) Delete() {
 	portal.Portal.Delete()
+	portal.bridge.portalsLock.Lock()
 	delete(portal.bridge.portalsByJID, portal.Key)
 	if len(portal.MXID) > 0 {
 		delete(portal.bridge.portalsByMXID, portal.MXID)
 	}
+	portal.bridge.portalsLock.Unlock()
 }
 
 func (portal *Portal) Cleanup(puppetsOnly bool) {
