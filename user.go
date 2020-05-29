@@ -597,7 +597,9 @@ func (user *User) tryReconnect(msg string) {
 		err := user.Conn.Restore()
 		if err == nil {
 			user.ConnectionErrors = 0
-			_, _ = user.bridge.Bot.SendNotice(user.GetManagementRoom(), "Reconnected successfully")
+			if user.bridge.Config.Bridge.ReportConnectionRetry {
+				_, _ = user.bridge.Bot.SendNotice(user.GetManagementRoom(), "Reconnected successfully")
+			}
 			user.PostLogin()
 			return
 		} else if err.Error() == "init responded with 400" {
