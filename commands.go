@@ -18,6 +18,8 @@ package main
 
 import (
 	"fmt"
+	"math"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -179,9 +181,11 @@ func (handler *CommandHandler) CommandRelaybot(ce *CommandEvent) {
 	}
 }
 
-func (handler *CommandHandler) CommandDevTest(ce *CommandEvent) {
+func (handler *CommandHandler) CommandDevTest(_ *CommandEvent) {
 
 }
+
+const cmdSetPowerLevelHelp = `set-pl [user ID] <power level> - Change the power level in a portal room. Only for bridge admins.`
 
 func (handler *CommandHandler) CommandSetPowerLevel(ce *CommandEvent) {
 	portal := ce.Bridge.GetPortalByMXID(ce.RoomID)
@@ -357,6 +361,8 @@ func (handler *CommandHandler) CommandReconnect(ce *CommandEvent) {
 	ce.User.PostLogin()
 }
 
+const cmdDeleteConnectionHelp = `delete-connection - Disconnect ignoring errors and delete internal connection state.`
+
 func (handler *CommandHandler) CommandDeleteConnection(ce *CommandEvent) {
 	if ce.User.Conn == nil {
 		ce.Reply("You don't have a WhatsApp connection.")
@@ -436,6 +442,7 @@ func (handler *CommandHandler) CommandHelp(ce *CommandEvent) {
 		cmdPrefix + cmdDeleteSessionHelp,
 		cmdPrefix + cmdReconnectHelp,
 		cmdPrefix + cmdDisconnectHelp,
+		cmdPrefix + cmdDeleteConnectionHelp,
 		cmdPrefix + cmdPingHelp,
 		cmdPrefix + cmdLoginMatrixHelp,
 		cmdPrefix + cmdLogoutMatrixHelp,
@@ -443,6 +450,9 @@ func (handler *CommandHandler) CommandHelp(ce *CommandEvent) {
 		cmdPrefix + cmdListHelp,
 		cmdPrefix + cmdOpenHelp,
 		cmdPrefix + cmdPMHelp,
+		cmdPrefix + cmdSetPowerLevelHelp,
+		cmdPrefix + cmdDeletePortalHelp,
+		cmdPrefix + cmdDeleteAllPortalsHelp,
 		cmdPrefix + cmdCreateHelp,
 		cmdPrefix + cmdInviteHelp,
 		cmdPrefix + cmdKickHelp,
@@ -482,22 +492,29 @@ func (handler *CommandHandler) CommandSync(ce *CommandEvent) {
 	ce.Reply("Sync complete.")
 }
 
-func (handler *CommandHandler) CommandDeletePortal(ce *CommandEvent) {
-	if !ce.User.Admin {
-		ce.Reply("Only bridge admins can delete portals")
-		return
-	}
+const cmdDeletePortalHelp = `delete-portal - Delete the current portal. If the portal is used by other people, this is limited to bridge admins.`
 
+func (handler *CommandHandler) CommandDeletePortal(ce *CommandEvent) {
 	portal := ce.Bridge.GetPortalByMXID(ce.RoomID)
 	if portal == nil {
 		ce.Reply("You must be in a portal room to use that command")
 		return
 	}
 
+	if !ce.User.Admin {
+		users := portal.GetUserIDs()
+		if len(users) > 1 || (len(users) == 1 && users[0] != ce.User.MXID) {
+			ce.Reply("Only bridge admins can delete portals with other Matrix users")
+			return
+		}
+	}
+
 	portal.log.Infoln(ce.User.MXID, "requested deletion of portal.")
 	portal.Delete()
 	portal.Cleanup(false)
 }
+
+const cmdDeleteAllPortalsHelp = `delete-all-portals - Delete all your portals that aren't used by any other user.'`
 
 func (handler *CommandHandler) CommandDeleteAllPortals(ce *CommandEvent) {
 	portals := ce.User.GetPortals()
@@ -542,20 +559,78 @@ func (handler *CommandHandler) CommandDeleteAllPortals(ce *CommandEvent) {
 	}()
 }
 
-const cmdListHelp = `list - Get a list of all contacts and groups.`
+const cmdListHelp = `list <contacts|groups> [page] [items per page] - Get a list of all contacts and groups.`
 
-func (handler *CommandHandler) CommandList(ce *CommandEvent) {
-	var contacts strings.Builder
-	var groups strings.Builder
+func formatContacts(contacts bool, input map[string]whatsapp.Contact) (result []string) {
+	for jid, contact := range input {
+		if strings.HasSuffix(jid, whatsappExt.NewUserSuffix) != contacts {
+			continue
+		}
 
-	for jid, contact := range ce.User.Conn.Store.Contacts {
-		if strings.HasSuffix(jid, whatsappExt.NewUserSuffix) {
-			_, _ = fmt.Fprintf(&contacts, "* %s / %s - `%s`\n", contact.Name, contact.Notify, contact.Jid[:len(contact.Jid)-len(whatsappExt.NewUserSuffix)])
+		if contacts {
+			result = append(result, fmt.Sprintf("* %s / %s - `%s`", contact.Name, contact.Notify, contact.Jid[:len(contact.Jid)-len(whatsappExt.NewUserSuffix)]))
 		} else {
-			_, _ = fmt.Fprintf(&groups, "* %s - `%s`\n", contact.Name, contact.Jid)
+			result = append(result, fmt.Sprintf("* %s - `%s`", contact.Name, contact.Jid))
 		}
 	}
-	ce.Reply("### Contacts\n%s\n\n### Groups\n%s", contacts.String(), groups.String())
+	sort.Sort(sort.StringSlice(result))
+	return
+}
+
+func (handler *CommandHandler) CommandList(ce *CommandEvent) {
+	if len(ce.Args) == 0 {
+		ce.Reply("**Usage:** `list <contacts|groups> [page] [items per page]`")
+		return
+	}
+	mode := strings.ToLower(ce.Args[0])
+	if mode[0] != 'g' && mode[0] != 'c' {
+		ce.Reply("**Usage:** `list <contacts|groups> [page] [items per page]`")
+		return
+	}
+	var err error
+	page := 1
+	max := 100
+	if len(ce.Args) > 1 {
+		page, err = strconv.Atoi(ce.Args[1])
+		if err != nil || page <= 0 {
+			ce.Reply("\"%s\" isn't a valid page number", ce.Args[1])
+			return
+		}
+	}
+	if len(ce.Args) > 2 {
+		max, err = strconv.Atoi(ce.Args[2])
+		if err != nil || max <= 0 {
+			ce.Reply("\"%s\" isn't a valid number of items per page", ce.Args[2])
+			return
+		} else if max > 400 {
+			ce.Reply("Warning: a high number of items per page may fail to send a reply")
+		}
+	}
+	contacts := mode[0] == 'c'
+	typeName := "Groups"
+	if contacts {
+		typeName = "Contacts"
+	}
+	result := formatContacts(contacts, ce.User.Conn.Store.Contacts)
+	if len(result) == 0 {
+		ce.Reply("No %s found", strings.ToLower(typeName))
+		return
+	}
+	pages := int(math.Ceil(float64(len(result)) / float64(max)))
+	if (page-1)*max >= len(result) {
+		if pages == 1 {
+			ce.Reply("There is only 1 page of %s", strings.ToLower(typeName))
+		} else {
+			ce.Reply("There are only %d pages of %s", pages, strings.ToLower(typeName))
+		}
+		return
+	}
+	lastIndex := page * max
+	if lastIndex > len(result) {
+		lastIndex = len(result)
+	}
+	result = result[(page-1)*max : lastIndex]
+	ce.Reply("### %s (page %d of %d)\n\n%s", typeName, page, pages, strings.Join(result, "\n"))
 }
 
 const cmdOpenHelp = `open <_group JID_> - Open a group chat portal.`

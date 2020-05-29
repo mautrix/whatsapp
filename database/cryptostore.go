@@ -355,6 +355,22 @@ func (store *SQLCryptoStore) GetDevices(userID id.UserID) (map[id.DeviceID]*cryp
 	return data, nil
 }
 
+func (store *SQLCryptoStore) GetDevice(userID id.UserID, deviceID id.DeviceID) (*crypto.DeviceIdentity, error) {
+	var identity crypto.DeviceIdentity
+	err := store.db.QueryRow(`
+		SELECT identity_key, signing_key, trust, deleted, name
+		FROM crypto_device WHERE user_id=$1 AND device_id=$2`,
+		userID, deviceID,
+	).Scan(&identity.IdentityKey, &identity.SigningKey, &identity.Trust, &identity.Deleted, &identity.Name)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &identity, nil
+}
+
 func (store *SQLCryptoStore) PutDevices(userID id.UserID, devices map[id.DeviceID]*crypto.DeviceIdentity) error {
 	tx, err := store.db.Begin()
 	if err != nil {

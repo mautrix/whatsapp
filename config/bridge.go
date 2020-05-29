@@ -36,6 +36,8 @@ type BridgeConfig struct {
 	CommunityTemplate   string `yaml:"community_template"`
 
 	ConnectionTimeout     int  `yaml:"connection_timeout"`
+	FetchMessageOnTimeout bool `yaml:"fetch_message_on_timeout"`
+	DeliveryReceipts      bool `yaml:"delivery_receipts"`
 	LoginQRRegenCount     int  `yaml:"login_qr_regen_count"`
 	MaxConnectionAttempts int  `yaml:"max_connection_attempts"`
 	ConnectionRetryDelay  int  `yaml:"connection_retry_delay"`
@@ -80,6 +82,8 @@ type BridgeConfig struct {
 
 func (bc *BridgeConfig) setDefaults() {
 	bc.ConnectionTimeout = 20
+	bc.FetchMessageOnTimeout = false
+	bc.DeliveryReceipts = false
 	bc.LoginQRRegenCount = 2
 	bc.MaxConnectionAttempts = 3
 	bc.ConnectionRetryDelay = -1

@@ -173,6 +173,7 @@ func (portal *Portal) handleMessageLoop() {
 				portal.log.Debugln("Not creating portal room for incoming message as the message is too old.")
 				continue
 			}
+			portal.log.Debugln("Creating Matrix room from incoming message")
 			err := portal.CreateMatrixRoom(msg.source)
 			if err != nil {
 				portal.log.Errorln("Failed to create portal room:", err)
@@ -265,13 +266,19 @@ func (portal *Portal) markHandled(source *User, message *waProto.WebMessageInfo,
 }
 
 func (portal *Portal) startHandling(info whatsapp.MessageInfo) bool {
-	if portal.lastMessageTs > info.Timestamp+1 ||
-		portal.isRecentlyHandled(info.Id) ||
-		portal.isDuplicate(info.Id) {
-		return false
+	// TODO these should all be trace logs
+	if portal.lastMessageTs > info.Timestamp+1 {
+		portal.log.Debugfln("Not handling %s: message is older (%d) than last bridge message (%d)", info.Id, info.Timestamp, portal.lastMessageTs)
+	} else if portal.isRecentlyHandled(info.Id) {
+		portal.log.Debugfln("Not handling %s: message was recently handled", info.Id)
+	} else if portal.isDuplicate(info.Id) {
+		portal.log.Debugfln("Not handling %s: message is duplicate", info.Id)
+	} else {
+		portal.log.Debugfln("Starting handling of %s (ts: %d)", info.Id, info.Timestamp)
+		portal.lastMessageTs = info.Timestamp
+		return true
 	}
-	portal.lastMessageTs = info.Timestamp
-	return true
+	return false
 }
 
 func (portal *Portal) finishHandling(source *User, message *waProto.WebMessageInfo, mxid id.EventID) {
@@ -839,6 +846,9 @@ func (portal *Portal) CreateMatrixRoom(user *User) error {
 	}
 	portal.MXID = resp.RoomID
 	portal.Update()
+	portal.bridge.portalsLock.Lock()
+	portal.bridge.portalsByMXID[portal.MXID] = portal
+	portal.bridge.portalsLock.Unlock()
 
 	// We set the memberships beforehand to make sure the encryption key exchange in initial backfill knows the users are here.
 	for _, user := range invite {
@@ -1022,22 +1032,6 @@ func (portal *Portal) HandleMessageLocation(source *User, message whatsapp.Locat
 		},
 	}
 
-	//if thumbnail != nil {
-	//	thumbnailMime := http.DetectContentType(thumbnail)
-	//	uploadedThumbnail, _ := intent.UploadBytes(thumbnail, thumbnailMime)
-	//	if uploadedThumbnail != nil {
-	//		content.Info.ThumbnailURL = uploadedThumbnail.ContentURI
-	//		cfg, _, _ := image.DecodeConfig(bytes.NewReader(thumbnail))
-	//		content.Info.ThumbnailInfo = &mautrix.FileInfo{
-	//			Size:     len(thumbnail),
-	//			Width:    cfg.Width,
-	//			Height:   cfg.Height,
-	//			MimeType: thumbnailMime,
-	//		}
-	//	}
-	//}
-	//
-	//content.URL = content.Info.ThumbnailURL
 	portal.bridge.Formatter.ParseWhatsApp(content)
 	portal.SetReply(content, message.ContextInfo)
 
@@ -1138,6 +1132,19 @@ func (portal *Portal) HandleTextMessage(source *User, message whatsapp.TextMessa
 	portal.finishHandling(source, message.Info.Source, resp.EventID)
 }
 
+func (portal *Portal) sendMediaBridgeFailure(source *User, intent *appservice.IntentAPI, info whatsapp.MessageInfo, downloadErr error) {
+	portal.log.Errorfln("Failed to download media for %s: %v", info.Id, downloadErr)
+	resp, err := portal.sendMessage(intent, event.EventMessage, &event.MessageEventContent{
+		MsgType: event.MsgNotice,
+		Body:    "Failed to bridge media",
+	}, int64(info.Timestamp*1000))
+	if err != nil {
+		portal.log.Errorfln("Failed to send media download error message for %s: %v", info.Id, err)
+	} else {
+		portal.finishHandling(source, info.Source, resp.EventID)
+	}
+}
+
 func (portal *Portal) HandleMediaMessage(source *User, download func() ([]byte, error), thumbnail []byte, info whatsapp.MessageInfo, context whatsapp.ContextInfo, mimeType, caption string, sendAsSticker bool) {
 	if !portal.startHandling(info) {
 		return
@@ -1149,21 +1156,20 @@ func (portal *Portal) HandleMediaMessage(source *User, download func() ([]byte, 
 	}
 
 	data, err := download()
+	if err == whatsapp.ErrMediaDownloadFailedWith404 || err == whatsapp.ErrMediaDownloadFailedWith410 {
+		portal.log.Warnfln("Failed to download media for %s: %v. Calling LoadMediaInfo and retrying download...", info.Id, err)
+		_, err = source.Conn.LoadMediaInfo(info.RemoteJid, info.Id, info.FromMe)
+		if err != nil {
+			portal.sendMediaBridgeFailure(source, intent, info, errors.Wrap(err, "failed to load media info"))
+			return
+		}
+		data, err = download()
+	}
 	if err == whatsapp.ErrNoURLPresent {
-		portal.log.Debugln("No URL present error for media message %s, ignoring...", info.Id)
+		portal.log.Debugfln("No URL present error for media message %s, ignoring...", info.Id)
 		return
 	} else if err != nil {
-		portal.log.Errorfln("Failed to download media for %s: %v", info.Id, err)
-		resp, err := portal.sendMainIntentMessage(event.MessageEventContent{
-			MsgType: event.MsgNotice,
-			Body:    "Failed to bridge media",
-		})
-		if err != nil {
-			portal.log.Errorfln("Failed to send media download error message for %s: %v", info.Id, err)
-		} else {
-			fmt.Println("\n22222222222\n")
-			portal.finishHandling(source, info.Source, resp.EventID)
-		}
+		portal.sendMediaBridgeFailure(source, intent, info, err)
 		return
 	}
 
@@ -1258,7 +1264,7 @@ func (portal *Portal) HandleMediaMessage(source *User, download func() ([]byte, 
 
 		portal.bridge.Formatter.ParseWhatsApp(captionContent)
 
-		_, err := portal.sendMessage(intent, event.EventMessage, content, ts)
+		_, err := portal.sendMessage(intent, event.EventMessage, captionContent, ts)
 		if err != nil {
 			portal.log.Warnfln("Failed to handle caption of message %s: %v", info.Id, err)
 		}
@@ -1326,6 +1332,7 @@ func (portal *Portal) preprocessMatrixMedia(sender *User, relaybotFormatted bool
 	mxc, err := rawMXC.Parse()
 	if err != nil {
 		portal.log.Errorln("Malformed content URL in %s: %v", eventID, err)
+		return nil
 	}
 	data, err := portal.MainIntent().DownloadBytes(mxc)
 	if err != nil {
@@ -1410,17 +1417,12 @@ func (portal *Portal) addRelaybotFormat(sender *User, content *event.MessageEven
 	return true
 }
 
-func (portal *Portal) HandleMatrixMessage(sender *User, evt *event.Event) {
-	if !portal.HasRelaybot() && (
-		(portal.IsPrivateChat() && sender.JID != portal.Key.Receiver) ||
-			portal.sendMatrixConnectionError(sender, evt.ID)) {
-		return
+func (portal *Portal) convertMatrixMessage(sender *User, evt *event.Event) (*waProto.WebMessageInfo, *User) {
+	content, ok := evt.Content.Parsed.(*event.MessageEventContent)
+	if !ok {
+		portal.log.Debugfln("Failed to handle event %s: unexpected parsed content type %T", evt.ID, evt.Content.Parsed)
+		return nil, sender
 	}
-	content := evt.Content.AsMessage()
-	if content == nil {
-		return
-	}
-	portal.log.Debugfln("Received event %s", evt.ID)
 
 	ts := uint64(evt.Timestamp / 1000)
 	status := waProto.WebMessageInfo_ERROR
@@ -1453,7 +1455,7 @@ func (portal *Portal) HandleMatrixMessage(sender *User, evt *event.Event) {
 				portal.log.Debugln("Database says", sender.MXID, "not in chat and no relaybot, but trying to send anyway")
 			} else {
 				portal.log.Debugln("Ignoring message from", sender.MXID, "in chat with no relaybot")
-				return
+				return nil, sender
 			}
 		} else {
 			relaybotFormatted = portal.addRelaybotFormat(sender, content)
@@ -1463,7 +1465,7 @@ func (portal *Portal) HandleMatrixMessage(sender *User, evt *event.Event) {
 	if evt.Type == event.EventSticker {
 		content.MsgType = event.MsgImage
 	}
-	var err error
+
 	switch content.MsgType {
 	case event.MsgText, event.MsgEmote, event.MsgNotice:
 		text := content.Body
@@ -1488,7 +1490,7 @@ func (portal *Portal) HandleMatrixMessage(sender *User, evt *event.Event) {
 	case event.MsgImage:
 		media := portal.preprocessMatrixMedia(sender, relaybotFormatted, content, evt.ID, whatsapp.MediaImage)
 		if media == nil {
-			return
+			return nil, sender
 		}
 		info.Message.ImageMessage = &waProto.ImageMessage{
 			Caption:       &media.Caption,
@@ -1503,7 +1505,7 @@ func (portal *Portal) HandleMatrixMessage(sender *User, evt *event.Event) {
 	case event.MsgVideo:
 		media := portal.preprocessMatrixMedia(sender, relaybotFormatted, content, evt.ID, whatsapp.MediaVideo)
 		if media == nil {
-			return
+			return nil, sender
 		}
 		duration := uint32(content.GetInfo().Duration)
 		info.Message.VideoMessage = &waProto.VideoMessage{
@@ -1520,7 +1522,7 @@ func (portal *Portal) HandleMatrixMessage(sender *User, evt *event.Event) {
 	case event.MsgAudio:
 		media := portal.preprocessMatrixMedia(sender, relaybotFormatted, content, evt.ID, whatsapp.MediaAudio)
 		if media == nil {
-			return
+			return nil, sender
 		}
 		duration := uint32(content.GetInfo().Duration)
 		info.Message.AudioMessage = &waProto.AudioMessage{
@@ -1535,7 +1537,7 @@ func (portal *Portal) HandleMatrixMessage(sender *User, evt *event.Event) {
 	case event.MsgFile:
 		media := portal.preprocessMatrixMedia(sender, relaybotFormatted, content, evt.ID, whatsapp.MediaDocument)
 		if media == nil {
-			return
+			return nil, sender
 		}
 		info.Message.DocumentMessage = &waProto.DocumentMessage{
 			Url:           &media.URL,
@@ -1547,22 +1549,89 @@ func (portal *Portal) HandleMatrixMessage(sender *User, evt *event.Event) {
 			FileLength:    &media.FileLength,
 		}
 	default:
-		portal.log.Debugln("Unhandled Matrix event:", evt)
+		portal.log.Debugln("Unhandled Matrix event %s: unknown msgtype %s", evt.ID, content.MsgType)
+		return nil, sender
+	}
+	return info, sender
+}
+
+func (portal *Portal) wasMessageSent(sender *User, id string) bool {
+	_, err := sender.Conn.LoadMessagesAfter(portal.Key.JID, id, true, 0)
+	if err != nil {
+		if err != whatsapp.ErrServerRespondedWith404 {
+			portal.log.Warnfln("Failed to check if message was bridged without response: %v", err)
+		}
+		return false
+	}
+	return true
+}
+
+func (portal *Portal) sendErrorMessage(sendErr error) id.EventID {
+	resp, err := portal.sendMainIntentMessage(event.MessageEventContent{
+		MsgType: event.MsgNotice,
+		Body:    fmt.Sprintf("\u26a0 Your message may not have been bridged: %v", sendErr),
+	})
+	if err != nil {
+		portal.log.Warnfln("Failed to send bridging error message:", err)
+		return ""
+	}
+	return resp.EventID
+}
+
+func (portal *Portal) sendDeliveryReceipt(eventID id.EventID) {
+	if portal.bridge.Config.Bridge.DeliveryReceipts {
+		err := portal.bridge.Bot.MarkRead(portal.MXID, eventID)
+		if err != nil {
+			portal.log.Debugfln("Failed to send delivery receipt for %s: %v", eventID, err)
+		}
+	}
+}
+
+var timeout = errors.New("message sending timed out")
+
+func (portal *Portal) HandleMatrixMessage(sender *User, evt *event.Event) {
+	if !portal.HasRelaybot() && (
+		(portal.IsPrivateChat() && sender.JID != portal.Key.Receiver) ||
+			portal.sendMatrixConnectionError(sender, evt.ID)) {
+		return
+	}
+	portal.log.Debugfln("Received event %s", evt.ID)
+	info, sender := portal.convertMatrixMessage(sender, evt)
+	if info == nil {
 		return
 	}
 	portal.markHandled(sender, info, evt.ID)
 	portal.log.Debugln("Sending event", evt.ID, "to WhatsApp")
-	_, err = sender.Conn.Send(info)
+
+	errChan := make(chan error, 1)
+	go sender.Conn.SendRaw(info, errChan)
+
+	var err error
+	var errorEventID id.EventID
+	select {
+	case err = <-errChan:
+	case <-time.After(time.Duration(portal.bridge.Config.Bridge.ConnectionTimeout) * time.Second):
+		if portal.bridge.Config.Bridge.FetchMessageOnTimeout && portal.wasMessageSent(sender, info.Key.GetId()) {
+			portal.log.Debugln("Matrix event %s was bridged, but response didn't arrive within timeout")
+			portal.sendDeliveryReceipt(evt.ID)
+		} else {
+			portal.log.Warnfln("Response when bridging Matrix event %s is taking long to arrive", evt.ID)
+			errorEventID = portal.sendErrorMessage(timeout)
+		}
+		err = <-errChan
+	}
 	if err != nil {
 		portal.log.Errorfln("Error handling Matrix event %s: %v", evt.ID, err)
-		msg := format.RenderMarkdown(fmt.Sprintf("\u26a0 Your message may not have been bridged: %v", err), false, false)
-		msg.MsgType = event.MsgNotice
-		_, err := portal.sendMainIntentMessage(msg)
-		if err != nil {
-			portal.log.Errorln("Failed to send bridging failure message:", err)
-		}
+		portal.sendErrorMessage(err)
 	} else {
-		portal.log.Debugln("Handled Matrix event:", evt)
+		portal.log.Debugfln("Handled Matrix event %s", evt.ID)
+		portal.sendDeliveryReceipt(evt.ID)
+	}
+	if errorEventID != "" {
+		_, err = portal.MainIntent().RedactEvent(portal.MXID, errorEventID)
+		if err != nil {
+			portal.log.Warnfln("Failed to redact timeout warning message %s: %v", errorEventID, err)
+		}
 	}
 }
 
@@ -1599,20 +1668,32 @@ func (portal *Portal) HandleMatrixRedaction(sender *User, evt *event.Event) {
 		},
 		Status: &status,
 	}
-	_, err := sender.Conn.Send(info)
+	errChan := make(chan error, 1)
+	go sender.Conn.SendRaw(info, errChan)
+
+	var err error
+	select {
+	case err = <-errChan:
+	case <-time.After(time.Duration(portal.bridge.Config.Bridge.ConnectionTimeout) * time.Second):
+		portal.log.Warnfln("Response when bridging Matrix redaction %s is taking long to arrive", evt.ID)
+		err = <-errChan
+	}
 	if err != nil {
-		portal.log.Errorfln("Error handling Matrix redaction: %s: %v", evt.ID, err)
+		portal.log.Errorfln("Error handling Matrix redaction %s: %v", evt.ID, err)
 	} else {
-		portal.log.Debugln("Handled Matrix redaction:", evt)
+		portal.log.Debugln("Handled Matrix redaction %s of %s", evt.ID, evt.Redacts)
+		portal.sendDeliveryReceipt(evt.ID)
 	}
 }
 
 func (portal *Portal) Delete() {
 	portal.Portal.Delete()
+	portal.bridge.portalsLock.Lock()
 	delete(portal.bridge.portalsByJID, portal.Key)
 	if len(portal.MXID) > 0 {
 		delete(portal.bridge.portalsByMXID, portal.MXID)
 	}
+	portal.bridge.portalsLock.Unlock()
 }
 
 func (portal *Portal) Cleanup(puppetsOnly bool) {

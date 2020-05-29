@@ -193,9 +193,9 @@ func (puppet *Puppet) handlePresenceEvent(event *event.Event) {
 	presence := whatsapp.PresenceAvailable
 	if event.Content.Raw["presence"].(string) != "online" {
 		presence = whatsapp.PresenceUnavailable
-		puppet.customUser.log.Infoln("Marking offline")
+		puppet.customUser.log.Debugln("Marking offline")
 	} else {
-		puppet.customUser.log.Infoln("Marking online")
+		puppet.customUser.log.Debugln("Marking online")
 	}
 	_, err := puppet.customUser.Conn.Presence("", presence)
 	if err != nil {
