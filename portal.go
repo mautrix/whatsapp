@@ -206,6 +206,10 @@ func (portal *Portal) handleMessage(msg PortalMessage) {
 		portal.HandleMediaMessage(msg.source, data.Download, data.Thumbnail, data.Info, data.ContextInfo, data.Type, data.Title, false)
 	case whatsappExt.MessageRevocation:
 		portal.HandleMessageRevoke(msg.source, data)
+	case whatsapp.LocationMessage:
+		portal.HandleMessageLocation(msg.source, data, data.JpegThumbnail)
+	case whatsapp.ContactMessage:
+		portal.HandleMessageContact(msg.source, data)
 	case FakeMessage:
 		portal.HandleFakeMessage(msg.source, data)
 	default:
@@ -319,7 +323,7 @@ func (portal *Portal) SyncParticipants(metadata *whatsappExt.GroupInfo) {
 }
 
 func (portal *Portal) UpdateAvatar(user *User, avatar *whatsappExt.ProfilePicInfo) bool {
-	if avatar == nil {
+	if avatar == nil || strings.Count(avatar.URL, "")-1 < 1 {
 		var err error
 		avatar, err = user.Conn.GetProfilePicThumb(portal.Key.JID)
 		if err != nil {
@@ -539,6 +543,46 @@ func (portal *Portal) ChangeAdminStatus(jids []string, setAdmin bool) {
 			portal.log.Errorln("Failed to change power levels:", err)
 		}
 	}
+}
+
+func (portal *Portal) membershipRemove(jids []string, action whatsappExt.ChatActionType) {
+	for _, jid := range jids {
+		jidArr := strings.Split(jid, "@c.")
+		jid = jidArr[0]
+		member := portal.bridge.GetPuppetByJID(jid)
+		if member == nil {
+			portal.log.Errorln("%s is not exist", jid)
+			continue
+		}
+		_, err := portal.MainIntent().KickUser(portal.MXID, &mautrix.ReqKickUser{
+			UserID: member.MXID,
+		})
+		if err != nil {
+			portal.log.Errorln("Error %s member from whatsapp: %v", action, err)
+		}
+	}
+}
+
+func (portal *Portal) membershipAdd(user *User, jid string) {
+	chatMap := make(map[string]whatsapp.Chat)
+	for _, chat := range user.Conn.Store.Chats {
+		if chat.Jid == jid {
+			chatMap[chat.Jid] = chat
+		}
+	}
+	user.syncPortals(chatMap, false)
+}
+
+func (portal *Portal) membershipCreate(user *User, cmd whatsappExt.ChatUpdate) {
+	contact := whatsapp.Contact{
+		Jid:    cmd.Data.SenderJID,
+		Notify: "",
+		Name:   cmd.Data.Create.Name,
+		Short:  "",
+	}
+	portal.Sync(user, contact)
+	contact.Jid = cmd.JID
+	user.Conn.Store.Contacts[cmd.JID] = contact
 }
 
 func (portal *Portal) RestrictMessageSending(restrict bool) {
@@ -947,6 +991,91 @@ func (portal *Portal) HandleFakeMessage(source *User, message FakeMessage) {
 	portal.recentlyHandledIndex = (portal.recentlyHandledIndex + 1) % recentlyHandledLength
 	portal.recentlyHandledLock.Unlock()
 	portal.recentlyHandled[index] = message.ID
+}
+
+func (portal *Portal) HandleMessageLocation(source *User, message whatsapp.LocationMessage, thumbnail []byte) {
+	if !portal.startHandling(message.Info) {
+		return
+	}
+
+	intent := portal.GetMessageIntent(source, message.Info)
+	if intent == nil {
+		return
+	}
+
+	fmt.Println("\nHandleMessageLocation>\n")
+	fmt.Printf("%+v", message)
+	fmt.Println("\nHandleMessageLocation>\n")
+
+	lat:= fmt.Sprintf("%.14f", message.DegreesLatitude)
+	lon:= fmt.Sprintf("%.14f", message.DegreesLongitude)
+
+	name := ""
+	address := ""
+	url := ""
+	if len(message.Name) > 0 {
+		name = message.Name + "\n"
+	}
+	if len(message.Address) > 0 {
+		address = message.Address + "\n"
+	}
+	if len(message.Url) > 0 {
+		url = message.Url + "\n"
+	}
+	content := &event.MessageEventContent{
+		Body: name + address + url + lat + "\n" + lon,
+		//URL: "",
+		MsgType: event.MsgLocation,
+		Info: &event.FileInfo{
+			Size:     len(thumbnail),
+			MimeType: "image/jpeg",
+		},
+	}
+
+	portal.bridge.Formatter.ParseWhatsApp(content)
+	portal.SetReply(content, message.ContextInfo)
+
+	_, _ = intent.UserTyping(portal.MXID, false, 0)
+	resp, err := portal.sendMessage(intent, event.EventMessage, content, int64(message.Info.Timestamp*1000))
+	if err != nil {
+		portal.log.Errorfln("Failed to handle message %s: %v", message.Info.Id, err)
+		return
+	}
+	portal.finishHandling(source, message.Info.Source, resp.EventID)
+}
+
+func (portal *Portal) HandleMessageContact(source *User, message whatsapp.ContactMessage) {
+	if !portal.startHandling(message.Info) {
+		return
+	}
+
+	intent := portal.GetMessageIntent(source, message.Info)
+	if intent == nil {
+		return
+	}
+	infos := strings.Split(message.Vcard, "\n")
+	vCard := ""
+	for index, info := range infos {
+		if index > 2 && index < 6 {
+			infoArr := strings.Split(info, ":")
+			vCard += infoArr[1]+"\n"
+		}
+	}
+	content := &event.MessageEventContent{
+		Body:    vCard,
+		MsgType: "m.contact", // mautrix.MsgLocation
+	}
+
+	portal.bridge.Formatter.ParseWhatsApp(content)
+	portal.SetReply(content, message.ContextInfo)
+
+	_, _ = intent.UserTyping(portal.MXID, false, 0)
+	resp, err := portal.sendMessage(intent, event.EventMessage, content, int64(message.Info.Timestamp*1000))
+	if err != nil {
+		portal.log.Errorfln("Failed to handle message %s: %v", message.Info.Id, err)
+		return
+	}
+	portal.finishHandling(source, message.Info.Source, resp.EventID)
 }
 
 func (portal *Portal) sendMainIntentMessage(content interface{}) (*mautrix.RespSendEvent, error) {
