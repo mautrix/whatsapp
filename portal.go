@@ -717,6 +717,26 @@ func (portal *Portal) handleHistory(user *User, messages []interface{}) {
 	}
 }
 
+type BridgeInfoSection struct {
+	ID          string              `json:"id"`
+	DisplayName string              `json:"display_name,omitempty"`
+	AvatarURL   id.ContentURIString `json:"avatar_url,omitempty"`
+	ExternalURL string              `json:"external_url,omitempty"`
+}
+
+type BridgeInfoContent struct {
+	BridgeBot id.UserID          `json:"bridgebot"`
+	Creator   id.UserID          `json:"creator,omitempty"`
+	Protocol  BridgeInfoSection  `json:"protocol"`
+	Network   *BridgeInfoSection `json:"network,omitempty"`
+	Channel   BridgeInfoSection  `json:"channel"`
+}
+
+var (
+	StateBridgeInfo         = event.Type{Type: "m.bridge", Class: event.StateEventType}
+	StateHalfShotBridgeInfo = event.Type{Type: "uk.half-shot.bridge", Class: event.StateEventType}
+)
+
 func (portal *Portal) CreateMatrixRoom(user *User) error {
 	portal.roomCreateLock.Lock()
 	defer portal.roomCreateLock.Unlock()
@@ -755,11 +775,33 @@ func (portal *Portal) CreateMatrixRoom(user *User) error {
 		portal.UpdateAvatar(user, nil)
 	}
 
+	bridgeInfo := event.Content{
+		Parsed: BridgeInfoContent{
+			BridgeBot: portal.bridge.Bot.UserID,
+			Creator:   portal.MainIntent().UserID,
+			Protocol: BridgeInfoSection{
+				ID:          "whatsapp",
+				DisplayName: "WhatsApp",
+				AvatarURL:   id.ContentURIString(portal.bridge.Config.AppService.Bot.Avatar),
+				ExternalURL: "https://www.whatsapp.com/",
+			},
+			Channel: BridgeInfoSection{
+				ID: portal.Key.JID,
+			},
+		},
+	}
 	initialState := []*event.Event{{
 		Type: event.StatePowerLevels,
 		Content: event.Content{
 			Parsed: portal.GetBasePowerLevels(),
 		},
+	}, {
+		Type:    StateBridgeInfo,
+		Content: bridgeInfo,
+	}, {
+		// TODO remove this once https://github.com/matrix-org/matrix-doc/pull/2346 is in spec
+		Type:    StateHalfShotBridgeInfo,
+		Content: bridgeInfo,
 	}}
 	if !portal.AvatarURL.IsEmpty() {
 		initialState = append(initialState, &event.Event{
