@@ -55,6 +55,9 @@ func init() {
 	if len(Tag) > 0 && Tag[0] == 'v' {
 		Tag = Tag[1:]
 	}
+	if Tag != Version && !strings.HasSuffix(Version, "+dev") {
+		Version += "+dev"
+	}
 }
 
 var configPath = flag.MakeFull("c", "config", "The path to your config file.", "config.yaml").String()
@@ -371,9 +374,6 @@ func (bridge *Bridge) Main() {
 		if Tag == Version {
 			fmt.Printf("%s %s (%s)\n", Name, Tag, BuildTime)
 		} else if len(Commit) > 8 {
-			if !strings.HasSuffix(Version, "+dev") {
-				Version += "+dev"
-			}
 			fmt.Printf("%s %s.%s (%s)\n", Name, Version, Commit[:8], BuildTime)
 		} else {
 			fmt.Printf("%s %s+dev.unknown\n", Name, Version)

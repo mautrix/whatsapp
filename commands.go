@@ -179,13 +179,10 @@ func (handler *CommandHandler) CommandDevTest(_ *CommandEvent) {
 const cmdVersionHelp = `version - View the bridge version`
 
 func (handler *CommandHandler) CommandVersion(ce *CommandEvent) {
-	version := fmt.Sprintf("%s+dev.unknown", Version)
+	version := fmt.Sprintf("%s.unknown", Version)
 	if Tag == Version {
 		version = fmt.Sprintf("[%s](%s/releases/%s) (%s)", Version, URL, Tag, BuildTime)
 	} else if len(Commit) > 8 {
-		if !strings.HasSuffix(Version, "+dev") {
-			Version += "+dev"
-		}
 		version = fmt.Sprintf("%s.[%s](%s/commit/%s) (%s)", Version, Commit[:8], URL, Commit, BuildTime)
 	}
 	ce.Reply(fmt.Sprintf("[%s](%s) %s", Name, URL, version))
