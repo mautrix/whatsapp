@@ -105,6 +105,8 @@ func (handler *CommandHandler) CommandMux(ce *CommandEvent) {
 		handler.CommandLogoutMatrix(ce)
 	case "help":
 		handler.CommandHelp(ce)
+	case "version":
+		handler.CommandVersion(ce)
 	case "reconnect":
 		handler.CommandReconnect(ce)
 	case "disconnect":
@@ -172,6 +174,21 @@ func (handler *CommandHandler) CommandRelaybot(ce *CommandEvent) {
 
 func (handler *CommandHandler) CommandDevTest(_ *CommandEvent) {
 
+}
+
+const cmdVersionHelp = `version - View the bridge version`
+
+func (handler *CommandHandler) CommandVersion(ce *CommandEvent) {
+	version := fmt.Sprintf("%s+dev.unknown", Version)
+	if Tag == Version {
+		version = fmt.Sprintf("[%s](%s/releases/%s) (%s)", Version, URL, Tag, BuildTime)
+	} else if len(Commit) > 8 {
+		if !strings.HasSuffix(Version, "+dev") {
+			Version += "+dev"
+		}
+		version = fmt.Sprintf("%s.[%s](%s/commit/%s) (%s)", Version, Commit[:8], URL, Commit, BuildTime)
+	}
+	ce.Reply(fmt.Sprintf("[%s](%s) %s", Name, URL, version))
 }
 
 const cmdSetPowerLevelHelp = `set-pl [user ID] <power level> - Change the power level in a portal room. Only for bridge admins.`
