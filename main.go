@@ -370,15 +370,6 @@ func (bridge *Bridge) Main() {
 	} else if *migrateFrom {
 		bridge.MigrateDatabase()
 		return
-	} else if *version {
-		if Tag == Version {
-			fmt.Printf("%s %s (%s)\n", Name, Tag, BuildTime)
-		} else if len(Commit) > 8 {
-			fmt.Printf("%s %s.%s (%s)\n", Name, Version, Commit[:8], BuildTime)
-		} else {
-			fmt.Printf("%s %s+dev.unknown\n", Name, Version)
-		}
-		return
 	}
 
 	bridge.Init()
@@ -408,6 +399,15 @@ func main() {
 	} else if *wantHelp {
 		flag.PrintHelp()
 		os.Exit(0)
+	} else if *version {
+		if Tag == Version {
+			fmt.Printf("%s %s (%s)\n", Name, Tag, BuildTime)
+		} else if len(Commit) > 8 {
+			fmt.Printf("%s %s.%s (%s)\n", Name, Version, Commit[:8], BuildTime)
+		} else {
+			fmt.Printf("%s %s.unknown\n", Name, Version)
+		}
+		return
 	}
 
 	NewBridge().Main()
