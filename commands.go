@@ -181,7 +181,7 @@ const cmdVersionHelp = `version - View the bridge version`
 func (handler *CommandHandler) CommandVersion(ce *CommandEvent) {
 	version := fmt.Sprintf("v%s.unknown", Version)
 	if Tag == Version {
-		version = fmt.Sprintf("[v%s](%s/releases/%s) (%s)", Version, URL, Tag, BuildTime)
+		version = fmt.Sprintf("[v%s](%s/releases/v%s) (%s)", Version, URL, Tag, BuildTime)
 	} else if len(Commit) > 8 {
 		version = fmt.Sprintf("v%s.[%s](%s/commit/%s) (%s)", Version, Commit[:8], URL, Commit, BuildTime)
 	}
