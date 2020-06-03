@@ -235,7 +235,7 @@ func (user *User) Connect(evenIfNoSession bool) bool {
 		return false
 	}
 	user.Conn = whatsappExt.ExtendConn(conn)
-	_ = user.Conn.SetClientName("Mautrix-WhatsApp bridge", "mx-wa", Version)
+	_ = user.Conn.SetClientName("Mautrix-WhatsApp bridge", "mx-wa", WAVersion)
 	user.log.Debugln("WhatsApp connection successful")
 	user.Conn.AddHandler(user)
 	return user.RestoreSession()

@@ -42,12 +42,13 @@ import (
 var (
 	// These are static
 	Name = "mautrix-whatsapp"
-	URL = "https://github.com/tulir/mautrix-whatsapp"
+	URL  = "https://github.com/tulir/mautrix-whatsapp"
 	// This is changed when making a release
-	Version = "0.1.0+dev"
+	Version   = "0.1.0+dev"
+	WAVersion = ""
 	// These are filled at build time with the -X linker flag
-	Tag = "unknown"
-	Commit = "unknown"
+	Tag       = "unknown"
+	Commit    = "unknown"
 	BuildTime = "unknown"
 )
 
@@ -58,6 +59,7 @@ func init() {
 	if Tag != Version && !strings.HasSuffix(Version, "+dev") {
 		Version += "+dev"
 	}
+	WAVersion = strings.FieldsFunc(Version, func(r rune) bool { return r == '-' || r == '+' })[0]
 }
 
 var configPath = flag.MakeFull("c", "config", "The path to your config file.", "config.yaml").String()
