@@ -279,6 +279,7 @@ func (portal *Portal) startHandling(info whatsapp.MessageInfo) bool {
 
 func (portal *Portal) finishHandling(source *User, message *waProto.WebMessageInfo, mxid id.EventID) {
 	portal.markHandled(source, message, mxid)
+	portal.sendDeliveryReceipt(mxid)
 	portal.log.Debugln("Handled message", message.GetKey().GetId(), "->", mxid)
 }
 
