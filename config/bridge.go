@@ -50,11 +50,12 @@ type BridgeConfig struct {
 		End   bool `yaml:"end"`
 	} `yaml:"call_notices"`
 
-	InitialChatSync    int    `yaml:"initial_chat_sync_count"`
-	InitialHistoryFill int    `yaml:"initial_history_fill_count"`
-	RecoverChatSync    int    `yaml:"recovery_chat_sync_count"`
-	RecoverHistory     bool   `yaml:"recovery_history_backfill"`
-	SyncChatMaxAge     uint64 `yaml:"sync_max_chat_age"`
+	InitialChatSync      int    `yaml:"initial_chat_sync_count"`
+	InitialHistoryFill   int    `yaml:"initial_history_fill_count"`
+	HistoryDisableNotifs bool   `yaml:"initial_history_disable_notifications"`
+	RecoverChatSync      int    `yaml:"recovery_chat_sync_count"`
+	RecoverHistory       bool   `yaml:"recovery_history_backfill"`
+	SyncChatMaxAge       uint64 `yaml:"sync_max_chat_age"`
 
 	SyncWithCustomPuppets bool   `yaml:"sync_with_custom_puppets"`
 	LoginSharedSecret     string `yaml:"login_shared_secret"`

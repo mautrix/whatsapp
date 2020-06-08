@@ -45,6 +45,7 @@ import (
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/format"
 	"maunium.net/go/mautrix/id"
+	"maunium.net/go/mautrix/pushrules"
 
 	"maunium.net/go/mautrix-whatsapp/database"
 	"maunium.net/go/mautrix-whatsapp/types"
@@ -648,6 +649,45 @@ func (portal *Portal) beginBackfill() func() {
 	}
 }
 
+func (portal *Portal) disableNotifications(user *User) {
+	if !portal.bridge.Config.Bridge.HistoryDisableNotifs {
+		return
+	}
+	puppet := portal.bridge.GetPuppetByCustomMXID(user.MXID)
+	if puppet == nil || puppet.customIntent == nil {
+		return
+	}
+	portal.log.Debugfln("Disabling notifications for %s for backfilling", user.MXID)
+	ruleID := fmt.Sprintf("net.maunium.silence_while_backfilling.%s", portal.MXID)
+	err := puppet.customIntent.PutPushRule("global", pushrules.OverrideRule, ruleID, &mautrix.ReqPutPushRule{
+		Actions: []pushrules.PushActionType{pushrules.ActionDontNotify},
+		Conditions: []pushrules.PushCondition{{
+			Kind:    pushrules.KindEventMatch,
+			Key:     "room_id",
+			Pattern: string(portal.MXID),
+		}},
+	})
+	if err != nil {
+		portal.log.Warnfln("Failed to disable notifications for %s while backfilling: %v", user.MXID, err)
+	}
+}
+
+func (portal *Portal) enableNotifications(user *User) {
+	if !portal.bridge.Config.Bridge.HistoryDisableNotifs {
+		return
+	}
+	puppet := portal.bridge.GetPuppetByCustomMXID(user.MXID)
+	if puppet == nil || puppet.customIntent == nil {
+		return
+	}
+	portal.log.Debugfln("Re-enabling notifications for %s after backfilling", user.MXID)
+	ruleID := fmt.Sprintf("net.maunium.silence_while_backfilling.%s", portal.MXID)
+	err := puppet.customIntent.DeletePushRule("global", pushrules.OverrideRule, ruleID)
+	if err != nil {
+		portal.log.Warnfln("Failed to re-enable notifications for %s after backfilling: %v", user.MXID, err)
+	}
+}
+
 func (portal *Portal) FillInitialHistory(user *User) error {
 	if portal.bridge.Config.Bridge.InitialHistoryFill == 0 {
 		return nil
@@ -693,7 +733,9 @@ func (portal *Portal) FillInitialHistory(user *User) error {
 			break
 		}
 	}
+	portal.disableNotifications(user)
 	portal.handleHistory(user, messages)
+	portal.enableNotifications(user)
 	portal.log.Infoln("Initial history fill complete")
 	return nil
 }

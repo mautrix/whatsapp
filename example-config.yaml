@@ -108,6 +108,9 @@ bridge:
     initial_chat_sync_count: 10
     # Number of old messages to fill when creating new portal rooms.
     initial_history_fill_count: 20
+    # Whether or not notifications should be turned off while filling initial history.
+    # Only applicable when using double puppeting.
+    initial_history_disable_notifications: false
     # Maximum number of chats to sync when recovering from downtime.
     # Set to -1 to sync all new chats during downtime.
     recovery_chat_sync_limit: -1
