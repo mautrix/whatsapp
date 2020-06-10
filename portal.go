@@ -26,6 +26,7 @@ import (
 	"image/gif"
 	"image/jpeg"
 	"image/png"
+	"math"
 	"math/rand"
 	"mime"
 	"net/http"
@@ -207,6 +208,8 @@ func (portal *Portal) handleMessage(msg PortalMessage) {
 		portal.HandleMediaMessage(msg.source, data.Download, data.Thumbnail, data.Info, data.ContextInfo, data.Type, data.Title, false)
 	case whatsapp.ContactMessage:
 		portal.HandleContactMessage(msg.source, data)
+	case whatsapp.LocationMessage:
+		portal.HandleLocationMessage(msg.source, data)
 	case whatsappExt.MessageRevocation:
 		portal.HandleMessageRevoke(msg.source, data)
 	case FakeMessage:
@@ -264,7 +267,22 @@ func (portal *Portal) markHandled(source *User, message *waProto.WebMessageInfo,
 	portal.recentlyHandled[index] = msg.JID
 }
 
-func (portal *Portal) startHandling(info whatsapp.MessageInfo) bool {
+func (portal *Portal) getMessageIntent(user *User, info whatsapp.MessageInfo) *appservice.IntentAPI {
+	if info.FromMe {
+		return portal.bridge.GetPuppetByJID(user.JID).IntentFor(portal)
+	} else if portal.IsPrivateChat() {
+		return portal.MainIntent()
+	} else if len(info.SenderJid) == 0 {
+		if len(info.Source.GetParticipant()) != 0 {
+			info.SenderJid = info.Source.GetParticipant()
+		} else {
+			return nil
+		}
+	}
+	return portal.bridge.GetPuppetByJID(info.SenderJid).IntentFor(portal)
+}
+
+func (portal *Portal) startHandling(source *User, info whatsapp.MessageInfo) *appservice.IntentAPI {
 	// TODO these should all be trace logs
 	if portal.lastMessageTs > info.Timestamp+1 {
 		portal.log.Debugfln("Not handling %s: message is older (%d) than last bridge message (%d)", info.Id, info.Timestamp, portal.lastMessageTs)
@@ -275,9 +293,9 @@ func (portal *Portal) startHandling(info whatsapp.MessageInfo) bool {
 	} else {
 		portal.log.Debugfln("Starting handling of %s (ts: %d)", info.Id, info.Timestamp)
 		portal.lastMessageTs = info.Timestamp
-		return true
+		return portal.getMessageIntent(source, info)
 	}
-	return false
+	return nil
 }
 
 func (portal *Portal) finishHandling(source *User, message *waProto.WebMessageInfo, mxid id.EventID) {
@@ -954,21 +972,6 @@ func (portal *Portal) MainIntent() *appservice.IntentAPI {
 	return portal.bridge.Bot
 }
 
-func (portal *Portal) GetMessageIntent(user *User, info whatsapp.MessageInfo) *appservice.IntentAPI {
-	if info.FromMe {
-		return portal.bridge.GetPuppetByJID(user.JID).IntentFor(portal)
-	} else if portal.IsPrivateChat() {
-		return portal.MainIntent()
-	} else if len(info.SenderJid) == 0 {
-		if len(info.Source.GetParticipant()) != 0 {
-			info.SenderJid = info.Source.GetParticipant()
-		} else {
-			return nil
-		}
-	}
-	return portal.bridge.GetPuppetByJID(info.SenderJid).IntentFor(portal)
-}
-
 func (portal *Portal) SetReply(content *event.MessageEventContent, info whatsapp.ContextInfo) {
 	if len(info.QuotedMessageID) == 0 {
 		return
@@ -1063,11 +1066,7 @@ func (portal *Portal) sendMessage(intent *appservice.IntentAPI, eventType event.
 }
 
 func (portal *Portal) HandleTextMessage(source *User, message whatsapp.TextMessage) {
-	if !portal.startHandling(message.Info) {
-		return
-	}
-
-	intent := portal.GetMessageIntent(source, message.Info)
+	intent := portal.startHandling(source, message.Info)
 	if intent == nil {
 		return
 	}
@@ -1089,12 +1088,67 @@ func (portal *Portal) HandleTextMessage(source *User, message whatsapp.TextMessa
 	portal.finishHandling(source, message.Info.Source, resp.EventID)
 }
 
-func (portal *Portal) HandleContactMessage(source *User, message whatsapp.ContactMessage) {
-	if !portal.startHandling(message.Info) {
+func (portal *Portal) HandleLocationMessage(source *User, message whatsapp.LocationMessage) {
+	intent := portal.startHandling(source, message.Info)
+	if intent == nil {
 		return
 	}
 
-	intent := portal.GetMessageIntent(source, message.Info)
+	url := message.Url
+	if len(url) == 0 {
+		url = fmt.Sprintf("https://maps.google.com/?q=%.5f,%.5f", message.DegreesLatitude, message.DegreesLongitude)
+	}
+	name := message.Name
+	if len(name) == 0 {
+		latChar := 'N'
+		if message.DegreesLatitude < 0 {
+			latChar = 'S'
+		}
+		longChar := 'E'
+		if message.DegreesLongitude < 0 {
+			longChar = 'W'
+		}
+		name = fmt.Sprintf("%.4f° %c %.4f° %c", math.Abs(message.DegreesLatitude), latChar, math.Abs(message.DegreesLongitude), longChar)
+	}
+
+	content := &event.MessageEventContent{
+		MsgType:       event.MsgLocation,
+		Body:          fmt.Sprintf("Location: %s\n%s\n%s", name, message.Address, url),
+		Format:        event.FormatHTML,
+		FormattedBody: fmt.Sprintf("Location: <a href='%s'>%s</a><br>%s", url, name, message.Address),
+		GeoURI:        fmt.Sprintf("geo:%.5f,%.5f", message.DegreesLatitude, message.DegreesLongitude),
+	}
+
+	if len(message.JpegThumbnail) > 0 {
+		thumbnailMime := http.DetectContentType(message.JpegThumbnail)
+		uploadedThumbnail, _ := intent.UploadBytes(message.JpegThumbnail, thumbnailMime)
+		if uploadedThumbnail != nil {
+			cfg, _, _ := image.DecodeConfig(bytes.NewReader(message.JpegThumbnail))
+			content.Info = &event.FileInfo{
+				ThumbnailInfo: &event.FileInfo{
+					Size:     len(message.JpegThumbnail),
+					Width:    cfg.Width,
+					Height:   cfg.Height,
+					MimeType: thumbnailMime,
+				},
+				ThumbnailURL: uploadedThumbnail.ContentURI.CUString(),
+			}
+		}
+	}
+
+	portal.SetReply(content, message.ContextInfo)
+
+	_, _ = intent.UserTyping(portal.MXID, false, 0)
+	resp, err := portal.sendMessage(intent, event.EventMessage, content, int64(message.Info.Timestamp*1000))
+	if err != nil {
+		portal.log.Errorfln("Failed to handle message %s: %v", message.Info.Id, err)
+		return
+	}
+	portal.finishHandling(source, message.Info.Source, resp.EventID)
+}
+
+func (portal *Portal) HandleContactMessage(source *User, message whatsapp.ContactMessage) {
+	intent := portal.startHandling(source, message.Info)
 	if intent == nil {
 		return
 	}
@@ -1142,11 +1196,7 @@ func (portal *Portal) sendMediaBridgeFailure(source *User, intent *appservice.In
 }
 
 func (portal *Portal) HandleMediaMessage(source *User, download func() ([]byte, error), thumbnail []byte, info whatsapp.MessageInfo, context whatsapp.ContextInfo, mimeType, caption string, sendAsSticker bool) {
-	if !portal.startHandling(info) {
-		return
-	}
-
-	intent := portal.GetMessageIntent(source, info)
+	intent := portal.startHandling(source, info)
 	if intent == nil {
 		return
 	}

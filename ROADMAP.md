@@ -25,7 +25,8 @@
     * [x] Plain text
     * [x] Formatted messages
     * [x] Media/files
-    * [ ] Location messages
+    * [x] Location messages
+    * [x] Contact messages
     * [x] Replies
   * [ ] Chat types
     * [x] Private chat
