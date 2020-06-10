@@ -142,6 +142,10 @@ bridge:
     # but causes room avatar/name bugs.
     private_chat_portal_meta: false
 
+    # Whether or not thumbnails from WhatsApp should be sent.
+    # They're disabled by default due to very low resolution.
+    whatsapp_thumbnail: false
+
     # Allow invite permission for user. User can invite any bots to room with whatsapp
     # users (private chat and groups)
     allow_user_invite: false

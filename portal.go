@@ -38,6 +38,8 @@ import (
 	"github.com/pkg/errors"
 	log "maunium.net/go/maulogger/v2"
 
+	"maunium.net/go/mautrix/crypto/attachment"
+
 	"github.com/Rhymen/go-whatsapp"
 	waProto "github.com/Rhymen/go-whatsapp/binary/proto"
 
@@ -197,15 +199,15 @@ func (portal *Portal) handleMessage(msg PortalMessage) {
 	case whatsapp.TextMessage:
 		portal.HandleTextMessage(msg.source, data)
 	case whatsapp.ImageMessage:
-		portal.HandleMediaMessage(msg.source, data.Download, data.Thumbnail, data.Info, data.ContextInfo, data.Type, data.Caption, false)
+		portal.HandleMediaMessage(msg.source, data.Download, data.Thumbnail, data.Info, data.ContextInfo, data.Type, data.Caption, 0, false)
 	case whatsapp.StickerMessage:
-		portal.HandleMediaMessage(msg.source, data.Download, nil, data.Info, data.ContextInfo, data.Type, "", true)
+		portal.HandleMediaMessage(msg.source, data.Download, nil, data.Info, data.ContextInfo, data.Type, "", 0, true)
 	case whatsapp.VideoMessage:
-		portal.HandleMediaMessage(msg.source, data.Download, data.Thumbnail, data.Info, data.ContextInfo, data.Type, data.Caption, false)
+		portal.HandleMediaMessage(msg.source, data.Download, data.Thumbnail, data.Info, data.ContextInfo, data.Type, data.Caption, data.Length, false)
 	case whatsapp.AudioMessage:
-		portal.HandleMediaMessage(msg.source, data.Download, nil, data.Info, data.ContextInfo, data.Type, "", false)
+		portal.HandleMediaMessage(msg.source, data.Download, nil, data.Info, data.ContextInfo, data.Type, "", data.Length, false)
 	case whatsapp.DocumentMessage:
-		portal.HandleMediaMessage(msg.source, data.Download, data.Thumbnail, data.Info, data.ContextInfo, data.Type, data.Title, false)
+		portal.HandleMediaMessage(msg.source, data.Download, data.Thumbnail, data.Info, data.ContextInfo, data.Type, data.Title, 0, false)
 	case whatsapp.ContactMessage:
 		portal.HandleContactMessage(msg.source, data)
 	case whatsapp.LocationMessage:
@@ -1154,8 +1156,11 @@ func (portal *Portal) HandleContactMessage(source *User, message whatsapp.Contac
 	}
 
 	fileName := fmt.Sprintf("%s.vcf", message.DisplayName)
+	data := []byte(message.Vcard)
+	mimeType := "text/vcard"
+	data, uploadMimeType, file := portal.encryptFile(data, mimeType)
 
-	uploadResp, err := intent.UploadBytesWithName([]byte(message.Vcard), "text/vcard", fileName)
+	uploadResp, err := intent.UploadBytesWithName(data, uploadMimeType, fileName)
 	if err != nil {
 		portal.log.Errorfln("Failed to upload vcard of %s: %v", message.DisplayName, err)
 		return
@@ -1164,11 +1169,16 @@ func (portal *Portal) HandleContactMessage(source *User, message whatsapp.Contac
 	content := &event.MessageEventContent{
 		Body:    fileName,
 		MsgType: event.MsgFile,
-		URL:     uploadResp.ContentURI.CUString(),
+		File:    file,
 		Info: &event.FileInfo{
-			MimeType: "text/vcard",
+			MimeType: mimeType,
 			Size:     len(message.Vcard),
 		},
+	}
+	if content.File != nil {
+		content.File.URL = uploadResp.ContentURI.CUString()
+	} else {
+		content.URL = uploadResp.ContentURI.CUString()
 	}
 
 	portal.SetReply(content, message.ContextInfo)
@@ -1195,7 +1205,20 @@ func (portal *Portal) sendMediaBridgeFailure(source *User, intent *appservice.In
 	}
 }
 
-func (portal *Portal) HandleMediaMessage(source *User, download func() ([]byte, error), thumbnail []byte, info whatsapp.MessageInfo, context whatsapp.ContextInfo, mimeType, caption string, sendAsSticker bool) {
+func (portal *Portal) encryptFile(data []byte, mimeType string) ([]byte, string, *event.EncryptedFileInfo) {
+	if !portal.Encrypted {
+		return data, mimeType, nil
+	}
+
+	file := &event.EncryptedFileInfo{
+		EncryptedFile: *attachment.NewEncryptedFile(),
+		URL:           "",
+	}
+	return file.Encrypt(data), "application/octet-stream", file
+
+}
+
+func (portal *Portal) HandleMediaMessage(source *User, download func() ([]byte, error), thumbnail []byte, info whatsapp.MessageInfo, context whatsapp.ContextInfo, mimeType, caption string, length uint32, sendAsSticker bool) {
 	intent := portal.startHandling(source, info)
 	if intent == nil {
 		return
@@ -1237,7 +1260,15 @@ func (portal *Portal) HandleMediaMessage(source *User, download func() ([]byte, 
 		mimeType = "image/png"
 	}
 
-	uploaded, err := intent.UploadBytes(data, mimeType)
+	var width, height int
+	if strings.HasPrefix(mimeType, "image/") {
+		cfg, _, _ := image.DecodeConfig(bytes.NewReader(data))
+		width, height = cfg.Width, cfg.Height
+	}
+
+	data, uploadMimeType, file := portal.encryptFile(data, mimeType)
+
+	uploaded, err := intent.UploadBytes(data, uploadMimeType)
 	if err != nil {
 		portal.log.Errorfln("Failed to upload media for %s: %v", err)
 		return
@@ -1251,24 +1282,41 @@ func (portal *Portal) HandleMediaMessage(source *User, download func() ([]byte, 
 
 	content := &event.MessageEventContent{
 		Body: fileName,
-		URL:  uploaded.ContentURI.CUString(),
+		File: file,
 		Info: &event.FileInfo{
 			Size:     len(data),
 			MimeType: mimeType,
+			Width:    width,
+			Height:   height,
+			Duration: int(length),
 		},
+	}
+	if content.File != nil {
+		content.File.URL = uploaded.ContentURI.CUString()
+	} else {
+		content.URL = uploaded.ContentURI.CUString()
 	}
 	portal.SetReply(content, context)
 
-	if thumbnail != nil {
+	if thumbnail != nil && portal.bridge.Config.Bridge.WhatsappThumbnail {
 		thumbnailMime := http.DetectContentType(thumbnail)
-		uploadedThumbnail, _ := intent.UploadBytes(thumbnail, thumbnailMime)
-		if uploadedThumbnail != nil {
-			content.Info.ThumbnailURL = uploadedThumbnail.ContentURI.CUString()
-			cfg, _, _ := image.DecodeConfig(bytes.NewReader(data))
+		thumbnailCfg, _, _ := image.DecodeConfig(bytes.NewReader(thumbnail))
+		thumbnailSize := len(thumbnail)
+		thumbnail, thumbnailUploadMime, thumbnailFile := portal.encryptFile(thumbnail, thumbnailMime)
+		uploadedThumbnail, err := intent.UploadBytes(thumbnail, thumbnailUploadMime)
+		if err != nil {
+			portal.log.Warnfln("Failed to upload thumbnail for %s: %v", info.Id, err)
+		} else if uploadedThumbnail != nil {
+			if thumbnailFile != nil {
+				thumbnailFile.URL = uploadedThumbnail.ContentURI.CUString()
+				content.Info.ThumbnailFile = thumbnailFile
+			} else {
+				content.Info.ThumbnailURL = uploadedThumbnail.ContentURI.CUString()
+			}
 			content.Info.ThumbnailInfo = &event.FileInfo{
-				Size:     len(thumbnail),
-				Width:    cfg.Width,
-				Height:   cfg.Height,
+				Size:     thumbnailSize,
+				Width:    thumbnailCfg.Width,
+				Height:   thumbnailCfg.Height,
 				MimeType: thumbnailMime,
 			}
 		}
@@ -1279,9 +1327,6 @@ func (portal *Portal) HandleMediaMessage(source *User, download func() ([]byte, 
 		if !sendAsSticker {
 			content.MsgType = event.MsgImage
 		}
-		cfg, _, _ := image.DecodeConfig(bytes.NewReader(data))
-		content.Info.Width = cfg.Width
-		content.Info.Height = cfg.Height
 	case "video":
 		content.MsgType = event.MsgVideo
 	case "audio":
