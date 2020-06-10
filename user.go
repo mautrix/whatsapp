@@ -694,6 +694,10 @@ func (user *User) HandleDocumentMessage(message whatsapp.DocumentMessage) {
 	user.putMessage(PortalMessage{message.Info.RemoteJid, user, message, message.Info.Timestamp})
 }
 
+func (user *User) HandleContactMessage(message whatsapp.ContactMessage) {
+	user.putMessage(PortalMessage{message.Info.RemoteJid, user, message, message.Info.Timestamp})
+}
+
 func (user *User) HandleMessageRevoke(message whatsappExt.MessageRevocation) {
 	user.putMessage(PortalMessage{message.RemoteJid, user, message, 0})
 }

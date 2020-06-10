@@ -205,6 +205,8 @@ func (portal *Portal) handleMessage(msg PortalMessage) {
 		portal.HandleMediaMessage(msg.source, data.Download, nil, data.Info, data.ContextInfo, data.Type, "", false)
 	case whatsapp.DocumentMessage:
 		portal.HandleMediaMessage(msg.source, data.Download, data.Thumbnail, data.Info, data.ContextInfo, data.Type, data.Title, false)
+	case whatsapp.ContactMessage:
+		portal.HandleContactMessage(msg.source, data)
 	case whatsappExt.MessageRevocation:
 		portal.HandleMessageRevoke(msg.source, data)
 	case FakeMessage:
@@ -1076,6 +1078,45 @@ func (portal *Portal) HandleTextMessage(source *User, message whatsapp.TextMessa
 	}
 
 	portal.bridge.Formatter.ParseWhatsApp(content)
+	portal.SetReply(content, message.ContextInfo)
+
+	_, _ = intent.UserTyping(portal.MXID, false, 0)
+	resp, err := portal.sendMessage(intent, event.EventMessage, content, int64(message.Info.Timestamp*1000))
+	if err != nil {
+		portal.log.Errorfln("Failed to handle message %s: %v", message.Info.Id, err)
+		return
+	}
+	portal.finishHandling(source, message.Info.Source, resp.EventID)
+}
+
+func (portal *Portal) HandleContactMessage(source *User, message whatsapp.ContactMessage) {
+	if !portal.startHandling(message.Info) {
+		return
+	}
+
+	intent := portal.GetMessageIntent(source, message.Info)
+	if intent == nil {
+		return
+	}
+
+	fileName := fmt.Sprintf("%s.vcf", message.DisplayName)
+
+	uploadResp, err := intent.UploadBytesWithName([]byte(message.Vcard), "text/vcard", fileName)
+	if err != nil {
+		portal.log.Errorfln("Failed to upload vcard of %s: %v", message.DisplayName, err)
+		return
+	}
+
+	content := &event.MessageEventContent{
+		Body:    fileName,
+		MsgType: event.MsgFile,
+		URL:     uploadResp.ContentURI.CUString(),
+		Info: &event.FileInfo{
+			MimeType: "text/vcard",
+			Size:     len(message.Vcard),
+		},
+	}
+
 	portal.SetReply(content, message.ContextInfo)
 
 	_, _ = intent.UserTyping(portal.MXID, false, 0)
