@@ -214,10 +214,6 @@ func (portal *Portal) handleMessage(msg PortalMessage) {
 		portal.HandleLocationMessage(msg.source, data)
 	case whatsappExt.MessageRevocation:
 		portal.HandleMessageRevoke(msg.source, data)
-	case whatsapp.LocationMessage:
-		portal.HandleMessageLocation(msg.source, data, data.JpegThumbnail)
-	case whatsapp.ContactMessage:
-		portal.HandleMessageContact(msg.source, data)
 	case FakeMessage:
 		portal.HandleFakeMessage(msg.source, data)
 	default:
@@ -1085,91 +1081,6 @@ func (portal *Portal) HandleFakeMessage(source *User, message FakeMessage) {
 	portal.recentlyHandled[index] = message.ID
 }
 
-func (portal *Portal) HandleMessageLocation(source *User, message whatsapp.LocationMessage, thumbnail []byte) {
-	if !portal.startHandling(message.Info) {
-		return
-	}
-
-	intent := portal.GetMessageIntent(source, message.Info)
-	if intent == nil {
-		return
-	}
-
-	fmt.Println("\nHandleMessageLocation>\n")
-	fmt.Printf("%+v", message)
-	fmt.Println("\nHandleMessageLocation>\n")
-
-	lat:= fmt.Sprintf("%.14f", message.DegreesLatitude)
-	lon:= fmt.Sprintf("%.14f", message.DegreesLongitude)
-
-	name := ""
-	address := ""
-	url := ""
-	if len(message.Name) > 0 {
-		name = message.Name + "\n"
-	}
-	if len(message.Address) > 0 {
-		address = message.Address + "\n"
-	}
-	if len(message.Url) > 0 {
-		url = message.Url + "\n"
-	}
-	content := &event.MessageEventContent{
-		Body: name + address + url + lat + "\n" + lon,
-		//URL: "",
-		MsgType: event.MsgLocation,
-		Info: &event.FileInfo{
-			Size:     len(thumbnail),
-			MimeType: "image/jpeg",
-		},
-	}
-
-	portal.bridge.Formatter.ParseWhatsApp(content)
-	portal.SetReply(content, message.ContextInfo)
-
-	_, _ = intent.UserTyping(portal.MXID, false, 0)
-	resp, err := portal.sendMessage(intent, event.EventMessage, content, int64(message.Info.Timestamp*1000))
-	if err != nil {
-		portal.log.Errorfln("Failed to handle message %s: %v", message.Info.Id, err)
-		return
-	}
-	portal.finishHandling(source, message.Info.Source, resp.EventID)
-}
-
-func (portal *Portal) HandleMessageContact(source *User, message whatsapp.ContactMessage) {
-	if !portal.startHandling(message.Info) {
-		return
-	}
-
-	intent := portal.GetMessageIntent(source, message.Info)
-	if intent == nil {
-		return
-	}
-	infos := strings.Split(message.Vcard, "\n")
-	vCard := ""
-	for index, info := range infos {
-		if index > 2 && index < 6 {
-			infoArr := strings.Split(info, ":")
-			vCard += infoArr[1]+"\n"
-		}
-	}
-	content := &event.MessageEventContent{
-		Body:    vCard,
-		MsgType: "m.contact", // mautrix.MsgLocation
-	}
-
-	portal.bridge.Formatter.ParseWhatsApp(content)
-	portal.SetReply(content, message.ContextInfo)
-
-	_, _ = intent.UserTyping(portal.MXID, false, 0)
-	resp, err := portal.sendMessage(intent, event.EventMessage, content, int64(message.Info.Timestamp*1000))
-	if err != nil {
-		portal.log.Errorfln("Failed to handle message %s: %v", message.Info.Id, err)
-		return
-	}
-	portal.finishHandling(source, message.Info.Source, resp.EventID)
-}
-
 func (portal *Portal) sendMainIntentMessage(content interface{}) (*mautrix.RespSendEvent, error) {
 	return portal.sendMessage(portal.MainIntent(), event.EventMessage, content, 0)
 }
@@ -1216,7 +1127,6 @@ func (portal *Portal) HandleTextMessage(source *User, message whatsapp.TextMessa
 		portal.log.Errorfln("Failed to handle message %s: %v", message.Info.Id, err)
 		return
 	}
-	fmt.Println("\n11111111111\n")
 	portal.finishHandling(source, message.Info.Source, resp.EventID)
 }
 
