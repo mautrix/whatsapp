@@ -855,6 +855,7 @@ func (portal *Portal) CreateMatrixRoom(user *User) error {
 			},
 		},
 	}
+	bridgeInfoStateKey := fmt.Sprintf("net.maunium.whatsapp://whatsapp/%s", portal.Key.JID)
 	initialState := []*event.Event{{
 		Type: event.StatePowerLevels,
 		Content: event.Content{
@@ -863,10 +864,12 @@ func (portal *Portal) CreateMatrixRoom(user *User) error {
 	}, {
 		Type:    StateBridgeInfo,
 		Content: bridgeInfo,
+		StateKey: &bridgeInfoStateKey,
 	}, {
 		// TODO remove this once https://github.com/matrix-org/matrix-doc/pull/2346 is in spec
 		Type:    StateHalfShotBridgeInfo,
 		Content: bridgeInfo,
+		StateKey: &bridgeInfoStateKey,
 	}}
 	if !portal.AvatarURL.IsEmpty() {
 		initialState = append(initialState, &event.Event{
