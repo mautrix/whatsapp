@@ -108,6 +108,9 @@ bridge:
     initial_chat_sync_count: 10
     # Number of old messages to fill when creating new portal rooms.
     initial_history_fill_count: 20
+    # Whether or not notifications should be turned off while filling initial history.
+    # Only applicable when using double puppeting.
+    initial_history_disable_notifications: false
     # Maximum number of chats to sync when recovering from downtime.
     # Set to -1 to sync all new chats during downtime.
     recovery_chat_sync_limit: -1
@@ -138,6 +141,10 @@ bridge:
     # chat portal rooms. This can be useful if the previous field works fine,
     # but causes room avatar/name bugs.
     private_chat_portal_meta: false
+
+    # Whether or not thumbnails from WhatsApp should be sent.
+    # They're disabled by default due to very low resolution.
+    whatsapp_thumbnail: false
 
     # Allow invite permission for user. User can invite any bots to room with whatsapp
     # users (private chat and groups)

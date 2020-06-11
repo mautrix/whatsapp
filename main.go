@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -38,11 +39,35 @@ import (
 	"maunium.net/go/mautrix-whatsapp/types"
 )
 
+var (
+	// These are static
+	Name = "mautrix-whatsapp"
+	URL  = "https://github.com/tulir/mautrix-whatsapp"
+	// This is changed when making a release
+	Version   = "0.1.1"
+	WAVersion = ""
+	// These are filled at build time with the -X linker flag
+	Tag       = "unknown"
+	Commit    = "unknown"
+	BuildTime = "unknown"
+)
+
+func init() {
+	if len(Tag) > 0 && Tag[0] == 'v' {
+		Tag = Tag[1:]
+	}
+	if Tag != Version && !strings.HasSuffix(Version, "+dev") {
+		Version += "+dev"
+	}
+	WAVersion = strings.FieldsFunc(Version, func(r rune) bool { return r == '-' || r == '+' })[0]
+}
+
 var configPath = flag.MakeFull("c", "config", "The path to your config file.", "config.yaml").String()
 
 //var baseConfigPath = flag.MakeFull("b", "base-config", "The path to the example config file.", "example-config.yaml").String()
 var registrationPath = flag.MakeFull("r", "registration", "The path where to save the appservice registration.", "registration.yaml").String()
 var generateRegistration = flag.MakeFull("g", "generate-registration", "Generate registration and quit.", "false").Bool()
+var version = flag.MakeFull("v", "version", "View bridge version and quit.", "false").Bool()
 var ignoreUnsupportedDatabase = flag.Make().LongKey("ignore-unsupported-database").Usage("Run even if database is too new").Default("false").Bool()
 var migrateFrom = flag.Make().LongKey("migrate-db").Usage("Source database type and URI to migrate from.").Bool()
 var wantHelp, _ = flag.MakeHelpFlag()
@@ -376,6 +401,15 @@ func main() {
 	} else if *wantHelp {
 		flag.PrintHelp()
 		os.Exit(0)
+	} else if *version {
+		if Tag == Version {
+			fmt.Printf("%s %s (%s)\n", Name, Tag, BuildTime)
+		} else if len(Commit) > 8 {
+			fmt.Printf("%s %s.%s (%s)\n", Name, Version, Commit[:8], BuildTime)
+		} else {
+			fmt.Printf("%s %s.unknown\n", Name, Version)
+		}
+		return
 	}
 
 	NewBridge().Main()

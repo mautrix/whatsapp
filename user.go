@@ -235,7 +235,7 @@ func (user *User) Connect(evenIfNoSession bool) bool {
 		return false
 	}
 	user.Conn = whatsappExt.ExtendConn(conn)
-	_ = user.Conn.SetClientName("Mautrix-WhatsApp bridge", "mx-wa", "0.1.0")
+	_ = user.Conn.SetClientName("Mautrix-WhatsApp bridge", "mx-wa", WAVersion)
 	user.log.Debugln("WhatsApp connection successful")
 	user.Conn.AddHandler(user)
 	return user.RestoreSession()
@@ -597,7 +597,9 @@ func (user *User) tryReconnect(msg string) {
 		err := user.Conn.Restore()
 		if err == nil {
 			user.ConnectionErrors = 0
-			_, _ = user.bridge.Bot.SendNotice(user.GetManagementRoom(), "Reconnected successfully")
+			if user.bridge.Config.Bridge.ReportConnectionRetry {
+				_, _ = user.bridge.Bot.SendNotice(user.GetManagementRoom(), "Reconnected successfully")
+			}
 			user.PostLogin()
 			return
 		} else if err.Error() == "init responded with 400" {
@@ -689,6 +691,14 @@ func (user *User) HandleAudioMessage(message whatsapp.AudioMessage) {
 }
 
 func (user *User) HandleDocumentMessage(message whatsapp.DocumentMessage) {
+	user.putMessage(PortalMessage{message.Info.RemoteJid, user, message, message.Info.Timestamp})
+}
+
+func (user *User) HandleContactMessage(message whatsapp.ContactMessage) {
+	user.putMessage(PortalMessage{message.Info.RemoteJid, user, message, message.Info.Timestamp})
+}
+
+func (user *User) HandleLocationMessage(message whatsapp.LocationMessage) {
 	user.putMessage(PortalMessage{message.Info.RemoteJid, user, message, message.Info.Timestamp})
 }
 
