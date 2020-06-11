@@ -3,11 +3,8 @@ FROM golang:1-alpine AS builder
 RUN echo "@edge_community http://dl-cdn.alpinelinux.org/alpine/edge/community" >> /etc/apk/repositories
 RUN apk add --no-cache git ca-certificates build-base su-exec olm-dev@edge_community
 
-WORKDIR /build
-COPY go.mod go.sum /build/
-RUN go get
-
 COPY . /build
+WORKDIR /build
 RUN go build -o /usr/bin/mautrix-whatsapp
 
 FROM alpine:latest

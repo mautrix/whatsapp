@@ -14,8 +14,9 @@ stages:
   - apk add build-base olm-dev@edge_community
   - mkdir -p .cache
   - export GOPATH="$CI_PROJECT_DIR/.cache"
+  - export GO_LDFLAGS="-X main.Tag=$CI_COMMIT_TAG -X main.Commit=$CI_COMMIT_SHA -X 'main.BuildTime=`date '+%b %_d %Y, %H:%M:%S'`'"
   script:
-  - go build -o mautrix-whatsapp
+  - go build -ldflags "$GO_LDFLAGS" -o mautrix-whatsapp
   artifacts:
     paths:
     - mautrix-whatsapp
@@ -43,13 +44,14 @@ build static:
   before_script:
   - mkdir -p .cache
   - export GOPATH="$CI_PROJECT_DIR/.cache"
+  - export GO_LDFLAGS="-X main.Tag=$CI_COMMIT_TAG -X main.Commit=$CI_COMMIT_SHA -X 'main.BuildTime=`date '+%b %_d %Y, %H:%M:%S'`'"
   variables:
     CGO_ENABLED: 0
   script:
-  - GOOS=linux GOARCH=amd64 go build -o mautrix-whatsapp_linux_amd64
-  - GOOS=linux GOARCH=arm64 go build -o mautrix-whatsapp_linux_arm64
-  - GOOS=linux GOARCH=arm go build -o mautrix-whatsapp_linux_arm
-  - GOOS=linux GOARCH=386 go build -o mautrix-whatsapp_linux_386
+  - GOOS=linux GOARCH=amd64 go build -ldflags "$GO_LDFLAGS" -o mautrix-whatsapp_linux_amd64
+  - GOOS=linux GOARCH=arm64 go build -ldflags "$GO_LDFLAGS" -o mautrix-whatsapp_linux_arm64
+  - GOOS=linux GOARCH=arm go build -ldflags "$GO_LDFLAGS" -o mautrix-whatsapp_linux_arm
+  - GOOS=linux GOARCH=386 go build -ldflags "$GO_LDFLAGS" -o mautrix-whatsapp_linux_386
   artifacts:
     paths:
     - mautrix-whatsapp_linux_amd64
@@ -94,6 +96,6 @@ manifest:
   script:
   - docker pull $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA-amd64
   - docker pull $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA-arm64
-  - if [ $CI_COMMIT_BRANCH == "master" ]; then docker manifest create $CI_REGISTRY_IMAGE:latest $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA-amd64 $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA-arm64 && docker manifest push $CI_REGISTRY_IMAGE:latest; fi
-  - if [ $CI_COMMIT_BRANCH != "master" ]; then docker manifest create $CI_REGISTRY_IMAGE:$CI_COMMIT_REF_NAME $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA-amd64 $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA-arm64 && docker manifest push $CI_REGISTRY_IMAGE:$CI_COMMIT_REF_NAME; fi
+  - if [ "$CI_COMMIT_BRANCH" = "master" ]; then docker manifest create $CI_REGISTRY_IMAGE:latest $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA-amd64 $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA-arm64 && docker manifest push $CI_REGISTRY_IMAGE:latest; fi
+  - if [ "$CI_COMMIT_BRANCH" != "master" ]; then docker manifest create $CI_REGISTRY_IMAGE:$CI_COMMIT_REF_NAME $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA-amd64 $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA-arm64 && docker manifest push $CI_REGISTRY_IMAGE:$CI_COMMIT_REF_NAME; fi
   - docker rmi $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA-amd64 $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA-arm64
