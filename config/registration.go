@@ -33,6 +33,12 @@ func (config *Config) NewRegistration() (*appservice.Registration, error) {
 
 	config.AppService.ASToken = registration.AppToken
 	config.AppService.HSToken = registration.ServerToken
+
+	// Workaround for https://github.com/matrix-org/synapse/pull/5758
+	registration.SenderLocalpart = appservice.RandomString(32)
+	botRegex := regexp.MustCompile(fmt.Sprintf("^@%s:%s$", config.AppService.Bot.Username, config.Homeserver.Domain))
+	registration.Namespaces.RegisterUserIDs(botRegex, true)
+
 	return registration, nil
 }
 
