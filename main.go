@@ -63,6 +63,25 @@ var (
 		Name: "whatsappbridge_puppets_total",
 		Help: "Total number of Puppets controlled by the bridge",
 	})
+	// users
+	numUsers = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "whatsappbridge_users_total",
+		Help: "Total number of bridge Users",
+	})
+	// rooms
+	numRooms = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "whatsappbridge_rooms_total",
+		Help: "Total number of bridged Rooms",
+	})
+	// Private Chats
+	numPrivate = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "whatsappbridge_private_chats_total",
+		Help: "Total number of private whatsapp chats",
+	})
+	numGroups = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "whatsappbridge_group_chats_total",
+		Help: "Total number of whatsapp group chats",
+	})
 	// messages
 /*	numMessagesRx = promauto.NewGauge(prometheus.GaugeOpts{
 		Name: "whatsappbridge_messages_received_total",
@@ -82,7 +101,7 @@ func recordMetrics(bridge *Bridge) {
 	go func() {
 		for {
 			var val float64 = 0
-			var row, err = bridge.DB.Query("SELECT COUNT(*) FROM mx_registrations")
+			var row, err = bridge.DB.Query("SELECT COUNT(*) FROM puppet")
 			if err != nil || row == nil {
 				break
 			}
@@ -91,25 +110,48 @@ func recordMetrics(bridge *Bridge) {
 				row.Scan(&val)
 			}
 			numPuppets.Set(val)
-			time.Sleep(10 * time.Second)
-		}
-	}()
-/*	go func() {
-		for {
-			numMessagesRx.Set(bridge.DB.Query("SELECT COUNT(*) FROM mx_registrations"))
-			time.Sleep(10 * time.Second)
-		}
-	}()
-	go func() {
-		for {
-			numMessagesTx.Set(bridge.DB.Query("SELECT COUNT(*) FROM mx_registrations"))
-			time.Sleep(10 * time.Second)
-		}
-	}()*/
-	go func() {
-		for {
-			var val float64 = 0
-			var row, err = bridge.DB.Query("SELECT COUNT(*) FROM message")
+
+			row, err = bridge.DB.Query("SELECT COUNT(*) FROM portal WHERE topic='WhatsApp private chat'")
+			if err != nil || row == nil {
+				break
+			}
+			defer row.Close()
+			for row.Next() {
+				row.Scan(&val)
+			}
+			numPrivate.Set(val)
+
+			row, err = bridge.DB.Query("SELECT COUNT(*) FROM portal WHERE name NOT LIKE ''")
+			if err != nil || row == nil {
+				break
+			}
+			defer row.Close()
+			for row.Next() {
+				row.Scan(&val)
+			}
+			numGroups.Set(val)
+
+			row, err = bridge.DB.Query("SELECT COUNT(*) FROM user")
+			if err != nil || row == nil {
+				break
+			}
+			defer row.Close()
+			for row.Next() {
+				row.Scan(&val)
+			}
+			numUsers.Set(val)
+
+			row, err = bridge.DB.Query("SELECT COUNT(*) FROM mx_room_state")
+			if err != nil || row == nil {
+				break
+			}
+			defer row.Close()
+			for row.Next() {
+				row.Scan(&val)
+			}
+			numRooms.Set(val)
+
+			row, err = bridge.DB.Query("SELECT COUNT(*) FROM message")
 			if err != nil || row == nil {
 				break
 			}
@@ -118,6 +160,7 @@ func recordMetrics(bridge *Bridge) {
 				row.Scan(&val)
 			}
 			numMessagesTotal.Set(val)
+
 			time.Sleep(10 * time.Second)
 		}
 	}()
@@ -451,6 +494,9 @@ func (bridge *Bridge) Main() {
 	bridge.Start()
 	bridge.Log.Infoln("Bridge started!")
 
+	http.Handle("/metrics", promhttp.Handler())
+	http.ListenAndServe(":9093", nil)
+
 	c := make(chan os.Signal)
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
 	<-c
@@ -483,9 +529,6 @@ func main() {
 		}
 		return
 	}
-
-	http.Handle("/metrics", promhttp.Handler())
-	http.ListenAndServe(":9093", nil)
 
 	NewBridge().Main()
 }
