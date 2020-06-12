@@ -24,6 +24,7 @@ import (
 	"sync"
 	"syscall"
 	"time"
+	"net/http"
 
 	flag "maunium.net/go/mauflag"
 	log "maunium.net/go/maulogger/v2"
@@ -37,6 +38,10 @@ import (
 	"maunium.net/go/mautrix-whatsapp/database"
 	"maunium.net/go/mautrix-whatsapp/database/upgrades"
 	"maunium.net/go/mautrix-whatsapp/types"
+
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 var (
@@ -51,6 +56,72 @@ var (
 	Commit    = "unknown"
 	BuildTime = "unknown"
 )
+
+var (
+	// puppets
+	numPuppets = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "whatsappbridge_puppets_total",
+		Help: "Total number of Puppets controlled by the bridge",
+	})
+	// messages
+/*	numMessagesRx = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "whatsappbridge_messages_received_total",
+		Help: "Total number of Messages received from whatsapp",
+	})
+	numMessagesTx = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "whatsappbridge_messages_send_total",
+		Help: "Total number of Messages send from Matrix to whatsapp",
+	})*/
+	numMessagesTotal = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "whatsappbridge_messages_bridged_total",
+		Help: "Total number of bridged Messages",
+	})
+)
+
+func recordMetrics(bridge *Bridge) {
+	go func() {
+		for {
+			var val float64 = 0
+			var row, err = bridge.DB.Query("SELECT COUNT(*) FROM mx_registrations")
+			if err != nil || row == nil {
+				break
+			}
+			defer row.Close()
+			for row.Next() {
+				row.Scan(&val)
+			}
+			numPuppets.Set(val)
+			time.Sleep(10 * time.Second)
+		}
+	}()
+/*	go func() {
+		for {
+			numMessagesRx.Set(bridge.DB.Query("SELECT COUNT(*) FROM mx_registrations"))
+			time.Sleep(10 * time.Second)
+		}
+	}()
+	go func() {
+		for {
+			numMessagesTx.Set(bridge.DB.Query("SELECT COUNT(*) FROM mx_registrations"))
+			time.Sleep(10 * time.Second)
+		}
+	}()*/
+	go func() {
+		for {
+			var val float64 = 0
+			var row, err = bridge.DB.Query("SELECT COUNT(*) FROM message")
+			if err != nil || row == nil {
+				break
+			}
+			defer row.Close()
+			for row.Next() {
+				row.Scan(&val)
+			}
+			numMessagesTotal.Set(val)
+			time.Sleep(10 * time.Second)
+		}
+	}()
+}
 
 func init() {
 	if len(Tag) > 0 && Tag[0] == 'v' {
@@ -283,6 +354,7 @@ func (bridge *Bridge) Start() {
 		go bridge.Crypto.Start()
 	}
 	go bridge.StartUsers()
+	recordMetrics(bridge)
 }
 
 func (bridge *Bridge) LoadRelaybot() {
@@ -411,6 +483,9 @@ func main() {
 		}
 		return
 	}
+
+	http.Handle("/metrics", promhttp.Handler())
+	http.ListenAndServe(":9093", nil)
 
 	NewBridge().Main()
 }
