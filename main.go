@@ -482,7 +482,7 @@ func (bridge *Bridge) Main() {
 	bridge.Log.Infoln("Bridge started!")
 
 	http.Handle("/metrics", promhttp.Handler())
-	http.ListenAndServe(":9093", nil)
+	http.ListenAndServe("127.0.0.1:9093", nil)
 
 	c := make(chan os.Signal)
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
