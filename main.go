@@ -78,19 +78,12 @@ var (
 		Name: "whatsappbridge_private_chats_total",
 		Help: "Total number of private whatsapp chats",
 	})
+	// group chats
 	numGroups = promauto.NewGauge(prometheus.GaugeOpts{
 		Name: "whatsappbridge_group_chats_total",
 		Help: "Total number of whatsapp group chats",
 	})
 	// messages
-/*	numMessagesRx = promauto.NewGauge(prometheus.GaugeOpts{
-		Name: "whatsappbridge_messages_received_total",
-		Help: "Total number of Messages received from whatsapp",
-	})
-	numMessagesTx = promauto.NewGauge(prometheus.GaugeOpts{
-		Name: "whatsappbridge_messages_send_total",
-		Help: "Total number of Messages send from Matrix to whatsapp",
-	})*/
 	numMessagesTotal = promauto.NewGauge(prometheus.GaugeOpts{
 		Name: "whatsappbridge_messages_bridged_total",
 		Help: "Total number of bridged Messages",
@@ -102,64 +95,58 @@ func recordMetrics(bridge *Bridge) {
 		for {
 			var val float64 = 0
 			var row, err = bridge.DB.Query("SELECT COUNT(*) FROM puppet")
-			if err != nil || row == nil {
-				break
+			if err == nil || row != nil {
+				defer row.Close()
+				for row.Next() {
+					row.Scan(&val)
+				}
+				numPuppets.Set(val)
 			}
-			defer row.Close()
-			for row.Next() {
-				row.Scan(&val)
-			}
-			numPuppets.Set(val)
 
 			row, err = bridge.DB.Query("SELECT COUNT(*) FROM portal WHERE topic='WhatsApp private chat'")
-			if err != nil || row == nil {
-				break
+			if err == nil || row != nil {
+				defer row.Close()
+				for row.Next() {
+					row.Scan(&val)
+				}
+				numPrivate.Set(val)
 			}
-			defer row.Close()
-			for row.Next() {
-				row.Scan(&val)
-			}
-			numPrivate.Set(val)
 
 			row, err = bridge.DB.Query("SELECT COUNT(*) FROM portal WHERE name NOT LIKE ''")
-			if err != nil || row == nil {
-				break
+			if err == nil || row != nil {
+				defer row.Close()
+				for row.Next() {
+					row.Scan(&val)
+				}
+				numGroups.Set(val)
 			}
-			defer row.Close()
-			for row.Next() {
-				row.Scan(&val)
-			}
-			numGroups.Set(val)
 
 			row, err = bridge.DB.Query("SELECT COUNT(*) FROM user")
-			if err != nil || row == nil {
-				break
+			if err == nil || row != nil {
+				defer row.Close()
+				for row.Next() {
+					row.Scan(&val)
+				}
+				numUsers.Set(val)
 			}
-			defer row.Close()
-			for row.Next() {
-				row.Scan(&val)
-			}
-			numUsers.Set(val)
 
 			row, err = bridge.DB.Query("SELECT COUNT(*) FROM mx_room_state")
-			if err != nil || row == nil {
-				break
+			if err == nil || row != nil {
+				defer row.Close()
+				for row.Next() {
+					row.Scan(&val)
+				}
+				numRooms.Set(val)
 			}
-			defer row.Close()
-			for row.Next() {
-				row.Scan(&val)
-			}
-			numRooms.Set(val)
 
 			row, err = bridge.DB.Query("SELECT COUNT(*) FROM message")
-			if err != nil || row == nil {
-				break
+			if err == nil || row != nil {
+				defer row.Close()
+				for row.Next() {
+					row.Scan(&val)
+				}
+				numMessagesTotal.Set(val)
 			}
-			defer row.Close()
-			for row.Next() {
-				row.Scan(&val)
-			}
-			numMessagesTotal.Set(val)
 
 			time.Sleep(10 * time.Second)
 		}
