@@ -812,22 +812,20 @@ var (
 	StateHalfShotBridgeInfo = event.Type{Type: "uk.half-shot.bridge", Class: event.StateEventType}
 )
 
-func (portal *Portal) getBridgeInfo() (string, event.Content) {
-	bridgeInfo := event.Content{
-		Parsed: BridgeInfoContent{
-			BridgeBot: portal.bridge.Bot.UserID,
-			Creator:   portal.MainIntent().UserID,
-			Protocol: BridgeInfoSection{
-				ID:          "whatsapp",
-				DisplayName: "WhatsApp",
-				AvatarURL:   id.ContentURIString(portal.bridge.Config.AppService.Bot.Avatar),
-				ExternalURL: "https://www.whatsapp.com/",
-			},
-			Channel: BridgeInfoSection{
-				ID:          portal.Key.JID,
-				DisplayName: portal.Name,
-				AvatarURL:   portal.AvatarURL.CUString(),
-			},
+func (portal *Portal) getBridgeInfo() (string, BridgeInfoContent) {
+	bridgeInfo := BridgeInfoContent{
+		BridgeBot: portal.bridge.Bot.UserID,
+		Creator:   portal.MainIntent().UserID,
+		Protocol: BridgeInfoSection{
+			ID:          "whatsapp",
+			DisplayName: "WhatsApp",
+			AvatarURL:   id.ContentURIString(portal.bridge.Config.AppService.Bot.Avatar),
+			ExternalURL: "https://www.whatsapp.com/",
+		},
+		Channel: BridgeInfoSection{
+			ID:          portal.Key.JID,
+			DisplayName: portal.Name,
+			AvatarURL:   portal.AvatarURL.CUString(),
 		},
 	}
 	bridgeInfoStateKey := fmt.Sprintf("net.maunium.whatsapp://whatsapp/%s", portal.Key.JID)
@@ -897,12 +895,12 @@ func (portal *Portal) CreateMatrixRoom(user *User) error {
 		},
 	}, {
 		Type:     StateBridgeInfo,
-		Content:  bridgeInfo,
+		Content:  event.Content{Parsed: bridgeInfo},
 		StateKey: &bridgeInfoStateKey,
 	}, {
 		// TODO remove this once https://github.com/matrix-org/matrix-doc/pull/2346 is in spec
 		Type:     StateHalfShotBridgeInfo,
-		Content:  bridgeInfo,
+		Content:  event.Content{Parsed: bridgeInfo},
 		StateKey: &bridgeInfoStateKey,
 	}}
 	if !portal.AvatarURL.IsEmpty() {
