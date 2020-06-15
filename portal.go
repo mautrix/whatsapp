@@ -342,7 +342,7 @@ func (portal *Portal) SyncParticipants(metadata *whatsappExt.GroupInfo) {
 	}
 }
 
-func (portal *Portal) UpdateAvatar(user *User, avatar *whatsappExt.ProfilePicInfo) bool {
+func (portal *Portal) UpdateAvatar(user *User, avatar *whatsappExt.ProfilePicInfo, updateInfo bool) bool {
 	if avatar == nil {
 		var err error
 		avatar, err = user.Conn.GetProfilePicThumb(portal.Key.JID)
@@ -382,10 +382,13 @@ func (portal *Portal) UpdateAvatar(user *User, avatar *whatsappExt.ProfilePicInf
 		}
 	}
 	portal.Avatar = avatar.Tag
+	if updateInfo {
+		portal.UpdateBridgeInfo()
+	}
 	return true
 }
 
-func (portal *Portal) UpdateName(name string, setBy types.WhatsAppID) bool {
+func (portal *Portal) UpdateName(name string, setBy types.WhatsAppID, updateInfo bool) bool {
 	if portal.Name != name {
 		intent := portal.MainIntent()
 		if len(setBy) > 0 {
@@ -394,6 +397,9 @@ func (portal *Portal) UpdateName(name string, setBy types.WhatsAppID) bool {
 		_, err := intent.SetRoomName(portal.MXID, name)
 		if err == nil {
 			portal.Name = name
+			if updateInfo {
+				portal.UpdateBridgeInfo()
+			}
 			return true
 		}
 		portal.log.Warnln("Failed to set room name:", err)
@@ -401,7 +407,7 @@ func (portal *Portal) UpdateName(name string, setBy types.WhatsAppID) bool {
 	return false
 }
 
-func (portal *Portal) UpdateTopic(topic string, setBy types.WhatsAppID) bool {
+func (portal *Portal) UpdateTopic(topic string, setBy types.WhatsAppID, updateInfo bool) bool {
 	if portal.Topic != topic {
 		intent := portal.MainIntent()
 		if len(setBy) > 0 {
@@ -410,6 +416,9 @@ func (portal *Portal) UpdateTopic(topic string, setBy types.WhatsAppID) bool {
 		_, err := intent.SetRoomTopic(portal.MXID, topic)
 		if err == nil {
 			portal.Topic = topic
+			if updateInfo {
+				portal.UpdateBridgeInfo()
+			}
 			return true
 		}
 		portal.log.Warnln("Failed to set room topic:", err)
@@ -422,8 +431,8 @@ func (portal *Portal) UpdateMetadata(user *User) bool {
 		return false
 	} else if portal.IsStatusBroadcastRoom() {
 		update := false
-		update = portal.UpdateName("WhatsApp Status Broadcast", "") || update
-		update = portal.UpdateTopic("WhatsApp status updates from your contacts", "") || update
+		update = portal.UpdateName("WhatsApp Status Broadcast", "", false) || update
+		update = portal.UpdateTopic("WhatsApp status updates from your contacts", "", false) || update
 		return update
 	}
 	metadata, err := user.Conn.GetGroupMetaData(portal.Key.JID)
@@ -443,8 +452,8 @@ func (portal *Portal) UpdateMetadata(user *User) bool {
 
 	portal.SyncParticipants(metadata)
 	update := false
-	update = portal.UpdateName(metadata.Name, metadata.NameSetBy) || update
-	update = portal.UpdateTopic(metadata.Topic, metadata.TopicSetBy) || update
+	update = portal.UpdateName(metadata.Name, metadata.NameSetBy, false) || update
+	update = portal.UpdateTopic(metadata.Topic, metadata.TopicSetBy, false) || update
 	return update
 }
 
@@ -506,10 +515,11 @@ func (portal *Portal) Sync(user *User, contact whatsapp.Contact) {
 	update := false
 	update = portal.UpdateMetadata(user) || update
 	if !portal.IsStatusBroadcastRoom() {
-		update = portal.UpdateAvatar(user, nil) || update
+		update = portal.UpdateAvatar(user, nil, false) || update
 	}
 	if update {
 		portal.Update()
+		portal.UpdateBridgeInfo()
 	}
 }
 
@@ -802,6 +812,43 @@ var (
 	StateHalfShotBridgeInfo = event.Type{Type: "uk.half-shot.bridge", Class: event.StateEventType}
 )
 
+func (portal *Portal) getBridgeInfo() (string, BridgeInfoContent) {
+	bridgeInfo := BridgeInfoContent{
+		BridgeBot: portal.bridge.Bot.UserID,
+		Creator:   portal.MainIntent().UserID,
+		Protocol: BridgeInfoSection{
+			ID:          "whatsapp",
+			DisplayName: "WhatsApp",
+			AvatarURL:   id.ContentURIString(portal.bridge.Config.AppService.Bot.Avatar),
+			ExternalURL: "https://www.whatsapp.com/",
+		},
+		Channel: BridgeInfoSection{
+			ID:          portal.Key.JID,
+			DisplayName: portal.Name,
+			AvatarURL:   portal.AvatarURL.CUString(),
+		},
+	}
+	bridgeInfoStateKey := fmt.Sprintf("net.maunium.whatsapp://whatsapp/%s", portal.Key.JID)
+	return bridgeInfoStateKey, bridgeInfo
+}
+
+func (portal *Portal) UpdateBridgeInfo() {
+	if len(portal.MXID) == 0 {
+		portal.log.Debugln("Not updating bridge info: no Matrix room created")
+		return
+	}
+	portal.log.Debugln("Updating bridge info...")
+	stateKey, content := portal.getBridgeInfo()
+	_, err := portal.MainIntent().SendStateEvent(portal.MXID, StateBridgeInfo, stateKey, content)
+	if err != nil {
+		portal.log.Warnln("Failed to update m.bridge:", err)
+	}
+	_, err = portal.MainIntent().SendStateEvent(portal.MXID, StateHalfShotBridgeInfo, stateKey, content)
+	if err != nil {
+		portal.log.Warnln("Failed to update uk.half-shot.bridge:", err)
+	}
+}
+
 func (portal *Portal) CreateMatrixRoom(user *User) error {
 	portal.roomCreateLock.Lock()
 	defer portal.roomCreateLock.Unlock()
@@ -837,38 +884,23 @@ func (portal *Portal) CreateMatrixRoom(user *User) error {
 			portal.Name = metadata.Name
 			portal.Topic = metadata.Topic
 		}
-		portal.UpdateAvatar(user, nil)
+		portal.UpdateAvatar(user, nil, false)
 	}
 
-	bridgeInfo := event.Content{
-		Parsed: BridgeInfoContent{
-			BridgeBot: portal.bridge.Bot.UserID,
-			Creator:   portal.MainIntent().UserID,
-			Protocol: BridgeInfoSection{
-				ID:          "whatsapp",
-				DisplayName: "WhatsApp",
-				AvatarURL:   id.ContentURIString(portal.bridge.Config.AppService.Bot.Avatar),
-				ExternalURL: "https://www.whatsapp.com/",
-			},
-			Channel: BridgeInfoSection{
-				ID: portal.Key.JID,
-			},
-		},
-	}
-	bridgeInfoStateKey := fmt.Sprintf("net.maunium.whatsapp://whatsapp/%s", portal.Key.JID)
+	bridgeInfoStateKey, bridgeInfo := portal.getBridgeInfo()
 	initialState := []*event.Event{{
 		Type: event.StatePowerLevels,
 		Content: event.Content{
 			Parsed: portal.GetBasePowerLevels(),
 		},
 	}, {
-		Type:    StateBridgeInfo,
-		Content: bridgeInfo,
+		Type:     StateBridgeInfo,
+		Content:  event.Content{Parsed: bridgeInfo},
 		StateKey: &bridgeInfoStateKey,
 	}, {
 		// TODO remove this once https://github.com/matrix-org/matrix-doc/pull/2346 is in spec
-		Type:    StateHalfShotBridgeInfo,
-		Content: bridgeInfo,
+		Type:     StateHalfShotBridgeInfo,
+		Content:  event.Content{Parsed: bridgeInfo},
 		StateKey: &bridgeInfoStateKey,
 	}}
 	if !portal.AvatarURL.IsEmpty() {

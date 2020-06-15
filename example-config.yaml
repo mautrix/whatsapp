@@ -141,6 +141,10 @@ bridge:
     # chat portal rooms. This can be useful if the previous field works fine,
     # but causes room avatar/name bugs.
     private_chat_portal_meta: false
+    # Set this to true to tell the bridge to re-send m.bridge events to all rooms on the next run.
+    # This field will automatically be changed back to false after it,
+    # except if the config file is not writable.
+    resend_bridge_info: false
 
     # Whether or not thumbnails from WhatsApp should be sent.
     # They're disabled by default due to very low resolution.
