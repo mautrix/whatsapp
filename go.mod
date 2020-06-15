@@ -17,6 +17,7 @@ require (
 	maunium.net/go/mauflag v1.0.0
 	maunium.net/go/maulogger/v2 v2.1.1
 	maunium.net/go/mautrix v0.5.0
+	github.com/prometheus/client_golang v1.6.0
 )
 
 replace github.com/Rhymen/go-whatsapp => github.com/tulir/go-whatsapp v0.2.8
