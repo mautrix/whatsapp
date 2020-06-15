@@ -807,7 +807,7 @@ func (user *User) HandleCommand(cmd whatsappExt.Command) {
 			go puppet.UpdateAvatar(user, cmd.ProfilePicInfo)
 		} else {
 			portal := user.GetPortalByJID(cmd.JID)
-			go portal.UpdateAvatar(user, cmd.ProfilePicInfo)
+			go portal.UpdateAvatar(user, cmd.ProfilePicInfo, true)
 		}
 	case whatsappExt.CommandDisconnect:
 		var msg string
@@ -836,11 +836,11 @@ func (user *User) HandleChatUpdate(cmd whatsappExt.ChatUpdate) {
 
 	switch cmd.Data.Action {
 	case whatsappExt.ChatActionNameChange:
-		go portal.UpdateName(cmd.Data.NameChange.Name, cmd.Data.SenderJID)
+		go portal.UpdateName(cmd.Data.NameChange.Name, cmd.Data.SenderJID, true)
 	case whatsappExt.ChatActionAddTopic:
-		go portal.UpdateTopic(cmd.Data.AddTopic.Topic, cmd.Data.SenderJID)
+		go portal.UpdateTopic(cmd.Data.AddTopic.Topic, cmd.Data.SenderJID, true)
 	case whatsappExt.ChatActionRemoveTopic:
-		go portal.UpdateTopic("", cmd.Data.SenderJID)
+		go portal.UpdateTopic("", cmd.Data.SenderJID, true)
 	case whatsappExt.ChatActionPromote:
 		go portal.ChangeAdminStatus(cmd.Data.PermissionChange.JIDs, true)
 	case whatsappExt.ChatActionDemote:
