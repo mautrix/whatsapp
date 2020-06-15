@@ -283,6 +283,23 @@ func (bridge *Bridge) Start() {
 		go bridge.Crypto.Start()
 	}
 	go bridge.StartUsers()
+
+	if bridge.Config.Bridge.ResendBridgeInfo {
+		go bridge.ResendBridgeInfo()
+	}
+}
+
+func (bridge *Bridge) ResendBridgeInfo() {
+	bridge.Config.Bridge.ResendBridgeInfo = false
+	err := bridge.Config.Save(*configPath)
+	if err != nil {
+		bridge.Log.Errorln("Failed to save config after setting resend_bridge_info to false:", err)
+	}
+	bridge.Log.Infoln("Re-sending bridge info state event to all portals")
+	for _, portal := range bridge.GetAllPortals() {
+		portal.UpdateBridgeInfo()
+	}
+	bridge.Log.Infoln("Finished re-sending bridge info state events")
 }
 
 func (bridge *Bridge) LoadRelaybot() {

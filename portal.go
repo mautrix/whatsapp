@@ -835,6 +835,11 @@ func (portal *Portal) getBridgeInfo() (string, event.Content) {
 }
 
 func (portal *Portal) UpdateBridgeInfo() {
+	if len(portal.MXID) == 0 {
+		portal.log.Debugln("Not updating bridge info: no Matrix room created")
+		return
+	}
+	portal.log.Debugln("Updating bridge info...")
 	stateKey, content := portal.getBridgeInfo()
 	_, err := portal.MainIntent().SendStateEvent(portal.MXID, StateBridgeInfo, stateKey, content)
 	if err != nil {

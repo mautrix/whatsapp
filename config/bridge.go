@@ -62,6 +62,7 @@ type BridgeConfig struct {
 
 	InviteOwnPuppetForBackfilling bool `yaml:"invite_own_puppet_for_backfilling"`
 	PrivateChatPortalMeta         bool `yaml:"private_chat_portal_meta"`
+	ResendBridgeInfo              bool `yaml:"resend_bridge_info"`
 
 	WhatsappThumbnail bool `yaml:"whatsapp_thumbnail"`
 
