@@ -107,7 +107,7 @@ func (handler *CommandHandler) CommandMux(ce *CommandEvent) {
 		handler.CommandHelp(ce)
 	case "version":
 		handler.CommandVersion(ce)
-	case "reconnect":
+	case "reconnect", "connect":
 		handler.CommandReconnect(ce)
 	case "disconnect":
 		handler.CommandDisconnect(ce)
