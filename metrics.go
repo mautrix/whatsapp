@@ -27,6 +27,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	log "maunium.net/go/maulogger/v2"
 	"maunium.net/go/mautrix/event"
+	"maunium.net/go/mautrix/id"
 
 	"maunium.net/go/mautrix-whatsapp/database"
 )
@@ -42,6 +43,7 @@ type MetricsHandler struct {
 
 	messageHandling         *prometheus.HistogramVec
 	countCollection         prometheus.Histogram
+	disconnections          *prometheus.CounterVec
 	puppetCount             prometheus.Gauge
 	userCount               prometheus.Gauge
 	messageCount            prometheus.Gauge
@@ -71,6 +73,10 @@ func NewMetricsHandler(address string, log log.Logger, db *database.Database) *M
 			Name: "whatsapp_count_collection",
 			Help: "Time spent collecting the whatsapp_*_total metrics",
 		}),
+		disconnections: promauto.NewCounterVec(prometheus.CounterOpts{
+			Name: "whatsapp_disconnections",
+			Help: "Number of times a Matrix user has been disconnected from WhatsApp",
+		}, []string{"user_id"}),
 		puppetCount: promauto.NewGauge(prometheus.GaugeOpts{
 			Name: "whatsapp_puppets_total",
 			Help: "Number of WhatsApp users bridged into Matrix",
@@ -91,7 +97,12 @@ func NewMetricsHandler(address string, log log.Logger, db *database.Database) *M
 	}
 }
 
+func noop() {}
+
 func (mh *MetricsHandler) TrackEvent(eventType event.Type) func() {
+	if !mh.running {
+		return noop
+	}
 	start := time.Now()
 	return func() {
 		duration := time.Now().Sub(start)
@@ -99,6 +110,13 @@ func (mh *MetricsHandler) TrackEvent(eventType event.Type) func() {
 			With(prometheus.Labels{"event_type": eventType.Type}).
 			Observe(duration.Seconds())
 	}
+}
+
+func (mh *MetricsHandler) TrackDisconnection(userID id.UserID) {
+	if !mh.running {
+		return
+	}
+	mh.disconnections.With(prometheus.Labels{"user_id": string(userID)}).Inc()
 }
 
 func (mh *MetricsHandler) updateStats() {
