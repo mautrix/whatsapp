@@ -18,6 +18,7 @@ package main
 
 import (
 	"fmt"
+	"net/http"
 	"os"
 	"os/signal"
 	"strings"
@@ -37,6 +38,8 @@ import (
 	"maunium.net/go/mautrix-whatsapp/database"
 	"maunium.net/go/mautrix-whatsapp/database/upgrades"
 	"maunium.net/go/mautrix-whatsapp/types"
+
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 var (
@@ -45,6 +48,7 @@ var (
 	URL  = "https://github.com/tulir/mautrix-whatsapp"
 	// This is changed when making a release
 	Version   = "0.1.1"
+	// This is filled by init()
 	WAVersion = ""
 	// These are filled at build time with the -X linker flag
 	Tag       = "unknown"
@@ -75,19 +79,19 @@ var wantHelp, _ = flag.MakeHelpFlag()
 func (bridge *Bridge) GenerateRegistration() {
 	reg, err := bridge.Config.NewRegistration()
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "Failed to generate registration:", err)
+		_, _ = fmt.Fprintln(os.Stderr, "Failed to generate registration:", err)
 		os.Exit(20)
 	}
 
 	err = reg.Save(*registrationPath)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "Failed to save registration:", err)
+		_, _ = fmt.Fprintln(os.Stderr, "Failed to save registration:", err)
 		os.Exit(21)
 	}
 
 	err = bridge.Config.Save(*configPath)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "Failed to save config:", err)
+		_, _ = fmt.Fprintln(os.Stderr, "Failed to save config:", err)
 		os.Exit(22)
 	}
 	fmt.Println("Registration generated. Add the path to the registration to your Synapse config, restart it, then start the bridge.")
@@ -133,6 +137,7 @@ type Bridge struct {
 	Formatter      *Formatter
 	Relaybot       *User
 	Crypto         Crypto
+	Metrics *MetricsHandler
 
 	usersByMXID         map[id.UserID]*User
 	usersByJID          map[types.WhatsAppID]*User
@@ -170,7 +175,7 @@ func NewBridge() *Bridge {
 	var err error
 	bridge.Config, err = config.Load(*configPath)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "Failed to load config:", err)
+		_, _ = fmt.Fprintln(os.Stderr, "Failed to load config:", err)
 		os.Exit(10)
 	}
 	return bridge
@@ -252,6 +257,7 @@ func (bridge *Bridge) Init() {
 	bridge.MatrixHandler = NewMatrixHandler(bridge)
 	bridge.Formatter = NewFormatter(bridge)
 	bridge.Crypto = NewCryptoHelper(bridge)
+	bridge.Metrics = NewMetricsHandler(bridge.Config.Metrics.Listen, bridge.Log.Sub("Metrics"), bridge.DB)
 }
 
 func (bridge *Bridge) Start() {
@@ -283,6 +289,9 @@ func (bridge *Bridge) Start() {
 		go bridge.Crypto.Start()
 	}
 	go bridge.StartUsers()
+	if bridge.Config.Metrics.Enabled {
+		go bridge.Metrics.Start()
+	}
 
 	if bridge.Config.Bridge.ResendBridgeInfo {
 		go bridge.ResendBridgeInfo()
@@ -367,6 +376,7 @@ func (bridge *Bridge) Stop() {
 		bridge.Crypto.Stop()
 	}
 	bridge.AS.Stop()
+	bridge.Metrics.Stop()
 	bridge.EventProcessor.Stop()
 	for _, user := range bridge.usersByJID {
 		if user.Conn == nil {
@@ -396,6 +406,9 @@ func (bridge *Bridge) Main() {
 	bridge.Start()
 	bridge.Log.Infoln("Bridge started!")
 
+	http.Handle("/metrics", promhttp.Handler())
+	http.ListenAndServe("127.0.0.1:9093", nil)
+
 	c := make(chan os.Signal)
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
 	<-c
@@ -412,7 +425,7 @@ func main() {
 		"mautrix-whatsapp [-h] [-c <path>] [-r <path>] [-g] [--migrate-db <source type> <source uri>]")
 	err := flag.Parse()
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
+		_, _ = fmt.Fprintln(os.Stderr, err)
 		flag.PrintHelp()
 		os.Exit(1)
 	} else if *wantHelp {

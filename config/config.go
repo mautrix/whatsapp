@@ -61,6 +61,11 @@ type Config struct {
 		HSToken string `yaml:"hs_token"`
 	} `yaml:"appservice"`
 
+	Metrics struct {
+		Enabled bool   `yaml:"enabled"`
+		Listen  string `yaml:"listen"`
+	} `yaml:"metrics"`
+
 	Bridge BridgeConfig `yaml:"bridge"`
 
 	Logging appservice.LogConfig `yaml:"logging"`
