@@ -131,7 +131,7 @@ func (helper *CryptoHelper) Decrypt(evt *event.Event) (*event.Event, error) {
 }
 
 func (helper *CryptoHelper) Encrypt(roomID id.RoomID, evtType event.Type, content event.Content) (*event.EncryptedEventContent, error) {
-	encrypted, err := helper.mach.EncryptMegolmEvent(roomID, evtType, content)
+	encrypted, err := helper.mach.EncryptMegolmEvent(roomID, evtType, &content)
 	if err != nil {
 		if err != crypto.SessionExpired && err != crypto.SessionNotShared && err != crypto.NoGroupSession {
 			return nil, err
@@ -145,7 +145,7 @@ func (helper *CryptoHelper) Encrypt(roomID id.RoomID, evtType event.Type, conten
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to share group session")
 		}
-		encrypted, err = helper.mach.EncryptMegolmEvent(roomID, evtType, content)
+		encrypted, err = helper.mach.EncryptMegolmEvent(roomID, evtType, &content)
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to encrypt event after re-sharing group session")
 		}
