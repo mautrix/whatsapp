@@ -199,15 +199,15 @@ func (portal *Portal) handleMessage(msg PortalMessage) {
 	case whatsapp.TextMessage:
 		portal.HandleTextMessage(msg.source, data)
 	case whatsapp.ImageMessage:
-		portal.HandleMediaMessage(msg.source, data.Download, data.Thumbnail, data.Info, data.ContextInfo, data.Type, data.Caption, 0, false)
+		portal.HandleMediaMessage(msg.source, data.Download, data.Thumbnail, data.Info, data.ContextInfo, data.Type, data.Caption, "", 0, false)
 	case whatsapp.StickerMessage:
-		portal.HandleMediaMessage(msg.source, data.Download, nil, data.Info, data.ContextInfo, data.Type, "", 0, true)
+		portal.HandleMediaMessage(msg.source, data.Download, nil, data.Info, data.ContextInfo, data.Type, "", "", 0, true)
 	case whatsapp.VideoMessage:
-		portal.HandleMediaMessage(msg.source, data.Download, data.Thumbnail, data.Info, data.ContextInfo, data.Type, data.Caption, data.Length, false)
+		portal.HandleMediaMessage(msg.source, data.Download, data.Thumbnail, data.Info, data.ContextInfo, data.Type, data.Caption, "", data.Length, false)
 	case whatsapp.AudioMessage:
-		portal.HandleMediaMessage(msg.source, data.Download, nil, data.Info, data.ContextInfo, data.Type, "", data.Length, false)
+		portal.HandleMediaMessage(msg.source, data.Download, nil, data.Info, data.ContextInfo, data.Type, "", "", data.Length, false)
 	case whatsapp.DocumentMessage:
-		portal.HandleMediaMessage(msg.source, data.Download, data.Thumbnail, data.Info, data.ContextInfo, data.Type, data.Title, 0, false)
+		portal.HandleMediaMessage(msg.source, data.Download, data.Thumbnail, data.Info, data.ContextInfo, data.Type, "", data.Title, 0, false)
 	case whatsapp.ContactMessage:
 		portal.HandleContactMessage(msg.source, data)
 	case whatsapp.LocationMessage:
@@ -1253,7 +1253,7 @@ func (portal *Portal) encryptFile(data []byte, mimeType string) ([]byte, string,
 
 }
 
-func (portal *Portal) HandleMediaMessage(source *User, download func() ([]byte, error), thumbnail []byte, info whatsapp.MessageInfo, context whatsapp.ContextInfo, mimeType, caption string, length uint32, sendAsSticker bool) {
+func (portal *Portal) HandleMediaMessage(source *User, download func() ([]byte, error), thumbnail []byte, info whatsapp.MessageInfo, context whatsapp.ContextInfo, mimeType, caption, fileName string, length uint32, sendAsSticker bool) {
 	intent := portal.startHandling(source, info)
 	if intent == nil {
 		return
@@ -1309,10 +1309,13 @@ func (portal *Portal) HandleMediaMessage(source *User, download func() ([]byte, 
 		return
 	}
 
-	fileName := info.Id
-	exts, _ := mime.ExtensionsByType(mimeType)
-	if exts != nil && len(exts) > 0 {
-		fileName += exts[0]
+	if fileName == "" {
+		fileName = info.Id
+
+		exts, _ := mime.ExtensionsByType(mimeType)
+		if exts != nil && len(exts) > 0 {
+			fileName += exts[0]
+		}
 	}
 
 	content := &event.MessageEventContent{
