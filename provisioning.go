@@ -247,9 +247,9 @@ func (prov *ProvisioningAPI) Ping(w http.ResponseWriter, r *http.Request) {
 			"is_logged_in":         user.Conn.IsLoggedIn(),
 			"is_login_in_progress": user.Conn.IsLoginInProgress(),
 		}
-		ok, err := user.Conn.AdminTest()
+		err := user.Conn.AdminTest()
 		wa["ping"] = map[string]interface{}{
-			"ok":  ok,
+			"ok":  err == nil,
 			"err": err,
 		}
 	}

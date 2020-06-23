@@ -412,19 +412,13 @@ func (handler *CommandHandler) CommandPing(ce *CommandEvent) {
 		}
 	} else if ce.User.Conn == nil {
 		ce.Reply("You don't have a WhatsApp connection.")
-	} else if ok, err := ce.User.Conn.AdminTest(); err != nil {
+	} else if err := ce.User.Conn.AdminTest(); err != nil {
 		if ce.User.IsLoginInProgress() {
 			ce.Reply("Connection not OK: %v, but login in progress", err)
 		} else {
 			ce.Reply("Connection not OK: %v", err)
 		}
-	} else if !ok {
-		if ce.User.IsLoginInProgress() {
-			ce.Reply("Connection not OK, but no error received and login in progress")
-		} else {
-			ce.Reply("Connection not OK, but no error received")
-		}
-	} else {
+	}  else {
 		ce.Reply("Connection to WhatsApp OK")
 	}
 }
