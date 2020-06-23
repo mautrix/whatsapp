@@ -15,7 +15,7 @@ require (
 	gopkg.in/yaml.v2 v2.3.0
 	maunium.net/go/mauflag v1.0.0
 	maunium.net/go/maulogger/v2 v2.1.1
-	maunium.net/go/mautrix v0.5.1
+	maunium.net/go/mautrix v0.5.2
 	github.com/prometheus/client_golang v1.6.0
 )
 
