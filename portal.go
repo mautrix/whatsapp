@@ -805,6 +805,12 @@ func (portal *Portal) handleHistory(user *User, messages []interface{}) {
 		}
 		data := whatsapp.ParseProtoMessage(message)
 		if data == nil {
+			st := message.GetMessageStubType()
+			// Ignore some types that are known to fail
+			if st == waProto.WebMessageInfo_CALL_MISSED_VOICE || st == waProto.WebMessageInfo_CALL_MISSED_VIDEO ||
+				st == waProto.WebMessageInfo_CALL_MISSED_GROUP_VOICE || st == waProto.WebMessageInfo_CALL_MISSED_GROUP_VIDEO {
+				continue
+			}
 			portal.log.Warnln("Message", message.GetKey().GetId(), "failed to parse during backfilling")
 			continue
 		}
