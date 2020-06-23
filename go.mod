@@ -19,4 +19,4 @@ require (
 	github.com/prometheus/client_golang v1.6.0
 )
 
-replace github.com/Rhymen/go-whatsapp => github.com/tulir/go-whatsapp v0.3.1
+replace github.com/Rhymen/go-whatsapp => github.com/tulir/go-whatsapp v0.3.2
