@@ -77,9 +77,8 @@ func (helper *CryptoHelper) Init() error {
 	helper.log.Debugln("Logged in as bridge bot with device ID", helper.client.DeviceID)
 	logger := &cryptoLogger{helper.baseLog}
 	stateStore := &cryptoStateStore{helper.bridge}
-	helper.store = database.NewSQLCryptoStore(helper.bridge.DB, helper.client.DeviceID)
-	helper.store.UserID = helper.client.UserID
-	helper.store.GhostIDFormat = fmt.Sprintf("@%s:%s", helper.bridge.Config.Bridge.FormatUsername("%"), helper.bridge.AS.HomeserverDomain)
+	helper.store = database.NewSQLCryptoStore(helper.bridge.DB, helper.client.DeviceID, helper.client.UserID,
+		fmt.Sprintf("@%s:%s", helper.bridge.Config.Bridge.FormatUsername("%"), helper.bridge.AS.HomeserverDomain))
 	helper.mach = crypto.NewOlmMachine(helper.client, logger, helper.store, stateStore)
 
 	helper.client.Logger = logger.int.Sub("Bot")
