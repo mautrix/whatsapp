@@ -26,10 +26,14 @@ import (
 	"image/gif"
 	"image/jpeg"
 	"image/png"
+	"io/ioutil"
 	"math"
 	"math/rand"
 	"mime"
 	"net/http"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"sync"
@@ -1481,6 +1485,53 @@ func (portal *Portal) downloadThumbnail(content *event.MessageEventContent, id i
 	return buf.Bytes()
 }
 
+func (portal *Portal) convertGifToVideo(gif []byte) ([]byte, error) {
+	dir, err := ioutil.TempDir("", "gif-convert-*")
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to make temp dir")
+	}
+	defer os.RemoveAll(dir)
+
+	inputFile, err := os.OpenFile(filepath.Join(dir, "input.gif"), os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed open input file")
+	}
+	_, err = inputFile.Write(gif)
+	if err != nil {
+		_ = inputFile.Close()
+		return nil, errors.Wrap(err, "failed to write gif to input file")
+	}
+	_ = inputFile.Close()
+
+	outputFileName := filepath.Join(dir, "output.mp4")
+	cmd := exec.Command("ffmpeg", "-hide_banner", "-loglevel", "warning",
+		"-f", "gif", "-i", inputFile.Name(),
+		"-pix_fmt", "yuv420p", "-c:v", "libx264", "-movflags", "+faststart",
+		"-filter:v", "crop='floor(in_w/2)*2:floor(in_h/2)*2'",
+		outputFileName)
+	vcLog := portal.log.Sub("VideoConverter").WithDefaultLevel(log.LevelWarn)
+	cmd.Stdout = vcLog
+	cmd.Stderr = vcLog
+
+	err = cmd.Run()
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to run ffmpeg")
+	}
+	outputFile, err := os.OpenFile(filepath.Join(dir, "output.mp4"), os.O_RDONLY, 0)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to open output file")
+	}
+	defer func() {
+		_ = outputFile.Close()
+		_ = os.Remove(outputFile.Name())
+	}()
+	mp4, err := ioutil.ReadAll(outputFile)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to read mp4 from output file")
+	}
+	return mp4, nil
+}
+
 func (portal *Portal) preprocessMatrixMedia(sender *User, relaybotFormatted bool, content *event.MessageEventContent, eventID id.EventID, mediaType whatsapp.MediaType) *MediaUpload {
 	var caption string
 	if relaybotFormatted {
@@ -1509,6 +1560,14 @@ func (portal *Portal) preprocessMatrixMedia(sender *User, relaybotFormatted bool
 			portal.log.Errorfln("Failed to decrypt media in %s: %v", eventID, err)
 			return nil
 		}
+	}
+	if mediaType == whatsapp.MediaVideo && content.GetInfo().MimeType == "image/gif" {
+		data, err = portal.convertGifToVideo(data)
+		if err != nil {
+			portal.log.Errorfln("Failed to convert gif to mp4 in %s: %v", eventID, err)
+			return nil
+		}
+		content.Info.MimeType = "video/mp4"
 	}
 
 	url, mediaKey, fileEncSHA256, fileSHA256, fileLength, err := sender.Conn.Upload(bytes.NewReader(data), mediaType)
@@ -1628,6 +1687,8 @@ func (portal *Portal) convertMatrixMessage(sender *User, evt *event.Event) (*waP
 	}
 	if evt.Type == event.EventSticker {
 		content.MsgType = event.MsgImage
+	} else if content.MsgType == event.MsgImage && content.GetInfo().MimeType == "image/gif" {
+		content.MsgType = event.MsgVideo
 	}
 
 	switch content.MsgType {
@@ -1667,6 +1728,7 @@ func (portal *Portal) convertMatrixMessage(sender *User, evt *event.Event) (*waP
 			FileLength:    &media.FileLength,
 		}
 	case event.MsgVideo:
+		gifPlayback := content.GetInfo().MimeType == "image/gif"
 		media := portal.preprocessMatrixMedia(sender, relaybotFormatted, content, evt.ID, whatsapp.MediaVideo)
 		if media == nil {
 			return nil, sender
@@ -1678,6 +1740,7 @@ func (portal *Portal) convertMatrixMessage(sender *User, evt *event.Event) (*waP
 			Url:           &media.URL,
 			MediaKey:      media.MediaKey,
 			Mimetype:      &content.GetInfo().MimeType,
+			GifPlayback:   &gifPlayback,
 			Seconds:       &duration,
 			FileEncSha256: media.FileEncSHA256,
 			FileSha256:    media.FileSHA256,
