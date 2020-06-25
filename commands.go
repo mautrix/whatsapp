@@ -129,7 +129,7 @@ func (handler *CommandHandler) CommandMux(ce *CommandEvent) {
 		handler.CommandSetPowerLevel(ce)
 	case "logout":
 		handler.CommandLogout(ce)
-	case "login-matrix", "sync", "list", "open", "pm", "invite-link":
+	case "login-matrix", "sync", "list", "open", "pm", "invite-link", "join":
 		if !ce.User.HasSession() {
 			ce.Reply("You are not logged in. Use the `login` command to log into WhatsApp.")
 			return
@@ -151,6 +151,8 @@ func (handler *CommandHandler) CommandMux(ce *CommandEvent) {
 			handler.CommandPM(ce)
 		case "invite-link":
 			handler.CommandInviteLink(ce)
+		case "join":
+			handler.CommandJoin(ce)
 		}
 	default:
 		ce.Reply("Unknown Command")
@@ -208,7 +210,41 @@ func (handler *CommandHandler) CommandInviteLink(ce *CommandEvent) {
 		ce.Reply("Failed to get invite link: %v", err)
 		return
 	}
-	ce.Reply("https://chat.whatsapp.com/%s", link)
+	ce.Reply("%s%s", inviteLinkPrefix, link)
+}
+
+const cmdJoinHelp = `join <invite link> - Join a group chat with an invite link.`
+const inviteLinkPrefix = "https://chat.whatsapp.com/"
+
+func (handler *CommandHandler) CommandJoin(ce *CommandEvent) {
+	if len(ce.Args) == 0 {
+		ce.Reply("**Usage:** `join <invite link>`")
+		return
+	} else if len(ce.Args[0]) <= len(inviteLinkPrefix) || ce.Args[0][:len(inviteLinkPrefix)] != inviteLinkPrefix {
+		ce.Reply("That doesn't look like a WhatsApp invite link")
+		return
+	}
+
+	jid, err := ce.User.Conn.GroupAcceptInviteCode(ce.Args[0][len(inviteLinkPrefix):])
+	if err != nil {
+		ce.Reply("Failed to join group: %v", err)
+		return
+	}
+
+	handler.log.Debugln("%s successfully joined group %s", ce.User.MXID, jid)
+	portal := handler.bridge.GetPortalByJID(database.GroupPortalKey(jid))
+	if len(portal.MXID) > 0 {
+		portal.Sync(ce.User, whatsapp.Contact{Jid: portal.Key.JID})
+		ce.Reply("Successfully joined group \"%s\" and synced portal room", portal.Name)
+	} else {
+		err = portal.CreateMatrixRoom(ce.User)
+		if err != nil {
+			ce.Reply("Failed to create portal room: %v", err)
+			return
+		}
+
+		ce.Reply("Successfully joined group \"%s\" and created portal room", portal.Name)
+	}
 }
 
 const cmdSetPowerLevelHelp = `set-pl [user ID] <power level> - Change the power level in a portal room. Only for bridge admins.`
@@ -470,6 +506,7 @@ func (handler *CommandHandler) CommandHelp(ce *CommandEvent) {
 		cmdPrefix + cmdOpenHelp,
 		cmdPrefix + cmdPMHelp,
 		cmdPrefix + cmdInviteLinkHelp,
+		cmdPrefix + cmdJoinHelp,
 		cmdPrefix + cmdSetPowerLevelHelp,
 		cmdPrefix + cmdDeletePortalHelp,
 		cmdPrefix + cmdDeleteAllPortalsHelp,
