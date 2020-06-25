@@ -1929,6 +1929,35 @@ func (portal *Portal) Delete() {
 	portal.bridge.portalsLock.Unlock()
 }
 
+func (portal *Portal) GetMatrixUsers() ([]id.UserID, error) {
+	members, err := portal.MainIntent().JoinedMembers(portal.MXID)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to get member list")
+	}
+	var users []id.UserID
+	for userID := range members.Joined {
+		_, isPuppet := portal.bridge.ParsePuppetMXID(userID)
+		if !isPuppet && userID != portal.bridge.Bot.UserID {
+			users = append(users, userID)
+		}
+	}
+	return users, nil
+}
+
+func (portal *Portal) CleanupIfEmpty() {
+	users, err := portal.GetMatrixUsers()
+	if err != nil {
+		portal.log.Errorfln("Failed to get Matrix user list to determine if portal needs to be cleaned up: %v", err)
+		return
+	}
+
+	if len(users) == 0 {
+		portal.log.Infoln("Room seems to be empty, cleaning up...")
+		portal.Delete()
+		portal.Cleanup(false)
+	}
+}
+
 func (portal *Portal) Cleanup(puppetsOnly bool) {
 	if len(portal.MXID) == 0 {
 		return
@@ -1975,9 +2004,25 @@ func (portal *Portal) HandleMatrixLeave(sender *User) {
 		portal.Delete()
 		portal.Cleanup(false)
 		return
+	} else {
+		resp, err := sender.Conn.LeaveGroup(portal.Key.JID)
+		if err != nil {
+			portal.log.Errorfln("Failed to leave group as %s: %v", sender.MXID, err)
+			return
+		}
+		portal.log.Infoln("Leave response:", <-resp)
+		portal.CleanupIfEmpty()
 	}
 }
 
 func (portal *Portal) HandleMatrixKick(sender *User, event *event.Event) {
-	// TODO
+	puppet := portal.bridge.GetPuppetByMXID(id.UserID(event.GetStateKey()))
+	if puppet != nil {
+		resp, err := sender.Conn.RemoveMember(portal.Key.JID, []string{puppet.JID})
+		if err != nil {
+			portal.log.Errorfln("Failed to kick %s from group as %s: %v", puppet.JID, sender.MXID, err)
+			return
+		}
+		portal.log.Infoln("Kick %s response: %s", puppet.JID, <-resp)
+	}
 }

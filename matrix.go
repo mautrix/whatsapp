@@ -142,6 +142,7 @@ func (mx *MatrixHandler) HandleMembership(evt *event.Event) {
 	content := evt.Content.AsMember()
 	if content.Membership == event.MembershipInvite && id.UserID(evt.GetStateKey()) == mx.as.BotMXID() {
 		mx.HandleBotInvite(evt)
+		return
 	}
 
 	portal := mx.bridge.GetPortalByMXID(evt.RoomID)

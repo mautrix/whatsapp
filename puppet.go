@@ -23,7 +23,6 @@ import (
 	"strings"
 
 	"github.com/Rhymen/go-whatsapp"
-
 	log "maunium.net/go/maulogger/v2"
 
 	"maunium.net/go/mautrix/appservice"
@@ -34,13 +33,13 @@ import (
 	"maunium.net/go/mautrix-whatsapp/whatsapp-ext"
 )
 
+var userIDRegex *regexp.Regexp
+
 func (bridge *Bridge) ParsePuppetMXID(mxid id.UserID) (types.WhatsAppID, bool) {
-	userIDRegex, err := regexp.Compile(fmt.Sprintf("^@%s:%s$",
-		bridge.Config.Bridge.FormatUsername("([0-9]+)"),
-		bridge.Config.Homeserver.Domain))
-	if err != nil {
-		bridge.Log.Warnln("Failed to compile puppet user ID regex:", err)
-		return "", false
+	if userIDRegex == nil {
+		userIDRegex = regexp.MustCompile(fmt.Sprintf("^@%s:%s$",
+			bridge.Config.Bridge.FormatUsername("([0-9]+)"),
+			bridge.Config.Homeserver.Domain))
 	}
 	match := userIDRegex.FindStringSubmatch(string(mxid))
 	if match == nil || len(match) != 2 {
