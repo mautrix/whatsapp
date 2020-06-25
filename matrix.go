@@ -77,32 +77,32 @@ func (mx *MatrixHandler) HandleBotInvite(evt *event.Event) {
 
 	resp, err := intent.JoinRoomByID(evt.RoomID)
 	if err != nil {
-		mx.log.Debugln("Failed to join room", evt.RoomID, "with invite from", evt.Sender)
+		mx.log.Debugfln("Failed to join room %s with invite from %s: %v", evt.RoomID, evt.Sender, err)
 		return
 	}
 
 	members, err := intent.JoinedMembers(resp.RoomID)
 	if err != nil {
-		mx.log.Debugln("Failed to get members in room", resp.RoomID, "after accepting invite from", evt.Sender)
-		intent.LeaveRoom(resp.RoomID)
+		mx.log.Debugfln("Failed to get members in room %s after accepting invite from %s: %v", resp.RoomID, evt.Sender, err)
+		_, _ = intent.LeaveRoom(resp.RoomID)
 		return
 	}
 
 	if len(members.Joined) < 2 {
 		mx.log.Debugln("Leaving empty room", resp.RoomID, "after accepting invite from", evt.Sender)
-		intent.LeaveRoom(resp.RoomID)
+		_, _ = intent.LeaveRoom(resp.RoomID)
 		return
 	}
 
 	if !user.Whitelisted {
-		intent.SendNotice(resp.RoomID, "You are not whitelisted to use this bridge.\n"+
+		_, _ = intent.SendNotice(resp.RoomID, "You are not whitelisted to use this bridge.\n"+
 			"If you're the owner of this bridge, see the bridge.permissions section in your config file.")
-		intent.LeaveRoom(resp.RoomID)
+		_, _ = intent.LeaveRoom(resp.RoomID)
 		return
 	}
 
 	if evt.RoomID == mx.bridge.Config.Bridge.Relaybot.ManagementRoom {
-		intent.SendNotice(evt.RoomID, "This is the relaybot management room. Send `!wa help` to get a list of commands.")
+		_, _ = intent.SendNotice(evt.RoomID, "This is the relaybot management room. Send `!wa help` to get a list of commands.")
 		mx.log.Debugln("Joined relaybot management room", evt.RoomID, "after invite from", evt.Sender)
 		return
 	}
