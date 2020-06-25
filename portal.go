@@ -1281,6 +1281,53 @@ func (portal *Portal) encryptFile(data []byte, mimeType string) ([]byte, string,
 	return file.Encrypt(data), "application/octet-stream", file
 }
 
+func (portal *Portal) tryKickUser(userID id.UserID, intent *appservice.IntentAPI) error {
+	_, err := intent.KickUser(portal.MXID, &mautrix.ReqKickUser{UserID: userID})
+	if err != nil {
+		httpErr, ok := err.(mautrix.HTTPError)
+		if ok && httpErr.RespError != nil && httpErr.RespError.ErrCode == "M_FORBIDDEN" {
+			_, err = portal.MainIntent().KickUser(portal.MXID, &mautrix.ReqKickUser{UserID: userID})
+		}
+	}
+	return err
+}
+
+func (portal *Portal) removeUser(isSameUser bool, kicker *appservice.IntentAPI, target id.UserID, targetIntent *appservice.IntentAPI) {
+	if !isSameUser || targetIntent == nil {
+		err := portal.tryKickUser(target, kicker)
+		if err != nil {
+			portal.log.Warnfln("Failed to kick %s from %s: %v", target, portal.MXID, err)
+			if targetIntent != nil {
+				_, _ = targetIntent.LeaveRoom(portal.MXID)
+			}
+		}
+	} else {
+		_, err := targetIntent.LeaveRoom(portal.MXID)
+		if err != nil {
+			portal.log.Warnfln("Failed to leave portal as %s: %v", target, err)
+			_, _ = portal.MainIntent().KickUser(portal.MXID, &mautrix.ReqKickUser{UserID: target})
+		}
+	}
+}
+
+func (portal *Portal) HandleWhatsAppKick(senderJID string, jids []string) {
+	sender := portal.bridge.GetPuppetByJID(senderJID)
+	senderIntent := sender.IntentFor(portal)
+	for _, jid := range jids {
+		puppet := portal.bridge.GetPuppetByJID(jid)
+		portal.removeUser(puppet.JID == sender.JID, senderIntent, puppet.MXID, puppet.DefaultIntent())
+
+		user := portal.bridge.GetUserByJID(jid)
+		if user != nil {
+			var customIntent *appservice.IntentAPI
+			if puppet.CustomMXID == user.MXID {
+				customIntent = puppet.CustomIntent()
+			}
+			portal.removeUser(puppet.JID == sender.JID, senderIntent, user.MXID, customIntent)
+		}
+	}
+}
+
 type base struct {
 	download func() ([]byte, error)
 	info     whatsapp.MessageInfo
@@ -2005,6 +2052,7 @@ func (portal *Portal) HandleMatrixLeave(sender *User) {
 		portal.Cleanup(false)
 		return
 	} else {
+		// TODO should we somehow deduplicate this call if this leave was sent by the bridge?
 		resp, err := sender.Conn.LeaveGroup(portal.Key.JID)
 		if err != nil {
 			portal.log.Errorfln("Failed to leave group as %s: %v", sender.MXID, err)
@@ -2015,8 +2063,8 @@ func (portal *Portal) HandleMatrixLeave(sender *User) {
 	}
 }
 
-func (portal *Portal) HandleMatrixKick(sender *User, event *event.Event) {
-	puppet := portal.bridge.GetPuppetByMXID(id.UserID(event.GetStateKey()))
+func (portal *Portal) HandleMatrixKick(sender *User, evt *event.Event) {
+	puppet := portal.bridge.GetPuppetByMXID(id.UserID(evt.GetStateKey()))
 	if puppet != nil {
 		resp, err := sender.Conn.RemoveMember(portal.Key.JID, []string{puppet.JID})
 		if err != nil {
@@ -2024,5 +2072,17 @@ func (portal *Portal) HandleMatrixKick(sender *User, event *event.Event) {
 			return
 		}
 		portal.log.Infoln("Kick %s response: %s", puppet.JID, <-resp)
+	}
+}
+
+func (portal *Portal) HandleMatrixInvite(sender *User, evt *event.Event) {
+	puppet := portal.bridge.GetPuppetByMXID(id.UserID(evt.GetStateKey()))
+	if puppet != nil {
+		resp, err := sender.Conn.AddMember(portal.Key.JID, []string{puppet.JID})
+		if err != nil {
+			portal.log.Errorfln("Failed to add %s to group as %s: %v", puppet.JID, sender.MXID, err)
+			return
+		}
+		portal.log.Infoln("Add %s response: %s", puppet.JID, <-resp)
 	}
 }

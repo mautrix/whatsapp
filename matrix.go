@@ -155,8 +155,10 @@ func (mx *MatrixHandler) HandleMembership(evt *event.Event) {
 		return
 	}
 
+	isSelf := id.UserID(evt.GetStateKey()) == evt.Sender
+
 	if content.Membership == event.MembershipLeave {
-		if id.UserID(evt.GetStateKey()) == evt.Sender {
+		if isSelf {
 			if evt.Unsigned.PrevContent != nil {
 				_ = evt.Unsigned.PrevContent.ParseRaw(evt.Type)
 				prevContent, ok := evt.Unsigned.PrevContent.Parsed.(*event.MemberEventContent)
@@ -169,6 +171,8 @@ func (mx *MatrixHandler) HandleMembership(evt *event.Event) {
 		} else {
 			portal.HandleMatrixKick(user, evt)
 		}
+	} else if content.Membership == event.MembershipInvite && !isSelf {
+		portal.HandleMatrixInvite(user, evt)
 	}
 }
 

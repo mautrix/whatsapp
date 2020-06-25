@@ -861,6 +861,14 @@ func (user *User) HandleChatUpdate(cmd whatsappExt.ChatUpdate) {
 
 	portal := user.GetPortalByJID(cmd.JID)
 	if len(portal.MXID) == 0 {
+		if cmd.Data.Action == whatsappExt.ChatActionIntroduce && cmd.Data.SenderJID != "unknown" {
+			go func() {
+				err := portal.CreateMatrixRoom(user)
+				if err != nil {
+					user.log.Errorln("Failed to create portal room after receiving join event:", err)
+				}
+			}()
+		}
 		return
 	}
 
@@ -872,13 +880,19 @@ func (user *User) HandleChatUpdate(cmd whatsappExt.ChatUpdate) {
 	case whatsappExt.ChatActionRemoveTopic:
 		go portal.UpdateTopic("", cmd.Data.SenderJID, true)
 	case whatsappExt.ChatActionPromote:
-		go portal.ChangeAdminStatus(cmd.Data.PermissionChange.JIDs, true)
+		go portal.ChangeAdminStatus(cmd.Data.UserChange.JIDs, true)
 	case whatsappExt.ChatActionDemote:
-		go portal.ChangeAdminStatus(cmd.Data.PermissionChange.JIDs, false)
+		go portal.ChangeAdminStatus(cmd.Data.UserChange.JIDs, false)
 	case whatsappExt.ChatActionAnnounce:
 		go portal.RestrictMessageSending(cmd.Data.Announce)
 	case whatsappExt.ChatActionRestrict:
 		go portal.RestrictMetadataChanges(cmd.Data.Restrict)
+	case whatsappExt.ChatActionRemove:
+		go portal.HandleWhatsAppKick(cmd.Data.SenderJID, cmd.Data.UserChange.JIDs)
+	case whatsappExt.ChatActionIntroduce:
+		if cmd.Data.SenderJID != "unknown" {
+			go portal.Sync(user, whatsapp.Contact{Jid: portal.Key.JID})
+		}
 	}
 }
 

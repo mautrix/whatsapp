@@ -235,7 +235,7 @@ func (handler *CommandHandler) CommandJoin(ce *CommandEvent) {
 	portal := handler.bridge.GetPortalByJID(database.GroupPortalKey(jid))
 	if len(portal.MXID) > 0 {
 		portal.Sync(ce.User, whatsapp.Contact{Jid: portal.Key.JID})
-		ce.Reply("Successfully joined group \"%s\" and synced portal room", portal.Name)
+		ce.Reply("Successfully joined group \"%s\" and synced portal room: [%s](https://matrix.to/#/%s)", portal.Name, portal.Name, portal.MXID)
 	} else {
 		err = portal.CreateMatrixRoom(ce.User)
 		if err != nil {
@@ -243,7 +243,7 @@ func (handler *CommandHandler) CommandJoin(ce *CommandEvent) {
 			return
 		}
 
-		ce.Reply("Successfully joined group \"%s\" and created portal room", portal.Name)
+		ce.Reply("Successfully joined group \"%s\" and created portal room: [%s](https://matrix.to/#/%s)", portal.Name, portal.Name, portal.MXID)
 	}
 }
 

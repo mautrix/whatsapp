@@ -46,6 +46,7 @@ const (
 	ChatActionPromote     ChatActionType = "promote"
 	ChatActionDemote      ChatActionType = "demote"
 	ChatActionIntroduce   ChatActionType = "introduce"
+	ChatActionRemove      ChatActionType = "remove"
 )
 
 type ChatUpdateData struct {
@@ -80,7 +81,7 @@ type ChatUpdateData struct {
 
 	Announce bool
 
-	PermissionChange struct {
+	UserChange struct {
 		JIDs []string `json:"participants"`
 	}
 }
@@ -127,8 +128,8 @@ func (cud *ChatUpdateData) UnmarshalJSON(data []byte) error {
 		unmarshalTo = &cud.Restrict
 	case ChatActionAnnounce:
 		unmarshalTo = &cud.Announce
-	case ChatActionPromote, ChatActionDemote:
-		unmarshalTo = &cud.PermissionChange
+	case ChatActionPromote, ChatActionDemote, ChatActionRemove:
+		unmarshalTo = &cud.UserChange
 	default:
 		return nil
 	}
@@ -137,8 +138,8 @@ func (cud *ChatUpdateData) UnmarshalJSON(data []byte) error {
 		return err
 	}
 	cud.NameChange.SetBy = strings.Replace(cud.NameChange.SetBy, OldUserSuffix, NewUserSuffix, 1)
-	for index, jid := range cud.PermissionChange.JIDs {
-		cud.PermissionChange.JIDs[index] = strings.Replace(jid, OldUserSuffix, NewUserSuffix, 1)
+	for index, jid := range cud.UserChange.JIDs {
+		cud.UserChange.JIDs[index] = strings.Replace(jid, OldUserSuffix, NewUserSuffix, 1)
 	}
 	for index, jid := range cud.Introduce.SuperAdmins {
 		cud.Introduce.SuperAdmins[index] = strings.Replace(jid, OldUserSuffix, NewUserSuffix, 1)
