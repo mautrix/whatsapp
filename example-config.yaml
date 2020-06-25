@@ -55,6 +55,11 @@ metrics:
     # IP and port where the metrics listener should be. The path is always /metrics
     listen: 127.0.0.1:8001
 
+whatsapp:
+    # Device name that's shown in the "WhatsApp Web" section in the mobile app
+    device_name: Mautrix-WhatsApp bridge
+    short_name: mx-wa
+
 # Bridge config
 bridge:
     # Localpart template of MXIDs for WhatsApp users.
