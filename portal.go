@@ -549,7 +549,7 @@ func (portal *Portal) Sync(user *User, contact whatsapp.Contact) {
 func (portal *Portal) GetBasePowerLevels() *event.PowerLevelsEventContent {
 	anyone := 0
 	nope := 99
-	invite := 99
+	invite := 50
 	if portal.bridge.Config.Bridge.AllowUserInvite {
 		invite = 0
 	}
@@ -1324,6 +1324,25 @@ func (portal *Portal) HandleWhatsAppKick(senderJID string, jids []string) {
 				customIntent = puppet.CustomIntent()
 			}
 			portal.removeUser(puppet.JID == sender.JID, senderIntent, user.MXID, customIntent)
+		}
+	}
+}
+
+func (portal *Portal) HandleWhatsAppInvite(senderJID string, jids []string) {
+	senderIntent := portal.MainIntent()
+	if senderJID != "unknown" {
+		sender := portal.bridge.GetPuppetByJID(senderJID)
+		senderIntent = sender.IntentFor(portal)
+	}
+	for _, jid := range jids {
+		puppet := portal.bridge.GetPuppetByJID(jid)
+		_, err := senderIntent.InviteUser(portal.MXID, &mautrix.ReqInviteUser{UserID: puppet.MXID})
+		if err != nil {
+			portal.log.Warnfln("Failed to invite %s as %s: %v", puppet.MXID, senderIntent.UserID, err)
+		}
+		err = puppet.DefaultIntent().EnsureJoined(portal.MXID)
+		if err != nil {
+			portal.log.Errorfln("Failed to ensure %s is joined: %v", puppet.MXID, err)
 		}
 	}
 }

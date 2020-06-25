@@ -889,6 +889,8 @@ func (user *User) HandleChatUpdate(cmd whatsappExt.ChatUpdate) {
 		go portal.RestrictMetadataChanges(cmd.Data.Restrict)
 	case whatsappExt.ChatActionRemove:
 		go portal.HandleWhatsAppKick(cmd.Data.SenderJID, cmd.Data.UserChange.JIDs)
+	case whatsappExt.ChatActionAdd:
+		go portal.HandleWhatsAppInvite(cmd.Data.SenderJID, cmd.Data.UserChange.JIDs)
 	case whatsappExt.ChatActionIntroduce:
 		if cmd.Data.SenderJID != "unknown" {
 			go portal.Sync(user, whatsapp.Contact{Jid: portal.Key.JID})

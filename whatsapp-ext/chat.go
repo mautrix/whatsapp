@@ -47,6 +47,7 @@ const (
 	ChatActionDemote      ChatActionType = "demote"
 	ChatActionIntroduce   ChatActionType = "introduce"
 	ChatActionRemove      ChatActionType = "remove"
+	ChatActionAdd         ChatActionType = "add"
 )
 
 type ChatUpdateData struct {
@@ -128,7 +129,7 @@ func (cud *ChatUpdateData) UnmarshalJSON(data []byte) error {
 		unmarshalTo = &cud.Restrict
 	case ChatActionAnnounce:
 		unmarshalTo = &cud.Announce
-	case ChatActionPromote, ChatActionDemote, ChatActionRemove:
+	case ChatActionPromote, ChatActionDemote, ChatActionRemove, ChatActionAdd:
 		unmarshalTo = &cud.UserChange
 	default:
 		return nil
