@@ -54,6 +54,7 @@ func NewCommandHandler(bridge *Bridge) *CommandHandler {
 type CommandEvent struct {
 	Bot     *appservice.IntentAPI
 	Bridge  *Bridge
+	Portal  *Portal
 	Handler *CommandHandler
 	RoomID  id.RoomID
 	User    *User
@@ -65,7 +66,11 @@ type CommandEvent struct {
 func (ce *CommandEvent) Reply(msg string, args ...interface{}) {
 	content := format.RenderMarkdown(fmt.Sprintf(msg, args...), true, false)
 	content.MsgType = event.MsgNotice
-	_, err := ce.Bot.SendMessageEvent(ce.RoomID, event.EventMessage, content)
+	intent := ce.Bot
+	if ce.Portal != nil && ce.Portal.IsPrivateChat() {
+		intent = ce.Portal.MainIntent()
+	}
+	_, err := intent.SendMessageEvent(ce.RoomID, event.EventMessage, content)
 	if err != nil {
 		ce.Handler.log.Warnfln("Failed to reply to command from %s: %v", ce.User.MXID, err)
 	}
@@ -77,6 +82,7 @@ func (handler *CommandHandler) Handle(roomID id.RoomID, user *User, message stri
 	ce := &CommandEvent{
 		Bot:     handler.bridge.Bot,
 		Bridge:  handler.bridge,
+		Portal:  handler.bridge.GetPortalByMXID(roomID),
 		Handler: handler,
 		RoomID:  roomID,
 		User:    user,
@@ -189,16 +195,15 @@ func (handler *CommandHandler) CommandVersion(ce *CommandEvent) {
 const cmdInviteLinkHelp = `invite-link - Get an invite link to the current group chat.`
 
 func (handler *CommandHandler) CommandInviteLink(ce *CommandEvent) {
-	portal := ce.Bridge.GetPortalByMXID(ce.RoomID)
-	if portal == nil {
+	if ce.Portal == nil {
 		ce.Reply("Not a portal room")
 		return
-	} else if portal.IsPrivateChat() {
+	} else if ce.Portal.IsPrivateChat() {
 		ce.Reply("Can't get invite link to private chat")
 		return
 	}
 
-	link, err := ce.User.Conn.GroupInviteLink(portal.Key.JID)
+	link, err := ce.User.Conn.GroupInviteLink(ce.Portal.Key.JID)
 	if err != nil {
 		ce.Reply("Failed to get invite link: %v", err)
 		return
@@ -209,8 +214,7 @@ func (handler *CommandHandler) CommandInviteLink(ce *CommandEvent) {
 const cmdSetPowerLevelHelp = `set-pl [user ID] <power level> - Change the power level in a portal room. Only for bridge admins.`
 
 func (handler *CommandHandler) CommandSetPowerLevel(ce *CommandEvent) {
-	portal := ce.Bridge.GetPortalByMXID(ce.RoomID)
-	if portal == nil {
+	if ce.Portal == nil {
 		ce.Reply("Not a portal room")
 		return
 	}
@@ -240,7 +244,7 @@ func (handler *CommandHandler) CommandSetPowerLevel(ce *CommandEvent) {
 		ce.Reply("**Usage:** `set-pl [user] <level>`")
 		return
 	}
-	intent := portal.MainIntent()
+	intent := ce.Portal.MainIntent()
 	_, err = intent.SetPowerLevel(ce.RoomID, userID, level)
 	if err != nil {
 		ce.Reply("Failed to set power levels: %v", err)
@@ -436,7 +440,7 @@ func (handler *CommandHandler) CommandPing(ce *CommandEvent) {
 		} else {
 			ce.Reply("Connection not OK: %v", err)
 		}
-	}  else {
+	} else {
 		ce.Reply("Connection to WhatsApp OK")
 	}
 }
@@ -506,23 +510,22 @@ func (handler *CommandHandler) CommandSync(ce *CommandEvent) {
 const cmdDeletePortalHelp = `delete-portal - Delete the current portal. If the portal is used by other people, this is limited to bridge admins.`
 
 func (handler *CommandHandler) CommandDeletePortal(ce *CommandEvent) {
-	portal := ce.Bridge.GetPortalByMXID(ce.RoomID)
-	if portal == nil {
+	if ce.Portal == nil {
 		ce.Reply("You must be in a portal room to use that command")
 		return
 	}
 
 	if !ce.User.Admin {
-		users := portal.GetUserIDs()
+		users := ce.Portal.GetUserIDs()
 		if len(users) > 1 || (len(users) == 1 && users[0] != ce.User.MXID) {
 			ce.Reply("Only bridge admins can delete portals with other Matrix users")
 			return
 		}
 	}
 
-	portal.log.Infoln(ce.User.MXID, "requested deletion of portal.")
-	portal.Delete()
-	portal.Cleanup(false)
+	ce.Portal.log.Infoln(ce.User.MXID, "requested deletion of portal.")
+	ce.Portal.Delete()
+	ce.Portal.Cleanup(false)
 }
 
 const cmdDeleteAllPortalsHelp = `delete-all-portals - Delete all your portals that aren't used by any other user.'`
