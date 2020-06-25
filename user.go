@@ -861,7 +861,7 @@ func (user *User) HandleChatUpdate(cmd whatsappExt.ChatUpdate) {
 
 	portal := user.GetPortalByJID(cmd.JID)
 	if len(portal.MXID) == 0 {
-		if cmd.Data.Action == whatsappExt.ChatActionIntroduce && cmd.Data.SenderJID != "unknown" {
+		if cmd.Data.Action == whatsappExt.ChatActionIntroduce || cmd.Data.Action == whatsappExt.ChatActionCreate {
 			go func() {
 				err := portal.CreateMatrixRoom(user)
 				if err != nil {

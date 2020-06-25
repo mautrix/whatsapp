@@ -46,6 +46,7 @@ const (
 	ChatActionPromote     ChatActionType = "promote"
 	ChatActionDemote      ChatActionType = "demote"
 	ChatActionIntroduce   ChatActionType = "introduce"
+	ChatActionCreate      ChatActionType = "create"
 	ChatActionRemove      ChatActionType = "remove"
 	ChatActionAdd         ChatActionType = "add"
 )
@@ -109,7 +110,7 @@ func (cud *ChatUpdateData) UnmarshalJSON(data []byte) error {
 
 	var unmarshalTo interface{}
 	switch cud.Action {
-	case ChatActionIntroduce:
+	case ChatActionIntroduce, ChatActionCreate:
 		err = json.Unmarshal(arr[2], &cud.NameChange)
 		if err != nil {
 			return err
