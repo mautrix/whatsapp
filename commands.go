@@ -65,11 +65,7 @@ type CommandEvent struct {
 func (ce *CommandEvent) Reply(msg string, args ...interface{}) {
 	content := format.RenderMarkdown(fmt.Sprintf(msg, args...), true, false)
 	content.MsgType = event.MsgNotice
-	room := ce.User.ManagementRoom
-	if len(room) == 0 {
-		room = ce.RoomID
-	}
-	_, err := ce.Bot.SendMessageEvent(room, event.EventMessage, content)
+	_, err := ce.Bot.SendMessageEvent(ce.RoomID, event.EventMessage, content)
 	if err != nil {
 		ce.Handler.log.Warnfln("Failed to reply to command from %s: %v", ce.User.MXID, err)
 	}
@@ -127,7 +123,7 @@ func (handler *CommandHandler) CommandMux(ce *CommandEvent) {
 		handler.CommandSetPowerLevel(ce)
 	case "logout":
 		handler.CommandLogout(ce)
-	case "login-matrix", "sync", "list", "open", "pm":
+	case "login-matrix", "sync", "list", "open", "pm", "invite-link":
 		if !ce.User.HasSession() {
 			ce.Reply("You are not logged in. Use the `login` command to log into WhatsApp.")
 			return
@@ -147,6 +143,8 @@ func (handler *CommandHandler) CommandMux(ce *CommandEvent) {
 			handler.CommandOpen(ce)
 		case "pm":
 			handler.CommandPM(ce)
+		case "invite-link":
+			handler.CommandInviteLink(ce)
 		}
 	default:
 		ce.Reply("Unknown Command")
@@ -186,6 +184,26 @@ func (handler *CommandHandler) CommandVersion(ce *CommandEvent) {
 		version = fmt.Sprintf("v%s.[%s](%s/commit/%s) (%s)", Version, Commit[:8], URL, Commit, BuildTime)
 	}
 	ce.Reply(fmt.Sprintf("[%s](%s) %s", Name, URL, version))
+}
+
+const cmdInviteLinkHelp = `invite-link - Get an invite link to the current group chat.`
+
+func (handler *CommandHandler) CommandInviteLink(ce *CommandEvent) {
+	portal := ce.Bridge.GetPortalByMXID(ce.RoomID)
+	if portal == nil {
+		ce.Reply("Not a portal room")
+		return
+	} else if portal.IsPrivateChat() {
+		ce.Reply("Can't get invite link to private chat")
+		return
+	}
+
+	link, err := ce.User.Conn.GroupInviteLink(portal.Key.JID)
+	if err != nil {
+		ce.Reply("Failed to get invite link: %v", err)
+		return
+	}
+	ce.Reply("https://chat.whatsapp.com/%s", link)
 }
 
 const cmdSetPowerLevelHelp = `set-pl [user ID] <power level> - Change the power level in a portal room. Only for bridge admins.`
@@ -447,6 +465,7 @@ func (handler *CommandHandler) CommandHelp(ce *CommandEvent) {
 		cmdPrefix + cmdListHelp,
 		cmdPrefix + cmdOpenHelp,
 		cmdPrefix + cmdPMHelp,
+		cmdPrefix + cmdInviteLinkHelp,
 		cmdPrefix + cmdSetPowerLevelHelp,
 		cmdPrefix + cmdDeletePortalHelp,
 		cmdPrefix + cmdDeleteAllPortalsHelp,
