@@ -685,12 +685,12 @@ func (user *User) HandleBatteryMessage(battery whatsapp.BatteryMessage) {
 	user.log.Debugfln("Battery message: %+v", battery)
 	var notice string
 	if !battery.Plugged && battery.Percentage < 15 && user.batteryWarningsSent < 1 {
-		notice = fmt.Sprintf("Phone battery low (%d remaining)", battery.Percentage)
+		notice = fmt.Sprintf("Phone battery low (%d % remaining)", battery.Percentage)
 		user.batteryWarningsSent = 1
-	} else if !battery.Plugged && battery.Percentage < 5 && user.batteryWarningsSent < 1 {
-		notice = fmt.Sprintf("Phone battery very low (%d remaining)", battery.Percentage)
+	} else if !battery.Plugged && battery.Percentage < 5 && user.batteryWarningsSent < 2 {
+		notice = fmt.Sprintf("Phone battery very low (%d % remaining)", battery.Percentage)
 		user.batteryWarningsSent = 2
-	} else {
+	} else if battery.Percentage > 15 || battery.Plugged {
 		user.batteryWarningsSent = 0
 	}
 	if notice != "" {
