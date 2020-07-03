@@ -823,7 +823,7 @@ func (portal *Portal) handleHistory(user *User, messages []interface{}) {
 
 type BridgeInfoSection struct {
 	ID          string              `json:"id"`
-	DisplayName string              `json:"display_name,omitempty"`
+	DisplayName string              `json:"displayname,omitempty"`
 	AvatarURL   id.ContentURIString `json:"avatar_url,omitempty"`
 	ExternalURL string              `json:"external_url,omitempty"`
 }
