@@ -11,10 +11,10 @@
   * [x] Read receipts
   * [ ] Power level
   * [ ] Membership actions
-    * [ ] Invite
+    * [x] Invite
     * [ ] Join
-    * [ ] Leave
-    * [ ] Kick
+    * [x] Leave
+    * [x] Kick
   * [ ] Room metadata changes
     * [x] Name
     * [ ] Avatar<sup>[1]</sup>
@@ -38,11 +38,11 @@
   * [x] Typing notifications
   * [x] Read receipts
   * [x] Admin/superadmin status
-  * [ ] Membership actions
-    * [ ] Invite
-    * [ ] Join
-    * [ ] Leave
-    * [ ] Kick
+  * [x] Membership actions
+    * [x] Invite
+    * [x] Join
+    * [x] Leave
+    * [x] Kick
   * [x] Group metadata changes
     * [x] Title
     * [x] Avatar
@@ -57,7 +57,7 @@
 * Misc
   * [x] Automatic portal creation
     * [x] At startup
-    * [ ] When receiving invite<sup>[2]</sup>
+    * [x] When receiving invite
     * [x] When receiving message
   * [ ] Private chat creation by inviting Matrix puppet of WhatsApp user to new room
   * [x] Option to use own Matrix account for messages sent from WhatsApp mobile/other web clients
