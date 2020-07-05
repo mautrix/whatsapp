@@ -759,13 +759,13 @@ func (handler *CommandHandler) CommandPM(ce *CommandEvent) {
 	puppet.Sync(user, contact)
 	portal := user.bridge.GetPortalByJID(database.NewPortalKey(contact.Jid, user.JID))
 	if len(portal.MXID) > 0 {
-		_, err := portal.MainIntent().InviteUser(portal.MXID, &mautrix.ReqInviteUser{UserID: user.MXID})
+		err := portal.MainIntent().EnsureInvited(portal.MXID, user.MXID)
 		if err != nil {
-			fmt.Println(err)
+			portal.log.Warnfln("Failed to invite %s to portal: %v. Creating new portal", user.MXID, err)
 		} else {
-			ce.Reply("Existing portal room found, invited you to it.")
+			ce.Reply("You already have a private chat portal with that user at %s", portal.MXID)
+			return
 		}
-		return
 	}
 	err := portal.CreateMatrixRoom(user)
 	if err != nil {
