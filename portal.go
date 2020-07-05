@@ -698,7 +698,7 @@ func (portal *Portal) beginBackfill() func() {
 	portal.backfilling = true
 	var privateChatPuppetInvited bool
 	var privateChatPuppet *Puppet
-	if portal.IsPrivateChat() && portal.bridge.Config.Bridge.InviteOwnPuppetForBackfilling {
+	if portal.IsPrivateChat() && portal.bridge.Config.Bridge.InviteOwnPuppetForBackfilling && portal.Key.JID != portal.Key.Receiver {
 		privateChatPuppet = portal.bridge.GetPuppetByJID(portal.Key.Receiver)
 		portal.privateChatBackfillInvitePuppet = func() {
 			if privateChatPuppetInvited {
