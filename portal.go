@@ -351,7 +351,9 @@ func (portal *Portal) SyncParticipants(metadata *whatsappExt.GroupInfo) {
 		levels = portal.GetBasePowerLevels()
 		changed = true
 	}
+	participantMap := make(map[string]bool)
 	for _, participant := range metadata.Participants {
+		participantMap[participant.JID] = true
 		user := portal.bridge.GetUserByJID(participant.JID)
 		portal.userMXIDAction(user, portal.ensureMXIDInvited)
 
@@ -376,6 +378,26 @@ func (portal *Portal) SyncParticipants(metadata *whatsappExt.GroupInfo) {
 		_, err = portal.MainIntent().SetPowerLevels(portal.MXID, levels)
 		if err != nil {
 			portal.log.Errorln("Failed to change power levels:", err)
+		}
+	}
+	members, err := portal.MainIntent().JoinedMembers(portal.MXID)
+	if err != nil {
+		portal.log.Warnln("Failed to get member list:", err)
+	} else {
+		for member := range members.Joined {
+			jid, ok := portal.bridge.ParsePuppetMXID(member)
+			if ok {
+				_, shouldBePresent := participantMap[jid]
+				if !shouldBePresent {
+					_, err := portal.MainIntent().KickUser(portal.MXID, &mautrix.ReqKickUser{
+						UserID: member,
+						Reason: "User had left this WhatsApp chat",
+					})
+					if err != nil {
+						portal.log.Warnfln("Failed to kick user %s who had left: %v", member, err)
+					}
+				}
+			}
 		}
 	}
 }
