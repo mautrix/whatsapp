@@ -59,7 +59,7 @@
     * [x] At startup
     * [x] When receiving invite
     * [x] When receiving message
-  * [ ] Private chat creation by inviting Matrix puppet of WhatsApp user to new room
+  * [x] Private chat creation by inviting Matrix puppet of WhatsApp user to new room
   * [x] Option to use own Matrix account for messages sent from WhatsApp mobile/other web clients
   * [x] Shared group chat portals
 

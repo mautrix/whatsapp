@@ -21,11 +21,14 @@ import (
 	"strings"
 
 	"maunium.net/go/maulogger/v2"
+	"maunium.net/go/mautrix"
 
 	"maunium.net/go/mautrix/appservice"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/format"
 	"maunium.net/go/mautrix/id"
+
+	"maunium.net/go/mautrix-whatsapp/database"
 )
 
 type MatrixHandler struct {
@@ -67,6 +70,28 @@ func (mx *MatrixHandler) HandleEncryption(evt *event.Event) {
 	}
 }
 
+func (mx *MatrixHandler) joinAndCheckMembers(evt *event.Event, intent *appservice.IntentAPI) *mautrix.RespJoinedMembers {
+	resp, err := intent.JoinRoomByID(evt.RoomID)
+	if err != nil {
+		mx.log.Debugfln("Failed to join room %s as %s with invite from %s: %v", evt.RoomID, intent.UserID, evt.Sender, err)
+		return nil
+	}
+
+	members, err := intent.JoinedMembers(resp.RoomID)
+	if err != nil {
+		mx.log.Debugfln("Failed to get members in room %s after accepting invite from %s as %s: %v", resp.RoomID, evt.Sender, intent.UserID, err)
+		_, _ = intent.LeaveRoom(resp.RoomID)
+		return nil
+	}
+
+	if len(members.Joined) < 2 {
+		mx.log.Debugln("Leaving empty room", resp.RoomID, "after accepting invite from", evt.Sender, "as", intent.UserID)
+		_, _ = intent.LeaveRoom(resp.RoomID)
+		return nil
+	}
+	return members
+}
+
 func (mx *MatrixHandler) HandleBotInvite(evt *event.Event) {
 	intent := mx.as.BotIntent()
 
@@ -75,29 +100,15 @@ func (mx *MatrixHandler) HandleBotInvite(evt *event.Event) {
 		return
 	}
 
-	resp, err := intent.JoinRoomByID(evt.RoomID)
-	if err != nil {
-		mx.log.Debugfln("Failed to join room %s with invite from %s: %v", evt.RoomID, evt.Sender, err)
-		return
-	}
-
-	members, err := intent.JoinedMembers(resp.RoomID)
-	if err != nil {
-		mx.log.Debugfln("Failed to get members in room %s after accepting invite from %s: %v", resp.RoomID, evt.Sender, err)
-		_, _ = intent.LeaveRoom(resp.RoomID)
-		return
-	}
-
-	if len(members.Joined) < 2 {
-		mx.log.Debugln("Leaving empty room", resp.RoomID, "after accepting invite from", evt.Sender)
-		_, _ = intent.LeaveRoom(resp.RoomID)
+	members := mx.joinAndCheckMembers(evt, intent)
+	if members == nil {
 		return
 	}
 
 	if !user.Whitelisted {
-		_, _ = intent.SendNotice(resp.RoomID, "You are not whitelisted to use this bridge.\n"+
+		_, _ = intent.SendNotice(evt.RoomID, "You are not whitelisted to use this bridge.\n"+
 			"If you're the owner of this bridge, see the bridge.permissions section in your config file.")
-		_, _ = intent.LeaveRoom(resp.RoomID)
+		_, _ = intent.LeaveRoom(evt.RoomID)
 		return
 	}
 
@@ -115,17 +126,113 @@ func (mx *MatrixHandler) HandleBotInvite(evt *event.Event) {
 			hasPuppets = true
 			continue
 		}
-		mx.log.Debugln("Leaving multi-user room", resp.RoomID, "after accepting invite from", evt.Sender)
-		intent.SendNotice(resp.RoomID, "This bridge is user-specific, please don't invite me into rooms with other users.")
-		intent.LeaveRoom(resp.RoomID)
+		mx.log.Debugln("Leaving multi-user room", evt.RoomID, "after accepting invite from", evt.Sender)
+		_, _ = intent.SendNotice(evt.RoomID, "This bridge is user-specific, please don't invite me into rooms with other users.")
+		_, _ = intent.LeaveRoom(evt.RoomID)
 		return
 	}
 
 	if !hasPuppets {
 		user := mx.bridge.GetUserByMXID(evt.Sender)
-		user.SetManagementRoom(resp.RoomID)
-		intent.SendNotice(user.ManagementRoom, "This room has been registered as your bridge management/status room. Send `help` to get a list of commands.")
-		mx.log.Debugln(resp.RoomID, "registered as a management room with", evt.Sender)
+		user.SetManagementRoom(evt.RoomID)
+		_, _ = intent.SendNotice(user.ManagementRoom, "This room has been registered as your bridge management/status room. Send `help` to get a list of commands.")
+		mx.log.Debugln(evt.RoomID, "registered as a management room with", evt.Sender)
+	}
+}
+
+func (mx *MatrixHandler) handleExistingPrivatePortal(roomID id.RoomID, inviter *User, puppet *Puppet, portal *Portal) {
+	err := portal.MainIntent().EnsureInvited(portal.MXID, inviter.MXID)
+	if err != nil {
+		mx.log.Warnfln("Failed to invite %s to existing private chat portal %s with %s: %v. Redirecting portal to new room...", inviter.MXID, portal.MXID, puppet.JID, err)
+		mx.createPrivatePortalFromInvite(portal.Key, roomID, inviter, puppet, portal)
+		return
+	}
+	intent := puppet.DefaultIntent()
+	_, _ = intent.SendNotice(roomID, "You already have a private chat portal with me at %s")
+	mx.log.Debugln("Leaving private chat room", roomID, "as", puppet.MXID, "after accepting invite from", inviter.MXID, "as we already have chat with the user")
+	_, _ = intent.LeaveRoom(roomID)
+}
+
+func (mx *MatrixHandler) createPrivatePortalFromInvite(key database.PortalKey, roomID id.RoomID, inviter *User, puppet *Puppet, portal *Portal) {
+	if portal == nil {
+		portal = mx.bridge.NewManualPortal(key)
+	}
+	portal.MXID = roomID
+	portal.Topic = "WhatsApp private chat"
+	_, _ = portal.MainIntent().SetRoomTopic(portal.MXID, portal.Topic)
+	if portal.bridge.Config.Bridge.PrivateChatPortalMeta {
+		portal.Name = puppet.Displayname
+		portal.AvatarURL = puppet.AvatarURL
+		portal.Avatar = puppet.Avatar
+		_, _ = portal.MainIntent().SetRoomName(portal.MXID, portal.Name)
+		_, _ = portal.MainIntent().SetRoomAvatar(portal.MXID, portal.AvatarURL)
+	} else {
+		portal.Name = ""
+	}
+	portal.log.Infoln("Created private chat portal in %s after invite from", roomID, inviter.MXID)
+	intent := puppet.DefaultIntent()
+
+	if mx.bridge.Config.Bridge.Encryption.Default {
+		_, err := intent.InviteUser(roomID, &mautrix.ReqInviteUser{UserID: mx.bridge.Bot.UserID})
+		if err != nil {
+			portal.log.Warnln("Failed to invite bridge bot to enable e2be:", err)
+		}
+		err = mx.bridge.Bot.EnsureJoined(roomID)
+		if err != nil {
+			portal.log.Warnln("Failed to join as bridge bot to enable e2be:", err)
+		}
+		_, err = intent.SendStateEvent(roomID, event.StateEncryption, "", &event.EncryptionEventContent{Algorithm: id.AlgorithmMegolmV1})
+		if err != nil {
+			portal.log.Warnln("Failed to enable e2be:", err)
+		}
+		mx.as.StateStore.SetMembership(roomID, inviter.MXID, event.MembershipJoin)
+		mx.as.StateStore.SetMembership(roomID, puppet.MXID, event.MembershipJoin)
+		mx.as.StateStore.SetMembership(roomID, mx.bridge.Bot.UserID, event.MembershipJoin)
+		portal.Encrypted = true
+	}
+	portal.Update()
+	portal.UpdateBridgeInfo()
+	_, _ = intent.SendNotice(roomID, "Private chat portal created")
+
+	err := portal.FillInitialHistory(inviter)
+	if err != nil {
+		portal.log.Errorln("Failed to fill history:", err)
+	}
+
+	inviter.addPortalToCommunity(portal)
+	inviter.addPuppetToCommunity(puppet)
+}
+
+func (mx *MatrixHandler) HandlePuppetInvite(evt *event.Event, inviter *User, puppet *Puppet) {
+	intent := puppet.DefaultIntent()
+	members := mx.joinAndCheckMembers(evt, intent)
+	if members == nil {
+		return
+	}
+	var hasBridgeBot, hasOtherUsers bool
+	for mxid, _ := range members.Joined {
+		if mxid == intent.UserID || mxid == inviter.MXID {
+			continue
+		} else if mxid == mx.bridge.Bot.UserID {
+			hasBridgeBot = true
+		} else {
+			hasOtherUsers = true
+		}
+	}
+	if !hasBridgeBot && !hasOtherUsers {
+		key := database.NewPortalKey(puppet.JID, inviter.JID)
+		existingPortal := mx.bridge.GetPortalByJID(key)
+		if existingPortal != nil && len(existingPortal.MXID) > 0 {
+			mx.handleExistingPrivatePortal(evt.RoomID, inviter, puppet, existingPortal)
+		} else {
+			mx.createPrivatePortalFromInvite(key, evt.RoomID, inviter, puppet, existingPortal)
+		}
+	} else if !hasBridgeBot {
+		mx.log.Debugln("Leaving multi-user room", evt.RoomID, "as", puppet.MXID, "after accepting invite from", evt.Sender)
+		_, _ = intent.SendNotice(evt.RoomID, "Please invite the bridge bot first if you want to bridge to a WhatsApp group.")
+		_, _ = intent.LeaveRoom(evt.RoomID)
+	} else {
+		_, _ = intent.SendNotice(evt.RoomID, "This puppet will remain inactive until this room is bridged to a WhatsApp group.")
 	}
 }
 
@@ -145,13 +252,17 @@ func (mx *MatrixHandler) HandleMembership(evt *event.Event) {
 		return
 	}
 
-	portal := mx.bridge.GetPortalByMXID(evt.RoomID)
-	if portal == nil {
+	user := mx.bridge.GetUserByMXID(evt.Sender)
+	if user == nil || !user.Whitelisted || !user.IsConnected() {
 		return
 	}
 
-	user := mx.bridge.GetUserByMXID(evt.Sender)
-	if user == nil || !user.Whitelisted || !user.IsConnected() {
+	portal := mx.bridge.GetPortalByMXID(evt.RoomID)
+	if portal == nil {
+		puppet := mx.bridge.GetPuppetByMXID(id.UserID(evt.GetStateKey()))
+		if content.Membership == event.MembershipInvite && puppet != nil {
+			mx.HandlePuppetInvite(evt, user, puppet)
+		}
 		return
 	}
 

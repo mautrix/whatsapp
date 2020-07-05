@@ -125,6 +125,21 @@ func (portal *Portal) GetUsers() []*User {
 	return nil
 }
 
+func (bridge *Bridge) NewManualPortal(key database.PortalKey) *Portal {
+	portal := &Portal{
+		Portal: bridge.DB.Portal.New(),
+		bridge: bridge,
+		log:    bridge.Log.Sub(fmt.Sprintf("Portal/%s", key)),
+
+		recentlyHandled: [recentlyHandledLength]types.WhatsAppMessageID{},
+
+		messages: make(chan PortalMessage, 128),
+	}
+	portal.Key = key
+	go portal.handleMessageLoop()
+	return portal
+}
+
 func (bridge *Bridge) NewPortal(dbPortal *database.Portal) *Portal {
 	portal := &Portal{
 		Portal: dbPortal,
