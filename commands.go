@@ -763,7 +763,7 @@ func (handler *CommandHandler) CommandPM(ce *CommandEvent) {
 		if err != nil {
 			portal.log.Warnfln("Failed to invite %s to portal: %v. Creating new portal", user.MXID, err)
 		} else {
-			ce.Reply("You already have a private chat portal with that user at %s", portal.MXID)
+			ce.Reply("You already have a private chat portal with that user at [%s](https://matrix.to/#/%s)", puppet.Displayname, portal.MXID)
 			return
 		}
 	}
