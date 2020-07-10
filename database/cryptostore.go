@@ -35,9 +35,9 @@ type SQLCryptoStore struct {
 
 var _ crypto.Store = (*SQLCryptoStore)(nil)
 
-func NewSQLCryptoStore(db *Database, deviceID id.DeviceID, userID id.UserID, ghostIDFormat string) *SQLCryptoStore {
+func NewSQLCryptoStore(db *Database, userID id.UserID, ghostIDFormat string) *SQLCryptoStore {
 	return &SQLCryptoStore{
-		SQLCryptoStore: crypto.NewSQLCryptoStore(db.DB, db.dialect, deviceID,
+		SQLCryptoStore: crypto.NewSQLCryptoStore(db.DB, db.dialect, "", "",
 			[]byte("maunium.net/go/mautrix-whatsapp"),
 			&cryptoLogger{db.log.Sub("CryptoStore")}),
 		UserID:        userID,
@@ -45,10 +45,10 @@ func NewSQLCryptoStore(db *Database, deviceID id.DeviceID, userID id.UserID, gho
 	}
 }
 
-func (db *Database) FindDeviceID() (deviceID id.DeviceID) {
-	err := db.QueryRow("SELECT device_id FROM crypto_account LIMIT 1").Scan(&deviceID)
+func (store *SQLCryptoStore) FindDeviceID() (deviceID id.DeviceID) {
+	err := store.DB.QueryRow("SELECT device_id FROM crypto_account WHERE account_id=$1", store.AccountID).Scan(&deviceID)
 	if err != nil && err != sql.ErrNoRows {
-		db.log.Warnln("Failed to scan device ID:", err)
+		store.Log.Warn("Failed to scan device ID: %v", err)
 	}
 	return
 }

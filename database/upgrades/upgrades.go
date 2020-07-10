@@ -15,6 +15,17 @@ const (
 	SQLite
 )
 
+func (dialect Dialect) String() string {
+	switch dialect {
+	case Postgres:
+		return "postgres"
+	case SQLite:
+		return "sqlite3"
+	default:
+		return ""
+	}
+}
+
 type upgradeFunc func(*sql.Tx, context) error
 
 type context struct {
@@ -28,7 +39,7 @@ type upgrade struct {
 	fn      upgradeFunc
 }
 
-const NumberOfUpgrades = 16
+const NumberOfUpgrades = 17
 
 var upgrades [NumberOfUpgrades]upgrade
 

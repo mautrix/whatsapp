@@ -68,6 +68,10 @@ func NewCryptoHelper(bridge *Bridge) Crypto {
 
 func (helper *CryptoHelper) Init() error {
 	helper.log.Debugln("Initializing end-to-bridge encryption...")
+
+	helper.store = database.NewSQLCryptoStore(helper.bridge.DB, helper.bridge.AS.BotMXID(),
+		fmt.Sprintf("@%s:%s", helper.bridge.Config.Bridge.FormatUsername("%"), helper.bridge.AS.HomeserverDomain))
+
 	var err error
 	helper.client, err = helper.loginBot()
 	if err != nil {
@@ -77,8 +81,6 @@ func (helper *CryptoHelper) Init() error {
 	helper.log.Debugln("Logged in as bridge bot with device ID", helper.client.DeviceID)
 	logger := &cryptoLogger{helper.baseLog}
 	stateStore := &cryptoStateStore{helper.bridge}
-	helper.store = database.NewSQLCryptoStore(helper.bridge.DB, helper.client.DeviceID, helper.client.UserID,
-		fmt.Sprintf("@%s:%s", helper.bridge.Config.Bridge.FormatUsername("%"), helper.bridge.AS.HomeserverDomain))
 	helper.mach = crypto.NewOlmMachine(helper.client, logger, helper.store, stateStore)
 
 	helper.client.Logger = logger.int.Sub("Bot")
@@ -89,27 +91,30 @@ func (helper *CryptoHelper) Init() error {
 }
 
 func (helper *CryptoHelper) loginBot() (*mautrix.Client, error) {
-	deviceID := helper.bridge.DB.FindDeviceID()
+	deviceID := helper.store.FindDeviceID()
 	if len(deviceID) > 0 {
 		helper.log.Debugln("Found existing device ID for bot in database:", deviceID)
 	}
 	mac := hmac.New(sha512.New, []byte(helper.bridge.Config.Bridge.LoginSharedSecret))
 	mac.Write([]byte(helper.bridge.AS.BotMXID()))
-	resp, err := helper.bridge.AS.BotClient().Login(&mautrix.ReqLogin{
+	client, err := mautrix.NewClient(helper.bridge.AS.HomeserverURL, "", "")
+	if err != nil {
+		return nil, err
+	}
+	resp, err := client.Login(&mautrix.ReqLogin{
 		Type:                     "m.login.password",
 		Identifier:               mautrix.UserIdentifier{Type: "m.id.user", User: string(helper.bridge.AS.BotMXID())},
 		Password:                 hex.EncodeToString(mac.Sum(nil)),
 		DeviceID:                 deviceID,
 		InitialDeviceDisplayName: "WhatsApp Bridge",
+		StoreCredentials:         true,
 	})
 	if err != nil {
 		return nil, err
 	}
-	client, err := mautrix.NewClient(helper.bridge.AS.HomeserverURL, helper.bridge.AS.BotMXID(), resp.AccessToken)
-	if err != nil {
-		return nil, err
+	if len(deviceID) == 0 {
+		helper.store.DeviceID = resp.DeviceID
 	}
-	client.DeviceID = resp.DeviceID
 	return client, nil
 }
 
@@ -228,6 +233,8 @@ type cryptoStateStore struct {
 	bridge *Bridge
 }
 
+var _ crypto.StateStore = (*cryptoStateStore)(nil)
+
 func (c *cryptoStateStore) IsEncrypted(id id.RoomID) bool {
 	portal := c.bridge.GetPortalByMXID(id)
 	if portal != nil {
@@ -238,4 +245,9 @@ func (c *cryptoStateStore) IsEncrypted(id id.RoomID) bool {
 
 func (c *cryptoStateStore) FindSharedRooms(id id.UserID) []id.RoomID {
 	return c.bridge.StateStore.FindSharedRooms(id)
+}
+
+func (c *cryptoStateStore) GetEncryptionEvent(id.RoomID) *event.EncryptionEventContent {
+	// TODO implement
+	return nil
 }
