@@ -206,3 +206,5 @@ maunium.net/go/mautrix v0.5.8 h1:jOE3U8WYSIc4qbYvyVaDhOaQcB3sDPN5A2zQ93YixZ0=
 maunium.net/go/mautrix v0.5.8/go.mod h1:Va/74MijqaS0DQ3aUqxmFO54/PMfr1LVsCOcGRHbYmo=
 maunium.net/go/mautrix v0.6.0 h1:V32l4aygKk2XcH3fi8Yd0pFeSyYZJNRIvr8vdA2GtC8=
 maunium.net/go/mautrix v0.6.0/go.mod h1:Va/74MijqaS0DQ3aUqxmFO54/PMfr1LVsCOcGRHbYmo=
+maunium.net/go/mautrix v0.6.1 h1:OFxAEnjEtkstE5J3RLv+vVrUORY6UTXV8pD/qWRBTPI=
+maunium.net/go/mautrix v0.6.1/go.mod h1:Va/74MijqaS0DQ3aUqxmFO54/PMfr1LVsCOcGRHbYmo=
