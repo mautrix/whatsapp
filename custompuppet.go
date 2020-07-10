@@ -153,7 +153,7 @@ func (puppet *Puppet) stopSyncing() {
 	puppet.customIntent.StopSync()
 }
 
-func (puppet *Puppet) ProcessResponse(resp *mautrix.RespSync, since string) error {
+func (puppet *Puppet) ProcessResponse(resp *mautrix.RespSync, _ string) error {
 	if !puppet.customUser.IsConnected() {
 		puppet.log.Debugln("Skipping sync processing: custom user not connected to whatsapp")
 		return nil
@@ -170,21 +170,25 @@ func (puppet *Puppet) ProcessResponse(resp *mautrix.RespSync, since string) erro
 			}
 			switch evt.Type {
 			case event.EphemeralEventReceipt:
-				go puppet.handleReceiptEvent(portal, evt)
+				if puppet.EnablePresence {
+					go puppet.handleReceiptEvent(portal, evt)
+				}
 			case event.EphemeralEventTyping:
 				go puppet.handleTypingEvent(portal, evt)
 			}
 		}
 	}
-	for _, evt := range resp.Presence.Events {
-		if evt.Sender != puppet.CustomMXID {
-			continue
+	if puppet.EnablePresence {
+		for _, evt := range resp.Presence.Events {
+			if evt.Sender != puppet.CustomMXID {
+				continue
+			}
+			err := evt.Content.ParseRaw(evt.Type)
+			if err != nil {
+				continue
+			}
+			go puppet.handlePresenceEvent(evt)
 		}
-		err := evt.Content.ParseRaw(evt.Type)
-		if err != nil {
-			continue
-		}
-		go puppet.handlePresenceEvent(evt)
 	}
 	return nil
 }
@@ -244,7 +248,7 @@ func (puppet *Puppet) handleTypingEvent(portal *Portal, evt *event.Event) {
 	}
 }
 
-func (puppet *Puppet) OnFailedSync(res *mautrix.RespSync, err error) (time.Duration, error) {
+func (puppet *Puppet) OnFailedSync(_ *mautrix.RespSync, err error) (time.Duration, error) {
 	puppet.log.Warnln("Sync error:", err)
 	return 10 * time.Second, nil
 }
@@ -267,9 +271,9 @@ func (puppet *Puppet) GetFilterJSON(_ id.UserID) *mautrix.Filter {
 	}
 }
 
-func (puppet *Puppet) SaveFilterID(_ id.UserID, _ string)      {}
-func (puppet *Puppet) SaveNextBatch(_ id.UserID, nbt string)   { puppet.NextBatch = nbt; puppet.Update() }
-func (puppet *Puppet) SaveRoom(room *mautrix.Room)             {}
-func (puppet *Puppet) LoadFilterID(_ id.UserID) string         { return "" }
-func (puppet *Puppet) LoadNextBatch(_ id.UserID) string        { return puppet.NextBatch }
-func (puppet *Puppet) LoadRoom(roomID id.RoomID) *mautrix.Room { return nil }
+func (puppet *Puppet) SaveFilterID(_ id.UserID, _ string)    {}
+func (puppet *Puppet) SaveNextBatch(_ id.UserID, nbt string) { puppet.NextBatch = nbt; puppet.Update() }
+func (puppet *Puppet) SaveRoom(_ *mautrix.Room)              {}
+func (puppet *Puppet) LoadFilterID(_ id.UserID) string       { return "" }
+func (puppet *Puppet) LoadNextBatch(_ id.UserID) string      { return puppet.NextBatch }
+func (puppet *Puppet) LoadRoom(_ id.RoomID) *mautrix.Room    { return nil }

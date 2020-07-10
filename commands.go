@@ -129,6 +129,8 @@ func (handler *CommandHandler) CommandMux(ce *CommandEvent) {
 		handler.CommandSetPowerLevel(ce)
 	case "logout":
 		handler.CommandLogout(ce)
+	case "toggle-presence":
+		handler.CommandPresence(ce)
 	case "login-matrix", "sync", "list", "open", "pm", "invite-link", "join":
 		if !ce.User.HasSession() {
 			ce.Reply("You are not logged in. Use the `login` command to log into WhatsApp.")
@@ -335,6 +337,36 @@ func (handler *CommandHandler) CommandLogout(ce *CommandEvent) {
 	ce.Reply("Logged out successfully.")
 }
 
+const cmdPresenceHelp = `toggle-presence - Toggle bridging of presence and read receipts`
+
+func (handler *CommandHandler) CommandPresence(ce *CommandEvent) {
+	if ce.User.Session == nil {
+		ce.Reply("You're not logged in.")
+		return
+	}
+	customPuppet := handler.bridge.GetPuppetByCustomMXID(ce.User.MXID)
+	if customPuppet == nil {
+		ce.Reply("You're not logged in with your Matrix account.")
+		return
+	}
+	customPuppet.EnablePresence = !customPuppet.EnablePresence
+	customPuppet.Update()
+	var newPresence whatsapp.Presence
+	if customPuppet.EnablePresence {
+		newPresence = whatsapp.PresenceAvailable
+		ce.Reply("Enabled presence and read receipt bridging")
+	} else {
+		newPresence = whatsapp.PresenceUnavailable
+		ce.Reply("Disabled presence and read receipt bridging")
+	}
+	if ce.User.IsConnected() {
+		_, err := ce.User.Conn.Presence("", newPresence)
+		if err != nil {
+			ce.User.log.Warnln("Failed to set presence:", err)
+		}
+	}
+}
+
 const cmdDeleteSessionHelp = `delete-session - Delete session information and disconnect from WhatsApp without sending a logout request`
 
 func (handler *CommandHandler) CommandDeleteSession(ce *CommandEvent) {
@@ -501,6 +533,7 @@ func (handler *CommandHandler) CommandHelp(ce *CommandEvent) {
 		cmdPrefix + cmdPingHelp,
 		cmdPrefix + cmdLoginMatrixHelp,
 		cmdPrefix + cmdLogoutMatrixHelp,
+		cmdPrefix + cmdPresenceHelp,
 		cmdPrefix + cmdSyncHelp,
 		cmdPrefix + cmdListHelp,
 		cmdPrefix + cmdOpenHelp,
