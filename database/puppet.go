@@ -37,11 +37,12 @@ func (pq *PuppetQuery) New() *Puppet {
 		log: pq.log,
 
 		EnablePresence: true,
+		EnableReceipts: true,
 	}
 }
 
 func (pq *PuppetQuery) GetAll() (puppets []*Puppet) {
-	rows, err := pq.db.Query("SELECT jid, avatar, avatar_url, displayname, name_quality, custom_mxid, access_token, next_batch, enable_presence FROM puppet")
+	rows, err := pq.db.Query("SELECT jid, avatar, avatar_url, displayname, name_quality, custom_mxid, access_token, next_batch, enable_presence, enable_receipts FROM puppet")
 	if err != nil || rows == nil {
 		return nil
 	}
@@ -53,7 +54,7 @@ func (pq *PuppetQuery) GetAll() (puppets []*Puppet) {
 }
 
 func (pq *PuppetQuery) Get(jid types.WhatsAppID) *Puppet {
-	row := pq.db.QueryRow("SELECT jid, avatar, avatar_url, displayname, name_quality, custom_mxid, access_token, next_batch, enable_presence FROM puppet WHERE jid=$1", jid)
+	row := pq.db.QueryRow("SELECT jid, avatar, avatar_url, displayname, name_quality, custom_mxid, access_token, next_batch, enable_presence, enable_receipts FROM puppet WHERE jid=$1", jid)
 	if row == nil {
 		return nil
 	}
@@ -61,7 +62,7 @@ func (pq *PuppetQuery) Get(jid types.WhatsAppID) *Puppet {
 }
 
 func (pq *PuppetQuery) GetByCustomMXID(mxid id.UserID) *Puppet {
-	row := pq.db.QueryRow("SELECT jid, avatar, avatar_url, displayname, name_quality, custom_mxid, access_token, next_batch, enable_presence FROM puppet WHERE custom_mxid=$1", mxid)
+	row := pq.db.QueryRow("SELECT jid, avatar, avatar_url, displayname, name_quality, custom_mxid, access_token, next_batch, enable_presence, enable_receipts FROM puppet WHERE custom_mxid=$1", mxid)
 	if row == nil {
 		return nil
 	}
@@ -69,7 +70,7 @@ func (pq *PuppetQuery) GetByCustomMXID(mxid id.UserID) *Puppet {
 }
 
 func (pq *PuppetQuery) GetAllWithCustomMXID() (puppets []*Puppet) {
-	rows, err := pq.db.Query("SELECT jid, avatar, avatar_url, displayname, name_quality, custom_mxid, access_token, next_batch, enable_presence FROM puppet WHERE custom_mxid<>''")
+	rows, err := pq.db.Query("SELECT jid, avatar, avatar_url, displayname, name_quality, custom_mxid, access_token, next_batch, enable_presence, enable_receipts FROM puppet WHERE custom_mxid<>''")
 	if err != nil || rows == nil {
 		return nil
 	}
@@ -94,13 +95,14 @@ type Puppet struct {
 	AccessToken    string
 	NextBatch      string
 	EnablePresence bool
+	EnableReceipts bool
 }
 
 func (puppet *Puppet) Scan(row Scannable) *Puppet {
 	var displayname, avatar, avatarURL, customMXID, accessToken, nextBatch sql.NullString
 	var quality sql.NullInt64
-	var enablePresence sql.NullBool
-	err := row.Scan(&puppet.JID, &avatar, &avatarURL, &displayname, &quality, &customMXID, &accessToken, &nextBatch, &enablePresence)
+	var enablePresence, enableReceipts sql.NullBool
+	err := row.Scan(&puppet.JID, &avatar, &avatarURL, &displayname, &quality, &customMXID, &accessToken, &nextBatch, &enablePresence, &enableReceipts)
 	if err != nil {
 		if err != sql.ErrNoRows {
 			puppet.log.Errorln("Database scan failed:", err)
@@ -115,20 +117,21 @@ func (puppet *Puppet) Scan(row Scannable) *Puppet {
 	puppet.AccessToken = accessToken.String
 	puppet.NextBatch = nextBatch.String
 	puppet.EnablePresence = enablePresence.Bool
+	puppet.EnableReceipts = enableReceipts.Bool
 	return puppet
 }
 
 func (puppet *Puppet) Insert() {
-	_, err := puppet.db.Exec("INSERT INTO puppet (jid, avatar, avatar_url, displayname, name_quality, custom_mxid, access_token, next_batch, enable_presence) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
-		puppet.JID, puppet.Avatar, puppet.AvatarURL.String(), puppet.Displayname, puppet.NameQuality, puppet.CustomMXID, puppet.AccessToken, puppet.NextBatch, puppet.EnablePresence)
+	_, err := puppet.db.Exec("INSERT INTO puppet (jid, avatar, avatar_url, displayname, name_quality, custom_mxid, access_token, next_batch, enable_presence, enable_receipts) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)",
+		puppet.JID, puppet.Avatar, puppet.AvatarURL.String(), puppet.Displayname, puppet.NameQuality, puppet.CustomMXID, puppet.AccessToken, puppet.NextBatch, puppet.EnablePresence, puppet.EnableReceipts)
 	if err != nil {
 		puppet.log.Warnfln("Failed to insert %s: %v", puppet.JID, err)
 	}
 }
 
 func (puppet *Puppet) Update() {
-	_, err := puppet.db.Exec("UPDATE puppet SET displayname=$1, name_quality=$2, avatar=$3, avatar_url=$4, custom_mxid=$5, access_token=$6, next_batch=$7, enable_presence=$8 WHERE jid=$9",
-		puppet.Displayname, puppet.NameQuality, puppet.Avatar, puppet.AvatarURL.String(), puppet.CustomMXID, puppet.AccessToken, puppet.NextBatch, puppet.EnablePresence, puppet.JID)
+	_, err := puppet.db.Exec("UPDATE puppet SET displayname=$1, name_quality=$2, avatar=$3, avatar_url=$4, custom_mxid=$5, access_token=$6, next_batch=$7, enable_presence=$8, enable_receipts=$9 WHERE jid=$10",
+		puppet.Displayname, puppet.NameQuality, puppet.Avatar, puppet.AvatarURL.String(), puppet.CustomMXID, puppet.AccessToken, puppet.NextBatch, puppet.EnablePresence, puppet.EnableReceipts, puppet.JID)
 	if err != nil {
 		puppet.log.Warnfln("Failed to update %s->%s: %v", puppet.JID, err)
 	}

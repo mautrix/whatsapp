@@ -58,6 +58,8 @@ type BridgeConfig struct {
 	SyncChatMaxAge       uint64 `yaml:"sync_max_chat_age"`
 
 	SyncWithCustomPuppets bool   `yaml:"sync_with_custom_puppets"`
+	DefaultBridgeReceipts bool   `yaml:"default_bridge_receipts"`
+	DefaultBridgePresence bool   `yaml:"default_bridge_presence"`
 	LoginSharedSecret     string `yaml:"login_shared_secret"`
 
 	InviteOwnPuppetForBackfilling bool `yaml:"invite_own_puppet_for_backfilling"`
@@ -105,6 +107,8 @@ func (bc *BridgeConfig) setDefaults() {
 	bc.SyncChatMaxAge = 259200
 
 	bc.SyncWithCustomPuppets = true
+	bc.DefaultBridgePresence = true
+	bc.DefaultBridgeReceipts = true
 	bc.LoginSharedSecret = ""
 
 	bc.InviteOwnPuppetForBackfilling = true

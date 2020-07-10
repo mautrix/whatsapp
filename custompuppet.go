@@ -56,6 +56,8 @@ func (puppet *Puppet) SwitchCustomMXID(accessToken string, mxid id.UserID) error
 	if len(puppet.CustomMXID) > 0 {
 		puppet.bridge.puppetsByCustomMXID[puppet.CustomMXID] = puppet
 	}
+	puppet.EnablePresence = puppet.bridge.Config.Bridge.DefaultBridgePresence
+	puppet.EnableReceipts = puppet.bridge.Config.Bridge.DefaultBridgeReceipts
 	puppet.bridge.AS.StateStore.MarkRegistered(puppet.CustomMXID)
 	puppet.Update()
 	// TODO leave rooms with default puppet
@@ -170,7 +172,7 @@ func (puppet *Puppet) ProcessResponse(resp *mautrix.RespSync, _ string) error {
 			}
 			switch evt.Type {
 			case event.EphemeralEventReceipt:
-				if puppet.EnablePresence {
+				if puppet.EnableReceipts {
 					go puppet.handleReceiptEvent(portal, evt)
 				}
 			case event.EphemeralEventTyping:

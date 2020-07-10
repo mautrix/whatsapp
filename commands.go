@@ -129,8 +129,8 @@ func (handler *CommandHandler) CommandMux(ce *CommandEvent) {
 		handler.CommandSetPowerLevel(ce)
 	case "logout":
 		handler.CommandLogout(ce)
-	case "toggle-presence":
-		handler.CommandPresence(ce)
+	case "toggle":
+		handler.CommandToggle(ce)
 	case "login-matrix", "sync", "list", "open", "pm", "invite-link", "join", "create":
 		if !ce.User.HasSession() {
 			ce.Reply("You are not logged in. Use the `login` command to log into WhatsApp.")
@@ -408,9 +408,13 @@ func (handler *CommandHandler) CommandLogout(ce *CommandEvent) {
 	ce.Reply("Logged out successfully.")
 }
 
-const cmdPresenceHelp = `toggle-presence - Toggle bridging of presence and read receipts`
+const cmdToggleHelp = `toggle <presence|receipts> - Toggle bridging of presence or read receipts`
 
-func (handler *CommandHandler) CommandPresence(ce *CommandEvent) {
+func (handler *CommandHandler) CommandToggle(ce *CommandEvent) {
+	if len(ce.Args) == 0 || (ce.Args[0] != "presence" && ce.Args[0] != "receipts") {
+		ce.Reply("**Usage:** `toggle <presence|receipts>`")
+		return
+	}
 	if ce.User.Session == nil {
 		ce.Reply("You're not logged in.")
 		return
@@ -420,22 +424,31 @@ func (handler *CommandHandler) CommandPresence(ce *CommandEvent) {
 		ce.Reply("You're not logged in with your Matrix account.")
 		return
 	}
-	customPuppet.EnablePresence = !customPuppet.EnablePresence
-	customPuppet.Update()
-	var newPresence whatsapp.Presence
-	if customPuppet.EnablePresence {
-		newPresence = whatsapp.PresenceAvailable
-		ce.Reply("Enabled presence and read receipt bridging")
-	} else {
-		newPresence = whatsapp.PresenceUnavailable
-		ce.Reply("Disabled presence and read receipt bridging")
-	}
-	if ce.User.IsConnected() {
-		_, err := ce.User.Conn.Presence("", newPresence)
-		if err != nil {
-			ce.User.log.Warnln("Failed to set presence:", err)
+	if ce.Args[0] == "presence" {
+		customPuppet.EnablePresence = !customPuppet.EnablePresence
+		var newPresence whatsapp.Presence
+		if customPuppet.EnablePresence {
+			newPresence = whatsapp.PresenceAvailable
+			ce.Reply("Enabled presence bridging")
+		} else {
+			newPresence = whatsapp.PresenceUnavailable
+			ce.Reply("Disabled presence bridging")
+		}
+		if ce.User.IsConnected() {
+			_, err := ce.User.Conn.Presence("", newPresence)
+			if err != nil {
+				ce.User.log.Warnln("Failed to set presence:", err)
+			}
+		}
+	} else if ce.Args[0] == "receipts" {
+		customPuppet.EnableReceipts = !customPuppet.EnableReceipts
+		if customPuppet.EnableReceipts {
+			ce.Reply("Enabled read receipt bridging")
+		} else {
+			ce.Reply("Disabled read receipt bridging")
 		}
 	}
+	customPuppet.Update()
 }
 
 const cmdDeleteSessionHelp = `delete-session - Delete session information and disconnect from WhatsApp without sending a logout request`
@@ -604,7 +617,7 @@ func (handler *CommandHandler) CommandHelp(ce *CommandEvent) {
 		cmdPrefix + cmdPingHelp,
 		cmdPrefix + cmdLoginMatrixHelp,
 		cmdPrefix + cmdLogoutMatrixHelp,
-		cmdPrefix + cmdPresenceHelp,
+		cmdPrefix + cmdToggleHelp,
 		cmdPrefix + cmdSyncHelp,
 		cmdPrefix + cmdListHelp,
 		cmdPrefix + cmdOpenHelp,
