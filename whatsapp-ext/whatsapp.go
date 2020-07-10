@@ -51,7 +51,6 @@ func (ext *ExtendedConn) AddHandler(handler whatsapp.Handler) {
 	ext.handlers = append(ext.handlers, handler)
 }
 
-
 func (ext *ExtendedConn) RemoveHandler(handler whatsapp.Handler) bool {
 	ext.Conn.RemoveHandler(handler)
 	for i, v := range ext.handlers {
@@ -127,7 +126,7 @@ type ProfilePicInfo struct {
 	URL string `json:"eurl"`
 	Tag string `json:"tag"`
 
-	Status int16 `json:"status"`
+	Status int `json:"status"`
 }
 
 func (ppi *ProfilePicInfo) Download() (io.ReadCloser, error) {

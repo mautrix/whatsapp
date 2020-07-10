@@ -132,19 +132,25 @@ func (mx *MatrixHandler) HandleBotInvite(evt *event.Event) {
 		return
 	}
 
-	if !hasPuppets {
-		user := mx.bridge.GetUserByMXID(evt.Sender)
+	if !hasPuppets && (len(user.ManagementRoom) == 0 || evt.Content.AsMember().IsDirect) {
 		user.SetManagementRoom(evt.RoomID)
 		_, _ = intent.SendNotice(user.ManagementRoom, "This room has been registered as your bridge management/status room. Send `help` to get a list of commands.")
 		mx.log.Debugln(evt.RoomID, "registered as a management room with", evt.Sender)
 	}
 }
 
-func (mx *MatrixHandler) handleExistingPrivatePortal(roomID id.RoomID, inviter *User, puppet *Puppet, portal *Portal) {
+func (mx *MatrixHandler) handlePrivatePortal(roomID id.RoomID, inviter *User, puppet *Puppet, key database.PortalKey) {
+	portal := mx.bridge.GetPortalByJID(key)
+
+	if len(portal.MXID) == 0 {
+		mx.createPrivatePortalFromInvite(roomID, inviter, puppet, portal)
+		return
+	}
+
 	err := portal.MainIntent().EnsureInvited(portal.MXID, inviter.MXID)
 	if err != nil {
 		mx.log.Warnfln("Failed to invite %s to existing private chat portal %s with %s: %v. Redirecting portal to new room...", inviter.MXID, portal.MXID, puppet.JID, err)
-		mx.createPrivatePortalFromInvite(portal.Key, roomID, inviter, puppet, portal)
+		mx.createPrivatePortalFromInvite(roomID, inviter, puppet, portal)
 		return
 	}
 	intent := puppet.DefaultIntent()
@@ -153,10 +159,7 @@ func (mx *MatrixHandler) handleExistingPrivatePortal(roomID id.RoomID, inviter *
 	_, _ = intent.LeaveRoom(roomID)
 }
 
-func (mx *MatrixHandler) createPrivatePortalFromInvite(key database.PortalKey, roomID id.RoomID, inviter *User, puppet *Puppet, portal *Portal) {
-	if portal == nil {
-		portal = mx.bridge.NewManualPortal(key)
-	}
+func (mx *MatrixHandler) createPrivatePortalFromInvite(roomID id.RoomID, inviter *User, puppet *Puppet, portal *Portal) {
 	portal.MXID = roomID
 	portal.Topic = "WhatsApp private chat"
 	_, _ = portal.MainIntent().SetRoomTopic(portal.MXID, portal.Topic)
@@ -221,12 +224,7 @@ func (mx *MatrixHandler) HandlePuppetInvite(evt *event.Event, inviter *User, pup
 	}
 	if !hasBridgeBot && !hasOtherUsers {
 		key := database.NewPortalKey(puppet.JID, inviter.JID)
-		existingPortal := mx.bridge.GetPortalByJID(key)
-		if existingPortal != nil && len(existingPortal.MXID) > 0 {
-			mx.handleExistingPrivatePortal(evt.RoomID, inviter, puppet, existingPortal)
-		} else {
-			mx.createPrivatePortalFromInvite(key, evt.RoomID, inviter, puppet, existingPortal)
-		}
+		mx.handlePrivatePortal(evt.RoomID, inviter, puppet, key)
 	} else if !hasBridgeBot {
 		mx.log.Debugln("Leaving multi-user room", evt.RoomID, "as", puppet.MXID, "after accepting invite from", evt.Sender)
 		_, _ = intent.SendNotice(evt.RoomID, "Please invite the bridge bot first if you want to bridge to a WhatsApp group.")
