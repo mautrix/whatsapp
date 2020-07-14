@@ -2,6 +2,7 @@ stages:
 - build
 - build docker
 - manifest
+- deploy
 
 .build: &build
   image: golang:1-alpine
@@ -76,6 +77,8 @@ build docker amd64:
   - amd64
   dependencies:
   - build amd64
+  needs:
+  - build amd64
   variables:
     DOCKER_ARCH: amd64
 
@@ -85,17 +88,34 @@ build docker arm64:
   - arm64
   dependencies:
   - build arm64
+  needs:
+  - build arm64
   variables:
     DOCKER_ARCH: arm64
 
 manifest:
   stage: manifest
+  variables:
+    GIT_STRATEGY: none
   before_script:
   - "mkdir -p $HOME/.docker && echo '{\"experimental\": \"enabled\"}' > $HOME/.docker/config.json"
   - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+  needs:
+  - build docker amd64
+  - build docker arm64
   script:
   - docker pull $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA-amd64
   - docker pull $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA-arm64
   - if [ "$CI_COMMIT_BRANCH" = "master" ]; then docker manifest create $CI_REGISTRY_IMAGE:latest $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA-amd64 $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA-arm64 && docker manifest push $CI_REGISTRY_IMAGE:latest; fi
   - if [ "$CI_COMMIT_BRANCH" != "master" ]; then docker manifest create $CI_REGISTRY_IMAGE:$CI_COMMIT_REF_NAME $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA-amd64 $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA-arm64 && docker manifest push $CI_REGISTRY_IMAGE:$CI_COMMIT_REF_NAME; fi
   - docker rmi $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA-amd64 $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA-arm64
+
+trigger nova build:
+  image: curlimages/curl
+  stage: deploy
+  only:
+  - master
+  needs:
+  - build docker amd64
+  script:
+  - curl -X POST -F "token=$NOVA_CI_TRIGGER_TOKEN" -F "ref=tulir/ci" -F "variables[MAU_COMMIT_SHA]=$CI_COMMIT_SHA" -F "variables[MAU_BRIDGE]=whatsapp" https://gitlab.com/api/v4/projects/19691163/trigger/pipeline
