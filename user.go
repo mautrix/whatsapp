@@ -676,6 +676,9 @@ func (user *User) putMessage(message PortalMessage) {
 func (user *User) HandleNewContact(contact whatsapp.Contact) {
 	user.log.Debugfln("Contact message: %+v", contact)
 	go func() {
+		if strings.HasSuffix(contact.Jid, whatsappExt.OldUserSuffix) {
+			contact.Jid = strings.Replace(contact.Jid, whatsappExt.OldUserSuffix, whatsappExt.NewUserSuffix, -1)
+		}
 		puppet := user.bridge.GetPuppetByJID(contact.Jid)
 		puppet.UpdateName(user, contact)
 	}()
