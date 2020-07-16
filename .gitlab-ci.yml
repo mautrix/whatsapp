@@ -118,4 +118,4 @@ trigger nova build:
   needs:
   - build docker amd64
   script:
-  - curl -X POST -F "token=$NOVA_CI_TRIGGER_TOKEN" -F "ref=tulir/ci" -F "variables[MAU_COMMIT_SHA]=$CI_COMMIT_SHA" -F "variables[MAU_BRIDGE]=whatsapp" https://gitlab.com/api/v4/projects/19691163/trigger/pipeline
+  - curl -X POST -F "token=$NOVA_CI_TRIGGER_TOKEN" -F "ref=master" -F "variables[MAU_COMMIT_SHA]=$CI_COMMIT_SHA" -F "variables[MAU_BRIDGE]=whatsapp" https://gitlab.com/api/v4/projects/19691163/trigger/pipeline
