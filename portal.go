@@ -1303,8 +1303,8 @@ func (portal *Portal) HandleContactMessage(source *User, message whatsapp.Contac
 	portal.finishHandling(source, message.Info.Source, resp.EventID)
 }
 
-func (portal *Portal) sendMediaBridgeFailure(source *User, intent *appservice.IntentAPI, info whatsapp.MessageInfo, downloadErr error) {
-	portal.log.Errorfln("Failed to download media for %s: %v", info.Id, downloadErr)
+func (portal *Portal) sendMediaBridgeFailure(source *User, intent *appservice.IntentAPI, info whatsapp.MessageInfo, bridgeErr error) {
+	portal.log.Errorfln("Failed to bridge media for %s: %v", info.Id, bridgeErr)
 	resp, err := portal.sendMessage(intent, event.EventMessage, &event.MessageEventContent{
 		MsgType: event.MsgNotice,
 		Body:    "Failed to bridge media",
@@ -1439,14 +1439,14 @@ func (portal *Portal) HandleMediaMessage(source *User, msg mediaMessage) {
 	if msg.mimeType == "image/webp" {
 		img, err := decodeWebp(bytes.NewReader(data))
 		if err != nil {
-			portal.log.Errorfln("Failed to decode media for %s: %v", err)
+			portal.sendMediaBridgeFailure(source, intent, msg.info, errors.Wrap(err, "failed to decode webp"))
 			return
 		}
 
 		var buf bytes.Buffer
 		err = png.Encode(&buf, img)
 		if err != nil {
-			portal.log.Errorfln("Failed to convert media for %s: %v", err)
+			portal.sendMediaBridgeFailure(source, intent, msg.info, errors.Wrap(err, "failed to convert to png"))
 			return
 		}
 		data = buf.Bytes()
@@ -1463,7 +1463,12 @@ func (portal *Portal) HandleMediaMessage(source *User, msg mediaMessage) {
 
 	uploaded, err := intent.UploadBytes(data, uploadMimeType)
 	if err != nil {
-		portal.log.Errorfln("Failed to upload media for %s: %v", err)
+		httpErr := err.(mautrix.HTTPError)
+		if httpErr.Code == 413 {
+			portal.sendMediaBridgeFailure(source, intent, msg.info, errors.New("server rejected too large file"))
+		} else {
+			portal.sendMediaBridgeFailure(source, intent, msg.info, errors.Wrap(err, "failed to upload media"))
+		}
 		return
 	}
 
