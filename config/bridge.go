@@ -44,6 +44,8 @@ type BridgeConfig struct {
 	ReportConnectionRetry bool `yaml:"report_connection_retry"`
 	ChatListWait          int  `yaml:"chat_list_wait"`
 	PortalSyncWait        int  `yaml:"portal_sync_wait"`
+	UserMessageBuffer     int  `yaml:"user_message_buffer"`
+	PortalMessageBuffer   int  `yaml:"portal_message_buffer"`
 
 	CallNotices struct {
 		Start bool `yaml:"start"`
@@ -96,6 +98,8 @@ func (bc *BridgeConfig) setDefaults() {
 	bc.ReportConnectionRetry = true
 	bc.ChatListWait = 30
 	bc.PortalSyncWait = 600
+	bc.UserMessageBuffer = 1024
+	bc.PortalMessageBuffer = 128
 
 	bc.CallNotices.Start = true
 	bc.CallNotices.End = true

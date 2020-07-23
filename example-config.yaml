@@ -109,6 +109,8 @@ bridge:
     # Maximum number of seconds to wait to sync portals before force unlocking message processing.
     # If this is too low and you have lots of chats, it could cause backfilling to fail.
     portal_sync_wait: 600
+    user_message_buffer: 1024
+    portal_message_buffer: 128
 
     # Whether or not to send call start/end notices to Matrix.
     call_notices:

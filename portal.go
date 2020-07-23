@@ -133,7 +133,7 @@ func (bridge *Bridge) NewManualPortal(key database.PortalKey) *Portal {
 
 		recentlyHandled: [recentlyHandledLength]types.WhatsAppMessageID{},
 
-		messages: make(chan PortalMessage, 128),
+		messages: make(chan PortalMessage, bridge.Config.Bridge.PortalMessageBuffer),
 	}
 	portal.Key = key
 	go portal.handleMessageLoop()
@@ -148,7 +148,7 @@ func (bridge *Bridge) NewPortal(dbPortal *database.Portal) *Portal {
 
 		recentlyHandled: [recentlyHandledLength]types.WhatsAppMessageID{},
 
-		messages: make(chan PortalMessage, 128),
+		messages: make(chan PortalMessage, bridge.Config.Bridge.PortalMessageBuffer),
 	}
 	go portal.handleMessageLoop()
 	return portal

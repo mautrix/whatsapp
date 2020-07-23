@@ -65,7 +65,9 @@ type User struct {
 	syncPortalsDone  chan struct{}
 
 	messages chan PortalMessage
-	syncLock sync.Mutex
+
+	syncStart chan struct{}
+	syncWait  sync.WaitGroup
 
 	mgmtCreateLock sync.Mutex
 }
@@ -167,7 +169,8 @@ func (bridge *Bridge) NewUser(dbUser *database.User) *User {
 
 		chatListReceived: make(chan struct{}, 1),
 		syncPortalsDone:  make(chan struct{}, 1),
-		messages:         make(chan PortalMessage, 256),
+		syncStart:        make(chan struct{}, 1),
+		messages:         make(chan PortalMessage, bridge.Config.Bridge.UserMessageBuffer),
 	}
 	user.RelaybotWhitelisted = user.bridge.Config.Bridge.Permissions.IsRelaybotWhitelisted(user.MXID)
 	user.Whitelisted = user.bridge.Config.Bridge.Permissions.IsWhitelisted(user.MXID)
@@ -399,7 +402,8 @@ func (cl ChatList) Swap(i, j int) {
 
 func (user *User) PostLogin() {
 	user.log.Debugln("Locking processing of incoming messages and starting post-login sync")
-	user.syncLock.Lock()
+	user.syncWait.Add(1)
+	user.syncStart <- struct{}{}
 	go user.intPostLogin()
 }
 
@@ -431,7 +435,7 @@ func (user *User) tryAutomaticDoublePuppeting() {
 }
 
 func (user *User) intPostLogin() {
-	defer user.syncLock.Unlock()
+	defer user.syncWait.Done()
 	user.createCommunity()
 	user.tryAutomaticDoublePuppeting()
 
@@ -439,14 +443,14 @@ func (user *User) intPostLogin() {
 	case <-user.chatListReceived:
 		user.log.Debugln("Chat list receive confirmation received in PostLogin")
 	case <-time.After(time.Duration(user.bridge.Config.Bridge.ChatListWait) * time.Second):
-		user.log.Warnln("Timed out waiting for chat list to arrive! Unlocking processing of incoming messages.")
+		user.log.Warnln("Timed out waiting for chat list to arrive!")
 		return
 	}
 	select {
 	case <-user.syncPortalsDone:
 		user.log.Debugln("Post-login portal sync complete, unlocking processing of incoming messages.")
 	case <-time.After(time.Duration(user.bridge.Config.Bridge.PortalSyncWait) * time.Second):
-		user.log.Warnln("Timed out waiting for chat list to arrive! Unlocking processing of incoming messages.")
+		user.log.Warnln("Timed out waiting for portal sync to complete! Unlocking processing of incoming messages.")
 	}
 }
 
@@ -658,10 +662,13 @@ func (user *User) GetPortalByJID(jid types.WhatsAppID) *Portal {
 }
 
 func (user *User) handleMessageLoop() {
-	for msg := range user.messages {
-		user.syncLock.Lock()
-		user.GetPortalByJID(msg.chat).messages <- msg
-		user.syncLock.Unlock()
+	for {
+		select {
+		case msg := <-user.messages:
+			user.GetPortalByJID(msg.chat).messages <- msg
+		case <-user.syncStart:
+			user.syncWait.Wait()
+		}
 	}
 }
 
