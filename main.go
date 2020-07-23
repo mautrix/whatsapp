@@ -266,6 +266,8 @@ func (bridge *Bridge) Start() {
 		bridge.Log.Fatalln("Failed to initialize database:", err)
 		os.Exit(15)
 	}
+	bridge.Log.Debugln("Checking connection to homeserver")
+	bridge.ensureConnection()
 	if bridge.Crypto != nil {
 		err := bridge.Crypto.Init()
 		if err != nil {
@@ -278,8 +280,6 @@ func (bridge *Bridge) Start() {
 		bridge.Provisioning.Init()
 	}
 	bridge.LoadRelaybot()
-	bridge.Log.Debugln("Checking connection to homeserver")
-	bridge.ensureConnection()
 	bridge.Log.Debugln("Starting application service HTTP server")
 	go bridge.AS.Start()
 	bridge.Log.Debugln("Starting event processor")
