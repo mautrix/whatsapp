@@ -233,9 +233,8 @@ func (user *User) Connect(evenIfNoSession bool) bool {
 	conn, err := whatsapp.NewConn(timeout * time.Second)
 	if err != nil {
 		user.log.Errorln("Failed to connect to WhatsApp:", err)
-		msg := format.RenderMarkdown("\u26a0 Failed to connect to WhatsApp server. "+
-			"This indicates a network problem on the bridge server. See bridge logs for more info.", true, false)
-		_, _ = user.bridge.Bot.SendMessageEvent(user.GetManagementRoom(), event.EventMessage, msg)
+		user.sendMarkdownBridgeAlert("\u26a0 Failed to connect to WhatsApp server. " +
+			"This indicates a network problem on the bridge server. See bridge logs for more info.")
 		return false
 	}
 	user.Conn = whatsappExt.ExtendConn(conn)
@@ -252,9 +251,8 @@ func (user *User) RestoreSession() bool {
 			return true
 		} else if err != nil {
 			user.log.Errorln("Failed to restore session:", err)
-			msg := format.RenderMarkdown("\u26a0 Failed to connect to WhatsApp. Make sure WhatsApp "+
-				"on your phone is reachable and use `reconnect` to try connecting again.", true, false)
-			_, _ = user.bridge.Bot.SendMessageEvent(user.GetManagementRoom(), event.EventMessage, msg)
+			user.sendMarkdownBridgeAlert("\u26a0 Failed to connect to WhatsApp. Make sure WhatsApp " +
+				"on your phone is reachable and use `reconnect` to try connecting again.")
 			user.log.Debugln("Disconnecting due to failed session restore...")
 			_, err := user.Conn.Disconnect()
 			if err != nil {
@@ -434,6 +432,23 @@ func (user *User) tryAutomaticDoublePuppeting() {
 	user.log.Infoln("Successfully automatically enabled custom puppet")
 }
 
+func (user *User) sendBridgeNotice(formatString string, args ...interface{}) {
+	notice := fmt.Sprintf(formatString, args...)
+	_, err := user.bridge.Bot.SendNotice(user.GetManagementRoom(), notice)
+	if err != nil {
+		user.log.Warnf("Failed to send bridge notice \"%s\": %v", notice, err)
+	}
+}
+
+func (user *User) sendMarkdownBridgeAlert(formatString string, args ...interface{}) {
+	notice := fmt.Sprintf(formatString, args...)
+	content := format.RenderMarkdown(notice, true, false)
+	_, err := user.bridge.Bot.SendMessageEvent(user.GetManagementRoom(), event.EventMessage, content)
+	if err != nil {
+		user.log.Warnf("Failed to send bridge alert \"%s\": %v", notice, err)
+	}
+}
+
 func (user *User) intPostLogin() {
 	defer user.syncWait.Done()
 	user.createCommunity()
@@ -583,12 +598,11 @@ func (user *User) HandleError(err error) {
 
 func (user *User) tryReconnect(msg string) {
 	if user.ConnectionErrors > user.bridge.Config.Bridge.MaxConnectionAttempts {
-		content := format.RenderMarkdown(fmt.Sprintf("%s. Use the `reconnect` command to reconnect.", msg), true, false)
-		_, _ = user.bridge.Bot.SendMessageEvent(user.GetManagementRoom(), event.EventMessage, content)
+		user.sendMarkdownBridgeAlert("%s. Use the `reconnect` command to reconnect.", msg)
 		return
 	}
 	if user.bridge.Config.Bridge.ReportConnectionRetry {
-		_, _ = user.bridge.Bot.SendNotice(user.GetManagementRoom(), fmt.Sprintf("%s. Reconnecting...", msg))
+		user.sendBridgeNotice("%s. Reconnecting...", msg)
 		// Don't want the same error to be repeated
 		msg = ""
 	}
@@ -605,7 +619,7 @@ func (user *User) tryReconnect(msg string) {
 		if err == nil {
 			user.ConnectionErrors = 0
 			if user.bridge.Config.Bridge.ReportConnectionRetry {
-				_, _ = user.bridge.Bot.SendNotice(user.GetManagementRoom(), "Reconnected successfully")
+				user.sendBridgeNotice("Reconnected successfully")
 			}
 			user.PostLogin()
 			return
@@ -627,22 +641,17 @@ func (user *User) tryReconnect(msg string) {
 				delay = (1 << tries) + baseDelay
 			}
 			if user.bridge.Config.Bridge.ReportConnectionRetry {
-				_, _ = user.bridge.Bot.SendNotice(user.GetManagementRoom(),
-					fmt.Sprintf("Reconnection attempt failed: %v. Retrying in %d seconds...", err, delay))
+				user.sendBridgeNotice("Reconnection attempt failed: %v. Retrying in %d seconds...", err, delay)
 			}
 			time.Sleep(delay * time.Second)
 		}
 	}
 
 	if user.bridge.Config.Bridge.ReportConnectionRetry {
-		msg = fmt.Sprintf("%d reconnection attempts failed. Use the `reconnect` command to try to reconnect manually.", tries)
+		user.sendMarkdownBridgeAlert("%d reconnection attempts failed. Use the `reconnect` command to try to reconnect manually.", tries)
 	} else {
-		msg = fmt.Sprintf("\u26a0 %sAdditionally, %d reconnection attempts failed. "+
-			"Use the `reconnect` command to try to reconnect.", msg, tries)
+		user.sendMarkdownBridgeAlert("\u26a0 %s. Additionally, %d reconnection attempts failed. Use the `reconnect` command to try to reconnect.", msg, tries)
 	}
-
-	content := format.RenderMarkdown(msg, true, false)
-	_, _ = user.bridge.Bot.SendMessageEvent(user.GetManagementRoom(), event.EventMessage, content)
 }
 
 func (user *User) ShouldCallSynchronously() bool {
@@ -704,9 +713,7 @@ func (user *User) HandleBatteryMessage(battery whatsapp.BatteryMessage) {
 		user.batteryWarningsSent = 0
 	}
 	if notice != "" {
-		go func() {
-			_, _ = user.bridge.Bot.SendNotice(user.GetManagementRoom(), notice)
-		}()
+		go user.sendBridgeNotice("%s", notice)
 	}
 }
 
@@ -850,17 +857,15 @@ func (user *User) HandleCommand(cmd whatsappExt.Command) {
 			go portal.UpdateAvatar(user, cmd.ProfilePicInfo, true)
 		}
 	case whatsappExt.CommandDisconnect:
-		var msg string
+		user.cleanDisconnection = true
 		if cmd.Kind == "replaced" {
-			msg = "\u26a0 Your WhatsApp connection was closed by the server because you opened another WhatsApp Web client.\n\n" +
-				"Use the `reconnect` command to disconnect the other client and resume bridging."
+			go user.sendMarkdownBridgeAlert("\u26a0 Your WhatsApp connection was closed by the server because you opened another WhatsApp Web client.\n\n" +
+				"Use the `reconnect` command to disconnect the other client and resume bridging.")
 		} else {
 			user.log.Warnln("Unknown kind of disconnect:", string(cmd.Raw))
-			msg = fmt.Sprintf("\u26a0 Your WhatsApp connection was closed by the server (reason code: %s).\n\n"+
+			go user.sendMarkdownBridgeAlert("\u26a0 Your WhatsApp connection was closed by the server (reason code: %s).\n\n"+
 				"Use the `reconnect` command to reconnect.", cmd.Kind)
 		}
-		user.cleanDisconnection = true
-		go user.bridge.Bot.SendMessageEvent(user.GetManagementRoom(), event.EventMessage, format.RenderMarkdown(msg, true, false))
 	}
 }
 
