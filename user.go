@@ -454,6 +454,13 @@ func (user *User) intPostLogin() {
 	user.createCommunity()
 	user.tryAutomaticDoublePuppeting()
 
+	err := user.Conn.AdminTest()
+	if err != nil {
+		user.sendMarkdownBridgeAlert("Post-connection ping failed: %v", err)
+	} else {
+		user.log.Debugln("Post-login ping OK")
+	}
+
 	select {
 	case <-user.chatListReceived:
 		user.log.Debugln("Chat list receive confirmation received in PostLogin")
