@@ -18,7 +18,6 @@ package main
 
 import (
 	"fmt"
-	"net/http"
 	"os"
 	"os/signal"
 	"strings"
@@ -38,8 +37,6 @@ import (
 	"maunium.net/go/mautrix-whatsapp/database"
 	"maunium.net/go/mautrix-whatsapp/database/upgrades"
 	"maunium.net/go/mautrix-whatsapp/types"
-
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 var (
@@ -405,9 +402,6 @@ func (bridge *Bridge) Main() {
 	bridge.Log.Infoln("Bridge initialization complete, starting...")
 	bridge.Start()
 	bridge.Log.Infoln("Bridge started!")
-
-	http.Handle("/metrics", promhttp.Handler())
-	http.ListenAndServe("127.0.0.1:9093", nil)
 
 	c := make(chan os.Signal)
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
