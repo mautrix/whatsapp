@@ -456,7 +456,19 @@ func (user *User) intPostLogin() {
 
 	err := user.Conn.AdminTest()
 	if err != nil {
-		user.sendMarkdownBridgeAlert("Post-connection ping failed: %v", err)
+		user.log.Errorfln("Post-connection ping failed: %v. Disconnecting and then reconnecting after a second", err)
+		sess, disconnectErr := user.Conn.Disconnect()
+		if disconnectErr != nil {
+			user.log.Warnln("Error while disconnecting after failed post-login ping:", disconnectErr)
+		} else {
+			user.Session = &sess
+		}
+		user.bridge.Metrics.TrackDisconnection(user.MXID)
+		go func() {
+			time.Sleep(1 * time.Second)
+			user.tryReconnect(fmt.Sprintf("Post-connection ping failed: %v", err))
+		}()
+		return
 	} else {
 		user.log.Debugln("Post-login ping OK")
 	}
