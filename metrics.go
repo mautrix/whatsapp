@@ -189,7 +189,7 @@ func (mh *MetricsHandler) Start() {
 	go mh.startUpdatingStats()
 	err := mh.server.ListenAndServe()
 	mh.running = false
-	if err != nil {
+	if err != nil && err != http.ErrServerClosed {
 		mh.log.Fatalln("Error in metrics listener:", err)
 	}
 }

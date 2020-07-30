@@ -218,7 +218,7 @@ func (puppet *Puppet) handleReceiptEvent(portal *Portal, event *event.Event) {
 		if message == nil {
 			continue
 		}
-		puppet.customUser.log.Infofln("Marking %s/%s in %s/%s as read", message.JID, message.MXID, portal.Key.JID, portal.MXID)
+		puppet.customUser.log.Debugfln("Marking %s/%s in %s/%s as read", message.JID, message.MXID, portal.Key.JID, portal.MXID)
 		_, err := puppet.customUser.Conn.Read(portal.Key.JID, message.JID)
 		if err != nil {
 			puppet.customUser.log.Warnln("Error marking read:", err)
@@ -238,10 +238,10 @@ func (puppet *Puppet) handleTypingEvent(portal *Portal, evt *event.Event) {
 		puppet.customTypingIn[evt.RoomID] = isTyping
 		presence := whatsapp.PresenceComposing
 		if !isTyping {
-			puppet.customUser.log.Infofln("Marking not typing in %s/%s", portal.Key.JID, portal.MXID)
+			puppet.customUser.log.Debugfln("Marking not typing in %s/%s", portal.Key.JID, portal.MXID)
 			presence = whatsapp.PresencePaused
 		} else {
-			puppet.customUser.log.Infofln("Marking typing in %s/%s", portal.Key.JID, portal.MXID)
+			puppet.customUser.log.Debugfln("Marking typing in %s/%s", portal.Key.JID, portal.MXID)
 		}
 		_, err := puppet.customUser.Conn.Presence(portal.Key.JID, presence)
 		if err != nil {

@@ -31,6 +31,7 @@ import (
 	"maunium.net/go/mautrix"
 
 	"github.com/Rhymen/go-whatsapp"
+	waBinary "github.com/Rhymen/go-whatsapp/binary"
 	waProto "github.com/Rhymen/go-whatsapp/binary/proto"
 
 	"maunium.net/go/mautrix/event"
@@ -251,8 +252,13 @@ func (user *User) RestoreSession() bool {
 			return true
 		} else if err != nil {
 			user.log.Errorln("Failed to restore session:", err)
-			user.sendMarkdownBridgeAlert("\u26a0 Failed to connect to WhatsApp. Make sure WhatsApp " +
-				"on your phone is reachable and use `reconnect` to try connecting again.")
+			if errors.Is(err, whatsapp.ErrUnpaired) {
+				user.sendMarkdownBridgeAlert("\u26a0 Failed to connect to WhatsApp: unpaired from phone. " +
+					"To re-pair your phone, use `delete-session` and then `login`.")
+			} else {
+				user.sendMarkdownBridgeAlert("\u26a0 Failed to connect to WhatsApp. Make sure WhatsApp " +
+					"on your phone is reachable and use `reconnect` to try connecting again.")
+			}
 			user.log.Debugln("Disconnecting due to failed session restore...")
 			_, err := user.Conn.Disconnect()
 			if err != nil {
@@ -850,8 +856,8 @@ func (user *User) HandleMsgInfo(info whatsappExt.MsgInfo) {
 
 		go func() {
 			intent := user.bridge.GetPuppetByJID(info.SenderJID).IntentFor(portal)
-			for _, id := range info.IDs {
-				msg := user.bridge.DB.Message.GetByJID(portal.Key, id)
+			for _, msgID := range info.IDs {
+				msg := user.bridge.DB.Message.GetByJID(portal.Key, msgID)
 				if msg == nil {
 					continue
 				}
@@ -862,6 +868,33 @@ func (user *User) HandleMsgInfo(info whatsappExt.MsgInfo) {
 				}
 			}
 		}()
+	}
+}
+
+func (user *User) HandleReadMessage(read whatsapp.ReadMessage) {
+	if strings.HasSuffix(read.Jid, whatsappExt.OldUserSuffix) {
+		read.Jid = strings.Replace(read.Jid, whatsappExt.OldUserSuffix, whatsappExt.NewUserSuffix, -1)
+	}
+	puppet := user.bridge.GetPuppetByJID(user.JID)
+	if puppet == nil {
+		return
+	}
+	intent := puppet.CustomIntent()
+	if intent == nil {
+		return
+	}
+	portal := user.GetPortalByJID(read.Jid)
+	if portal == nil {
+		return
+	}
+	message := user.bridge.DB.Message.GetLastInChat(portal.Key)
+	if message == nil {
+		return
+	}
+	user.log.Debugfln("User read %s/%s in %s/%s in WhatsApp mobile", message.JID, message.MXID, portal.Key.JID, portal.MXID)
+	err := intent.MarkRead(portal.MXID, message.MXID)
+	if err != nil {
+		user.log.Warnfln("Failed to bridge own read receipt in %s: %v", read.Jid, err)
 	}
 }
 
@@ -944,6 +977,10 @@ func (user *User) HandleJsonMessage(message string) {
 
 func (user *User) HandleRawMessage(message *waProto.WebMessageInfo) {
 	user.updateLastConnectionIfNecessary()
+}
+
+func (user *User) HandleUnknownBinaryNode(node *waBinary.Node) {
+	user.log.Debugfln("Unknown binary message: %+v", node)
 }
 
 func (user *User) NeedsRelaybot(portal *Portal) bool {
