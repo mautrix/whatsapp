@@ -871,9 +871,22 @@ func (user *User) HandleMsgInfo(info whatsappExt.MsgInfo) {
 	}
 }
 
+func (user *User) HandleReceivedMessage(received whatsapp.ReceivedMessage) {
+	if received.Type == "read" {
+		user.markSelfRead(received.Jid, received.Index)
+	} else {
+		user.log.Debugfln("Unknown received message type: %+v", received)
+	}
+}
+
 func (user *User) HandleReadMessage(read whatsapp.ReadMessage) {
-	if strings.HasSuffix(read.Jid, whatsappExt.OldUserSuffix) {
-		read.Jid = strings.Replace(read.Jid, whatsappExt.OldUserSuffix, whatsappExt.NewUserSuffix, -1)
+	user.log.Debugfln("Received chat read message: %+v", read)
+	user.markSelfRead(read.Jid, "")
+}
+
+func (user *User) markSelfRead(jid, messageID string) {
+	if strings.HasSuffix(jid, whatsappExt.OldUserSuffix) {
+		jid = strings.Replace(jid, whatsappExt.OldUserSuffix, whatsappExt.NewUserSuffix, -1)
 	}
 	puppet := user.bridge.GetPuppetByJID(user.JID)
 	if puppet == nil {
@@ -883,18 +896,27 @@ func (user *User) HandleReadMessage(read whatsapp.ReadMessage) {
 	if intent == nil {
 		return
 	}
-	portal := user.GetPortalByJID(read.Jid)
+	portal := user.GetPortalByJID(jid)
 	if portal == nil {
 		return
 	}
-	message := user.bridge.DB.Message.GetLastInChat(portal.Key)
-	if message == nil {
-		return
+	var message *database.Message
+	if messageID == "" {
+		message = user.bridge.DB.Message.GetLastInChat(portal.Key)
+		if message == nil {
+			return
+		}
+		user.log.Debugfln("User read chat %s/%s in WhatsApp mobile (last known event: %s/%s)", portal.Key.JID, portal.MXID, message.JID, message.MXID)
+	} else {
+		message = user.bridge.DB.Message.GetByJID(portal.Key, messageID)
+		if message == nil {
+			return
+		}
+		user.log.Debugfln("User read message %s/%s in %s/%s in WhatsApp mobile", message.JID, message.MXID, portal.Key.JID, portal.MXID)
 	}
-	user.log.Debugfln("User read %s/%s in %s/%s in WhatsApp mobile", message.JID, message.MXID, portal.Key.JID, portal.MXID)
 	err := intent.MarkRead(portal.MXID, message.MXID)
 	if err != nil {
-		user.log.Warnfln("Failed to bridge own read receipt in %s: %v", read.Jid, err)
+		user.log.Warnfln("Failed to bridge own read receipt in %s: %v", jid, err)
 	}
 }
 
