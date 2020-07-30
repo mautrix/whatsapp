@@ -109,7 +109,7 @@ func (bridge *Bridge) MigrateDatabase() {
 
 	newDB, err := database.New(bridge.Config.AppService.Database.Type, bridge.Config.AppService.Database.URI)
 	if err != nil {
-		bridge.Log.Fatalln("Failed to open new database:", err)
+		fmt.Println("Failed to open new database:", err)
 		os.Exit(32)
 	}
 	err = newDB.Init()

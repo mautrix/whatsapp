@@ -71,6 +71,9 @@ func migrateTable(old *Database, new *Database, table string, columns ...string)
 			slicedValueStrings = slicedValueStrings[:i]
 			slicedValues = slicedValues[:i*colCount]
 		}
+		if len(slicedValues) == 0 {
+			break
+		}
 		res, err := tx.Exec(fmt.Sprintf("INSERT INTO \"%s\" (%s) VALUES %s", table, columnNames, strings.Join(slicedValueStrings, ",")), slicedValues...)
 		if err != nil {
 			panic(err)
@@ -97,7 +100,7 @@ func Migrate(old *Database, new *Database) {
 	if err != nil {
 		panic(err)
 	}
-	err = migrateTable(old, new, "puppet", "jid", "avatar", "displayname", "name_quality", "custom_mxid", "access_token", "next_batch", "avatar_url")
+	err = migrateTable(old, new, "puppet", "jid", "avatar", "displayname", "name_quality", "custom_mxid", "access_token", "next_batch", "avatar_url", "enable_presence", "enable_receipts")
 	if err != nil {
 		panic(err)
 	}
@@ -121,7 +124,7 @@ func Migrate(old *Database, new *Database) {
 	if err != nil {
 		panic(err)
 	}
-	err = migrateTable(old, new, "crypto_account", "device_id", "shared", "sync_token", "account")
+	err = migrateTable(old, new, "crypto_account", "account_id", "device_id", "shared", "sync_token", "account")
 	if err != nil {
 		panic(err)
 	}
@@ -137,15 +140,15 @@ func Migrate(old *Database, new *Database) {
 	if err != nil {
 		panic(err)
 	}
-	err = migrateTable(old, new, "crypto_olm_session", "session_id", "sender_key", "session", "created_at", "last_used")
+	err = migrateTable(old, new, "crypto_olm_session", "account_id", "session_id", "sender_key", "session", "created_at", "last_used")
 	if err != nil {
 		panic(err)
 	}
-	err = migrateTable(old, new, "crypto_megolm_inbound_session", "session_id", "sender_key", "signing_key", "room_id", "session", "forwarding_chains")
+	err = migrateTable(old, new, "crypto_megolm_inbound_session", "account_id", "session_id", "sender_key", "signing_key", "room_id", "session", "forwarding_chains")
 	if err != nil {
 		panic(err)
 	}
-	err = migrateTable(old, new, "crypto_megolm_outbound_session", "room_id", "session_id", "session", "shared", "max_messages", "message_count", "max_age", "created_at", "last_used")
+	err = migrateTable(old, new, "crypto_megolm_outbound_session", "account_id", "room_id", "session_id", "session", "shared", "max_messages", "message_count", "max_age", "created_at", "last_used")
 	if err != nil {
 		panic(err)
 	}
