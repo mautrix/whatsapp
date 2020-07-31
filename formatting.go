@@ -143,6 +143,6 @@ func (formatter *Formatter) ParseWhatsApp(content *event.MessageEventContent, me
 func (formatter *Formatter) ParseMatrix(html string) (string, []types.WhatsAppID) {
 	ctx := make(format.Context)
 	result := formatter.matrixHTMLParser.Parse(html, ctx)
-	mentionedJIDs := ctx[mentionedJIDsContextKey].([]types.WhatsAppID)
+	mentionedJIDs, _ := ctx[mentionedJIDsContextKey].([]types.WhatsAppID)
 	return result, mentionedJIDs
 }
