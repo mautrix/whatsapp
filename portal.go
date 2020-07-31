@@ -1189,7 +1189,7 @@ func (portal *Portal) HandleTextMessage(source *User, message whatsapp.TextMessa
 		MsgType: event.MsgText,
 	}
 
-	portal.bridge.Formatter.ParseWhatsApp(content)
+	portal.bridge.Formatter.ParseWhatsApp(content, message.ContextInfo.MentionedJID)
 	portal.SetReply(content, message.ContextInfo)
 
 	_, _ = intent.UserTyping(portal.MXID, false, 0)
@@ -1554,7 +1554,7 @@ func (portal *Portal) HandleMediaMessage(source *User, msg mediaMessage) {
 			MsgType: event.MsgNotice,
 		}
 
-		portal.bridge.Formatter.ParseWhatsApp(captionContent)
+		portal.bridge.Formatter.ParseWhatsApp(captionContent, msg.context.MentionedJID)
 
 		_, err := portal.sendMessage(intent, event.EventMessage, captionContent, ts)
 		if err != nil {
@@ -1658,8 +1658,9 @@ func (portal *Portal) convertGifToVideo(gif []byte) ([]byte, error) {
 
 func (portal *Portal) preprocessMatrixMedia(sender *User, relaybotFormatted bool, content *event.MessageEventContent, eventID id.EventID, mediaType whatsapp.MediaType) *MediaUpload {
 	var caption string
+	var mentionedJIDs []types.WhatsAppID
 	if relaybotFormatted {
-		caption = portal.bridge.Formatter.ParseMatrix(content.FormattedBody)
+		caption, mentionedJIDs = portal.bridge.Formatter.ParseMatrix(content.FormattedBody)
 	}
 
 	var file *event.EncryptedFileInfo
@@ -1702,6 +1703,7 @@ func (portal *Portal) preprocessMatrixMedia(sender *User, relaybotFormatted bool
 
 	return &MediaUpload{
 		Caption:       caption,
+		MentionedJIDs: mentionedJIDs,
 		URL:           url,
 		MediaKey:      mediaKey,
 		FileEncSHA256: fileEncSHA256,
@@ -1713,6 +1715,7 @@ func (portal *Portal) preprocessMatrixMedia(sender *User, relaybotFormatted bool
 
 type MediaUpload struct {
 	Caption       string
+	MentionedJIDs []types.WhatsAppID
 	URL           string
 	MediaKey      []byte
 	FileEncSHA256 []byte
@@ -1819,14 +1822,10 @@ func (portal *Portal) convertMatrixMessage(sender *User, evt *event.Event) (*waP
 	case event.MsgText, event.MsgEmote, event.MsgNotice:
 		text := content.Body
 		if content.Format == event.FormatHTML {
-			text = portal.bridge.Formatter.ParseMatrix(content.FormattedBody)
+			text, ctxInfo.MentionedJid = portal.bridge.Formatter.ParseMatrix(content.FormattedBody)
 		}
 		if content.MsgType == event.MsgEmote && !relaybotFormatted {
 			text = "/me " + text
-		}
-		ctxInfo.MentionedJid = mentionRegex.FindAllString(text, -1)
-		for index, mention := range ctxInfo.MentionedJid {
-			ctxInfo.MentionedJid[index] = mention[1:] + whatsappExt.NewUserSuffix
 		}
 		if ctxInfo.StanzaId != nil || ctxInfo.MentionedJid != nil {
 			info.Message.ExtendedTextMessage = &waProto.ExtendedTextMessage{
@@ -1841,7 +1840,9 @@ func (portal *Portal) convertMatrixMessage(sender *User, evt *event.Event) (*waP
 		if media == nil {
 			return nil, sender
 		}
+		ctxInfo.MentionedJid = media.MentionedJIDs
 		info.Message.ImageMessage = &waProto.ImageMessage{
+			ContextInfo:   ctxInfo,
 			Caption:       &media.Caption,
 			JpegThumbnail: media.Thumbnail,
 			Url:           &media.URL,
@@ -1858,7 +1859,9 @@ func (portal *Portal) convertMatrixMessage(sender *User, evt *event.Event) (*waP
 			return nil, sender
 		}
 		duration := uint32(content.GetInfo().Duration)
+		ctxInfo.MentionedJid = media.MentionedJIDs
 		info.Message.VideoMessage = &waProto.VideoMessage{
+			ContextInfo:   ctxInfo,
 			Caption:       &media.Caption,
 			JpegThumbnail: media.Thumbnail,
 			Url:           &media.URL,
@@ -1877,6 +1880,7 @@ func (portal *Portal) convertMatrixMessage(sender *User, evt *event.Event) (*waP
 		}
 		duration := uint32(content.GetInfo().Duration)
 		info.Message.AudioMessage = &waProto.AudioMessage{
+			ContextInfo:   ctxInfo,
 			Url:           &media.URL,
 			MediaKey:      media.MediaKey,
 			Mimetype:      &content.GetInfo().MimeType,
@@ -1891,6 +1895,7 @@ func (portal *Portal) convertMatrixMessage(sender *User, evt *event.Event) (*waP
 			return nil, sender
 		}
 		info.Message.DocumentMessage = &waProto.DocumentMessage{
+			ContextInfo:   ctxInfo,
 			Url:           &media.URL,
 			FileName:      &content.Body,
 			MediaKey:      media.MediaKey,

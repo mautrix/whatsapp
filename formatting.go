@@ -34,7 +34,8 @@ var italicRegex = regexp.MustCompile("([\\s>~*]|^)_(.+?)_([^a-zA-Z\\d]|$)")
 var boldRegex = regexp.MustCompile("([\\s>_~]|^)\\*(.+?)\\*([^a-zA-Z\\d]|$)")
 var strikethroughRegex = regexp.MustCompile("([\\s>_*]|^)~(.+?)~([^a-zA-Z\\d]|$)")
 var codeBlockRegex = regexp.MustCompile("```(?:.|\n)+?```")
-var mentionRegex = regexp.MustCompile("@[0-9]+")
+
+const mentionedJIDsContextKey = "net.maunium.whatsapp.mentioned_jids"
 
 type Formatter struct {
 	bridge *Bridge
@@ -53,28 +54,34 @@ func NewFormatter(bridge *Bridge) *Formatter {
 			TabsToSpaces: 4,
 			Newline:      "\n",
 
-			PillConverter: func(mxid, eventID string) string {
+			PillConverter: func(mxid, eventID string, ctx format.Context) string {
 				if mxid[0] == '@' {
 					puppet := bridge.GetPuppetByMXID(id.UserID(mxid))
 					if puppet != nil {
+						jids, ok := ctx[mentionedJIDsContextKey].([]types.WhatsAppID)
+						if !ok {
+							ctx[mentionedJIDsContextKey] = []types.WhatsAppID{puppet.JID}
+						} else {
+							ctx[mentionedJIDsContextKey] = append(jids, puppet.JID)
+						}
 						return "@" + puppet.PhoneNumber()
 					}
 				}
 				return mxid
 			},
-			BoldConverter: func(text string) string {
+			BoldConverter: func(text string, _ format.Context) string {
 				return fmt.Sprintf("*%s*", text)
 			},
-			ItalicConverter: func(text string) string {
+			ItalicConverter: func(text string, _ format.Context) string {
 				return fmt.Sprintf("_%s_", text)
 			},
-			StrikethroughConverter: func(text string) string {
+			StrikethroughConverter: func(text string, _ format.Context) string {
 				return fmt.Sprintf("~%s~", text)
 			},
-			MonospaceConverter: func(text string) string {
+			MonospaceConverter: func(text string, _ format.Context) string {
 				return fmt.Sprintf("```%s```", text)
 			},
-			MonospaceBlockConverter: func(text, language string) string {
+			MonospaceBlockConverter: func(text, language string, _ format.Context) string {
 				return fmt.Sprintf("```%s```", text)
 			},
 		},
@@ -92,16 +99,8 @@ func NewFormatter(bridge *Bridge) *Formatter {
 			}
 			return fmt.Sprintf("<code>%s</code>", str)
 		},
-		mentionRegex: func(str string) string {
-			mxid, displayname := formatter.getMatrixInfoByJID(str[1:] + whatsappExt.NewUserSuffix)
-			return fmt.Sprintf(`<a href="https://matrix.to/#/%s">%s</a>`, mxid, displayname)
-		},
 	}
 	formatter.waReplFuncText = map[*regexp.Regexp]func(string) string{
-		mentionRegex: func(str string) string {
-			_, displayname := formatter.getMatrixInfoByJID(str[1:] + whatsappExt.NewUserSuffix)
-			return displayname
-		},
 	}
 	return formatter
 }
@@ -117,13 +116,19 @@ func (formatter *Formatter) getMatrixInfoByJID(jid types.WhatsAppID) (mxid id.Us
 	return
 }
 
-func (formatter *Formatter) ParseWhatsApp(content *event.MessageEventContent) {
+func (formatter *Formatter) ParseWhatsApp(content *event.MessageEventContent, mentionedJIDs []types.WhatsAppID) {
 	output := html.EscapeString(content.Body)
 	for regex, replacement := range formatter.waReplString {
 		output = regex.ReplaceAllString(output, replacement)
 	}
 	for regex, replacer := range formatter.waReplFunc {
 		output = regex.ReplaceAllStringFunc(output, replacer)
+	}
+	for _, jid := range mentionedJIDs {
+		mxid, displayname := formatter.getMatrixInfoByJID(jid)
+		number := "@" + strings.Replace(jid, whatsappExt.NewUserSuffix, "", 1)
+		output = strings.Replace(output, number, fmt.Sprintf(`<a href="https://matrix.to/#/%s">%s</a>`, mxid, displayname), -1)
+		content.Body = strings.Replace(content.Body, number, displayname, -1)
 	}
 	if output != content.Body {
 		output = strings.Replace(output, "\n", "<br/>", -1)
@@ -135,6 +140,9 @@ func (formatter *Formatter) ParseWhatsApp(content *event.MessageEventContent) {
 	}
 }
 
-func (formatter *Formatter) ParseMatrix(html string) string {
-	return formatter.matrixHTMLParser.Parse(html)
+func (formatter *Formatter) ParseMatrix(html string) (string, []types.WhatsAppID) {
+	ctx := make(format.Context)
+	result := formatter.matrixHTMLParser.Parse(html, ctx)
+	mentionedJIDs := ctx[mentionedJIDsContextKey].([]types.WhatsAppID)
+	return result, mentionedJIDs
 }
