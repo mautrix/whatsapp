@@ -7,3 +7,5 @@
 *.json
 *.db
 *.log
+
+/mautrix-whatsapp
