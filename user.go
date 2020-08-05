@@ -455,17 +455,13 @@ func (user *User) sendMarkdownBridgeAlert(formatString string, args ...interface
 	}
 }
 
-func (user *User) intPostLogin() {
-	defer user.syncWait.Done()
-	user.createCommunity()
-	user.tryAutomaticDoublePuppeting()
-
+func (user *User) postConnPing() bool {
 	err := user.Conn.AdminTest()
 	if err != nil {
 		user.log.Errorfln("Post-connection ping failed: %v. Disconnecting and then reconnecting after a second", err)
 		sess, disconnectErr := user.Conn.Disconnect()
 		if disconnectErr != nil {
-			user.log.Warnln("Error while disconnecting after failed post-login ping:", disconnectErr)
+			user.log.Warnln("Error while disconnecting after failed post-connection ping:", disconnectErr)
 		} else {
 			user.Session = &sess
 		}
@@ -474,16 +470,27 @@ func (user *User) intPostLogin() {
 			time.Sleep(1 * time.Second)
 			user.tryReconnect(fmt.Sprintf("Post-connection ping failed: %v", err))
 		}()
-		return
+		return false
 	} else {
-		user.log.Debugln("Post-login ping OK")
+		user.log.Debugln("Post-connection ping OK")
+		return true
 	}
+}
+
+func (user *User) intPostLogin() {
+	defer user.syncWait.Done()
+	user.createCommunity()
+	user.tryAutomaticDoublePuppeting()
 
 	select {
 	case <-user.chatListReceived:
 		user.log.Debugln("Chat list receive confirmation received in PostLogin")
 	case <-time.After(time.Duration(user.bridge.Config.Bridge.ChatListWait) * time.Second):
 		user.log.Warnln("Timed out waiting for chat list to arrive!")
+		user.postConnPing()
+		return
+	}
+	if !user.postConnPing() {
 		return
 	}
 	select {
