@@ -77,6 +77,12 @@ type BridgeConfig struct {
 	Encryption struct {
 		Allow   bool `yaml:"allow"`
 		Default bool `yaml:"default"`
+
+		KeySharing struct {
+			Allow               bool `yaml:"allow"`
+			RequireCrossSigning bool `yaml:"require_cross_signing"`
+			RequireVerification bool `yaml:"require_verification"`
+		} `yaml:"key_sharing"`
 	} `yaml:"encryption"`
 
 	Permissions PermissionConfig `yaml:"permissions"`

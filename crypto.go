@@ -83,12 +83,37 @@ func (helper *CryptoHelper) Init() error {
 	logger := &cryptoLogger{helper.baseLog}
 	stateStore := &cryptoStateStore{helper.bridge}
 	helper.mach = crypto.NewOlmMachine(helper.client, logger, helper.store, stateStore)
+	helper.mach.AllowKeyShare = helper.allowKeyShare
 
 	helper.client.Logger = logger.int.Sub("Bot")
 	helper.client.Syncer = &cryptoSyncer{helper.mach}
 	helper.client.Store = &cryptoClientStore{helper.store}
 
 	return helper.mach.Load()
+}
+
+func (helper *CryptoHelper) allowKeyShare(device *crypto.DeviceIdentity, info event.RequestedKeyInfo) *crypto.KeyShareRejection {
+	cfg := helper.bridge.Config.Bridge.Encryption.KeySharing
+	if !cfg.Allow {
+		return &crypto.KeyShareRejectNoResponse
+	} else if device.Trust == crypto.TrustStateBlacklisted {
+		return &crypto.KeyShareRejectBlacklisted
+	} else if device.Trust == crypto.TrustStateVerified || !cfg.RequireVerification {
+		portal := helper.bridge.GetPortalByMXID(info.RoomID)
+		if portal == nil {
+			helper.log.Debugfln("Rejecting key request for %s from %s/%s: room is not a portal", info.SessionID, device.UserID, device.DeviceID)
+			return &crypto.KeyShareRejection{Code: event.RoomKeyWithheldUnavailable, Reason: "Requested room is not a portal room"}
+		}
+		user := helper.bridge.GetUserByMXID(device.UserID)
+		if !user.IsInPortal(portal.Key) {
+			helper.log.Debugfln("Rejecting key request for %s from %s/%s: user is not in portal", info.SessionID, device.UserID, device.DeviceID)
+			return &crypto.KeyShareRejection{Code: event.RoomKeyWithheldUnauthorized, Reason: "You're not in that portal"}
+		}
+		helper.log.Debugfln("Accepting key request for %s from %s/%s", info.SessionID, device.UserID, device.DeviceID)
+		return nil
+	} else {
+		return &crypto.KeyShareRejectUnverified
+	}
 }
 
 func (helper *CryptoHelper) loginBot() (*mautrix.Client, error) {

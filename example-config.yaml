@@ -187,6 +187,18 @@ bridge:
         # This will cause the bridge bot to be in private chats for the encryption to work properly.
         # It is recommended to also set private_chat_portal_meta to true when using this.
         default: false
+        # Options for automatic key sharing.
+        key_sharing:
+            # Enable key sharing? If enabled, key requests for rooms where users are in will be fulfilled.
+            # You must use a client that supports requesting keys from other users to use this feature.
+            allow: false
+            # Require the requesting device to have a valid cross-signing signature?
+            # This doesn't require that the bridge has verified the device, only that the user has verified it.
+            # Not yet implemented.
+            require_cross_signing: false
+            # Require devices to be verified by the bridge?
+            # Verification by the bridge is not yet implemented.
+            require_verification: true
 
     # Permissions for using the bridge.
     # Permitted values:
