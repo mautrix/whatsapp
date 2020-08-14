@@ -9,8 +9,8 @@ RUN go build -o /usr/bin/mautrix-whatsapp
 
 FROM alpine:3.12
 
-ARG TARGETARCH=amd64
-ARG YQ_DOWNLOAD_ADDR=https://github.com/mikefarah/yq/releases/download/3.3.2/yq_linux_${TARGETARCH}
+ARG DOCKER_ARCH=amd64
+ARG YQ_DOWNLOAD_ADDR=https://github.com/mikefarah/yq/releases/download/3.3.2/yq_linux_${DOCKER_ARCH}
 
 ENV UID=1337 \
     GID=1337
