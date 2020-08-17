@@ -1,10 +1,14 @@
 FROM alpine:3.12
 
+ARG TARGETARCH=amd64
+
 ENV UID=1337 \
     GID=1337
 
 RUN echo "@edge_community http://dl-cdn.alpinelinux.org/alpine/edge/community" >> /etc/apk/repositories
-RUN apk add --no-cache ffmpeg su-exec ca-certificates olm@edge_community
+RUN apk add --no-cache ffmpeg su-exec ca-certificates olm@edge_community bash jq curl && \
+    curl -sLo yq ${YQ_DOWNLOAD_ADDR} && \
+    chmod +x yq && mv yq /usr/bin/yq
 
 ARG EXECUTABLE=./mautrix-whatsapp
 COPY $EXECUTABLE /usr/bin/mautrix-whatsapp
