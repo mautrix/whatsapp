@@ -2,7 +2,6 @@ stages:
 - build
 - build docker
 - manifest
-- deploy
 
 .build: &build
   image: golang:1-alpine
@@ -109,13 +108,3 @@ manifest:
   - if [ "$CI_COMMIT_BRANCH" = "master" ]; then docker manifest create $CI_REGISTRY_IMAGE:latest $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA-amd64 $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA-arm64 && docker manifest push $CI_REGISTRY_IMAGE:latest; fi
   - if [ "$CI_COMMIT_BRANCH" != "master" ]; then docker manifest create $CI_REGISTRY_IMAGE:$CI_COMMIT_REF_NAME $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA-amd64 $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA-arm64 && docker manifest push $CI_REGISTRY_IMAGE:$CI_COMMIT_REF_NAME; fi
   - docker rmi $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA-amd64 $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA-arm64
-
-trigger nova build:
-  image: curlimages/curl
-  stage: deploy
-  only:
-  - master
-  needs:
-  - build docker amd64
-  script:
-  - curl -X POST -F "token=$NOVA_CI_TRIGGER_TOKEN" -F "ref=master" -F "variables[MAU_COMMIT_SHA]=$CI_COMMIT_SHA" -F "variables[MAU_BRIDGE]=whatsapp" https://gitlab.com/api/v4/projects/19691163/trigger/pipeline
