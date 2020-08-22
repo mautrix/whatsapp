@@ -138,6 +138,10 @@ bridge:
     # Whether or not to sync with custom puppets to receive EDUs that
     # are not normally sent to appservices.
     sync_with_custom_puppets: true
+    # Whether or not to update the m.direct account data event when double puppeting is enabled.
+    # Note that updating the m.direct event is not atomic (except with mautrix-asmux)
+    # and is therefore prone to race conditions.
+    sync_direct_chat_list: false
     # When double puppeting is enabled, users can use `!wa toggle` to change whether or not
     # presence and read receipts are bridged. These settings set the default values.
     # Existing users won't be affected when these are changed.

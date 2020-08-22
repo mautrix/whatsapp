@@ -28,6 +28,7 @@ type Config struct {
 	Homeserver struct {
 		Address string `yaml:"address"`
 		Domain  string `yaml:"domain"`
+		Asmux   bool   `yaml:"asmux"`
 	} `yaml:"homeserver"`
 
 	AppService struct {

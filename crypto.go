@@ -128,8 +128,8 @@ func (helper *CryptoHelper) loginBot() (*mautrix.Client, error) {
 		return nil, err
 	}
 	resp, err := client.Login(&mautrix.ReqLogin{
-		Type:                     "m.login.password",
-		Identifier:               mautrix.UserIdentifier{Type: "m.id.user", User: string(helper.bridge.AS.BotMXID())},
+		Type:                     mautrix.AuthTypePassword,
+		Identifier:               mautrix.UserIdentifier{Type: mautrix.IdentifierTypeUser, User: string(helper.bridge.AS.BotMXID())},
 		Password:                 hex.EncodeToString(mac.Sum(nil)),
 		DeviceID:                 deviceID,
 		InitialDeviceDisplayName: "WhatsApp Bridge",

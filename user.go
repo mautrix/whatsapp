@@ -19,6 +19,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"sort"
 	"strconv"
 	"strings"
@@ -28,12 +29,12 @@ import (
 	"github.com/pkg/errors"
 	"github.com/skip2/go-qrcode"
 	log "maunium.net/go/maulogger/v2"
-	"maunium.net/go/mautrix"
 
 	"github.com/Rhymen/go-whatsapp"
 	waBinary "github.com/Rhymen/go-whatsapp/binary"
 	waProto "github.com/Rhymen/go-whatsapp/binary/proto"
 
+	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/format"
 	"maunium.net/go/mautrix/id"
@@ -573,10 +574,66 @@ func (user *User) syncPortals(chatMap map[string]whatsapp.Chat, createAll bool) 
 			}
 		}
 	}
+	user.UpdateDirectChats(nil)
 	user.log.Infoln("Finished syncing portals")
 	select {
 	case user.syncPortalsDone <- struct{}{}:
 	default:
+	}
+}
+
+func (user *User) getDirectChats() map[id.UserID][]id.RoomID {
+	res := make(map[id.UserID][]id.RoomID)
+	privateChats := user.bridge.DB.Portal.FindPrivateChats(user.JID)
+	for _, portal := range privateChats {
+		if len(portal.MXID) > 0 {
+			res[user.bridge.FormatPuppetMXID(portal.Key.JID)] = []id.RoomID{portal.MXID}
+		}
+	}
+	return res
+}
+
+func (user *User) UpdateDirectChats(chats map[id.UserID][]id.RoomID) {
+	if !user.bridge.Config.Bridge.SyncDirectChatList {
+		return
+	}
+	puppet := user.bridge.GetPuppetByCustomMXID(user.MXID)
+	if puppet == nil || puppet.CustomIntent() == nil {
+		return
+	}
+	intent := puppet.CustomIntent()
+	method := http.MethodPatch
+	if chats == nil {
+		chats = user.getDirectChats()
+		method = http.MethodPut
+	}
+	user.log.Debugln("Updating m.direct list on homeserver")
+	var err error
+	if user.bridge.Config.Homeserver.Asmux {
+		urlPath := intent.BuildBaseURL("_matrix", "client", "unstable", "net.maunium.asmux", "dms")
+		_, err = intent.MakeFullRequest(method, urlPath, http.Header{
+			"X-Asmux-Auth": {user.bridge.AS.Registration.AppToken},
+		}, chats, nil)
+	} else {
+		existingChats := make(map[id.UserID][]id.RoomID)
+		err = intent.GetAccountData(event.AccountDataDirectChats.Type, &existingChats)
+		if err != nil {
+			user.log.Warnln("Failed to get m.direct list to update it:", err)
+			return
+		}
+		for userID, rooms := range existingChats {
+			if _, ok := user.bridge.ParsePuppetMXID(userID); !ok {
+				// This is not a ghost user, include it in the new list
+				chats[userID] = rooms
+			} else if _, ok := chats[userID]; !ok && method == http.MethodPatch {
+				// This is a ghost user, but we're not replacing the whole list, so include it too
+				chats[userID] = rooms
+			}
+		}
+		err = intent.SetAccountData(event.AccountDataDirectChats.Type, &chats)
+	}
+	if err != nil {
+		user.log.Warnln("Failed to update m.direct list:", err)
 	}
 }
 

@@ -84,6 +84,10 @@ func (pq *PortalQuery) GetAllByJID(jid types.WhatsAppID) []*Portal {
 	return pq.getAll("SELECT * FROM portal WHERE jid=$1", jid)
 }
 
+func (pq *PortalQuery) FindPrivateChats(receiver types.WhatsAppID) []*Portal {
+	return pq.getAll("SELECT * FROM portal WHERE receiver=$1 AND jid LIKE '%@s.whatsapp.net'", receiver)
+}
+
 func (pq *PortalQuery) getAll(query string, args ...interface{}) (portals []*Portal) {
 	rows, err := pq.db.Query(query, args...)
 	if err != nil || rows == nil {

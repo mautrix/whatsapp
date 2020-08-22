@@ -124,18 +124,22 @@ func (bridge *Bridge) dbPuppetsToPuppets(dbPuppets []*database.Puppet) []*Puppet
 	return output
 }
 
+func (bridge *Bridge) FormatPuppetMXID(jid types.WhatsAppID) id.UserID {
+	return id.NewUserID(
+		bridge.Config.Bridge.FormatUsername(
+			strings.Replace(
+				jid,
+				whatsappExt.NewUserSuffix, "", 1)),
+		bridge.Config.Homeserver.Domain)
+}
+
 func (bridge *Bridge) NewPuppet(dbPuppet *database.Puppet) *Puppet {
 	return &Puppet{
 		Puppet: dbPuppet,
 		bridge: bridge,
 		log:    bridge.Log.Sub(fmt.Sprintf("Puppet/%s", dbPuppet.JID)),
 
-		MXID: id.NewUserID(
-			bridge.Config.Bridge.FormatUsername(
-				strings.Replace(
-					dbPuppet.JID,
-					whatsappExt.NewUserSuffix, "", 1)),
-			bridge.Config.Homeserver.Domain),
+		MXID: bridge.FormatPuppetMXID(dbPuppet.JID),
 	}
 }
 

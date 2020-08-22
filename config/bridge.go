@@ -60,6 +60,7 @@ type BridgeConfig struct {
 	SyncChatMaxAge       uint64 `yaml:"sync_max_chat_age"`
 
 	SyncWithCustomPuppets bool   `yaml:"sync_with_custom_puppets"`
+	SyncDirectChatList    bool   `yaml:"sync_direct_chat_list"`
 	DefaultBridgeReceipts bool   `yaml:"default_bridge_receipts"`
 	DefaultBridgePresence bool   `yaml:"default_bridge_presence"`
 	LoginSharedSecret     string `yaml:"login_shared_secret"`

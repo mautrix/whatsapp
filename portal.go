@@ -1038,6 +1038,8 @@ func (portal *Portal) CreateMatrixRoom(user *User) error {
 				portal.log.Errorln("Failed to join created portal with bridge bot for e2be:", err)
 			}
 		}
+
+		user.UpdateDirectChats(map[id.UserID][]id.RoomID{puppet.MXID: {portal.MXID}})
 	}
 	err = portal.FillInitialHistory(user)
 	if err != nil {
