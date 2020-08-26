@@ -56,9 +56,11 @@ metrics:
     listen: 127.0.0.1:8001
 
 whatsapp:
-    # Device name that's shown in the "WhatsApp Web" section in the mobile app
-    device_name: Mautrix-WhatsApp bridge
-    short_name: mx-wa
+    # Device name that's shown in the "WhatsApp Web" section in the mobile app.
+    os_name: Mautrix-WhatsApp bridge
+    # Browser name that determines the logo shown in the mobile app. If the name is unrecognized, a generic icon is shown.
+    # Use the name of an actual browser (Chrome, Firefox, Safari, IE, Edge, Opera) if you want a specific icon.
+    browser_name: mx-wa
 
 # Bridge config
 bridge:

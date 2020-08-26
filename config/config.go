@@ -68,8 +68,8 @@ type Config struct {
 	} `yaml:"metrics"`
 
 	WhatsApp struct {
-		DeviceName string `yaml:"device_name"`
-		ShortName  string `yaml:"short_name"`
+		OSName string `yaml:"os_name"`
+		BrowserName  string `yaml:"browser_name"`
 	} `yaml:"whatsapp"`
 
 	Bridge BridgeConfig `yaml:"bridge"`
@@ -80,8 +80,8 @@ type Config struct {
 func (config *Config) setDefaults() {
 	config.AppService.Database.MaxOpenConns = 20
 	config.AppService.Database.MaxIdleConns = 2
-	config.WhatsApp.DeviceName = "Mautrix-WhatsApp bridge"
-	config.WhatsApp.ShortName = "mx-wa"
+	config.WhatsApp.OSName = "Mautrix-WhatsApp bridge"
+	config.WhatsApp.BrowserName = "mx-wa"
 	config.Bridge.setDefaults()
 }
 
