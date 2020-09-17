@@ -339,6 +339,9 @@ func (mx *MatrixHandler) HandleEncrypted(evt *event.Event) {
 	decrypted, err := mx.bridge.Crypto.Decrypt(evt)
 	if err != nil {
 		mx.log.Warnfln("Failed to decrypt %s: %v", evt.ID, err)
+		_, _ = mx.bridge.Bot.SendNotice(evt.RoomID, fmt.Sprintf(
+			"\u26a0 Your message was not bridged: %v. " +
+				"Try restarting your client if this error keeps happening.", err))
 		return
 	}
 	mx.bridge.EventProcessor.Dispatch(decrypted)
