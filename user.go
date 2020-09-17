@@ -62,6 +62,7 @@ type User struct {
 
 	cleanDisconnection  bool
 	batteryWarningsSent int
+	lastReconnection    int64
 
 	chatListReceived chan struct{}
 	syncPortalsDone  chan struct{}
@@ -480,6 +481,7 @@ func (user *User) postConnPing() bool {
 
 func (user *User) intPostLogin() {
 	defer user.syncWait.Done()
+	user.lastReconnection = time.Now().Unix()
 	user.createCommunity()
 	user.tryAutomaticDoublePuppeting()
 
@@ -499,6 +501,21 @@ func (user *User) intPostLogin() {
 		user.log.Debugln("Post-login portal sync complete, unlocking processing of incoming messages.")
 	case <-time.After(time.Duration(user.bridge.Config.Bridge.PortalSyncWait) * time.Second):
 		user.log.Warnln("Timed out waiting for portal sync to complete! Unlocking processing of incoming messages.")
+	}
+}
+
+func (user *User) HandleStreamEvent(evt whatsappExt.StreamEvent) {
+	if evt.Type == whatsappExt.StreamSleep {
+		if user.lastReconnection+60 > time.Now().Unix() {
+			user.lastReconnection = 0
+			user.log.Infoln("Stream went to sleep soon after reconnection, making new post-connection ping in 20 seconds")
+			go func() {
+				time.Sleep(20 * time.Second)
+				user.postConnPing()
+			}()
+		}
+	} else {
+		user.log.Infofln("Stream event: %+v", evt)
 	}
 }
 

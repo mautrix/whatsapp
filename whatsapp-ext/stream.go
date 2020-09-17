@@ -30,9 +30,12 @@ const (
 )
 
 type StreamEvent struct {
-	Type    StreamType
-	Boolean bool
-	Version string
+	Type StreamType
+
+	IsOutdated bool
+	Version    string
+
+	Extra []json.RawMessage
 }
 
 type StreamEventHandler interface {
@@ -48,9 +51,14 @@ func (ext *ExtendedConn) handleMessageStream(message []json.RawMessage) {
 		return
 	}
 
-	if event.Type == StreamUpdate && len(message) > 4 {
-		json.Unmarshal(message[1], event.Boolean)
-		json.Unmarshal(message[2], event.Version)
+	if event.Type == StreamUpdate && len(message) >= 3 {
+		_ = json.Unmarshal(message[1], &event.IsOutdated)
+		_ = json.Unmarshal(message[2], &event.Version)
+		if len(message) >= 4 {
+			event.Extra = message[3:]
+		}
+	} else if len(message) >= 2 {
+		event.Extra = message[1:]
 	}
 
 	for _, handler := range ext.handlers {
