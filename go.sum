@@ -125,6 +125,8 @@ github.com/tulir/go-whatsapp v0.3.7 h1:6YoHsAlO+Y1SnU0bOntDmuvJQziEnBjFKO+1fOH2V
 github.com/tulir/go-whatsapp v0.3.7/go.mod h1:7yGOBdWidM6gsmbAFwgkwHEIhzVrm01+6UbImpMWfTM=
 github.com/tulir/go-whatsapp v0.3.8 h1:cRPyYhtgokUyeE2wsSlRpsw9qddi0Giun+kn9fGsl/M=
 github.com/tulir/go-whatsapp v0.3.8/go.mod h1:7yGOBdWidM6gsmbAFwgkwHEIhzVrm01+6UbImpMWfTM=
+github.com/tulir/go-whatsapp v0.3.9 h1:fs2G8TMsSJ2y93UxM9pnFHGxMjKrdFAyavqG8MxpNQA=
+github.com/tulir/go-whatsapp v0.3.9/go.mod h1:U5+sm33vrv3wz62YyRM/VS7q2ObXkxU4Xqj/3KOmN9o=
 golang.org/x/crypto v0.0.0-20180904163835-0709b304e793/go.mod h1:6SG95UA2DQfeDnfUPMdvaQW0Q7yPrPDi9nlGo2tz2b4=
 golang.org/x/crypto v0.0.0-20190308221718-c2843e01d9a2/go.mod h1:djNgcEr1/C05ACkg1iLfiJU5Ep61QUkGW8qpdssI0+w=
 golang.org/x/crypto v0.0.0-20200604202706-70a84ac30bf9 h1:vEg9joUBmeBcK9iSJftGNf3coIG4HqZElCPehJsfAYM=
@@ -227,3 +229,5 @@ maunium.net/go/mautrix v0.7.2 h1:ru//jj7Y5Xj9CXBpeNyWCoxjq8iT0d+a2lNeSiN9P/o=
 maunium.net/go/mautrix v0.7.2/go.mod h1:Va/74MijqaS0DQ3aUqxmFO54/PMfr1LVsCOcGRHbYmo=
 maunium.net/go/mautrix v0.7.4 h1:MDjrvDyHcu5ozKAa80ohcXmYAXZTHgHxrhiERtvkEdY=
 maunium.net/go/mautrix v0.7.4/go.mod h1:Va/74MijqaS0DQ3aUqxmFO54/PMfr1LVsCOcGRHbYmo=
+maunium.net/go/mautrix v0.7.7 h1:yfpTizagog8NRHcMjxkCyY7Vreb0OEXaessaJBaLQrw=
+maunium.net/go/mautrix v0.7.7/go.mod h1:FpsAvwNdG3Zeup7Y2Nlv81Lk0h6iVRPoIy6D7g/7YCE=

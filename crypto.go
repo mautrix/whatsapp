@@ -36,6 +36,8 @@ import (
 	"maunium.net/go/mautrix-whatsapp/database"
 )
 
+var NoSessionFound = crypto.NoSessionFound
+
 var levelTrace = maulogger.Level{
 	Name:     "Trace",
 	Severity: -10,
@@ -181,6 +183,10 @@ func (helper *CryptoHelper) Encrypt(roomID id.RoomID, evtType event.Type, conten
 		}
 	}
 	return encrypted, nil
+}
+
+func (helper *CryptoHelper) WaitForSession(roomID id.RoomID, senderKey id.SenderKey, sessionID id.SessionID, timeout time.Duration) bool {
+	return helper.mach.WaitForSession(roomID, senderKey, sessionID, timeout)
 }
 
 func (helper *CryptoHelper) HandleMemberEvent(evt *event.Event) {

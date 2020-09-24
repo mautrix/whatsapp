@@ -18,6 +18,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"sort"
@@ -26,7 +27,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/pkg/errors"
 	"github.com/skip2/go-qrcode"
 	log "maunium.net/go/maulogger/v2"
 
@@ -683,7 +683,7 @@ func (user *User) updateLastConnectionIfNecessary() {
 }
 
 func (user *User) HandleError(err error) {
-	if errors.Cause(err) != whatsapp.ErrInvalidWsData {
+	if !errors.Is(err, whatsapp.ErrInvalidWsData) {
 		user.log.Errorfln("WhatsApp error: %v", err)
 	}
 	if closed, ok := err.(*whatsapp.ErrConnectionClosed); ok {

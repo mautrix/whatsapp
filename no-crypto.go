@@ -9,3 +9,5 @@ func NewCryptoHelper(bridge *Bridge) Crypto {
 	bridge.Log.Debugln("Bridge built without end-to-bridge encryption")
 	return nil
 }
+
+var NoSessionFound = errors.New("nil")

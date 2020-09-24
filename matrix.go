@@ -17,12 +17,14 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"maunium.net/go/maulogger/v2"
-	"maunium.net/go/mautrix"
 
+	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/appservice"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/format"
@@ -330,6 +332,8 @@ func (mx *MatrixHandler) shouldIgnoreEvent(evt *event.Event) bool {
 	return false
 }
 
+const sessionWaitTimeout = 3 * time.Second
+
 func (mx *MatrixHandler) HandleEncrypted(evt *event.Event) {
 	defer mx.bridge.Metrics.TrackEvent(evt.Type)()
 	if mx.shouldIgnoreEvent(evt) || mx.bridge.Crypto == nil {
@@ -338,9 +342,16 @@ func (mx *MatrixHandler) HandleEncrypted(evt *event.Event) {
 
 	decrypted, err := mx.bridge.Crypto.Decrypt(evt)
 	if err != nil {
+		content := evt.Content.AsEncrypted()
+		if errors.Is(err, NoSessionFound) && mx.bridge.Crypto.WaitForSession(evt.RoomID, content.SenderKey, content.SessionID, sessionWaitTimeout) {
+			mx.log.Debugfln("Got session %s to decrypt %s after waiting a while, trying to decrypt again", evt.ID, content.SessionID)
+			decrypted, err = mx.bridge.Crypto.Decrypt(evt)
+		}
+	}
+	if err != nil {
 		mx.log.Warnfln("Failed to decrypt %s: %v", evt.ID, err)
 		_, _ = mx.bridge.Bot.SendNotice(evt.RoomID, fmt.Sprintf(
-			"\u26a0 Your message was not bridged: %v. " +
+			"\u26a0 Your message was not bridged: %v. "+
 				"Try restarting your client if this error keeps happening.", err))
 		return
 	}

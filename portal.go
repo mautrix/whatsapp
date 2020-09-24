@@ -1129,7 +1129,7 @@ func (portal *Portal) HandleMessageRevoke(user *User, message whatsappExt.Messag
 	msg.Delete()
 }
 
-func (portal *Portal) HandleFakeMessage(source *User, message FakeMessage) {
+func (portal *Portal) HandleFakeMessage(_ *User, message FakeMessage) {
 	if portal.isRecentlyHandled(message.ID) {
 		return
 	}
@@ -1465,9 +1465,10 @@ func (portal *Portal) HandleMediaMessage(source *User, msg mediaMessage) {
 
 	uploaded, err := intent.UploadBytes(data, uploadMimeType)
 	if err != nil {
-		httpErr := err.(mautrix.HTTPError)
-		if httpErr.Code == 413 {
-			portal.sendMediaBridgeFailure(source, intent, msg.info, errors.New("server rejected too large file"))
+		if errors.Is(err, mautrix.MTooLarge) {
+			portal.sendMediaBridgeFailure(source, intent, msg.info, errors.New("homeserver rejected too large file"))
+		} else if httpErr := err.(mautrix.HTTPError); httpErr.IsStatus(413) {
+			portal.sendMediaBridgeFailure(source, intent, msg.info, errors.New("proxy rejected too large file"))
 		} else {
 			portal.sendMediaBridgeFailure(source, intent, msg.info, errors.Wrap(err, "failed to upload media"))
 		}
@@ -2100,7 +2101,7 @@ func (portal *Portal) Cleanup(puppetsOnly bool) {
 		portal.log.Errorln("Failed to get portal members for cleanup:", err)
 		return
 	}
-	for member, _ := range members.Joined {
+	for member := range members.Joined {
 		if member == intent.UserID {
 			continue
 		}
