@@ -111,6 +111,7 @@ func (prov *ProvisioningAPI) DeleteConnection(w http.ResponseWriter, r *http.Req
 	}
 	user.Conn.RemoveHandlers()
 	user.Conn = nil
+	user.bridge.Metrics.TrackConnectionState(user.JID, false)
 	jsonResponse(w, http.StatusOK, Response{true, "Disconnected from WhatsApp and connection deleted"})
 }
 
@@ -140,6 +141,7 @@ func (prov *ProvisioningAPI) Disconnect(w http.ResponseWriter, r *http.Request) 
 	} else if len(sess.Wid) > 0 {
 		user.SetSession(&sess)
 	}
+	user.bridge.Metrics.TrackConnectionState(user.JID, false)
 	jsonResponse(w, http.StatusOK, Response{true, "Disconnected from WhatsApp"})
 }
 

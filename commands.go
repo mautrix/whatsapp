@@ -551,6 +551,7 @@ func (handler *CommandHandler) CommandDeleteConnection(ce *CommandEvent) {
 	}
 	ce.User.Conn.RemoveHandlers()
 	ce.User.Conn = nil
+	ce.User.bridge.Metrics.TrackConnectionState(ce.User.JID, false)
 	ce.Reply("Successfully disconnected. Use the `reconnect` command to reconnect.")
 }
 
@@ -572,6 +573,7 @@ func (handler *CommandHandler) CommandDisconnect(ce *CommandEvent) {
 	} else if len(sess.Wid) > 0 {
 		ce.User.SetSession(&sess)
 	}
+	ce.User.bridge.Metrics.TrackConnectionState(ce.User.JID, false)
 	ce.Reply("Successfully disconnected. Use the `reconnect` command to reconnect.")
 }
 

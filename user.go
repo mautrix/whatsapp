@@ -109,6 +109,7 @@ func (user *User) removeFromJIDMap() {
 	user.bridge.usersLock.Lock()
 	delete(user.bridge.usersByJID, user.JID)
 	user.bridge.usersLock.Unlock()
+	user.bridge.Metrics.TrackLoginState(user.JID, false)
 }
 
 func (bridge *Bridge) GetAllUsers() []*User {
@@ -407,6 +408,8 @@ func (cl ChatList) Swap(i, j int) {
 }
 
 func (user *User) PostLogin() {
+	user.bridge.Metrics.TrackConnectionState(user.JID, true)
+	user.bridge.Metrics.TrackLoginState(user.JID, true)
 	user.log.Debugln("Locking processing of incoming messages and starting post-login sync")
 	user.syncWait.Add(1)
 	user.syncStart <- struct{}{}
@@ -689,6 +692,7 @@ func (user *User) HandleError(err error) {
 	if closed, ok := err.(*whatsapp.ErrConnectionClosed); ok {
 		user.bridge.Metrics.TrackDisconnection(user.MXID)
 		if closed.Code == 1000 && user.cleanDisconnection {
+			user.bridge.Metrics.TrackConnectionState(user.JID, false)
 			user.cleanDisconnection = false
 			user.log.Infoln("Clean disconnection by server")
 			return
@@ -703,6 +707,7 @@ func (user *User) HandleError(err error) {
 }
 
 func (user *User) tryReconnect(msg string) {
+	user.bridge.Metrics.TrackConnectionState(user.JID, false)
 	if user.ConnectionErrors > user.bridge.Config.Bridge.MaxConnectionAttempts {
 		user.sendMarkdownBridgeAlert("%s. Use the `reconnect` command to reconnect.", msg)
 		return
