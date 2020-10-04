@@ -458,6 +458,7 @@ func (handler *CommandHandler) CommandDeleteSession(ce *CommandEvent) {
 		ce.Reply("Nothing to purge: no session information stored and no active connection.")
 		return
 	}
+	ce.User.removeFromJIDMap()
 	ce.User.SetSession(nil)
 	if ce.User.Conn != nil {
 		_, _ = ce.User.Conn.Disconnect()

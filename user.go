@@ -107,7 +107,10 @@ func (user *User) addToJIDMap() {
 
 func (user *User) removeFromJIDMap() {
 	user.bridge.usersLock.Lock()
-	delete(user.bridge.usersByJID, user.JID)
+	jidUser, ok := user.bridge.usersByJID[user.JID]
+	if ok && user == jidUser {
+		delete(user.bridge.usersByJID, user.JID)
+	}
 	user.bridge.usersLock.Unlock()
 	user.bridge.Metrics.TrackLoginState(user.JID, false)
 }
