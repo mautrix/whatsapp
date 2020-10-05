@@ -25,7 +25,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/pkg/errors"
 	"maunium.net/go/maulogger/v2"
 
 	"maunium.net/go/mautrix"
@@ -171,15 +170,15 @@ func (helper *CryptoHelper) Encrypt(roomID id.RoomID, evtType event.Type, conten
 		helper.log.Debugfln("Got %v while encrypting event for %s, sharing group session and trying again...", err, roomID)
 		users, err := helper.store.GetRoomMembers(roomID)
 		if err != nil {
-			return nil, errors.Wrap(err, "failed to get room member list")
+			return nil, fmt.Errorf("failed to get room member list: %w", err)
 		}
 		err = helper.mach.ShareGroupSession(roomID, users)
 		if err != nil {
-			return nil, errors.Wrap(err, "failed to share group session")
+			return nil, fmt.Errorf("failed to share group session: %w", err)
 		}
 		encrypted, err = helper.mach.EncryptMegolmEvent(roomID, evtType, &content)
 		if err != nil {
-			return nil, errors.Wrap(err, "failed to encrypt event after re-sharing group session")
+			return nil, fmt.Errorf("failed to encrypt event after re-sharing group session: %w", err)
 		}
 	}
 	return encrypted, nil

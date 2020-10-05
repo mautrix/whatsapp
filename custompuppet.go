@@ -20,9 +20,8 @@ import (
 	"crypto/hmac"
 	"crypto/sha512"
 	"encoding/hex"
+	"errors"
 	"time"
-
-	"github.com/pkg/errors"
 
 	"github.com/Rhymen/go-whatsapp"
 

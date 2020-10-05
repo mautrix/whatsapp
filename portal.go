@@ -20,6 +20,7 @@ import (
 	"bytes"
 	"encoding/gob"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"html"
 	"image"
@@ -39,7 +40,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/pkg/errors"
 	log "maunium.net/go/maulogger/v2"
 
 	"maunium.net/go/mautrix/crypto/attachment"
@@ -1168,7 +1168,7 @@ func (portal *Portal) sendMessage(intent *appservice.IntentAPI, eventType event.
 	if portal.Encrypted && portal.bridge.Crypto != nil {
 		encrypted, err := portal.bridge.Crypto.Encrypt(portal.MXID, eventType, wrappedContent)
 		if err != nil {
-			return nil, errors.Wrap(err, "failed to encrypt event")
+			return nil, fmt.Errorf("failed to encrypt event: %w", err)
 		}
 		eventType = event.EventEncrypted
 		wrappedContent.Parsed = encrypted
@@ -1424,7 +1424,7 @@ func (portal *Portal) HandleMediaMessage(source *User, msg mediaMessage) {
 		portal.log.Warnfln("Failed to download media for %s: %v. Calling LoadMediaInfo and retrying download...", msg.info.Id, err)
 		_, err = source.Conn.LoadMediaInfo(msg.info.RemoteJid, msg.info.Id, msg.info.FromMe)
 		if err != nil {
-			portal.sendMediaBridgeFailure(source, intent, msg.info, errors.Wrap(err, "failed to load media info"))
+			portal.sendMediaBridgeFailure(source, intent, msg.info, fmt.Errorf("failed to load media info: %w", err))
 			return
 		}
 		data, err = msg.download()
@@ -1441,14 +1441,14 @@ func (portal *Portal) HandleMediaMessage(source *User, msg mediaMessage) {
 	if msg.mimeType == "image/webp" {
 		img, err := decodeWebp(bytes.NewReader(data))
 		if err != nil {
-			portal.sendMediaBridgeFailure(source, intent, msg.info, errors.Wrap(err, "failed to decode webp"))
+			portal.sendMediaBridgeFailure(source, intent, msg.info, fmt.Errorf("failed to decode webp: %w", err))
 			return
 		}
 
 		var buf bytes.Buffer
 		err = png.Encode(&buf, img)
 		if err != nil {
-			portal.sendMediaBridgeFailure(source, intent, msg.info, errors.Wrap(err, "failed to convert to png"))
+			portal.sendMediaBridgeFailure(source, intent, msg.info, fmt.Errorf("failed to convert to png: %w", err))
 			return
 		}
 		data = buf.Bytes()
@@ -1470,7 +1470,7 @@ func (portal *Portal) HandleMediaMessage(source *User, msg mediaMessage) {
 		} else if httpErr := err.(mautrix.HTTPError); httpErr.IsStatus(413) {
 			portal.sendMediaBridgeFailure(source, intent, msg.info, errors.New("proxy rejected too large file"))
 		} else {
-			portal.sendMediaBridgeFailure(source, intent, msg.info, errors.Wrap(err, "failed to upload media"))
+			portal.sendMediaBridgeFailure(source, intent, msg.info, fmt.Errorf("failed to upload media: %w", err))
 		}
 		return
 	}
@@ -1615,18 +1615,18 @@ func (portal *Portal) downloadThumbnail(content *event.MessageEventContent, id i
 func (portal *Portal) convertGifToVideo(gif []byte) ([]byte, error) {
 	dir, err := ioutil.TempDir("", "gif-convert-*")
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to make temp dir")
+		return nil, fmt.Errorf("failed to make temp dir: %w", err)
 	}
 	defer os.RemoveAll(dir)
 
 	inputFile, err := os.OpenFile(filepath.Join(dir, "input.gif"), os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed open input file")
+		return nil, fmt.Errorf("failed open input file: %w", err)
 	}
 	_, err = inputFile.Write(gif)
 	if err != nil {
 		_ = inputFile.Close()
-		return nil, errors.Wrap(err, "failed to write gif to input file")
+		return nil, fmt.Errorf("failed to write gif to input file: %w", err)
 	}
 	_ = inputFile.Close()
 
@@ -1642,11 +1642,11 @@ func (portal *Portal) convertGifToVideo(gif []byte) ([]byte, error) {
 
 	err = cmd.Run()
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to run ffmpeg")
+		return nil, fmt.Errorf("failed to run ffmpeg: %w", err)
 	}
 	outputFile, err := os.OpenFile(filepath.Join(dir, "output.mp4"), os.O_RDONLY, 0)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to open output file")
+		return nil, fmt.Errorf("failed to open output file: %w", err)
 	}
 	defer func() {
 		_ = outputFile.Close()
@@ -1654,7 +1654,7 @@ func (portal *Portal) convertGifToVideo(gif []byte) ([]byte, error) {
 	}()
 	mp4, err := ioutil.ReadAll(outputFile)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to read mp4 from output file")
+		return nil, fmt.Errorf("failed to read mp4 from output file: %w", err)
 	}
 	return mp4, nil
 }
@@ -2058,7 +2058,7 @@ func (portal *Portal) Delete() {
 func (portal *Portal) GetMatrixUsers() ([]id.UserID, error) {
 	members, err := portal.MainIntent().JoinedMembers(portal.MXID)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to get member list")
+		return nil, fmt.Errorf("failed to get member list: %w", err)
 	}
 	var users []id.UserID
 	for userID := range members.Joined {
