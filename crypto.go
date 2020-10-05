@@ -189,6 +189,13 @@ func (helper *CryptoHelper) WaitForSession(roomID id.RoomID, senderKey id.Sender
 	return helper.mach.WaitForSession(roomID, senderKey, sessionID, timeout)
 }
 
+func (helper *CryptoHelper) ResetSession(roomID id.RoomID) {
+	err := helper.mach.CryptoStore.RemoveOutboundGroupSession(roomID)
+	if err != nil {
+		helper.log.Debugfln("Error manually removing outbound group session in %s: %v", roomID, err)
+	}
+}
+
 func (helper *CryptoHelper) HandleMemberEvent(evt *event.Event) {
 	helper.mach.HandleMemberEvent(evt)
 }

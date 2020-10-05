@@ -123,6 +123,8 @@ func (handler *CommandHandler) CommandMux(ce *CommandEvent) {
 		handler.CommandDeletePortal(ce)
 	case "delete-all-portals":
 		handler.CommandDeleteAllPortals(ce)
+	case "discard-megolm-session", "discard-session":
+		handler.CommandDiscardMegolmSession(ce)
 	case "dev-test":
 		handler.CommandDevTest(ce)
 	case "set-pl":
@@ -160,6 +162,17 @@ func (handler *CommandHandler) CommandMux(ce *CommandEvent) {
 		}
 	default:
 		ce.Reply("Unknown Command")
+	}
+}
+
+func (handler *CommandHandler) CommandDiscardMegolmSession(ce *CommandEvent) {
+	if handler.bridge.Crypto == nil {
+		ce.Reply("This bridge instance doesn't have end-to-bridge encryption enabled")
+	} else if !ce.User.Admin {
+		ce.Reply("Only the bridge admin can reset Megolm sessions")
+	} else {
+		handler.bridge.Crypto.ResetSession(ce.RoomID)
+		ce.Reply("Successfully reset Megolm session in this room. New decryption keys will be shared the next time a message is sent from WhatsApp.")
 	}
 }
 

@@ -154,6 +154,7 @@ type Crypto interface {
 	Decrypt(*event.Event) (*event.Event, error)
 	Encrypt(id.RoomID, event.Type, event.Content) (*event.EncryptedEventContent, error)
 	WaitForSession(id.RoomID, id.SenderKey, id.SessionID, time.Duration) bool
+	ResetSession(id.RoomID)
 	Init() error
 	Start()
 	Stop()
