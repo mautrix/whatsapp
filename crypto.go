@@ -23,6 +23,7 @@ import (
 	"crypto/sha512"
 	"encoding/hex"
 	"fmt"
+	"runtime/debug"
 	"time"
 
 	"maunium.net/go/maulogger/v2"
@@ -207,7 +208,23 @@ type cryptoSyncer struct {
 }
 
 func (syncer *cryptoSyncer) ProcessResponse(resp *mautrix.RespSync, since string) error {
-	syncer.ProcessSyncResponse(resp, since)
+	done := make(chan struct{})
+	go func() {
+		defer func() {
+			if err := recover(); err != nil {
+				syncer.Log.Error("Processing sync response (%s) panicked: %v\n%s", since, err, debug.Stack())
+			}
+			done <- struct{}{}
+		}()
+		syncer.Log.Trace("Starting sync response handling (%s)", since)
+		syncer.ProcessSyncResponse(resp, since)
+		syncer.Log.Trace("Successfully handled sync response (%s)", since)
+	}()
+	select {
+	case <-done:
+	case <-time.After(30 * time.Second):
+		syncer.Log.Warn("Handling sync response (%s) is taking unusually long", since)
+	}
 	return nil
 }
 
