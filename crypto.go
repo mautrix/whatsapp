@@ -150,10 +150,13 @@ func (helper *CryptoHelper) Start() {
 	err := helper.client.Sync()
 	if err != nil {
 		helper.log.Errorln("Fatal error syncing:", err)
+	} else {
+		helper.log.Infoln("Bridge bot to-device syncer stopped without error")
 	}
 }
 
 func (helper *CryptoHelper) Stop() {
+	helper.log.Debugln("CryptoHelper.Stop() called, stopping bridge bot sync")
 	helper.client.StopSync()
 }
 
