@@ -1437,24 +1437,6 @@ func (portal *Portal) HandleMediaMessage(source *User, msg mediaMessage) {
 		return
 	}
 
-	// synapse doesn't handle webp well, so we convert it. This can be dropped once https://github.com/matrix-org/synapse/issues/4382 is fixed
-	if msg.mimeType == "image/webp" {
-		img, err := decodeWebp(bytes.NewReader(data))
-		if err != nil {
-			portal.sendMediaBridgeFailure(source, intent, msg.info, fmt.Errorf("failed to decode webp: %w", err))
-			return
-		}
-
-		var buf bytes.Buffer
-		err = png.Encode(&buf, img)
-		if err != nil {
-			portal.sendMediaBridgeFailure(source, intent, msg.info, fmt.Errorf("failed to convert to png: %w", err))
-			return
-		}
-		data = buf.Bytes()
-		msg.mimeType = "image/png"
-	}
-
 	var width, height int
 	if strings.HasPrefix(msg.mimeType, "image/") {
 		cfg, _, _ := image.DecodeConfig(bytes.NewReader(data))
