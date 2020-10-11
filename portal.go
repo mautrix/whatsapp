@@ -1955,7 +1955,7 @@ func (portal *Portal) sendDeliveryReceipt(eventID id.EventID) {
 
 var (
 	timeout = errors.New("message sending timed out")
-	errPossiblyTooLarge = errors.New("could not upload file to WhatsApp, could it be that the file you've uploaded is too large?")
+	errPossiblyTooLarge = errors.New("could not upload file to WhatsApp, could it be that the file you're trying to send is too large?")
 )
 
 func (portal *Portal) HandleMatrixMessage(sender *User, evt *event.Event) {
