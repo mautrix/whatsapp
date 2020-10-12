@@ -514,6 +514,9 @@ func (portal *Portal) UpdateMetadata(user *User) bool {
 	update := false
 	update = portal.UpdateName(metadata.Name, metadata.NameSetBy, false) || update
 	update = portal.UpdateTopic(metadata.Topic, metadata.TopicSetBy, false) || update
+
+	portal.RestrictMessageSending(metadata.Announce)
+
 	return update
 }
 
@@ -640,11 +643,17 @@ func (portal *Portal) RestrictMessageSending(restrict bool) {
 	if err != nil {
 		levels = portal.GetBasePowerLevels()
 	}
+
+	newLevel := 0
 	if restrict {
-		levels.EventsDefault = 50
-	} else {
-		levels.EventsDefault = 0
+		newLevel = 50
 	}
+
+	if levels.EventsDefault == newLevel {
+		return
+	}
+
+	levels.EventsDefault = newLevel
 	_, err = portal.MainIntent().SetPowerLevels(portal.MXID, levels)
 	if err != nil {
 		portal.log.Errorln("Failed to change power levels:", err)
@@ -954,6 +963,7 @@ func (portal *Portal) CreateMatrixRoom(user *User) error {
 	}
 
 	bridgeInfoStateKey, bridgeInfo := portal.getBridgeInfo()
+
 	initialState := []*event.Event{{
 		Type: event.StatePowerLevels,
 		Content: event.Content{
@@ -1021,6 +1031,9 @@ func (portal *Portal) CreateMatrixRoom(user *User) error {
 
 	if metadata != nil {
 		portal.SyncParticipants(metadata)
+		if metadata.Announce {
+			portal.RestrictMessageSending(metadata.Announce)
+		}
 	} else {
 		customPuppet := portal.bridge.GetPuppetByCustomMXID(user.MXID)
 		if customPuppet != nil && customPuppet.CustomIntent() != nil {

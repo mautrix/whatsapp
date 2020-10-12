@@ -84,6 +84,8 @@ type GroupInfo struct {
 	NameSetTime int64  `json:"subjectTime"`
 	NameSetBy   string `json:"subjectOwner"`
 
+	Announce bool `json:"announce"` // Can only admins send messages?
+
 	Topic      string `json:"desc"`
 	TopicID    string `json:"descId"`
 	TopicSetAt int64  `json:"descTime"`
