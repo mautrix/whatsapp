@@ -288,11 +288,15 @@ func (handler *CommandHandler) CommandCreate(ce *CommandEvent) {
 		return
 	}
 
-	var encryptionEvent event.EncryptionEventContent
+	var (
+		encryptionEvent event.EncryptionEventContent
+		isEncrypted bool
+	)
 	err = ce.Bot.StateEvent(ce.RoomID, event.StateEncryption, "", &encryptionEvent)
 	if err != nil {
-		ce.Reply("Failed to get room encryption status")
-		return
+		isEncrypted = false
+	} else {
+		isEncrypted = encryptionEvent.Algorithm == id.AlgorithmMegolmV1
 	}
 
 	participants := []string{ce.User.JID}
@@ -317,7 +321,7 @@ func (handler *CommandHandler) CommandCreate(ce *CommandEvent) {
 	}
 	portal.MXID = ce.RoomID
 	portal.Name = roomNameEvent.Name
-	portal.Encrypted = encryptionEvent.Algorithm == id.AlgorithmMegolmV1
+	portal.Encrypted = isEncrypted
 	if !portal.Encrypted && handler.bridge.Config.Bridge.Encryption.Default {
 		_, err = portal.MainIntent().SendStateEvent(portal.MXID, event.StateEncryption, "", &event.EncryptionEventContent{Algorithm: id.AlgorithmMegolmV1})
 		if err != nil {
