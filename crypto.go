@@ -19,9 +19,6 @@
 package main
 
 import (
-	"crypto/hmac"
-	"crypto/sha512"
-	"encoding/hex"
 	"fmt"
 	"runtime/debug"
 	"time"
@@ -87,7 +84,6 @@ func (helper *CryptoHelper) Init() error {
 	helper.mach = crypto.NewOlmMachine(helper.client, logger, helper.store, stateStore)
 	helper.mach.AllowKeyShare = helper.allowKeyShare
 
-	helper.client.Logger = logger.int.Sub("Bot")
 	helper.client.Syncer = &cryptoSyncer{helper.mach}
 	helper.client.Store = &cryptoClientStore{helper.store}
 
@@ -123,22 +119,32 @@ func (helper *CryptoHelper) loginBot() (*mautrix.Client, error) {
 	if len(deviceID) > 0 {
 		helper.log.Debugln("Found existing device ID for bot in database:", deviceID)
 	}
-	mac := hmac.New(sha512.New, []byte(helper.bridge.Config.Bridge.LoginSharedSecret))
-	mac.Write([]byte(helper.bridge.AS.BotMXID()))
 	client, err := mautrix.NewClient(helper.bridge.AS.HomeserverURL, "", "")
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to initialize client: %w", err)
 	}
+	client.Logger = helper.baseLog.Sub("Bot")
+	flows, err := client.GetLoginFlows()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get supported login flows: %w", err)
+	}
+	if !flows.HasFlow(mautrix.AuthTypeAppservice) {
+		// TODO after synapse 1.22, turn this into an error
+		helper.log.Warnln("Encryption enabled in config, but homeserver does not advertise appservice login")
+		//return nil, fmt.Errorf("homeserver does not support appservice login")
+	}
+	// We set the API token to the AS token here to authenticate the appservice login
+	// It'll get overridden after the login
+	client.AccessToken = helper.bridge.AS.Registration.AppToken
 	resp, err := client.Login(&mautrix.ReqLogin{
-		Type:                     mautrix.AuthTypePassword,
+		Type:                     mautrix.AuthTypeAppservice,
 		Identifier:               mautrix.UserIdentifier{Type: mautrix.IdentifierTypeUser, User: string(helper.bridge.AS.BotMXID())},
-		Password:                 hex.EncodeToString(mac.Sum(nil)),
 		DeviceID:                 deviceID,
 		InitialDeviceDisplayName: "WhatsApp Bridge",
 		StoreCredentials:         true,
 	})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to log in as bridge bot: %w", err)
 	}
 	if len(deviceID) == 0 {
 		helper.store.DeviceID = resp.DeviceID
