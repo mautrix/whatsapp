@@ -26,6 +26,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	log "maunium.net/go/maulogger/v2"
+
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 
@@ -54,8 +55,10 @@ type MetricsHandler struct {
 	unencryptedGroupCount   prometheus.Gauge
 	unencryptedPrivateCount prometheus.Gauge
 
-	connected *prometheus.GaugeVec
-	loggedIn  *prometheus.GaugeVec
+	connected      prometheus.Gauge
+	connectedState map[types.WhatsAppID]bool
+	loggedIn       prometheus.Gauge
+	loggedInState  map[types.WhatsAppID]bool
 }
 
 func NewMetricsHandler(address string, log log.Logger, db *database.Database) *MetricsHandler {
@@ -99,14 +102,16 @@ func NewMetricsHandler(address string, log log.Logger, db *database.Database) *M
 		unencryptedGroupCount:   portalCount.With(prometheus.Labels{"type": "group", "encrypted": "false"}),
 		unencryptedPrivateCount: portalCount.With(prometheus.Labels{"type": "private", "encrypted": "false"}),
 
-		loggedIn: promauto.NewGaugeVec(prometheus.GaugeOpts{
+		loggedIn: promauto.NewGauge(prometheus.GaugeOpts{
 			Name: "bridge_logged_in",
 			Help: "Users logged into the bridge",
-		}, []string{"jid", "bridge_logged_in"}),
-		connected: promauto.NewGaugeVec(prometheus.GaugeOpts{
+		}),
+		loggedInState: make(map[types.WhatsAppID]bool),
+		connected: promauto.NewGauge(prometheus.GaugeOpts{
 			Name: "bridge_connected",
-			Help: "Users connected to WhatsApp",
-		}, []string{"jid", "bridge_connected"}),
+			Help: "Bridge users connected to WhatsApp",
+		}),
+		connectedState: make(map[types.WhatsAppID]bool),
 	}
 }
 
@@ -136,26 +141,30 @@ func (mh *MetricsHandler) TrackLoginState(jid types.WhatsAppID, loggedIn bool) {
 	if !mh.running {
 		return
 	}
-	var loggedInVal float64 = 0
-	if loggedIn {
-		loggedInVal = 1
+	currentVal, ok := mh.loggedInState[jid]
+	if !ok || currentVal != loggedIn {
+		mh.loggedInState[jid] = loggedIn
+		if loggedIn {
+			mh.loggedIn.Inc()
+		} else {
+			mh.loggedIn.Dec()
+		}
 	}
-	metric := mh.loggedIn.MustCurryWith(prometheus.Labels{"jid": jid})
-	metric.With(prometheus.Labels{"bridge_logged_in": "true"}).Set(loggedInVal)
-	metric.With(prometheus.Labels{"bridge_logged_in": "false"}).Set(1 - loggedInVal)
 }
 
 func (mh *MetricsHandler) TrackConnectionState(jid types.WhatsAppID, connected bool) {
 	if !mh.running {
 		return
 	}
-	var connectedVal float64 = 0
-	if connected {
-		connectedVal = 1
+	currentVal, ok := mh.connectedState[jid]
+	if !ok || currentVal != connected {
+		mh.connectedState[jid] = connected
+		if connected {
+			mh.connected.Inc()
+		} else {
+			mh.connected.Dec()
+		}
 	}
-	metric := mh.connected.MustCurryWith(prometheus.Labels{"jid": jid})
-	metric.With(prometheus.Labels{"bridge_connected": "true"}).Set(connectedVal)
-	metric.With(prometheus.Labels{"bridge_connected": "false"}).Set(1 - connectedVal)
 }
 
 func (mh *MetricsHandler) updateStats() {
