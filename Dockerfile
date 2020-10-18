@@ -1,7 +1,6 @@
 FROM golang:1-alpine3.12 AS builder
 
-RUN echo "@edge_community http://dl-cdn.alpinelinux.org/alpine/edge/community" >> /etc/apk/repositories
-RUN apk add --no-cache git ca-certificates build-base su-exec olm-dev@edge_community
+RUN apk add --no-cache git ca-certificates build-base su-exec olm-dev
 
 COPY . /build
 WORKDIR /build
@@ -15,8 +14,7 @@ ARG YQ_DOWNLOAD_ADDR=https://github.com/mikefarah/yq/releases/download/3.3.2/yq_
 ENV UID=1337 \
     GID=1337
 
-RUN echo "@edge_community http://dl-cdn.alpinelinux.org/alpine/edge/community" >> /etc/apk/repositories
-RUN apk add --no-cache ffmpeg su-exec ca-certificates olm@edge_community bash jq curl && \
+RUN apk add --no-cache ffmpeg su-exec ca-certificates olm bash jq curl && \
     curl -sLo yq ${YQ_DOWNLOAD_ADDR} && \
     chmod +x yq && mv yq /usr/bin/yq
 
