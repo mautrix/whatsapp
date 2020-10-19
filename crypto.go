@@ -54,9 +54,6 @@ func NewCryptoHelper(bridge *Bridge) Crypto {
 	if !bridge.Config.Bridge.Encryption.Allow {
 		bridge.Log.Debugln("Bridge built with end-to-bridge encryption, but disabled in config")
 		return nil
-	} else if bridge.Config.Bridge.LoginSharedSecret == "" {
-		bridge.Log.Warnln("End-to-bridge encryption enabled, but login_shared_secret not set")
-		return nil
 	}
 	baseLog := bridge.Log.Sub("Crypto")
 	return &CryptoHelper{

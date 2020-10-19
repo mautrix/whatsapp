@@ -10,7 +10,7 @@ stages:
     paths:
     - .cache
   before_script:
-  - apk add build-base olm-dev
+  - apk add build-base olm-dev && apk policy olm-dev
   - mkdir -p .cache
   - export GOPATH="$CI_PROJECT_DIR/.cache"
   - export GOCACHE="$CI_PROJECT_DIR/.cache/build"
