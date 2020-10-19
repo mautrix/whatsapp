@@ -1,14 +1,14 @@
 FROM alpine:3.12
 
-ARG TARGETARCH=amd64
-ARG YQ_DOWNLOAD_ADDR=https://github.com/mikefarah/yq/releases/download/3.3.2/yq_linux_${TARGETARCH}
+RUN echo $'\
+@edge http://dl-cdn.alpinelinux.org/alpine/edge/main\n\
+@edge http://dl-cdn.alpinelinux.org/alpine/edge/testing\n\
+@edge http://dl-cdn.alpinelinux.org/alpine/edge/community' >> /etc/apk/repositories
 
 ENV UID=1337 \
     GID=1337
 
-RUN apk add --no-cache ffmpeg su-exec ca-certificates olm bash jq curl && \
-    curl -sLo yq ${YQ_DOWNLOAD_ADDR} && \
-    chmod +x yq && mv yq /usr/bin/yq
+RUN apk add --no-cache ffmpeg su-exec ca-certificates bash jq curl yq@edge
 
 ARG EXECUTABLE=./mautrix-whatsapp
 COPY $EXECUTABLE /usr/bin/mautrix-whatsapp

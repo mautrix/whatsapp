@@ -4,17 +4,15 @@ stages:
 - manifest
 
 .build: &build
-  image: golang:1-alpine
   stage: build
   cache:
     paths:
     - .cache
   before_script:
-  - apk add build-base olm-dev && apk policy olm-dev
   - mkdir -p .cache
   - export GOPATH="$CI_PROJECT_DIR/.cache"
   - export GOCACHE="$CI_PROJECT_DIR/.cache/build"
-  - export GO_LDFLAGS="-X main.Tag=$CI_COMMIT_TAG -X main.Commit=$CI_COMMIT_SHA -X 'main.BuildTime=`date '+%b %_d %Y, %H:%M:%S'`'"
+  - export GO_LDFLAGS="-linkmode external -extldflags -static -X main.Tag=$CI_COMMIT_TAG -X main.Commit=$CI_COMMIT_SHA -X 'main.BuildTime=`date '+%b %_d %Y, %H:%M:%S'`'"
   script:
   - go build -ldflags "$GO_LDFLAGS" -o mautrix-whatsapp
   artifacts:
@@ -29,47 +27,21 @@ stages:
   - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
   script:
   - docker pull $CI_REGISTRY_IMAGE:latest || true
-  - docker build --pull --cache-from $CI_REGISTRY_IMAGE:latest --build-arg TARGETARCH=$DOCKER_ARCH --tag $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA-$DOCKER_ARCH . --file Dockerfile.ci
+  - docker build --pull --cache-from $CI_REGISTRY_IMAGE:latest --tag $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA-$DOCKER_ARCH . --file Dockerfile.ci
   - docker push $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA-$DOCKER_ARCH
   - docker rmi $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA-$DOCKER_ARCH
 
-build static:
-  image: golang:1-alpine
-  stage: build
-  tags:
-  - amd64
-  cache:
-    paths:
-    - .cache
-  before_script:
-  - mkdir -p .cache
-  - export GOPATH="$CI_PROJECT_DIR/.cache"
-  - export GOCACHE="$CI_PROJECT_DIR/.cache/build"
-  - export GO_LDFLAGS="-X main.Tag=$CI_COMMIT_TAG -X main.Commit=$CI_COMMIT_SHA -X 'main.BuildTime=`date '+%b %_d %Y, %H:%M:%S'`'"
-  variables:
-    CGO_ENABLED: 0
-  script:
-  - GOOS=linux GOARCH=amd64 go build -ldflags "$GO_LDFLAGS" -o mautrix-whatsapp_linux_amd64
-  - GOOS=linux GOARCH=arm64 go build -ldflags "$GO_LDFLAGS" -o mautrix-whatsapp_linux_arm64
-  - GOOS=linux GOARCH=arm go build -ldflags "$GO_LDFLAGS" -o mautrix-whatsapp_linux_arm
-  - GOOS=linux GOARCH=386 go build -ldflags "$GO_LDFLAGS" -o mautrix-whatsapp_linux_386
-  artifacts:
-    paths:
-    - mautrix-whatsapp_linux_amd64
-    - mautrix-whatsapp_linux_arm64
-    - mautrix-whatsapp_linux_arm
-    - mautrix-whatsapp_linux_386
-    - example-config.yaml
-
 build amd64:
   <<: *build
-  tags:
-  - amd64
+  image: dock.mau.dev/tulir/gomuks-build-docker:linux-amd64
 
 build arm64:
   <<: *build
-  tags:
-  - arm64
+  image: dock.mau.dev/tulir/gomuks-build-docker:linux-arm64
+
+build arm:
+  <<: *build
+  image: dock.mau.dev/tulir/gomuks-build-docker:linux-arm
 
 build docker amd64:
   <<: *build-docker
