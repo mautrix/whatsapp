@@ -17,6 +17,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"math"
 	"sort"
@@ -280,7 +281,7 @@ func (handler *CommandHandler) CommandCreate(ce *CommandEvent) {
 
 	var roomNameEvent event.RoomNameEventContent
 	err = ce.Bot.StateEvent(ce.RoomID, event.StateRoomName, "", &roomNameEvent)
-	if err != nil {
+	if err != nil && !errors.Is(err, mautrix.MNotFound) {
 		ce.Reply("Failed to get room name")
 		return
 	} else if len(roomNameEvent.Name) == 0 {
@@ -290,7 +291,7 @@ func (handler *CommandHandler) CommandCreate(ce *CommandEvent) {
 
 	var encryptionEvent event.EncryptionEventContent
 	err = ce.Bot.StateEvent(ce.RoomID, event.StateEncryption, "", &encryptionEvent)
-	if err != nil {
+	if err != nil && !errors.Is(err, mautrix.MNotFound) {
 		ce.Reply("Failed to get room encryption status")
 		return
 	}
