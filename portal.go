@@ -1976,6 +1976,10 @@ func (portal *Portal) HandleMatrixMessage(sender *User, evt *event.Event) {
 	}
 	if err != nil {
 		portal.log.Errorfln("Error handling Matrix event %s: %v", evt.ID, err)
+		var statusResp whatsapp.StatusResponse
+		if errors.As(err, &statusResp) && statusResp.Status == 599 {
+			portal.log.Debugln("Extra info in 599 error: %+v", statusResp.Extra)
+		}
 		portal.sendErrorMessage(err)
 	} else {
 		portal.log.Debugfln("Handled Matrix event %s", evt.ID)
