@@ -241,10 +241,14 @@ func (portal *Portal) handleMessage(msg PortalMessage) {
 			length: data.Length,
 		})
 	case whatsapp.DocumentMessage:
+		fileName := data.FileName
+		if len(fileName) == 0 {
+			fileName = data.Title
+		}
 		portal.HandleMediaMessage(msg.source, mediaMessage{
 			base:      base{data.Download, data.Info, data.ContextInfo, data.Type},
 			thumbnail: data.Thumbnail,
-			fileName:  data.Title,
+			fileName:  fileName,
 		})
 	case whatsapp.ContactMessage:
 		portal.HandleContactMessage(msg.source, data)
@@ -1471,7 +1475,13 @@ func (portal *Portal) HandleMediaMessage(source *User, msg mediaMessage) {
 	}
 
 	if msg.fileName == "" {
-		msg.fileName = msg.info.Id
+		mimeClass := strings.Split(msg.mimeType, "/")[0]
+		switch mimeClass {
+		case "application":
+			msg.fileName = "file"
+		default:
+			msg.fileName = mimeClass
+		}
 
 		exts, _ := mime.ExtensionsByType(msg.mimeType)
 		if exts != nil && len(exts) > 0 {
@@ -1895,6 +1905,7 @@ func (portal *Portal) convertMatrixMessage(sender *User, evt *event.Event) (*waP
 		info.Message.DocumentMessage = &waProto.DocumentMessage{
 			ContextInfo:   ctxInfo,
 			Url:           &media.URL,
+			Title:         &content.Body,
 			FileName:      &content.Body,
 			MediaKey:      media.MediaKey,
 			Mimetype:      &content.GetInfo().MimeType,

@@ -111,6 +111,8 @@ github.com/tulir/go-whatsapp v0.3.10 h1:LfzRj6V3dshKemad3HZsgYgKAZtaT0wNITmobJYA
 github.com/tulir/go-whatsapp v0.3.10/go.mod h1:U5+sm33vrv3wz62YyRM/VS7q2ObXkxU4Xqj/3KOmN9o=
 github.com/tulir/go-whatsapp v0.3.11 h1:z9AvTb8YXYP8t6Y0jium3reshgDpFCg//WNiCGo9esQ=
 github.com/tulir/go-whatsapp v0.3.11/go.mod h1:U5+sm33vrv3wz62YyRM/VS7q2ObXkxU4Xqj/3KOmN9o=
+github.com/tulir/go-whatsapp v0.3.12 h1:4ovBn1GNMUsCrFR7KdAcByQnkh0o+VoA7Q/wY2UD36A=
+github.com/tulir/go-whatsapp v0.3.12/go.mod h1:U5+sm33vrv3wz62YyRM/VS7q2ObXkxU4Xqj/3KOmN9o=
 golang.org/x/crypto v0.0.0-20180904163835-0709b304e793/go.mod h1:6SG95UA2DQfeDnfUPMdvaQW0Q7yPrPDi9nlGo2tz2b4=
 golang.org/x/crypto v0.0.0-20190308221718-c2843e01d9a2/go.mod h1:djNgcEr1/C05ACkg1iLfiJU5Ep61QUkGW8qpdssI0+w=
 golang.org/x/crypto v0.0.0-20200604202706-70a84ac30bf9 h1:vEg9joUBmeBcK9iSJftGNf3coIG4HqZElCPehJsfAYM=
