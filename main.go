@@ -222,10 +222,10 @@ func (bridge *Bridge) Init() {
 	}
 	bridge.AS.Log = log.Sub("Matrix")
 
-	bridge.Log.Debugln("Initializing database")
+	bridge.Log.Debugln("Initializing database connection")
 	bridge.DB, err = database.New(bridge.Config.AppService.Database.Type, bridge.Config.AppService.Database.URI)
-	if err != nil && (err != upgrades.UnsupportedDatabaseVersion || !*ignoreUnsupportedDatabase) {
-		bridge.Log.Fatalln("Failed to initialize database:", err)
+	if err != nil {
+		bridge.Log.Fatalln("Failed to initialize database connection:", err)
 		os.Exit(14)
 	}
 
@@ -260,8 +260,9 @@ func (bridge *Bridge) Init() {
 }
 
 func (bridge *Bridge) Start() {
+	bridge.Log.Debugln("Running database upgrades")
 	err := bridge.DB.Init()
-	if err != nil {
+	if err != nil && (err != upgrades.UnsupportedDatabaseVersion || !*ignoreUnsupportedDatabase) {
 		bridge.Log.Fatalln("Failed to initialize database:", err)
 		os.Exit(15)
 	}
