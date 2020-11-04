@@ -1931,10 +1931,10 @@ func (portal *Portal) wasMessageSent(sender *User, id string) bool {
 	return true
 }
 
-func (portal *Portal) sendErrorMessage(sendErr error) id.EventID {
+func (portal *Portal) sendErrorMessage(message string) id.EventID {
 	resp, err := portal.sendMainIntentMessage(event.MessageEventContent{
 		MsgType: event.MsgNotice,
-		Body:    fmt.Sprintf("\u26a0 Your message may not have been bridged: %v", sendErr),
+		Body:    fmt.Sprintf("\u26a0 Your message may not have been bridged: %v", message),
 	})
 	if err != nil {
 		portal.log.Warnfln("Failed to send bridging error message:", err)
@@ -1966,8 +1966,11 @@ func (portal *Portal) HandleMatrixMessage(sender *User, evt *event.Event) {
 		return
 	}
 	portal.markHandled(sender, info, evt.ID)
-	portal.log.Debugln("Sending event", evt.ID, "to WhatsApp")
+	portal.log.Debugln("Sending event", evt.ID, "to WhatsApp", info.Key.GetId())
+	portal.sendRaw(sender, evt, info, false)
+}
 
+func (portal *Portal) sendRaw(sender *User, evt *event.Event, info *waProto.WebMessageInfo, isRetry bool) {
 	errChan := make(chan error, 1)
 	go sender.Conn.SendRaw(info, errChan)
 
@@ -1975,13 +1978,20 @@ func (portal *Portal) HandleMatrixMessage(sender *User, evt *event.Event) {
 	var errorEventID id.EventID
 	select {
 	case err = <-errChan:
+		var statusResp whatsapp.StatusResponse
+		if !isRetry && errors.As(err, &statusResp) && statusResp.Status == 599 {
+			portal.log.Debugfln("599 status response sending %s to WhatsApp (%+v), retrying...", evt.ID, statusResp)
+			errorEventID = portal.sendErrorMessage(fmt.Sprintf("%v. The bridge will retry in 5 seconds.", err))
+			time.Sleep(5 * time.Second)
+			portal.sendRaw(sender, evt, info, true)
+		}
 	case <-time.After(time.Duration(portal.bridge.Config.Bridge.ConnectionTimeout) * time.Second):
 		if portal.bridge.Config.Bridge.FetchMessageOnTimeout && portal.wasMessageSent(sender, info.Key.GetId()) {
 			portal.log.Debugln("Matrix event %s was bridged, but response didn't arrive within timeout")
 			portal.sendDeliveryReceipt(evt.ID)
 		} else {
 			portal.log.Warnfln("Response when bridging Matrix event %s is taking long to arrive", evt.ID)
-			errorEventID = portal.sendErrorMessage(timeout)
+			errorEventID = portal.sendErrorMessage(timeout.Error())
 		}
 		err = <-errChan
 	}
@@ -1989,9 +1999,9 @@ func (portal *Portal) HandleMatrixMessage(sender *User, evt *event.Event) {
 		portal.log.Errorfln("Error handling Matrix event %s: %v", evt.ID, err)
 		var statusResp whatsapp.StatusResponse
 		if errors.As(err, &statusResp) && statusResp.Status == 599 {
-			portal.log.Debugln("Extra info in 599 error: %+v", statusResp.Extra)
+			portal.log.Debugfln("599 status response data: %+v", statusResp)
 		}
-		portal.sendErrorMessage(err)
+		portal.sendErrorMessage(err.Error())
 	} else {
 		portal.log.Debugfln("Handled Matrix event %s", evt.ID)
 		portal.sendDeliveryReceipt(evt.ID)
