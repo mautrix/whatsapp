@@ -799,8 +799,8 @@ func (user *User) runMessageRingBuffer() {
 		select {
 		case user.messageOutput <- msg:
 		default:
-			user.log.Warnln("Buffer is full, dropping message in", msg.chat)
-			<-user.messageOutput
+			dropped := <-user.messageOutput
+			user.log.Warnln("Buffer is full, dropping message in", dropped.chat)
 			user.messageOutput<-msg
 		}
 	}
