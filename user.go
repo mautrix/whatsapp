@@ -427,9 +427,10 @@ func (user *User) tryAutomaticDoublePuppeting() {
 		// user is on another homeserver
 		return
 	}
-
+	user.log.Debugln("Checking if double puppeting needs to be enabled")
 	puppet := user.bridge.GetPuppetByJID(user.JID)
 	if len(puppet.CustomMXID) > 0 {
+		user.log.Debugln("User already has double-puppeting enabled")
 		// Custom puppet already enabled
 		return
 	}
@@ -464,6 +465,7 @@ func (user *User) sendMarkdownBridgeAlert(formatString string, args ...interface
 }
 
 func (user *User) postConnPing() bool {
+	user.log.Debugln("Making post-connection ping")
 	err := user.Conn.AdminTest()
 	if err != nil {
 		user.log.Errorfln("Post-connection ping failed: %v. Disconnecting and then reconnecting after a second", err)
@@ -491,6 +493,7 @@ func (user *User) intPostLogin() {
 	user.createCommunity()
 	user.tryAutomaticDoublePuppeting()
 
+	user.log.Debugln("Waiting for chat list receive confirmation")
 	select {
 	case <-user.chatListReceived:
 		user.log.Debugln("Chat list receive confirmation received in PostLogin")
@@ -499,12 +502,16 @@ func (user *User) intPostLogin() {
 		user.postConnPing()
 		return
 	}
+
 	if !user.postConnPing() {
+		user.log.Debugln("Post-connection ping failed, unlocking processing of incoming messages.")
 		return
 	}
+
+	user.log.Debugln("Waiting for portal sync complete confirmation")
 	select {
 	case <-user.syncPortalsDone:
-		user.log.Debugln("Post-login portal sync complete, unlocking processing of incoming messages.")
+		user.log.Debugln("Post-connection portal sync complete, unlocking processing of incoming messages.")
 	case <-time.After(time.Duration(user.bridge.Config.Bridge.PortalSyncWait) * time.Second):
 		user.log.Warnln("Timed out waiting for portal sync to complete! Unlocking processing of incoming messages.")
 	}
@@ -790,7 +797,9 @@ func (user *User) handleMessageLoop() {
 		case msg := <-user.messages:
 			user.GetPortalByJID(msg.chat).messages <- msg
 		case <-user.syncStart:
+			user.log.Debugln("Processing of incoming messages is locked")
 			user.syncWait.Wait()
+			user.log.Debugln("Processing of incoming messages unlocked")
 		}
 	}
 }
