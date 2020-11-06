@@ -798,7 +798,9 @@ func (user *User) handleMessageLoop() {
 			user.GetPortalByJID(msg.chat).messages <- msg
 		case <-user.syncStart:
 			user.log.Debugln("Processing of incoming messages is locked")
+			user.bridge.Metrics.TrackSyncLock(user.JID, true)
 			user.syncWait.Wait()
+			user.bridge.Metrics.TrackSyncLock(user.JID, false)
 			user.log.Debugln("Processing of incoming messages unlocked")
 		}
 	}
