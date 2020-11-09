@@ -1175,7 +1175,35 @@ func (portal *Portal) sendMainIntentMessage(content interface{}) (*mautrix.RespS
 	return portal.sendMessage(portal.MainIntent(), event.EventMessage, content, 0)
 }
 
+const MessageSendRetries = 5
+const MediaUploadRetries = 5
+const BadGatewaySleep = 5 * time.Second
+
 func (portal *Portal) sendMessage(intent *appservice.IntentAPI, eventType event.Type, content interface{}, timestamp int64) (*mautrix.RespSendEvent, error) {
+	return portal.sendMessageWithRetry(intent, eventType, content, timestamp, MessageSendRetries)
+}
+
+func isGatewayError(err error) bool {
+	if err == nil {
+		return false
+	}
+	var httpErr mautrix.HTTPError
+	return errors.As(err, &httpErr) && (httpErr.IsStatus(http.StatusBadGateway) || httpErr.IsStatus(http.StatusGatewayTimeout))
+}
+
+func (portal *Portal) sendMessageWithRetry(intent *appservice.IntentAPI, eventType event.Type, content interface{}, timestamp int64, retries int) (*mautrix.RespSendEvent, error) {
+	for ;;retries-- {
+		resp, err := portal.sendMessageDirect(intent, eventType, content, timestamp)
+		if retries > 0 && isGatewayError(err) {
+			portal.log.Warnfln("Got gateway error trying to send message, retrying in %d seconds", int(BadGatewaySleep.Seconds()))
+			time.Sleep(BadGatewaySleep)
+		} else {
+			return resp, err
+		}
+	}
+}
+
+func (portal *Portal) sendMessageDirect(intent *appservice.IntentAPI, eventType event.Type, content interface{}, timestamp int64) (*mautrix.RespSendEvent, error) {
 	wrappedContent := event.Content{Parsed: content}
 	if timestamp != 0 && intent.IsCustomPuppet {
 		wrappedContent.Raw = map[string]interface{}{
@@ -1430,6 +1458,18 @@ type mediaMessage struct {
 	sendAsSticker bool
 }
 
+func (portal *Portal) uploadWithRetry(intent *appservice.IntentAPI, data []byte, mimeType string, retries int) (*mautrix.RespMediaUpload, error) {
+	for ;;retries-- {
+		uploaded, err := intent.UploadBytes(data, mimeType)
+		if isGatewayError(err) {
+			portal.log.Warnfln("Got gateway error trying to upload media, retrying in %d seconds", int(BadGatewaySleep.Seconds()))
+			time.Sleep(BadGatewaySleep)
+		} else {
+			return uploaded, err
+		}
+	}
+}
+
 func (portal *Portal) HandleMediaMessage(source *User, msg mediaMessage) {
 	intent := portal.startHandling(source, msg.info)
 	if intent == nil {
@@ -1462,7 +1502,7 @@ func (portal *Portal) HandleMediaMessage(source *User, msg mediaMessage) {
 
 	data, uploadMimeType, file := portal.encryptFile(data, msg.mimeType)
 
-	uploaded, err := intent.UploadBytes(data, uploadMimeType)
+	uploaded, err := portal.uploadWithRetry(intent, data, uploadMimeType, MediaUploadRetries)
 	if err != nil {
 		if errors.Is(err, mautrix.MTooLarge) {
 			portal.sendMediaBridgeFailure(source, intent, msg.info, errors.New("homeserver rejected too large file"))
