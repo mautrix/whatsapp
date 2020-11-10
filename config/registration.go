@@ -58,7 +58,8 @@ func (config *Config) GetRegistration() (*appservice.Registration, error) {
 func (config *Config) copyToRegistration(registration *appservice.Registration) error {
 	registration.ID = config.AppService.ID
 	registration.URL = config.AppService.Address
-	registration.RateLimited = false
+	falseVal := false
+	registration.RateLimited = &falseVal
 	registration.SenderLocalpart = config.AppService.Bot.Username
 
 	userIDRegex, err := regexp.Compile(fmt.Sprintf("^@%s:%s$",

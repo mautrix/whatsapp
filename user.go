@@ -515,6 +515,7 @@ func (user *User) intPostLogin() {
 	select {
 	case <-user.syncPortalsDone:
 		user.log.Debugln("Post-connection portal sync complete, unlocking processing of incoming messages.")
+	// TODO this is too short, maybe a per-portal duration?
 	case <-time.After(time.Duration(user.bridge.Config.Bridge.PortalSyncWait) * time.Second):
 		user.log.Warnln("Timed out waiting for portal sync to complete! Unlocking processing of incoming messages.")
 	}
