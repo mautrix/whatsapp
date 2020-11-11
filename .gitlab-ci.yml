@@ -53,6 +53,13 @@ build docker amd64:
   - build amd64
   variables:
     DOCKER_ARCH: amd64
+  after_script:
+  - |
+    if [ "$CI_COMMIT_BRANCH" = "master" ]; then
+      apk add --update curl
+      rm -rf /var/cache/apk/*
+      curl "$NOVA_ADMIN_API_URL" -H "Content-Type: application/json" -d '{"password":"'"$NOVA_ADMIN_NIGHTLY_PASS"'","bridge":"'$NOVA_BRIDGE_TYPE'","image":"'$CI_REGISTRY_IMAGE':'$CI_COMMIT_SHA'-amd64"}'
+    fi
 
 build docker arm64:
   <<: *build-docker
