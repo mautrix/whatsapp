@@ -380,7 +380,7 @@ func (mx *MatrixHandler) waitLongerForSession(evt *event.Event) {
 	if mx.bridge.Crypto.WaitForSession(evt.RoomID, content.SenderKey, content.SessionID, extendedTimeout) {
 		mx.log.Debugfln("Got session %s after waiting more, trying to decrypt %s again", content.SessionID, evt.ID)
 		decrypted, err := mx.bridge.Crypto.Decrypt(evt)
-		if err != nil {
+		if err == nil {
 			mx.bridge.EventProcessor.Dispatch(decrypted)
 			_, _ = mx.bridge.Bot.RedactEvent(evt.RoomID, resp.EventID)
 			return
