@@ -61,6 +61,7 @@ type MetricsHandler struct {
 	loggedInState   map[types.WhatsAppID]bool
 	syncLocked      prometheus.Gauge
 	syncLockedState map[types.WhatsAppID]bool
+	bufferLength    *prometheus.GaugeVec
 }
 
 func NewMetricsHandler(address string, log log.Logger, db *database.Database) *MetricsHandler {
@@ -119,6 +120,10 @@ func NewMetricsHandler(address string, log log.Logger, db *database.Database) *M
 			Help: "Bridge users locked in post-login sync",
 		}),
 		syncLockedState: make(map[types.WhatsAppID]bool),
+		bufferLength: promauto.NewGaugeVec(prometheus.GaugeOpts{
+			Name: "bridge_buffer_size",
+			Help: "Number of messages in buffer",
+		}, []string{"user_id"}),
 	}
 }
 
@@ -187,6 +192,13 @@ func (mh *MetricsHandler) TrackSyncLock(jid types.WhatsAppID, locked bool) {
 			mh.syncLocked.Dec()
 		}
 	}
+}
+
+func (mh *MetricsHandler) TrackBufferLength(id id.UserID, length int) {
+	if !mh.running {
+		return
+	}
+	mh.bufferLength.With(prometheus.Labels{"user_id": string(id)}).Set(float64(length))
 }
 
 func (mh *MetricsHandler) updateStats() {

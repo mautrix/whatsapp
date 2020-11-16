@@ -416,6 +416,7 @@ func (cl ChatList) Swap(i, j int) {
 func (user *User) PostLogin() {
 	user.bridge.Metrics.TrackConnectionState(user.JID, true)
 	user.bridge.Metrics.TrackLoginState(user.JID, true)
+	user.bridge.Metrics.TrackBufferLength(user.MXID, 0)
 	user.log.Debugln("Locking processing of incoming messages and starting post-login sync")
 	user.syncWait.Add(1)
 	user.syncStart <- struct{}{}
@@ -799,6 +800,7 @@ func (user *User) runMessageRingBuffer() {
 	for msg := range user.messageInput {
 		select {
 		case user.messageOutput <- msg:
+			user.bridge.Metrics.TrackBufferLength(user.MXID, len(user.messageOutput))
 		default:
 			dropped := <-user.messageOutput
 			user.log.Warnln("Buffer is full, dropping message in", dropped.chat)
@@ -811,6 +813,7 @@ func (user *User) handleMessageLoop() {
 	for {
 		select {
 		case msg := <-user.messageOutput:
+			user.bridge.Metrics.TrackBufferLength(user.MXID, len(user.messageOutput))
 			user.GetPortalByJID(msg.chat).messages <- msg
 		case <-user.syncStart:
 			user.log.Debugln("Processing of incoming messages is locked")
