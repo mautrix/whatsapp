@@ -347,9 +347,14 @@ func (portal *Portal) startHandling(source *User, info whatsapp.MessageInfo) *ap
 	} else if portal.isDuplicate(info.Id) {
 		portal.log.Debugfln("Not handling %s: message is duplicate", info.Id)
 	} else {
-		portal.log.Debugfln("Starting handling of %s (ts: %d)", info.Id, info.Timestamp)
 		portal.lastMessageTs = info.Timestamp
-		return portal.getMessageIntent(source, info)
+		intent := portal.getMessageIntent(source, info)
+		if intent != nil {
+			portal.log.Debugfln("Starting handling of %s (ts: %d)", info.Id, info.Timestamp)
+		} else {
+			portal.log.Debugfln("Not handling %s: sender is not known")
+		}
+		return intent
 	}
 	return nil
 }
