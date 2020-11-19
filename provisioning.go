@@ -92,6 +92,7 @@ func (prov *ProvisioningAPI) DeleteSession(w http.ResponseWriter, r *http.Reques
 		_, _ = user.Conn.Disconnect()
 		user.Conn.RemoveHandlers()
 		user.Conn = nil
+		user.bridge.Metrics.TrackConnectionState(user.JID, false)
 	}
 	jsonResponse(w, http.StatusOK, Response{true, "Session information purged"})
 }
@@ -281,22 +282,38 @@ func (prov *ProvisioningAPI) Logout(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err := user.Conn.Logout()
-	if err != nil {
-		user.log.Warnln("Error while logging out:", err)
-		jsonResponse(w, http.StatusInternalServerError, Error{
-			Error:   fmt.Sprintf("Unknown error while logging out: %v", err),
-			ErrCode: err.Error(),
-		})
-		return
+	force := strings.ToLower(r.URL.Query().Get("force")) == "true"
+
+	if user.Conn == nil {
+		if !force {
+			jsonResponse(w, http.StatusNotFound, Error{
+				Error:   "You're not connected",
+				ErrCode: "not connected",
+			})
+		}
+	} else {
+		err := user.Conn.Logout()
+		if err != nil {
+			user.log.Warnln("Error while logging out:", err)
+			if !force {
+				jsonResponse(w, http.StatusInternalServerError, Error{
+					Error:   fmt.Sprintf("Unknown error while logging out: %v", err),
+					ErrCode: err.Error(),
+				})
+				return
+			}
+		}
+		_, err = user.Conn.Disconnect()
+		if err != nil {
+			user.log.Warnln("Error while disconnecting after logout:", err)
+		}
+		user.Conn.RemoveHandlers()
+		user.Conn = nil
 	}
-	_, err = user.Conn.Disconnect()
-	if err != nil {
-		user.log.Warnln("Error while disconnecting after logout:", err)
-	}
-	user.Conn.RemoveHandlers()
-	user.Conn = nil
+
+	user.bridge.Metrics.TrackConnectionState(user.JID, false)
 	user.removeFromJIDMap()
+
 	// TODO this causes a foreign key violation, which should be fixed
 	//ce.User.JID = ""
 	user.SetSession(nil)
