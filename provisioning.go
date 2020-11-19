@@ -282,7 +282,7 @@ func (prov *ProvisioningAPI) Logout(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	force := strings.ToLower(r.URL.Query().Get("force")) == "true"
+	force := strings.ToLower(r.URL.Query().Get("force")) != "false"
 
 	if user.Conn == nil {
 		if !force {
