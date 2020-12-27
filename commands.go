@@ -80,6 +80,9 @@ func (ce *CommandEvent) Reply(msg string, args ...interface{}) {
 // Handle handles messages to the bridge
 func (handler *CommandHandler) Handle(roomID id.RoomID, user *User, message string) {
 	args := strings.Fields(message)
+	if len(args) == 0 {
+		args = []string{"unknown-command"}
+	}
 	ce := &CommandEvent{
 		Bot:     handler.bridge.Bot,
 		Bridge:  handler.bridge,
@@ -162,7 +165,7 @@ func (handler *CommandHandler) CommandMux(ce *CommandEvent) {
 			handler.CommandCreate(ce)
 		}
 	default:
-		ce.Reply("Unknown Command")
+		ce.Reply("Unknown command, use the `help` command for help.")
 	}
 }
 
