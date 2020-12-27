@@ -529,6 +529,7 @@ func (user *User) HandleStreamEvent(evt whatsappExt.StreamEvent) {
 			user.log.Infoln("Stream went to sleep soon after reconnection, making new post-connection ping in 20 seconds")
 			go func() {
 				time.Sleep(20 * time.Second)
+				// TODO if this happens during the post-login sync, it can get stuck forever
 				user.postConnPing()
 			}()
 		}
