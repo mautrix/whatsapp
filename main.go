@@ -44,7 +44,7 @@ var (
 	Name = "mautrix-whatsapp"
 	URL  = "https://github.com/tulir/mautrix-whatsapp"
 	// This is changed when making a release
-	Version = "0.1.4"
+	Version = "0.1.5"
 	// This is filled by init()
 	WAVersion = ""
 	// These are filled at build time with the -X linker flag
