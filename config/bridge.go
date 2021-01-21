@@ -67,6 +67,7 @@ type BridgeConfig struct {
 
 	InviteOwnPuppetForBackfilling bool `yaml:"invite_own_puppet_for_backfilling"`
 	PrivateChatPortalMeta         bool `yaml:"private_chat_portal_meta"`
+	BridgeNotices         		  bool `yaml:"bridge_notices"`
 	ResendBridgeInfo              bool `yaml:"resend_bridge_info"`
 
 	WhatsappThumbnail bool `yaml:"whatsapp_thumbnail"`
@@ -124,6 +125,7 @@ func (bc *BridgeConfig) setDefaults() {
 
 	bc.InviteOwnPuppetForBackfilling = true
 	bc.PrivateChatPortalMeta = false
+	bc.BridgeNotices = true
 }
 
 type umBridgeConfig BridgeConfig
@@ -343,3 +345,4 @@ func (rc *RelaybotConfig) FormatMessage(content *event.MessageEventContent, send
 	})
 	return output.String(), err
 }
+
