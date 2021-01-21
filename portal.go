@@ -1872,8 +1872,11 @@ func (portal *Portal) convertMatrixMessage(sender *User, evt *event.Event) (*waP
 	}
 
 	switch content.MsgType {
-	case event.MsgText, event.MsgEmote:
+	case event.MsgText, event.MsgEmote, event.MsgNotice:
 		text := content.Body
+		if content.MsgType == event.MsgNotice && !portal.bridge.Config.Bridge.BridgeNotices {
+			return nil, sender
+		}
 		if content.Format == event.FormatHTML {
 			text, ctxInfo.MentionedJid = portal.bridge.Formatter.ParseMatrix(content.FormattedBody)
 		}
@@ -1957,26 +1960,6 @@ func (portal *Portal) convertMatrixMessage(sender *User, evt *event.Event) (*waP
 			FileEncSha256: media.FileEncSHA256,
 			FileSha256:    media.FileSHA256,
 			FileLength:    &media.FileLength,
-		}
-	case event.MsgNotice:
-		if portal.bridge.Config.Bridge.BridgeNotices {
-			text := content.Body
-			if content.Format == event.FormatHTML {
-				text, ctxInfo.MentionedJid = portal.bridge.Formatter.ParseMatrix(content.FormattedBody)
-			}
-			if content.MsgType == event.MsgEmote && !relaybotFormatted {
-				text = "/me " + text
-			}
-			if ctxInfo.StanzaId != nil || ctxInfo.MentionedJid != nil {
-				info.Message.ExtendedTextMessage = &waProto.ExtendedTextMessage{
-					Text:        &text,
-					ContextInfo: ctxInfo,
-				}
-			} else {
-				info.Message.Conversation = &text
-			}
-		} else {
-			return nil, sender
 		}
 	default:
 		portal.log.Debugln("Unhandled Matrix event %s: unknown msgtype %s", evt.ID, content.MsgType)
@@ -2250,5 +2233,3 @@ func (portal *Portal) HandleMatrixInvite(sender *User, evt *event.Event) {
 		portal.log.Infoln("Add %s response: %s", puppet.JID, <-resp)
 	}
 }
-
-

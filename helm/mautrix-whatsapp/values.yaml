@@ -137,4 +137,3 @@ bridge:
 logging:
   timestamp_format: Jan _2, 2006 15:04:05
   print_level: debug
-

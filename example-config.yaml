@@ -258,4 +258,3 @@ logging:
     # Minimum severity for log messages.
     # Options: debug, info, warn, error, fatal
     print_level: debug
-

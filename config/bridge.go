@@ -345,4 +345,3 @@ func (rc *RelaybotConfig) FormatMessage(content *event.MessageEventContent, send
 	})
 	return output.String(), err
 }
-
