@@ -711,13 +711,14 @@ func (portal *Portal) BackfillHistory(user *User, lastMessageTime uint64) error 
 	lastMessageFromMe := lastMessage.Sender == user.JID
 	portal.log.Infoln("Backfilling history since", lastMessageID, "for", user.MXID)
 	for len(lastMessageID) > 0 {
-		portal.log.Debugln("Backfilling history: 50 messages after", lastMessageID)
+		portal.log.Debugln("Fetching 50 messages of history after", lastMessageID)
 		resp, err := user.Conn.LoadMessagesAfter(portal.Key.JID, lastMessageID, lastMessageFromMe, 50)
 		if err != nil {
 			return err
 		}
 		messages, ok := resp.Content.([]interface{})
 		if !ok || len(messages) == 0 {
+			portal.log.Debugfln("Didn't get more messages to backfill (resp.Content is %T)", resp.Content)
 			break
 		}
 
@@ -859,7 +860,7 @@ func (portal *Portal) handleHistory(user *User, messages []interface{}) {
 			continue
 		}
 		data := whatsapp.ParseProtoMessage(message)
-		if data == nil {
+		if data == nil || data == whatsapp.ErrMessageTypeNotImplemented {
 			st := message.GetMessageStubType()
 			// Ignore some types that are known to fail
 			if st == waProto.WebMessageInfo_CALL_MISSED_VOICE || st == waProto.WebMessageInfo_CALL_MISSED_VIDEO ||
