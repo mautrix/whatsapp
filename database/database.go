@@ -38,7 +38,7 @@ type Database struct {
 	Message *MessageQuery
 }
 
-func New(dbType string, uri string) (*Database, error) {
+func New(dbType string, uri string, baseLog log.Logger) (*Database, error) {
 	conn, err := sql.Open(dbType, uri)
 	if err != nil {
 		return nil, err
@@ -50,7 +50,7 @@ func New(dbType string, uri string) (*Database, error) {
 
 	db := &Database{
 		DB:      conn,
-		log:     log.Sub("Database"),
+		log:     baseLog.Sub("Database"),
 		dialect: dbType,
 	}
 	db.User = &UserQuery{

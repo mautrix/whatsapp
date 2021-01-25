@@ -96,7 +96,7 @@ func (bridge *Bridge) GenerateRegistration() {
 }
 
 func (bridge *Bridge) MigrateDatabase() {
-	oldDB, err := database.New(flag.Arg(0), flag.Arg(1))
+	oldDB, err := database.New(flag.Arg(0), flag.Arg(1), bridge.Log)
 	if err != nil {
 		fmt.Println("Failed to open old database:", err)
 		os.Exit(30)
@@ -107,7 +107,7 @@ func (bridge *Bridge) MigrateDatabase() {
 		os.Exit(31)
 	}
 
-	newDB, err := database.New(bridge.Config.AppService.Database.Type, bridge.Config.AppService.Database.URI)
+	newDB, err := database.New(bridge.Config.AppService.Database.Type, bridge.Config.AppService.Database.URI, bridge.Log)
 	if err != nil {
 		fmt.Println("Failed to open new database:", err)
 		os.Exit(32)
@@ -223,7 +223,7 @@ func (bridge *Bridge) Init() {
 	bridge.AS.Log = log.Sub("Matrix")
 
 	bridge.Log.Debugln("Initializing database connection")
-	bridge.DB, err = database.New(bridge.Config.AppService.Database.Type, bridge.Config.AppService.Database.URI)
+	bridge.DB, err = database.New(bridge.Config.AppService.Database.Type, bridge.Config.AppService.Database.URI, bridge.Log)
 	if err != nil {
 		bridge.Log.Fatalln("Failed to initialize database connection:", err)
 		os.Exit(14)
