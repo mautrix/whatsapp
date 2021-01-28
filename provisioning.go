@@ -262,9 +262,13 @@ func (prov *ProvisioningAPI) Ping(w http.ResponseWriter, r *http.Request) {
 			"is_login_in_progress": user.Conn.IsLoginInProgress(),
 		}
 		err := user.Conn.AdminTest()
+		var errStr string
+		if err != nil {
+			errStr = err.Error()
+		}
 		wa["ping"] = map[string]interface{}{
 			"ok":  err == nil,
-			"err": err,
+			"err": errStr,
 		}
 	}
 	resp := map[string]interface{}{
