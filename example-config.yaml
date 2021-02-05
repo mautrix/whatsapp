@@ -106,6 +106,8 @@ bridge:
     # Whether or not the bridge should send a notice to the user's management room when it retries connecting.
     # If false, it will only report when it stops retrying.
     report_connection_retry: true
+    # Whether or not the bridge should reconnect even if WhatsApp says another web client connected.
+    aggressive_reconnect: false
     # Maximum number of seconds to wait for chats to be sent at startup.
     # If this is too low and you have lots of chats, it could cause backfilling to fail.
     chat_list_wait: 30

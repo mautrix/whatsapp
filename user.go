@@ -746,10 +746,14 @@ func (user *User) HandleError(err error) {
 	if closed, ok := err.(*whatsapp.ErrConnectionClosed); ok {
 		user.bridge.Metrics.TrackDisconnection(user.MXID)
 		if closed.Code == 1000 && user.cleanDisconnection {
-			user.bridge.Metrics.TrackConnectionState(user.JID, false)
 			user.cleanDisconnection = false
-			user.log.Infoln("Clean disconnection by server")
-			return
+			if !user.bridge.Config.Bridge.AggressiveReconnect {
+				user.bridge.Metrics.TrackConnectionState(user.JID, false)
+				user.log.Infoln("Clean disconnection by server")
+				return
+			} else {
+				user.log.Debugln("Clean disconnection by server, but aggressive reconnection is enabled")
+			}
 		}
 		go user.tryReconnect(fmt.Sprintf("Your WhatsApp connection was closed with websocket status code %d", closed.Code))
 	} else if failed, ok := err.(*whatsapp.ErrConnectionFailed); ok {
@@ -1084,8 +1088,8 @@ func (user *User) HandleCommand(cmd whatsappExt.Command) {
 			go portal.UpdateAvatar(user, cmd.ProfilePicInfo, true)
 		}
 	case whatsappExt.CommandDisconnect:
-		user.cleanDisconnection = true
 		if cmd.Kind == "replaced" {
+			user.cleanDisconnection = true
 			go user.sendMarkdownBridgeAlert("\u26a0 Your WhatsApp connection was closed by the server because you opened another WhatsApp Web client.\n\n" +
 				"Use the `reconnect` command to disconnect the other client and resume bridging.")
 		} else {
