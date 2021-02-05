@@ -1,14 +1,9 @@
-FROM alpine:3.12
-
-RUN echo $'\
-@edge http://dl-cdn.alpinelinux.org/alpine/edge/main\n\
-@edge http://dl-cdn.alpinelinux.org/alpine/edge/testing\n\
-@edge http://dl-cdn.alpinelinux.org/alpine/edge/community' >> /etc/apk/repositories
+FROM alpine:3.13
 
 ENV UID=1337 \
     GID=1337
 
-RUN apk add --no-cache ffmpeg su-exec ca-certificates bash jq curl yq@edge
+RUN apk add --no-cache ffmpeg su-exec ca-certificates bash jq curl yq
 
 ARG EXECUTABLE=./mautrix-whatsapp
 COPY $EXECUTABLE /usr/bin/mautrix-whatsapp
