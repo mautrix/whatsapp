@@ -18,13 +18,16 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
 
-	"github.com/Rhymen/go-whatsapp"
 	"github.com/gorilla/websocket"
 	log "maunium.net/go/maulogger/v2"
+
+	"github.com/Rhymen/go-whatsapp"
+	"maunium.net/go/mautrix-whatsapp/types"
 
 	"maunium.net/go/mautrix/id"
 
@@ -42,7 +45,7 @@ func (prov *ProvisioningAPI) Init() {
 	r := prov.bridge.AS.Router.PathPrefix(prov.bridge.Config.AppService.Provisioning.Prefix).Subrouter()
 	r.Use(prov.AuthMiddleware)
 	r.HandleFunc("/ping", prov.Ping).Methods(http.MethodGet)
-	r.HandleFunc("/login", prov.Login)
+	r.HandleFunc("/login", prov.Login).Methods(http.MethodGet)
 	r.HandleFunc("/logout", prov.Logout).Methods(http.MethodPost)
 	r.HandleFunc("/delete_session", prov.DeleteSession).Methods(http.MethodPost)
 	r.HandleFunc("/delete_connection", prov.DeleteConnection).Methods(http.MethodPost)
@@ -98,13 +101,8 @@ func (prov *ProvisioningAPI) DeleteSession(w http.ResponseWriter, r *http.Reques
 		})
 		return
 	}
+	user.Disconnect()
 	user.SetSession(nil)
-	if user.Conn != nil {
-		_, _ = user.Conn.Disconnect()
-		user.Conn.RemoveHandlers()
-		user.Conn = nil
-		user.bridge.Metrics.TrackConnectionState(user.JID, false)
-	}
 	jsonResponse(w, http.StatusOK, Response{true, "Session information purged"})
 }
 
@@ -117,13 +115,7 @@ func (prov *ProvisioningAPI) DeleteConnection(w http.ResponseWriter, r *http.Req
 		})
 		return
 	}
-	sess, err := user.Conn.Disconnect()
-	if err == nil && len(sess.Wid) > 0 {
-		user.SetSession(&sess)
-	}
-	user.Conn.RemoveHandlers()
-	user.Conn = nil
-	user.bridge.Metrics.TrackConnectionState(user.JID, false)
+	user.Disconnect()
 	jsonResponse(w, http.StatusOK, Response{true, "Disconnected from WhatsApp and connection deleted"})
 }
 
@@ -150,7 +142,7 @@ func (prov *ProvisioningAPI) Disconnect(w http.ResponseWriter, r *http.Request) 
 			ErrCode: err.Error(),
 		})
 		return
-	} else if len(sess.Wid) > 0 {
+	} else {
 		user.SetSession(&sess)
 	}
 	user.bridge.Metrics.TrackConnectionState(user.JID, false)
@@ -178,7 +170,7 @@ func (prov *ProvisioningAPI) Reconnect(w http.ResponseWriter, r *http.Request) {
 		wasConnected = false
 	} else if err != nil {
 		user.log.Warnln("Error while disconnecting:", err)
-	} else if len(sess.Wid) > 0 {
+	} else {
 		user.SetSession(&sess)
 	}
 
@@ -186,7 +178,6 @@ func (prov *ProvisioningAPI) Reconnect(w http.ResponseWriter, r *http.Request) {
 	if err == whatsapp.ErrInvalidSession {
 		if user.Session != nil {
 			user.log.Debugln("Got invalid session error when reconnecting, but user has session. Retrying using RestoreWithSession()...")
-			var sess whatsapp.Session
 			sess, err = user.Conn.RestoreWithSession(*user.Session)
 			if err == nil {
 				user.SetSession(&sess)
@@ -213,7 +204,7 @@ func (prov *ProvisioningAPI) Reconnect(w http.ResponseWriter, r *http.Request) {
 	}
 	if err != nil {
 		user.log.Warnln("Error while reconnecting:", err)
-		if err.Error() == "restore session connection timed out" {
+		if errors.Is(err, whatsapp.ErrRestoreSessionTimeout) {
 			jsonResponse(w, http.StatusForbidden, Error{
 				Error:   "Reconnection timed out. Is WhatsApp on your phone reachable?",
 				ErrCode: err.Error(),
@@ -228,7 +219,7 @@ func (prov *ProvisioningAPI) Reconnect(w http.ResponseWriter, r *http.Request) {
 		sess, err := user.Conn.Disconnect()
 		if err != nil {
 			user.log.Errorln("Failed to disconnect after failed session restore in reconnect command:", err)
-		} else if len(sess.Wid) > 0 {
+		} else {
 			user.SetSession(&sess)
 		}
 		return
@@ -318,12 +309,7 @@ func (prov *ProvisioningAPI) Logout(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
-		_, err = user.Conn.Disconnect()
-		if err != nil {
-			user.log.Warnln("Error while disconnecting after logout:", err)
-		}
-		user.Conn.RemoveHandlers()
-		user.Conn = nil
+		user.Disconnect()
 	}
 
 	user.bridge.Metrics.TrackConnectionState(user.JID, false)
@@ -373,6 +359,7 @@ func (prov *ProvisioningAPI) Login(w http.ResponseWriter, r *http.Request) {
 			})
 		}
 	}()
+	user.log.Debugln("Starting login via provisioning API")
 	session, err := user.Conn.LoginWithRetry(qrChan, user.bridge.Config.Bridge.LoginQRRegenCount)
 	qrChan <- "stop"
 	if err != nil {
@@ -383,16 +370,20 @@ func (prov *ProvisioningAPI) Login(w http.ResponseWriter, r *http.Request) {
 			msg = "You have a login in progress already."
 		} else if err == whatsapp.ErrLoginTimedOut {
 			msg = "QR code scan timed out. Please try again."
+		} else if err == whatsapp.ErrInvalidWebsocket {
+			msg = "WhatsApp connection error. Please try again."
+			user.Disconnect()
 		} else {
-			user.log.Warnln("Failed to log in:", err)
 			msg = fmt.Sprintf("Unknown error while logging in: %v", err)
 		}
+		user.log.Warnln("Failed to log in:", err)
 		_ = c.WriteJSON(Error{
 			Error:   msg,
 			ErrCode: err.Error(),
 		})
 		return
 	}
+	user.log.Debugln("Successful login via provisioning API")
 	user.ConnectionErrors = 0
 	user.JID = strings.Replace(user.Conn.Info.Wid, whatsappExt.OldUserSuffix, whatsappExt.NewUserSuffix, 1)
 	user.addToJIDMap()
