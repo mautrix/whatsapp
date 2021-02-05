@@ -27,8 +27,6 @@ import (
 	log "maunium.net/go/maulogger/v2"
 
 	"github.com/Rhymen/go-whatsapp"
-	"maunium.net/go/mautrix-whatsapp/types"
-
 	"maunium.net/go/mautrix/id"
 
 	whatsappExt "maunium.net/go/mautrix-whatsapp/whatsapp-ext"
