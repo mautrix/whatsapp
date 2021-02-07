@@ -362,13 +362,13 @@ func (prov *ProvisioningAPI) Login(w http.ResponseWriter, r *http.Request) {
 	qrChan <- "stop"
 	if err != nil {
 		var msg string
-		if err == whatsapp.ErrAlreadyLoggedIn {
+		if errors.Is(err, whatsapp.ErrAlreadyLoggedIn) {
 			msg = "You're already logged in"
-		} else if err == whatsapp.ErrLoginInProgress {
+		} else if errors.Is(err, whatsapp.ErrLoginInProgress) {
 			msg = "You have a login in progress already."
-		} else if err == whatsapp.ErrLoginTimedOut {
+		} else if errors.Is(err, whatsapp.ErrLoginTimedOut) {
 			msg = "QR code scan timed out. Please try again."
-		} else if err == whatsapp.ErrInvalidWebsocket {
+		} else if errors.Is(err, whatsapp.ErrInvalidWebsocket) {
 			msg = "WhatsApp connection error. Please try again."
 			user.Disconnect()
 		} else {
