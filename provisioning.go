@@ -250,6 +250,7 @@ func (prov *ProvisioningAPI) Ping(w http.ResponseWriter, r *http.Request) {
 			"is_logged_in":         user.Conn.IsLoggedIn(),
 			"is_login_in_progress": user.Conn.IsLoginInProgress(),
 		}
+		user.log.Debugln("Pinging WhatsApp mobile due to /ping API request")
 		err := user.Conn.AdminTest()
 		var errStr string
 		if err != nil {
@@ -259,7 +260,7 @@ func (prov *ProvisioningAPI) Ping(w http.ResponseWriter, r *http.Request) {
 			"ok":  err == nil,
 			"err": errStr,
 		}
-		user.log.Debugln("Admin test response due to /ping: %v (conn: %t, login: %t, in progress: %t)",
+		user.log.Debugfln("Admin test response for /ping: %v (conn: %t, login: %t, in progress: %t)",
 			err, user.Conn.IsConnected(), user.Conn.IsLoggedIn(), user.Conn.IsLoginInProgress())
 	}
 	resp := map[string]interface{}{
