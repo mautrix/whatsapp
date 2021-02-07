@@ -259,6 +259,8 @@ func (prov *ProvisioningAPI) Ping(w http.ResponseWriter, r *http.Request) {
 			"ok":  err == nil,
 			"err": errStr,
 		}
+		user.log.Debugln("Admin test response due to /ping: %v (conn: %t, login: %t, in progress: %t)",
+			err, user.Conn.IsConnected(), user.Conn.IsLoggedIn(), user.Conn.IsLoginInProgress())
 	}
 	resp := map[string]interface{}{
 		"mxid":                 user.MXID,
