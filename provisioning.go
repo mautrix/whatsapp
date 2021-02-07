@@ -360,8 +360,25 @@ func (prov *ProvisioningAPI) Login(w http.ResponseWriter, r *http.Request) {
 			})
 		}
 	}()
+
+	go func() {
+		// Read everything so SetCloseHandler() works
+		for {
+			_, _, err = c.ReadMessage()
+			if err != nil {
+				break
+			}
+		}
+	}()
+	ctx, cancel := context.WithCancel(context.Background())
+	c.SetCloseHandler(func(code int, text string) error {
+		user.log.Debugfln("Login websocket closed (%d), cancelling login", code)
+		cancel()
+		return nil
+	})
+
 	user.log.Debugln("Starting login via provisioning API")
-	session, err := user.Conn.LoginWithRetry(qrChan, user.bridge.Config.Bridge.LoginQRRegenCount)
+	session, err := user.Conn.LoginWithRetry(qrChan, ctx, user.bridge.Config.Bridge.LoginQRRegenCount)
 	qrChan <- "stop"
 	if err != nil {
 		var msg string

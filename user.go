@@ -384,7 +384,7 @@ func (user *User) Login(ce *CommandEvent) {
 	qrChan := make(chan string, 3)
 	eventIDChan := make(chan id.EventID, 1)
 	go user.loginQrChannel(ce, qrChan, eventIDChan)
-	session, err := user.Conn.LoginWithRetry(qrChan, user.bridge.Config.Bridge.LoginQRRegenCount)
+	session, err := user.Conn.LoginWithRetry(qrChan, nil, user.bridge.Config.Bridge.LoginQRRegenCount)
 	qrChan <- "stop"
 	if err != nil {
 		var eventID id.EventID
