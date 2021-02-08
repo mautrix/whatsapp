@@ -69,12 +69,15 @@ type BridgeConfig struct {
 	PrivateChatPortalMeta         bool `yaml:"private_chat_portal_meta"`
 	BridgeNotices         		  bool `yaml:"bridge_notices"`
 	ResendBridgeInfo              bool `yaml:"resend_bridge_info"`
+	CreateRoomAsDirect            bool `yaml:"create_room_as_direct"`
 
 	WhatsappThumbnail bool `yaml:"whatsapp_thumbnail"`
 
 	AllowUserInvite bool `yaml:"allow_user_invite"`
 
 	CommandPrefix string `yaml:"command_prefix"`
+
+	FrontendCommandPrefix string `yaml:"frontend_command_prefix"`
 
 	Encryption struct {
 		Allow   bool `yaml:"allow"`
@@ -126,6 +129,7 @@ func (bc *BridgeConfig) setDefaults() {
 	bc.InviteOwnPuppetForBackfilling = true
 	bc.PrivateChatPortalMeta = false
 	bc.BridgeNotices = true
+	bc.CreateRoomAsDirect = true
 }
 
 type umBridgeConfig BridgeConfig

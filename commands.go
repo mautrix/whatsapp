@@ -23,6 +23,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"encoding/json"
 
 	"github.com/Rhymen/go-whatsapp"
 
@@ -893,6 +894,13 @@ func (handler *CommandHandler) CommandPM(ce *CommandEvent) {
 		}
 		contact = whatsapp.Contact{Jid: jid}
 	}
+
+	// Create and return reply with prefix and json
+	type RoomData struct {
+		RoomID  string  `json:"room_id"`
+		Reply   string  `json:"reply"`
+	}
+
 	puppet := user.bridge.GetPuppetByJID(contact.Jid)
 	puppet.Sync(user, contact)
 	portal := user.bridge.GetPortalByJID(database.NewPortalKey(contact.Jid, user.JID))
@@ -901,7 +909,17 @@ func (handler *CommandHandler) CommandPM(ce *CommandEvent) {
 		if err != nil {
 			portal.log.Warnfln("Failed to invite %s to portal: %v. Creating new portal", user.MXID, err)
 		} else {
-			ce.Reply("You already have a private chat portal with that user at [%s](https://matrix.to/#/%s)", puppet.Displayname, portal.MXID)
+			data := &RoomData{
+				RoomID:   string(portal.MXID),
+				Reply:    "You already have a private chat portal with.",
+			}
+			return_data, err := json.Marshal(data)
+			if err != nil {
+				ce.Reply("Failed to parse json at return data: %v", err)
+				return
+			}
+
+			ce.Reply("%s %s", handler.bridge.Config.Bridge.FrontendCommandPrefix, return_data)
 			return
 		}
 	}
@@ -910,7 +928,18 @@ func (handler *CommandHandler) CommandPM(ce *CommandEvent) {
 		ce.Reply("Failed to create portal room: %v", err)
 		return
 	}
-	ce.Reply("Created portal room and invited you to it.")
+	data := &RoomData{
+		RoomID:   string(portal.MXID),
+		Reply:    "Created portal room and invited you to it.",
+	}
+
+	return_data, err := json.Marshal(data)
+	if err != nil {
+		ce.Reply("Failed to parse json at return data: %v", err)
+		return
+	}
+
+	ce.Reply("%s %s", handler.bridge.Config.Bridge.FrontendCommandPrefix, return_data)
 }
 
 const cmdLoginMatrixHelp = `login-matrix <_access token_> - Replace your WhatsApp account's Matrix puppet with your real Matrix account.'`

@@ -1021,7 +1021,7 @@ func (portal *Portal) CreateMatrixRoom(user *User) error {
 		Topic:        portal.Topic,
 		Invite:       invite,
 		Preset:       "private_chat",
-		IsDirect:     portal.IsPrivateChat(),
+		IsDirect:     portal.bridge.Config.Bridge.CreateRoomAsDirect,
 		InitialState: initialState,
 	})
 	if err != nil {
