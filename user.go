@@ -641,8 +641,11 @@ func (user *User) syncPortals(chatMap map[string]whatsapp.Chat, createAll bool) 
 		}
 		create := (chat.LastMessageTime >= user.LastConnection && user.LastConnection > 0) || i < limit
 		if len(chat.Portal.MXID) > 0 || create || createAll {
-			chat.Portal.Sync(user, chat.Contact)
-			err := chat.Portal.BackfillHistory(user, chat.LastMessageTime)
+			// Don't sync unless chat meta sync is enabled or portal doesn't exist
+			if user.bridge.Config.Bridge.ChatMetaSync || len(chat.Portal.MXID) == 0 {
+				chat.Portal.Sync(user, chat.Contact)
+			}
+			err = chat.Portal.BackfillHistory(user, chat.LastMessageTime)
 			if err != nil {
 				chat.Portal.log.Errorln("Error backfilling history:", err)
 			}
@@ -927,6 +930,10 @@ func (user *User) HandleContactMessage(message whatsapp.ContactMessage) {
 	user.messageInput <- PortalMessage{message.Info.RemoteJid, user, message, message.Info.Timestamp}
 }
 
+func (user *User) HandleStubMessage(message whatsapp.StubMessage) {
+	user.messageInput <- PortalMessage{message.Info.RemoteJid, user, message, message.Info.Timestamp}
+}
+
 func (user *User) HandleLocationMessage(message whatsapp.LocationMessage) {
 	user.messageInput <- PortalMessage{message.Info.RemoteJid, user, message, message.Info.Timestamp}
 }
@@ -1015,7 +1022,7 @@ func (user *User) HandleMsgInfo(info whatsappExt.MsgInfo) {
 			intent := user.bridge.GetPuppetByJID(info.SenderJID).IntentFor(portal)
 			for _, msgID := range info.IDs {
 				msg := user.bridge.DB.Message.GetByJID(portal.Key, msgID)
-				if msg == nil {
+				if msg == nil || msg.IsFakeMXID() {
 					continue
 				}
 
@@ -1066,7 +1073,7 @@ func (user *User) markSelfRead(jid, messageID string) {
 		user.log.Debugfln("User read chat %s/%s in WhatsApp mobile (last known event: %s/%s)", portal.Key.JID, portal.MXID, message.JID, message.MXID)
 	} else {
 		message = user.bridge.DB.Message.GetByJID(portal.Key, messageID)
-		if message == nil {
+		if message == nil || message.IsFakeMXID() {
 			return
 		}
 		user.log.Debugfln("User read message %s/%s in %s/%s in WhatsApp mobile", message.JID, message.MXID, portal.Key.JID, portal.MXID)
@@ -1118,13 +1125,22 @@ func (user *User) HandleChatUpdate(cmd whatsappExt.ChatUpdate) {
 		return
 	}
 
+	// These don't come down the message history :(
+	switch cmd.Data.Action {
+	case whatsappExt.ChatActionAddTopic:
+		go portal.UpdateTopic(cmd.Data.AddTopic.Topic, cmd.Data.SenderJID, nil,true)
+	case whatsappExt.ChatActionRemoveTopic:
+		go portal.UpdateTopic("", cmd.Data.SenderJID, nil,true)
+	}
+
+	if !user.bridge.Config.Bridge.ChatMetaSync {
+		// Ignore chat update commands, we're relying on the message history.
+		return
+	}
+
 	switch cmd.Data.Action {
 	case whatsappExt.ChatActionNameChange:
-		go portal.UpdateName(cmd.Data.NameChange.Name, cmd.Data.SenderJID, true)
-	case whatsappExt.ChatActionAddTopic:
-		go portal.UpdateTopic(cmd.Data.AddTopic.Topic, cmd.Data.SenderJID, true)
-	case whatsappExt.ChatActionRemoveTopic:
-		go portal.UpdateTopic("", cmd.Data.SenderJID, true)
+		go portal.UpdateName(cmd.Data.NameChange.Name, cmd.Data.SenderJID, nil, true)
 	case whatsappExt.ChatActionPromote:
 		go portal.ChangeAdminStatus(cmd.Data.UserChange.JIDs, true)
 	case whatsappExt.ChatActionDemote:
@@ -1136,7 +1152,7 @@ func (user *User) HandleChatUpdate(cmd whatsappExt.ChatUpdate) {
 	case whatsappExt.ChatActionRemove:
 		go portal.HandleWhatsAppKick(cmd.Data.SenderJID, cmd.Data.UserChange.JIDs)
 	case whatsappExt.ChatActionAdd:
-		go portal.HandleWhatsAppInvite(cmd.Data.SenderJID, cmd.Data.UserChange.JIDs)
+		go portal.HandleWhatsAppInvite(cmd.Data.SenderJID, nil, cmd.Data.UserChange.JIDs)
 	case whatsappExt.ChatActionIntroduce:
 		if cmd.Data.SenderJID != "unknown" {
 			go portal.Sync(user, whatsapp.Contact{Jid: portal.Key.JID})

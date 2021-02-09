@@ -22,8 +22,9 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/Rhymen/go-whatsapp"
 	log "maunium.net/go/maulogger/v2"
+
+	"github.com/Rhymen/go-whatsapp"
 
 	"maunium.net/go/mautrix/appservice"
 	"maunium.net/go/mautrix/id"
@@ -190,15 +191,18 @@ func (puppet *Puppet) UpdateAvatar(source *User, avatar *whatsappExt.ProfilePicI
 		}
 	}
 
-	if avatar.Status != 0 {
+	if avatar.Status == 404 {
+		avatar.Tag = "remove"
+		avatar.Status = 0
+	} else if avatar.Status == 401 && puppet.Avatar != "unauthorized" {
+		puppet.Avatar = "unauthorized"
+		return true
+	}
+	if avatar.Status != 0 || avatar.Tag == puppet.Avatar {
 		return false
 	}
 
-	if avatar.Tag == puppet.Avatar {
-		return false
-	}
-
-	if len(avatar.URL) == 0 {
+	if avatar.Tag == "remove" || len(avatar.URL) == 0 {
 		err := puppet.DefaultIntent().SetAvatarURL(id.ContentURI{})
 		if err != nil {
 			puppet.log.Warnln("Failed to remove avatar:", err)
@@ -296,7 +300,10 @@ func (puppet *Puppet) Sync(source *User, contact whatsapp.Contact) {
 
 	update := false
 	update = puppet.UpdateName(source, contact) || update
-	update = puppet.UpdateAvatar(source, nil) || update
+	// TODO figure out how to update avatars after being offline
+	if len(puppet.Avatar) == 0 || puppet.bridge.Config.Bridge.UserAvatarSync {
+		update = puppet.UpdateAvatar(source, nil) || update
+	}
 	if update {
 		puppet.Update()
 	}

@@ -58,6 +58,8 @@ type BridgeConfig struct {
 	HistoryDisableNotifs bool   `yaml:"initial_history_disable_notifications"`
 	RecoverChatSync      int    `yaml:"recovery_chat_sync_count"`
 	RecoverHistory       bool   `yaml:"recovery_history_backfill"`
+	ChatMetaSync         bool   `yaml:"chat_meta_sync"`
+	UserAvatarSync       bool   `yaml:"user_avatar_sync"`
 	SyncChatMaxAge       uint64 `yaml:"sync_max_chat_age"`
 
 	SyncWithCustomPuppets bool   `yaml:"sync_with_custom_puppets"`
@@ -116,6 +118,8 @@ func (bc *BridgeConfig) setDefaults() {
 	bc.InitialHistoryFill = 20
 	bc.RecoverChatSync = -1
 	bc.RecoverHistory = true
+	bc.ChatMetaSync = true
+	bc.UserAvatarSync = true
 	bc.SyncChatMaxAge = 259200
 
 	bc.SyncWithCustomPuppets = true

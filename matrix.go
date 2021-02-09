@@ -289,6 +289,10 @@ func (mx *MatrixHandler) HandleMembership(evt *event.Event) {
 
 func (mx *MatrixHandler) HandleRoomMetadata(evt *event.Event) {
 	defer mx.bridge.Metrics.TrackEvent(evt.Type)()
+	if mx.shouldIgnoreEvent(evt) {
+		return
+	}
+
 	user := mx.bridge.GetUserByMXID(evt.Sender)
 	if user == nil || !user.Whitelisted || !user.IsConnected() {
 		return
@@ -299,22 +303,7 @@ func (mx *MatrixHandler) HandleRoomMetadata(evt *event.Event) {
 		return
 	}
 
-	var resp <-chan string
-	var err error
-	switch content := evt.Content.Parsed.(type) {
-	case *event.RoomNameEventContent:
-		resp, err = user.Conn.UpdateGroupSubject(content.Name, portal.Key.JID)
-	case *event.TopicEventContent:
-		resp, err = user.Conn.UpdateGroupDescription(portal.Key.JID, content.Topic)
-	case *event.RoomAvatarEventContent:
-		return
-	}
-	if err != nil {
-		mx.log.Errorln(err)
-	} else {
-		out := <-resp
-		mx.log.Infoln(out)
-	}
+	portal.HandleMatrixMeta(user, evt)
 }
 
 func (mx *MatrixHandler) shouldIgnoreEvent(evt *event.Event) bool {

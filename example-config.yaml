@@ -134,6 +134,13 @@ bridge:
     recovery_chat_sync_limit: -1
     # Whether or not to sync history when recovering from downtime.
     recovery_history_backfill: true
+    # Whether or not portal info should be fetched from the server when syncing,
+    # instead of relying on finding any changes in the message history.
+    # If you get 599 errors often, you should try disabling this.
+    chat_meta_sync: true
+    # Whether or not puppet avatars should be fetched from the server even if an avatar is already set.
+    # If you get 599 errors often, you should try disabling this.
+    user_avatar_sync: true
     # Maximum number of seconds since last message in chat to skip
     # syncing the chat in any case. This setting will take priority
     # over both recovery_chat_sync_limit and initial_chat_sync_count.
