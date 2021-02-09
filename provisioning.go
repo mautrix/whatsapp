@@ -16,12 +16,15 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/gorilla/websocket"
 	log "maunium.net/go/maulogger/v2"
@@ -51,6 +54,26 @@ func (prov *ProvisioningAPI) Init() {
 	r.HandleFunc("/reconnect", prov.Reconnect).Methods(http.MethodPost)
 }
 
+type responseWrap struct {
+	http.ResponseWriter
+	statusCode int
+}
+
+var _ http.Hijacker = (*responseWrap)(nil)
+
+func (rw *responseWrap) WriteHeader(statusCode int) {
+	rw.ResponseWriter.WriteHeader(statusCode)
+	rw.statusCode = statusCode
+}
+
+func (rw *responseWrap) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	hijacker, ok := rw.ResponseWriter.(http.Hijacker)
+	if !ok {
+		return nil, nil, errors.New("response does not implement http.Hijacker")
+	}
+	return hijacker.Hijack()
+}
+
 func (prov *ProvisioningAPI) AuthMiddleware(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		auth := r.Header.Get("Authorization")
@@ -75,7 +98,11 @@ func (prov *ProvisioningAPI) AuthMiddleware(h http.Handler) http.Handler {
 		}
 		userID := r.URL.Query().Get("user_id")
 		user := prov.bridge.GetUserByMXID(id.UserID(userID))
-		h.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), "user", user)))
+		start := time.Now()
+		wWrap := &responseWrap{w, 200}
+		h.ServeHTTP(wWrap, r.WithContext(context.WithValue(r.Context(), "user", user)))
+		duration := time.Now().Sub(start).Seconds()
+		prov.log.Infofln("%s %s from %s took %.2f seconds and returned status %d", r.Method, r.URL.Path, user.MXID, duration, wWrap.statusCode)
 	})
 }
 
@@ -162,6 +189,7 @@ func (prov *ProvisioningAPI) Reconnect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	user.log.Debugln("Received /reconnect request, disconnecting")
 	wasConnected := true
 	sess, err := user.Conn.Disconnect()
 	if err == whatsapp.ErrNotConnected {
@@ -172,7 +200,9 @@ func (prov *ProvisioningAPI) Reconnect(w http.ResponseWriter, r *http.Request) {
 		user.SetSession(&sess)
 	}
 
+	user.log.Debugln("Restoring session for /reconnect")
 	err = user.Conn.Restore()
+	user.log.Debugfln("Restore session for /reconnect responded with %v", err)
 	if err == whatsapp.ErrInvalidSession {
 		if user.Session != nil {
 			user.log.Debugln("Got invalid session error when reconnecting, but user has session. Retrying using RestoreWithSession()...")
@@ -335,7 +365,7 @@ func (prov *ProvisioningAPI) Login(w http.ResponseWriter, r *http.Request) {
 
 	c, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		prov.log.Errorfln("Failed to upgrade connection to websocket:", err)
+		prov.log.Errorln("Failed to upgrade connection to websocket:", err)
 		return
 	}
 	defer c.Close()
