@@ -1090,7 +1090,7 @@ func (user *User) HandleCommand(cmd whatsappExt.Command) {
 		if strings.HasSuffix(cmd.JID, whatsappExt.NewUserSuffix) {
 			puppet := user.bridge.GetPuppetByJID(cmd.JID)
 			go puppet.UpdateAvatar(user, cmd.ProfilePicInfo)
-		} else {
+		} else if user.bridge.Config.Bridge.ChatMetaSync {
 			portal := user.GetPortalByJID(cmd.JID)
 			go portal.UpdateAvatar(user, cmd.ProfilePicInfo, true)
 		}
