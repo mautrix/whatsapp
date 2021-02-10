@@ -176,8 +176,8 @@ func (bridge *Bridge) NewUser(dbUser *database.User) *User {
 
 		IsRelaybot: false,
 
-		chatListReceived: make(chan struct{}),
-		syncPortalsDone:  make(chan struct{}),
+		chatListReceived: make(chan struct{}, 1),
+		syncPortalsDone:  make(chan struct{}, 1),
 		syncStart:        make(chan struct{}, 1),
 		messageInput:     make(chan PortalMessage),
 		messageOutput:    make(chan PortalMessage, bridge.Config.Bridge.UserMessageBuffer),
@@ -453,8 +453,8 @@ func (user *User) PostLogin() {
 	user.log.Debugln("Locking processing of incoming messages and starting post-login sync")
 	// TODO can an old sync still be ongoing when PostLogin is called again?
 	// TODO 2: can the new sync happen before this happens?
-	user.chatListReceived = make(chan struct{})
-	user.syncPortalsDone = make(chan struct{})
+	user.chatListReceived = make(chan struct{}, 1)
+	user.syncPortalsDone = make(chan struct{}, 1)
 	user.syncWait.Add(1)
 	user.syncStart <- struct{}{}
 	go user.intPostLogin(user.Conn)
