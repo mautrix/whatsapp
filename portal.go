@@ -342,7 +342,7 @@ func (portal *Portal) startHandling(source *User, info whatsapp.MessageInfo) *ap
 		if intent != nil {
 			portal.log.Debugfln("Starting handling of %s (ts: %d)", info.Id, info.Timestamp)
 		} else {
-			portal.log.Debugfln("Not handling %s: sender is not known")
+			portal.log.Debugfln("Not handling %s: sender is not known", info.Id)
 		}
 		return intent
 	}
@@ -1315,7 +1315,7 @@ func (portal *Portal) HandleStubMessage(source *User, message whatsapp.StubMessa
 	case waProto.WebMessageInfo_GROUP_PARTICIPANT_ADD, waProto.WebMessageInfo_GROUP_PARTICIPANT_INVITE:
 		portal.HandleWhatsAppInvite(senderJID, intent, message.Params)
 	case waProto.WebMessageInfo_GROUP_PARTICIPANT_REMOVE, waProto.WebMessageInfo_GROUP_PARTICIPANT_LEAVE:
-		portal.HandleWhatsAppKick(senderJID, message.Params)
+		portal.HandleWhatsAppKick(source, senderJID, message.Params)
 	case waProto.WebMessageInfo_GROUP_PARTICIPANT_PROMOTE:
 		eventID = portal.ChangeAdminStatus(message.Params, true)
 	case waProto.WebMessageInfo_GROUP_PARTICIPANT_DEMOTE:
@@ -1485,10 +1485,14 @@ func (portal *Portal) removeUser(isSameUser bool, kicker *appservice.IntentAPI, 
 	}
 }
 
-func (portal *Portal) HandleWhatsAppKick(senderJID string, jids []string) {
+func (portal *Portal) HandleWhatsAppKick(source *User, senderJID string, jids []string) {
 	sender := portal.bridge.GetPuppetByJID(senderJID)
 	senderIntent := sender.IntentFor(portal)
 	for _, jid := range jids {
+		if source != nil && source.JID == jid {
+			portal.log.Debugln("Ignoring self-kick by", source.MXID)
+			continue
+		}
 		puppet := portal.bridge.GetPuppetByJID(jid)
 		portal.removeUser(puppet.JID == sender.JID, senderIntent, puppet.MXID, puppet.DefaultIntent())
 
@@ -1516,6 +1520,7 @@ func (portal *Portal) HandleWhatsAppInvite(senderJID string, intent *appservice.
 		_, err := intent.InviteUser(portal.MXID, &mautrix.ReqInviteUser{UserID: puppet.MXID})
 		if err != nil {
 			portal.log.Warnfln("Failed to invite %s as %s: %v", puppet.MXID, intent.UserID, err)
+			_ = portal.MainIntent().EnsureInvited(portal.MXID, puppet.MXID)
 		}
 		err = puppet.DefaultIntent().EnsureJoined(portal.MXID)
 		if err != nil {

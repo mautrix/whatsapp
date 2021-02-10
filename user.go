@@ -1145,6 +1145,17 @@ func (user *User) HandleChatUpdate(cmd whatsappExt.ChatUpdate) {
 		go portal.UpdateTopic(cmd.Data.AddTopic.Topic, cmd.Data.SenderJID, nil,true)
 	case whatsappExt.ChatActionRemoveTopic:
 		go portal.UpdateTopic("", cmd.Data.SenderJID, nil,true)
+	case whatsappExt.ChatActionRemove:
+		// We ignore leaving groups in the message history to avoid accidentally leaving rejoined groups,
+		// but if we get a real-time command that says we left, it should be safe to bridge it.
+		if !user.bridge.Config.Bridge.ChatMetaSync {
+			for _, jid := range cmd.Data.UserChange.JIDs {
+				if jid == user.JID {
+					go portal.HandleWhatsAppKick(nil, cmd.Data.SenderJID, cmd.Data.UserChange.JIDs)
+					break
+				}
+			}
+		}
 	}
 
 	if !user.bridge.Config.Bridge.ChatMetaSync {
@@ -1164,7 +1175,7 @@ func (user *User) HandleChatUpdate(cmd whatsappExt.ChatUpdate) {
 	case whatsappExt.ChatActionRestrict:
 		go portal.RestrictMetadataChanges(cmd.Data.Restrict)
 	case whatsappExt.ChatActionRemove:
-		go portal.HandleWhatsAppKick(cmd.Data.SenderJID, cmd.Data.UserChange.JIDs)
+		go portal.HandleWhatsAppKick(nil, cmd.Data.SenderJID, cmd.Data.UserChange.JIDs)
 	case whatsappExt.ChatActionAdd:
 		go portal.HandleWhatsAppInvite(cmd.Data.SenderJID, nil, cmd.Data.UserChange.JIDs)
 	case whatsappExt.ChatActionIntroduce:
