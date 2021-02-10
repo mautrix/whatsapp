@@ -176,8 +176,8 @@ func (bridge *Bridge) NewUser(dbUser *database.User) *User {
 
 		IsRelaybot: false,
 
-		chatListReceived: make(chan struct{}, 1),
-		syncPortalsDone:  make(chan struct{}, 1),
+		chatListReceived: make(chan struct{}),
+		syncPortalsDone:  make(chan struct{}),
 		syncStart:        make(chan struct{}, 1),
 		messageInput:     make(chan PortalMessage),
 		messageOutput:    make(chan PortalMessage, bridge.Config.Bridge.UserMessageBuffer),
@@ -451,6 +451,10 @@ func (user *User) PostLogin() {
 	user.bridge.Metrics.TrackLoginState(user.JID, true)
 	user.bridge.Metrics.TrackBufferLength(user.MXID, 0)
 	user.log.Debugln("Locking processing of incoming messages and starting post-login sync")
+	// TODO can an old sync still be ongoing when PostLogin is called again?
+	// TODO 2: can the new sync happen before this happens?
+	user.chatListReceived = make(chan struct{})
+	user.syncPortalsDone = make(chan struct{})
 	user.syncWait.Add(1)
 	user.syncStart <- struct{}{}
 	go user.intPostLogin(user.Conn)
@@ -593,6 +597,8 @@ func (user *User) HandleChatList(chats []whatsapp.Chat) {
 }
 
 func (user *User) syncPortals(chatMap map[string]whatsapp.Chat, createAll bool) {
+	// TODO use contexts instead of checking if user.Conn is the same?
+	connAtStart := user.Conn
 	if chatMap == nil {
 		chatMap = user.Conn.Store.Chats
 	}
@@ -633,6 +639,10 @@ func (user *User) syncPortals(chatMap map[string]whatsapp.Chat, createAll bool) 
 	if limit < 0 {
 		limit = len(chats)
 	}
+	if user.Conn != connAtStart {
+		user.log.Debugln("Connection seems to have changed before sync, cancelling")
+		return
+	}
 	now := uint64(time.Now().Unix())
 	user.log.Infoln("Syncing portals")
 	for i, chat := range chats {
@@ -650,6 +660,10 @@ func (user *User) syncPortals(chatMap map[string]whatsapp.Chat, createAll bool) 
 				chat.Portal.log.Errorln("Error backfilling history:", err)
 			}
 		}
+	}
+	if user.Conn != connAtStart {
+		user.log.Debugln("Connection seems to have changed during sync, cancelling")
+		return
 	}
 	user.UpdateDirectChats(nil)
 	user.log.Infoln("Finished syncing portals")
