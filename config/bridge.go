@@ -60,6 +60,7 @@ type BridgeConfig struct {
 	RecoverHistory       bool   `yaml:"recovery_history_backfill"`
 	ChatMetaSync         bool   `yaml:"chat_meta_sync"`
 	UserAvatarSync       bool   `yaml:"user_avatar_sync"`
+	BridgeMatrixLeave    bool   `yaml:"bridge_matrix_leave"`
 	SyncChatMaxAge       uint64 `yaml:"sync_max_chat_age"`
 
 	SyncWithCustomPuppets bool   `yaml:"sync_with_custom_puppets"`
@@ -120,6 +121,7 @@ func (bc *BridgeConfig) setDefaults() {
 	bc.RecoverHistory = true
 	bc.ChatMetaSync = true
 	bc.UserAvatarSync = true
+	bc.BridgeMatrixLeave = true
 	bc.SyncChatMaxAge = 259200
 
 	bc.SyncWithCustomPuppets = true

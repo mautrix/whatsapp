@@ -2271,7 +2271,7 @@ func (portal *Portal) HandleMatrixLeave(sender *User) {
 		portal.Delete()
 		portal.Cleanup(false)
 		return
-	} else {
+	} else if portal.bridge.Config.Bridge.BridgeMatrixLeave {
 		// TODO should we somehow deduplicate this call if this leave was sent by the bridge?
 		resp, err := sender.Conn.LeaveGroup(portal.Key.JID)
 		if err != nil {
