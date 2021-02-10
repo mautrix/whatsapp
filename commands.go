@@ -499,7 +499,7 @@ func (handler *CommandHandler) CommandReconnect(ce *CommandEvent) {
 		ce.User.SetSession(&sess)
 	}
 
-	err = ce.User.Conn.Restore()
+	err = ce.User.Conn.Restore(true)
 	if err == whatsapp.ErrInvalidSession {
 		if ce.User.Session != nil {
 			ce.User.log.Debugln("Got invalid session error when reconnecting, but user has session. Retrying using RestoreWithSession()...")

@@ -201,7 +201,7 @@ func (prov *ProvisioningAPI) Reconnect(w http.ResponseWriter, r *http.Request) {
 	}
 
 	user.log.Debugln("Restoring session for /reconnect")
-	err = user.Conn.Restore()
+	err = user.Conn.Restore(true)
 	user.log.Debugfln("Restore session for /reconnect responded with %v", err)
 	if err == whatsapp.ErrInvalidSession {
 		if user.Session != nil {

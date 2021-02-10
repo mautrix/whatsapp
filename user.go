@@ -801,12 +801,14 @@ func (user *User) tryReconnect(msg string) {
 	}
 	delay := baseDelay
 	conn := user.Conn
+	takeover := false
 	for user.ConnectionErrors <= user.bridge.Config.Bridge.MaxConnectionAttempts {
 		if user.Conn != conn {
 			user.log.Debugln("Connection was recreated, aborting reconnection attempts")
 			return
 		}
-		err := conn.Restore()
+		err := conn.Restore(takeover)
+		takeover = true
 		if err == nil {
 			user.ConnectionErrors = 0
 			if user.bridge.Config.Bridge.ReportConnectionRetry {
