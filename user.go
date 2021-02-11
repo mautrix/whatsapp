@@ -461,11 +461,7 @@ func (user *User) PostLogin() {
 }
 
 func (user *User) tryAutomaticDoublePuppeting() {
-	if len(user.bridge.Config.Bridge.LoginSharedSecret) == 0 {
-		// Automatic login not enabled
-		return
-	} else if _, homeserver, _ := user.MXID.Parse(); homeserver != user.bridge.Config.Homeserver.Domain {
-		// user is on another homeserver
+	if !user.bridge.Config.CanDoublePuppet(user.MXID) {
 		return
 	}
 	user.log.Debugln("Checking if double puppeting needs to be enabled")

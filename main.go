@@ -363,7 +363,7 @@ func (bridge *Bridge) StartUsers() {
 	for _, loopuppet := range bridge.GetAllPuppetsWithCustomMXID() {
 		go func(puppet *Puppet) {
 			puppet.log.Debugln("Starting custom puppet", puppet.CustomMXID)
-			err := puppet.StartCustomMXID()
+			err := puppet.StartCustomMXID(true)
 			if err != nil {
 				puppet.log.Errorln("Failed to start custom puppet:", err)
 			}
