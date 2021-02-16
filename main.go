@@ -25,6 +25,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/Rhymen/go-whatsapp"
+
 	flag "maunium.net/go/mauflag"
 	log "maunium.net/go/maulogger/v2"
 
@@ -36,7 +38,6 @@ import (
 	"maunium.net/go/mautrix-whatsapp/config"
 	"maunium.net/go/mautrix-whatsapp/database"
 	"maunium.net/go/mautrix-whatsapp/database/upgrades"
-	"maunium.net/go/mautrix-whatsapp/types"
 )
 
 var (
@@ -137,14 +138,14 @@ type Bridge struct {
 	Metrics        *MetricsHandler
 
 	usersByMXID         map[id.UserID]*User
-	usersByJID          map[types.WhatsAppID]*User
+	usersByJID          map[whatsapp.JID]*User
 	usersLock           sync.Mutex
 	managementRooms     map[id.RoomID]*User
 	managementRoomsLock sync.Mutex
 	portalsByMXID       map[id.RoomID]*Portal
 	portalsByJID        map[database.PortalKey]*Portal
 	portalsLock         sync.Mutex
-	puppets             map[types.WhatsAppID]*Puppet
+	puppets             map[whatsapp.JID]*Puppet
 	puppetsByCustomMXID map[id.UserID]*Puppet
 	puppetsLock         sync.Mutex
 }
@@ -163,11 +164,11 @@ type Crypto interface {
 func NewBridge() *Bridge {
 	bridge := &Bridge{
 		usersByMXID:         make(map[id.UserID]*User),
-		usersByJID:          make(map[types.WhatsAppID]*User),
+		usersByJID:          make(map[whatsapp.JID]*User),
 		managementRooms:     make(map[id.RoomID]*User),
 		portalsByMXID:       make(map[id.RoomID]*Portal),
 		portalsByJID:        make(map[database.PortalKey]*Portal),
-		puppets:             make(map[types.WhatsAppID]*Puppet),
+		puppets:             make(map[whatsapp.JID]*Puppet),
 		puppetsByCustomMXID: make(map[id.UserID]*Puppet),
 	}
 

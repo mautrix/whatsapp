@@ -26,8 +26,6 @@ import (
 
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
-
-	"maunium.net/go/mautrix-whatsapp/types"
 )
 
 type BridgeConfig struct {
@@ -185,7 +183,7 @@ func (bc BridgeConfig) FormatDisplayname(contact whatsapp.Contact) (string, int8
 	return buf.String(), quality
 }
 
-func (bc BridgeConfig) FormatUsername(userID types.WhatsAppID) string {
+func (bc BridgeConfig) FormatUsername(userID whatsapp.JID) string {
 	var buf bytes.Buffer
 	bc.usernameTemplate.Execute(&buf, userID)
 	return buf.String()

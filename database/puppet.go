@@ -21,9 +21,9 @@ import (
 
 	log "maunium.net/go/maulogger/v2"
 
-	"maunium.net/go/mautrix/id"
+	"github.com/Rhymen/go-whatsapp"
 
-	"maunium.net/go/mautrix-whatsapp/types"
+	"maunium.net/go/mautrix/id"
 )
 
 type PuppetQuery struct {
@@ -53,7 +53,7 @@ func (pq *PuppetQuery) GetAll() (puppets []*Puppet) {
 	return
 }
 
-func (pq *PuppetQuery) Get(jid types.WhatsAppID) *Puppet {
+func (pq *PuppetQuery) Get(jid whatsapp.JID) *Puppet {
 	row := pq.db.QueryRow("SELECT jid, avatar, avatar_url, displayname, name_quality, custom_mxid, access_token, next_batch, enable_presence, enable_receipts FROM puppet WHERE jid=$1", jid)
 	if row == nil {
 		return nil
@@ -85,7 +85,7 @@ type Puppet struct {
 	db  *Database
 	log log.Logger
 
-	JID         types.WhatsAppID
+	JID         whatsapp.JID
 	Avatar      string
 	AvatarURL   id.ContentURI
 	Displayname string

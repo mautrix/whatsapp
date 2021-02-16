@@ -27,12 +27,11 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
-	log "maunium.net/go/maulogger/v2"
 
 	"github.com/Rhymen/go-whatsapp"
-	"maunium.net/go/mautrix/id"
 
-	whatsappExt "maunium.net/go/mautrix-whatsapp/whatsapp-ext"
+	log "maunium.net/go/maulogger/v2"
+	"maunium.net/go/mautrix/id"
 )
 
 type ProvisioningAPI struct {
@@ -433,7 +432,7 @@ func (prov *ProvisioningAPI) Login(w http.ResponseWriter, r *http.Request) {
 	}
 	user.log.Debugln("Successful login via provisioning API")
 	user.ConnectionErrors = 0
-	user.JID = strings.Replace(user.Conn.Info.Wid, whatsappExt.OldUserSuffix, whatsappExt.NewUserSuffix, 1)
+	user.JID = strings.Replace(user.Conn.Info.Wid, whatsapp.OldUserSuffix, whatsapp.NewUserSuffix, 1)
 	user.addToJIDMap()
 	user.SetSession(&session)
 	_ = c.WriteJSON(map[string]interface{}{

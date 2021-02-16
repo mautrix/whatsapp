@@ -40,13 +40,11 @@ import (
 	"maunium.net/go/mautrix/id"
 
 	"maunium.net/go/mautrix-whatsapp/database"
-	"maunium.net/go/mautrix-whatsapp/types"
-	"maunium.net/go/mautrix-whatsapp/whatsapp-ext"
 )
 
 type User struct {
 	*database.User
-	Conn *whatsappExt.ExtendedConn
+	Conn *whatsapp.Conn
 
 	bridge *Bridge
 	log    log.Logger
@@ -91,7 +89,7 @@ func (bridge *Bridge) GetUserByMXID(userID id.UserID) *User {
 	return user
 }
 
-func (bridge *Bridge) GetUserByJID(userID types.WhatsAppID) *User {
+func (bridge *Bridge) GetUserByJID(userID whatsapp.JID) *User {
 	bridge.usersLock.Lock()
 	defer bridge.usersLock.Unlock()
 	user, ok := bridge.usersByJID[userID]
@@ -264,7 +262,7 @@ func (user *User) Connect(evenIfNoSession bool) bool {
 		user.connLock.Unlock()
 		return false
 	}
-	user.Conn = whatsappExt.ExtendConn(conn)
+	user.Conn = conn
 	user.log.Debugln("WhatsApp connection successful")
 	user.Conn.AddHandler(user)
 	user.connLock.Unlock()
@@ -419,7 +417,7 @@ func (user *User) Login(ce *CommandEvent) {
 	// TODO there's a bit of duplication between this and the provisioning API login method
 	//      Also between the two logout methods (commands.go and provisioning.go)
 	user.ConnectionErrors = 0
-	user.JID = strings.Replace(user.Conn.Info.Wid, whatsappExt.OldUserSuffix, whatsappExt.NewUserSuffix, 1)
+	user.JID = strings.Replace(user.Conn.Info.Wid, whatsapp.OldUserSuffix, whatsapp.NewUserSuffix, 1)
 	user.addToJIDMap()
 	user.SetSession(&session)
 	ce.Reply("Successfully logged in, synchronizing chats...")
@@ -501,7 +499,7 @@ func (user *User) sendMarkdownBridgeAlert(formatString string, args ...interface
 	}
 }
 
-func (user *User) postConnPing(conn *whatsappExt.ExtendedConn) bool {
+func (user *User) postConnPing(conn *whatsapp.Conn) bool {
 	if user.Conn != conn {
 		user.log.Warnln("Connection changed before scheduled post-connection ping, canceling ping")
 		return false
@@ -528,7 +526,7 @@ func (user *User) postConnPing(conn *whatsappExt.ExtendedConn) bool {
 	}
 }
 
-func (user *User) intPostLogin(conn *whatsappExt.ExtendedConn) {
+func (user *User) intPostLogin(conn *whatsapp.Conn) {
 	defer user.syncWait.Done()
 	user.lastReconnection = time.Now().Unix()
 	user.createCommunity()
@@ -559,8 +557,60 @@ func (user *User) intPostLogin(conn *whatsappExt.ExtendedConn) {
 	}
 }
 
-func (user *User) HandleStreamEvent(evt whatsappExt.StreamEvent) {
-	if evt.Type == whatsappExt.StreamSleep {
+type InfoGetter interface {
+	GetInfo() whatsapp.MessageInfo
+}
+
+func (user *User) HandleEvent(event interface{}) {
+	switch v := event.(type) {
+	case whatsapp.TextMessage, whatsapp.ImageMessage, whatsapp.StickerMessage, whatsapp.VideoMessage,
+		whatsapp.AudioMessage, whatsapp.DocumentMessage, whatsapp.ContactMessage, whatsapp.StubMessage,
+		whatsapp.LocationMessage:
+		info := v.(InfoGetter).GetInfo()
+		user.messageInput <- PortalMessage{info.RemoteJid, user, v, info.Timestamp}
+	case whatsapp.MessageRevocation:
+		user.messageInput <- PortalMessage{v.RemoteJid, user, v, 0}
+	case whatsapp.StreamEvent:
+		user.HandleStreamEvent(v)
+	case []whatsapp.Chat:
+		user.HandleChatList(v)
+	case []whatsapp.Contact:
+		user.HandleContactList(v)
+	case error:
+		user.HandleError(v)
+	case whatsapp.Contact:
+		go user.HandleNewContact(v)
+	case whatsapp.BatteryMessage:
+		user.HandleBatteryMessage(v)
+	case whatsapp.CallInfo:
+		user.HandleCallInfo(v)
+	case whatsapp.PresenceEvent:
+		go user.HandlePresence(v)
+	case whatsapp.JSONMsgInfo:
+		go user.HandleMsgInfo(v)
+	case whatsapp.ReceivedMessage:
+		user.HandleReceivedMessage(v)
+	case whatsapp.ReadMessage:
+		user.HandleReadMessage(v)
+	case whatsapp.JSONCommand:
+		user.HandleCommand(v)
+	case whatsapp.ChatUpdate:
+		user.HandleChatUpdate(v)
+	case json.RawMessage:
+		user.HandleJSONMessage(v)
+	case *waProto.WebMessageInfo:
+		user.updateLastConnectionIfNecessary()
+		// TODO trace log
+		user.log.Debugfln("WebMessageInfo: %+v", v)
+	case *waBinary.Node:
+		user.log.Debugfln("Unknown binary message: %+v", v)
+	default:
+		user.log.Debugfln("Unknown type of event in HandleEvent: %T", v)
+	}
+}
+
+func (user *User) HandleStreamEvent(evt whatsapp.StreamEvent) {
+	if evt.Type == whatsapp.StreamSleep {
 		if user.lastReconnection+60 > time.Now().Unix() {
 			user.lastReconnection = 0
 			user.log.Infoln("Stream went to sleep soon after reconnection, making new post-connection ping in 20 seconds")
@@ -738,7 +788,7 @@ func (user *User) syncPuppets(contacts map[string]whatsapp.Contact) {
 	}
 	user.log.Infoln("Syncing puppet info from contacts")
 	for jid, contact := range contacts {
-		if strings.HasSuffix(jid, whatsappExt.NewUserSuffix) {
+		if strings.HasSuffix(jid, whatsapp.NewUserSuffix) {
 			puppet := user.bridge.GetPuppetByJID(contact.Jid)
 			puppet.Sync(user, contact)
 		}
@@ -841,19 +891,11 @@ func (user *User) tryReconnect(msg string) {
 	}
 }
 
-func (user *User) ShouldCallSynchronously() bool {
-	return true
-}
-
-func (user *User) HandleJSONParseError(err error) {
-	user.log.Errorln("WhatsApp JSON parse error:", err)
-}
-
-func (user *User) PortalKey(jid types.WhatsAppID) database.PortalKey {
+func (user *User) PortalKey(jid whatsapp.JID) database.PortalKey {
 	return database.NewPortalKey(jid, user.JID)
 }
 
-func (user *User) GetPortalByJID(jid types.WhatsAppID) *Portal {
+func (user *User) GetPortalByJID(jid whatsapp.JID) *Portal {
 	return user.bridge.GetPortalByJID(user.PortalKey(jid))
 }
 
@@ -888,13 +930,11 @@ func (user *User) handleMessageLoop() {
 
 func (user *User) HandleNewContact(contact whatsapp.Contact) {
 	user.log.Debugfln("Contact message: %+v", contact)
-	go func() {
-		if strings.HasSuffix(contact.Jid, whatsappExt.OldUserSuffix) {
-			contact.Jid = strings.Replace(contact.Jid, whatsappExt.OldUserSuffix, whatsappExt.NewUserSuffix, -1)
-		}
-		puppet := user.bridge.GetPuppetByJID(contact.Jid)
-		puppet.UpdateName(user, contact)
-	}()
+	if strings.HasSuffix(contact.Jid, whatsapp.OldUserSuffix) {
+		contact.Jid = strings.Replace(contact.Jid, whatsapp.OldUserSuffix, whatsapp.NewUserSuffix, -1)
+	}
+	puppet := user.bridge.GetPuppetByJID(contact.Jid)
+	puppet.UpdateName(user, contact)
 }
 
 func (user *User) HandleBatteryMessage(battery whatsapp.BatteryMessage) {
@@ -914,53 +954,13 @@ func (user *User) HandleBatteryMessage(battery whatsapp.BatteryMessage) {
 	}
 }
 
-func (user *User) HandleTextMessage(message whatsapp.TextMessage) {
-	user.messageInput <- PortalMessage{message.Info.RemoteJid, user, message, message.Info.Timestamp}
-}
-
-func (user *User) HandleImageMessage(message whatsapp.ImageMessage) {
-	user.messageInput <- PortalMessage{message.Info.RemoteJid, user, message, message.Info.Timestamp}
-}
-
-func (user *User) HandleStickerMessage(message whatsapp.StickerMessage) {
-	user.messageInput <- PortalMessage{message.Info.RemoteJid, user, message, message.Info.Timestamp}
-}
-
-func (user *User) HandleVideoMessage(message whatsapp.VideoMessage) {
-	user.messageInput <- PortalMessage{message.Info.RemoteJid, user, message, message.Info.Timestamp}
-}
-
-func (user *User) HandleAudioMessage(message whatsapp.AudioMessage) {
-	user.messageInput <- PortalMessage{message.Info.RemoteJid, user, message, message.Info.Timestamp}
-}
-
-func (user *User) HandleDocumentMessage(message whatsapp.DocumentMessage) {
-	user.messageInput <- PortalMessage{message.Info.RemoteJid, user, message, message.Info.Timestamp}
-}
-
-func (user *User) HandleContactMessage(message whatsapp.ContactMessage) {
-	user.messageInput <- PortalMessage{message.Info.RemoteJid, user, message, message.Info.Timestamp}
-}
-
-func (user *User) HandleStubMessage(message whatsapp.StubMessage) {
-	user.messageInput <- PortalMessage{message.Info.RemoteJid, user, message, message.Info.Timestamp}
-}
-
-func (user *User) HandleLocationMessage(message whatsapp.LocationMessage) {
-	user.messageInput <- PortalMessage{message.Info.RemoteJid, user, message, message.Info.Timestamp}
-}
-
-func (user *User) HandleMessageRevoke(message whatsappExt.MessageRevocation) {
-	user.messageInput <- PortalMessage{message.RemoteJid, user, message, 0}
-}
-
 type FakeMessage struct {
 	Text  string
 	ID    string
 	Alert bool
 }
 
-func (user *User) HandleCallInfo(info whatsappExt.CallInfo) {
+func (user *User) HandleCallInfo(info whatsapp.CallInfo) {
 	if info.Data != nil {
 		return
 	}
@@ -968,19 +968,19 @@ func (user *User) HandleCallInfo(info whatsappExt.CallInfo) {
 		ID: info.ID,
 	}
 	switch info.Type {
-	case whatsappExt.CallOffer:
+	case whatsapp.CallOffer:
 		if !user.bridge.Config.Bridge.CallNotices.Start {
 			return
 		}
 		data.Text = "Incoming call"
 		data.Alert = true
-	case whatsappExt.CallOfferVideo:
+	case whatsapp.CallOfferVideo:
 		if !user.bridge.Config.Bridge.CallNotices.Start {
 			return
 		}
 		data.Text = "Incoming video call"
 		data.Alert = true
-	case whatsappExt.CallTerminate:
+	case whatsapp.CallTerminate:
 		if !user.bridge.Config.Bridge.CallNotices.End {
 			return
 		}
@@ -995,7 +995,7 @@ func (user *User) HandleCallInfo(info whatsappExt.CallInfo) {
 	}
 }
 
-func (user *User) HandlePresence(info whatsappExt.Presence) {
+func (user *User) HandlePresence(info whatsapp.PresenceEvent) {
 	puppet := user.bridge.GetPuppetByJID(info.SenderJID)
 	switch info.Status {
 	case whatsapp.PresenceUnavailable:
@@ -1023,33 +1023,31 @@ func (user *User) HandlePresence(info whatsappExt.Presence) {
 	}
 }
 
-func (user *User) HandleMsgInfo(info whatsappExt.MsgInfo) {
-	if (info.Command == whatsappExt.MsgInfoCommandAck || info.Command == whatsappExt.MsgInfoCommandAcks) && info.Acknowledgement == whatsappExt.AckMessageRead {
+func (user *User) HandleMsgInfo(info whatsapp.JSONMsgInfo) {
+	if (info.Command == whatsapp.MsgInfoCommandAck || info.Command == whatsapp.MsgInfoCommandAcks) && info.Acknowledgement == whatsapp.AckMessageRead {
 		portal := user.GetPortalByJID(info.ToJID)
 		if len(portal.MXID) == 0 {
 			return
 		}
 
-		go func() {
-			intent := user.bridge.GetPuppetByJID(info.SenderJID).IntentFor(portal)
-			for _, msgID := range info.IDs {
-				msg := user.bridge.DB.Message.GetByJID(portal.Key, msgID)
-				if msg == nil || msg.IsFakeMXID() {
-					continue
-				}
-
-				err := intent.MarkRead(portal.MXID, msg.MXID)
-				if err != nil {
-					user.log.Warnln("Failed to mark message %s as read by %s: %v", msg.MXID, info.SenderJID, err)
-				}
+		intent := user.bridge.GetPuppetByJID(info.SenderJID).IntentFor(portal)
+		for _, msgID := range info.IDs {
+			msg := user.bridge.DB.Message.GetByJID(portal.Key, msgID)
+			if msg == nil || msg.IsFakeMXID() {
+				continue
 			}
-		}()
+
+			err := intent.MarkRead(portal.MXID, msg.MXID)
+			if err != nil {
+				user.log.Warnln("Failed to mark message %s as read by %s: %v", msg.MXID, info.SenderJID, err)
+			}
+		}
 	}
 }
 
 func (user *User) HandleReceivedMessage(received whatsapp.ReceivedMessage) {
 	if received.Type == "read" {
-		user.markSelfRead(received.Jid, received.Index)
+		go user.markSelfRead(received.Jid, received.Index)
 	} else {
 		user.log.Debugfln("Unknown received message type: %+v", received)
 	}
@@ -1057,12 +1055,12 @@ func (user *User) HandleReceivedMessage(received whatsapp.ReceivedMessage) {
 
 func (user *User) HandleReadMessage(read whatsapp.ReadMessage) {
 	user.log.Debugfln("Received chat read message: %+v", read)
-	user.markSelfRead(read.Jid, "")
+	go user.markSelfRead(read.Jid, "")
 }
 
 func (user *User) markSelfRead(jid, messageID string) {
-	if strings.HasSuffix(jid, whatsappExt.OldUserSuffix) {
-		jid = strings.Replace(jid, whatsappExt.OldUserSuffix, whatsappExt.NewUserSuffix, -1)
+	if strings.HasSuffix(jid, whatsapp.OldUserSuffix) {
+		jid = strings.Replace(jid, whatsapp.OldUserSuffix, whatsapp.NewUserSuffix, -1)
 	}
 	puppet := user.bridge.GetPuppetByJID(user.JID)
 	if puppet == nil {
@@ -1096,17 +1094,17 @@ func (user *User) markSelfRead(jid, messageID string) {
 	}
 }
 
-func (user *User) HandleCommand(cmd whatsappExt.Command) {
+func (user *User) HandleCommand(cmd whatsapp.JSONCommand) {
 	switch cmd.Type {
-	case whatsappExt.CommandPicture:
-		if strings.HasSuffix(cmd.JID, whatsappExt.NewUserSuffix) {
+	case whatsapp.CommandPicture:
+		if strings.HasSuffix(cmd.JID, whatsapp.NewUserSuffix) {
 			puppet := user.bridge.GetPuppetByJID(cmd.JID)
 			go puppet.UpdateAvatar(user, cmd.ProfilePicInfo)
 		} else if user.bridge.Config.Bridge.ChatMetaSync {
 			portal := user.GetPortalByJID(cmd.JID)
 			go portal.UpdateAvatar(user, cmd.ProfilePicInfo, true)
 		}
-	case whatsappExt.CommandDisconnect:
+	case whatsapp.CommandDisconnect:
 		if cmd.Kind == "replaced" {
 			user.cleanDisconnection = true
 			go user.sendMarkdownBridgeAlert("\u26a0 Your WhatsApp connection was closed by the server because you opened another WhatsApp Web client.\n\n" +
@@ -1119,14 +1117,14 @@ func (user *User) HandleCommand(cmd whatsappExt.Command) {
 	}
 }
 
-func (user *User) HandleChatUpdate(cmd whatsappExt.ChatUpdate) {
-	if cmd.Command != whatsappExt.ChatUpdateCommandAction {
+func (user *User) HandleChatUpdate(cmd whatsapp.ChatUpdate) {
+	if cmd.Command != whatsapp.ChatUpdateCommandAction {
 		return
 	}
 
 	portal := user.GetPortalByJID(cmd.JID)
 	if len(portal.MXID) == 0 {
-		if cmd.Data.Action == whatsappExt.ChatActionIntroduce || cmd.Data.Action == whatsappExt.ChatActionCreate {
+		if cmd.Data.Action == whatsapp.ChatActionIntroduce || cmd.Data.Action == whatsapp.ChatActionCreate {
 			go func() {
 				err := portal.CreateMatrixRoom(user)
 				if err != nil {
@@ -1139,11 +1137,11 @@ func (user *User) HandleChatUpdate(cmd whatsappExt.ChatUpdate) {
 
 	// These don't come down the message history :(
 	switch cmd.Data.Action {
-	case whatsappExt.ChatActionAddTopic:
-		go portal.UpdateTopic(cmd.Data.AddTopic.Topic, cmd.Data.SenderJID, nil,true)
-	case whatsappExt.ChatActionRemoveTopic:
-		go portal.UpdateTopic("", cmd.Data.SenderJID, nil,true)
-	case whatsappExt.ChatActionRemove:
+	case whatsapp.ChatActionAddTopic:
+		go portal.UpdateTopic(cmd.Data.AddTopic.Topic, cmd.Data.SenderJID, nil, true)
+	case whatsapp.ChatActionRemoveTopic:
+		go portal.UpdateTopic("", cmd.Data.SenderJID, nil, true)
+	case whatsapp.ChatActionRemove:
 		// We ignore leaving groups in the message history to avoid accidentally leaving rejoined groups,
 		// but if we get a real-time command that says we left, it should be safe to bridge it.
 		if !user.bridge.Config.Bridge.ChatMetaSync {
@@ -1162,43 +1160,33 @@ func (user *User) HandleChatUpdate(cmd whatsappExt.ChatUpdate) {
 	}
 
 	switch cmd.Data.Action {
-	case whatsappExt.ChatActionNameChange:
+	case whatsapp.ChatActionNameChange:
 		go portal.UpdateName(cmd.Data.NameChange.Name, cmd.Data.SenderJID, nil, true)
-	case whatsappExt.ChatActionPromote:
+	case whatsapp.ChatActionPromote:
 		go portal.ChangeAdminStatus(cmd.Data.UserChange.JIDs, true)
-	case whatsappExt.ChatActionDemote:
+	case whatsapp.ChatActionDemote:
 		go portal.ChangeAdminStatus(cmd.Data.UserChange.JIDs, false)
-	case whatsappExt.ChatActionAnnounce:
+	case whatsapp.ChatActionAnnounce:
 		go portal.RestrictMessageSending(cmd.Data.Announce)
-	case whatsappExt.ChatActionRestrict:
+	case whatsapp.ChatActionRestrict:
 		go portal.RestrictMetadataChanges(cmd.Data.Restrict)
-	case whatsappExt.ChatActionRemove:
+	case whatsapp.ChatActionRemove:
 		go portal.HandleWhatsAppKick(nil, cmd.Data.SenderJID, cmd.Data.UserChange.JIDs)
-	case whatsappExt.ChatActionAdd:
+	case whatsapp.ChatActionAdd:
 		go portal.HandleWhatsAppInvite(cmd.Data.SenderJID, nil, cmd.Data.UserChange.JIDs)
-	case whatsappExt.ChatActionIntroduce:
+	case whatsapp.ChatActionIntroduce:
 		if cmd.Data.SenderJID != "unknown" {
 			go portal.Sync(user, whatsapp.Contact{Jid: portal.Key.JID})
 		}
 	}
 }
 
-func (user *User) HandleJsonMessage(message string) {
-	var msg json.RawMessage
-	err := json.Unmarshal([]byte(message), &msg)
-	if err != nil {
+func (user *User) HandleJSONMessage(message json.RawMessage) {
+	if !json.Valid(message) {
 		return
 	}
-	user.log.Debugln("JSON message:", message)
+	user.log.Debugfln("JSON message: %s", message)
 	user.updateLastConnectionIfNecessary()
-}
-
-func (user *User) HandleRawMessage(message *waProto.WebMessageInfo) {
-	user.updateLastConnectionIfNecessary()
-}
-
-func (user *User) HandleUnknownBinaryNode(node *waBinary.Node) {
-	user.log.Debugfln("Unknown binary message: %+v", node)
 }
 
 func (user *User) NeedsRelaybot(portal *Portal) bool {

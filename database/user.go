@@ -26,8 +26,6 @@ import (
 
 	log "maunium.net/go/maulogger/v2"
 
-	"maunium.net/go/mautrix-whatsapp/types"
-	"maunium.net/go/mautrix-whatsapp/whatsapp-ext"
 	"maunium.net/go/mautrix/id"
 )
 
@@ -63,7 +61,7 @@ func (uq *UserQuery) GetByMXID(userID id.UserID) *User {
 	return uq.New().Scan(row)
 }
 
-func (uq *UserQuery) GetByJID(userID types.WhatsAppID) *User {
+func (uq *UserQuery) GetByJID(userID whatsapp.JID) *User {
 	row := uq.db.QueryRow(`SELECT mxid, jid, management_room, last_connection, client_id, client_token, server_token, enc_key, mac_key FROM "user" WHERE jid=$1`, stripSuffix(userID))
 	if row == nil {
 		return nil
@@ -76,7 +74,7 @@ type User struct {
 	log log.Logger
 
 	MXID           id.UserID
-	JID            types.WhatsAppID
+	JID            whatsapp.JID
 	ManagementRoom id.RoomID
 	Session        *whatsapp.Session
 	LastConnection uint64
@@ -93,14 +91,14 @@ func (user *User) Scan(row Scannable) *User {
 		return nil
 	}
 	if len(jid.String) > 0 && len(clientID.String) > 0 {
-		user.JID = jid.String + whatsappExt.NewUserSuffix
+		user.JID = jid.String + whatsapp.NewUserSuffix
 		user.Session = &whatsapp.Session{
 			ClientId:    clientID.String,
 			ClientToken: clientToken.String,
 			ServerToken: serverToken.String,
 			EncKey:      encKey,
 			MacKey:      macKey,
-			Wid:         jid.String + whatsappExt.OldUserSuffix,
+			Wid:         jid.String + whatsapp.OldUserSuffix,
 		}
 	} else {
 		user.Session = nil
@@ -108,7 +106,7 @@ func (user *User) Scan(row Scannable) *User {
 	return user
 }
 
-func stripSuffix(jid types.WhatsAppID) string {
+func stripSuffix(jid whatsapp.JID) string {
 	if len(jid) == 0 {
 		return jid
 	}

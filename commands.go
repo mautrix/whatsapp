@@ -35,7 +35,6 @@ import (
 	"maunium.net/go/mautrix/id"
 
 	"maunium.net/go/mautrix-whatsapp/database"
-	"maunium.net/go/mautrix-whatsapp/whatsapp-ext"
 )
 
 type CommandHandler struct {
@@ -737,12 +736,12 @@ const cmdListHelp = `list <contacts|groups> [page] [items per page] - Get a list
 
 func formatContacts(contacts bool, input map[string]whatsapp.Contact) (result []string) {
 	for jid, contact := range input {
-		if strings.HasSuffix(jid, whatsappExt.NewUserSuffix) != contacts {
+		if strings.HasSuffix(jid, whatsapp.NewUserSuffix) != contacts {
 			continue
 		}
 
 		if contacts {
-			result = append(result, fmt.Sprintf("* %s / %s - `%s`", contact.Name, contact.Notify, contact.Jid[:len(contact.Jid)-len(whatsappExt.NewUserSuffix)]))
+			result = append(result, fmt.Sprintf("* %s / %s - `%s`", contact.Name, contact.Notify, contact.Jid[:len(contact.Jid)-len(whatsapp.NewUserSuffix)]))
 		} else {
 			result = append(result, fmt.Sprintf("* %s - `%s`", contact.Name, contact.Jid))
 		}
@@ -818,8 +817,8 @@ func (handler *CommandHandler) CommandOpen(ce *CommandEvent) {
 	user := ce.User
 	jid := ce.Args[0]
 
-	if strings.HasSuffix(jid, whatsappExt.NewUserSuffix) {
-		ce.Reply("That looks like a user JID. Did you mean `pm %s`?", jid[:len(jid)-len(whatsappExt.NewUserSuffix)])
+	if strings.HasSuffix(jid, whatsapp.NewUserSuffix) {
+		ce.Reply("That looks like a user JID. Did you mean `pm %s`?", jid[:len(jid)-len(whatsapp.NewUserSuffix)])
 		return
 	}
 
@@ -865,7 +864,7 @@ func (handler *CommandHandler) CommandPM(ce *CommandEvent) {
 			return
 		}
 	}
-	jid := number + whatsappExt.NewUserSuffix
+	jid := number + whatsapp.NewUserSuffix
 
 	handler.log.Debugln("Importing", jid, "for", user)
 
