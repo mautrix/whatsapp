@@ -9,6 +9,7 @@ Some quick links:
 
 * [Bridge setup](https://docs.mau.fi/bridges/go/whatsapp/setup/index.html)
   (or [with Docker](https://docs.mau.fi/bridges/go/whatsapp/setup/docker.html))
+  (or [with YunoHost](https://github.com/YunoHost-Apps/mautrix_whatsapp_ynh))
 * Basic usage: [Authentication](https://docs.mau.fi/bridges/go/whatsapp/authentication.html)
 
 ### Features & Roadmap
