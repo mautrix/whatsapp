@@ -283,7 +283,7 @@ func init() {
 	gob.Register(&waProto.Message{})
 }
 
-func (portal *Portal) markHandled(source *User, message *waProto.WebMessageInfo, mxid id.EventID) {
+func (portal *Portal) markHandled(source *User, message *waProto.WebMessageInfo, mxid id.EventID, isSent bool) *database.Message {
 	msg := portal.bridge.DB.Message.New()
 	msg.Chat = portal.Key
 	msg.JID = message.GetKey().GetId()
@@ -300,6 +300,7 @@ func (portal *Portal) markHandled(source *User, message *waProto.WebMessageInfo,
 		}
 	}
 	msg.Content = message.Message
+	msg.Sent = isSent
 	msg.Insert()
 
 	portal.recentlyHandledLock.Lock()
@@ -307,6 +308,7 @@ func (portal *Portal) markHandled(source *User, message *waProto.WebMessageInfo,
 	portal.recentlyHandledIndex = (portal.recentlyHandledIndex + 1) % recentlyHandledLength
 	portal.recentlyHandledLock.Unlock()
 	portal.recentlyHandled[index] = msg.JID
+	return msg
 }
 
 func (portal *Portal) getMessageIntent(user *User, info whatsapp.MessageInfo) *appservice.IntentAPI {
@@ -346,7 +348,7 @@ func (portal *Portal) startHandling(source *User, info whatsapp.MessageInfo) *ap
 }
 
 func (portal *Portal) finishHandling(source *User, message *waProto.WebMessageInfo, mxid id.EventID) {
-	portal.markHandled(source, message, mxid)
+	portal.markHandled(source, message, mxid, true)
 	portal.sendDeliveryReceipt(mxid)
 	portal.log.Debugln("Handled message", message.GetKey().GetId(), "->", mxid)
 }
@@ -735,6 +737,10 @@ func (portal *Portal) BackfillHistory(user *User, lastMessageTime uint64) error 
 	for len(lastMessageID) > 0 {
 		portal.log.Debugln("Fetching 50 messages of history after", lastMessageID)
 		resp, err := user.Conn.LoadMessagesAfter(portal.Key.JID, lastMessageID, lastMessageFromMe, 50)
+		if err == whatsapp.ErrServerRespondedWith404 {
+			portal.log.Warnln("Got 404 response trying to fetch messages to backfill. Fetching latest messages as fallback.")
+			resp, err = user.Conn.LoadMessagesBefore(portal.Key.JID, "", true, 50)
+		}
 		if err != nil {
 			return err
 		}
@@ -1322,7 +1328,7 @@ func (portal *Portal) HandleStubMessage(source *User, message whatsapp.StubMessa
 	if len(eventID) == 0 {
 		eventID = id.EventID(fmt.Sprintf("net.maunium.whatsapp.fake::%s", message.Info.Id))
 	}
-	portal.markHandled(source, message.Info.Source, eventID)
+	portal.markHandled(source, message.Info.Source, eventID, true)
 }
 
 func (portal *Portal) HandleLocationMessage(source *User, message whatsapp.LocationMessage) {
@@ -2087,12 +2093,12 @@ func (portal *Portal) HandleMatrixMessage(sender *User, evt *event.Event) {
 	if info == nil {
 		return
 	}
-	portal.markHandled(sender, info, evt.ID)
+	dbMsg := portal.markHandled(sender, info, evt.ID, false)
 	portal.log.Debugln("Sending event", evt.ID, "to WhatsApp", info.Key.GetId())
-	portal.sendRaw(sender, evt, info)
+	portal.sendRaw(sender, evt, info, dbMsg)
 }
 
-func (portal *Portal) sendRaw(sender *User, evt *event.Event, info *waProto.WebMessageInfo) {
+func (portal *Portal) sendRaw(sender *User, evt *event.Event, info *waProto.WebMessageInfo, dbMsg *database.Message) {
 	errChan := make(chan error, 1)
 	go sender.Conn.SendRaw(info, errChan)
 
@@ -2112,16 +2118,11 @@ func (portal *Portal) sendRaw(sender *User, evt *event.Event, info *waProto.WebM
 	}
 	if err != nil {
 		portal.log.Errorfln("Error handling Matrix event %s: %v", evt.ID, err)
-		var statusResp whatsapp.StatusResponse
-		if errors.As(err, &statusResp) && statusResp.Status == 599 {
-			portal.log.Debugfln("599 status response extra data: %+v", statusResp.Extra)
-			portal.sendErrorMessage(fmt.Sprintf("%v. Please try again after a few minutes", err))
-		} else {
-			portal.sendErrorMessage(err.Error())
-		}
+		portal.sendErrorMessage(err.Error())
 	} else {
 		portal.log.Debugfln("Handled Matrix event %s", evt.ID)
 		portal.sendDeliveryReceipt(evt.ID)
+		dbMsg.MarkSent()
 	}
 	if errorEventID != "" {
 		_, err = portal.MainIntent().RedactEvent(portal.MXID, errorEventID)

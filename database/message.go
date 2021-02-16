@@ -43,7 +43,7 @@ func (mq *MessageQuery) New() *Message {
 }
 
 func (mq *MessageQuery) GetAll(chat PortalKey) (messages []*Message) {
-	rows, err := mq.db.Query("SELECT chat_jid, chat_receiver, jid, mxid, sender, timestamp, content FROM message WHERE chat_jid=$1 AND chat_receiver=$2", chat.JID, chat.Receiver)
+	rows, err := mq.db.Query("SELECT chat_jid, chat_receiver, jid, mxid, sender, timestamp, sent, content FROM message WHERE chat_jid=$1 AND chat_receiver=$2", chat.JID, chat.Receiver)
 	if err != nil || rows == nil {
 		return nil
 	}
@@ -55,18 +55,19 @@ func (mq *MessageQuery) GetAll(chat PortalKey) (messages []*Message) {
 }
 
 func (mq *MessageQuery) GetByJID(chat PortalKey, jid whatsapp.MessageID) *Message {
-	return mq.get("SELECT chat_jid, chat_receiver, jid, mxid, sender, timestamp, content "+
+	return mq.get("SELECT chat_jid, chat_receiver, jid, mxid, sender, timestamp, sent, content "+
 		"FROM message WHERE chat_jid=$1 AND chat_receiver=$2 AND jid=$3", chat.JID, chat.Receiver, jid)
 }
 
 func (mq *MessageQuery) GetByMXID(mxid id.EventID) *Message {
-	return mq.get("SELECT chat_jid, chat_receiver, jid, mxid, sender, timestamp, content "+
+	return mq.get("SELECT chat_jid, chat_receiver, jid, mxid, sender, timestamp, sent, content "+
 		"FROM message WHERE mxid=$1", mxid)
 }
 
 func (mq *MessageQuery) GetLastInChat(chat PortalKey) *Message {
-	msg := mq.get("SELECT chat_jid, chat_receiver, jid, mxid, sender, timestamp, content "+
-		"FROM message WHERE chat_jid=$1 AND chat_receiver=$2 ORDER BY timestamp DESC LIMIT 1", chat.JID, chat.Receiver)
+	msg := mq.get("SELECT chat_jid, chat_receiver, jid, mxid, sender, timestamp, sent, content "+
+		"FROM message WHERE chat_jid=$1 AND chat_receiver=$2 AND sent=true ORDER BY timestamp DESC LIMIT 1",
+		chat.JID, chat.Receiver)
 	if msg == nil || msg.Timestamp == 0 {
 		// Old db, we don't know what the last message is.
 		return nil
@@ -91,6 +92,7 @@ type Message struct {
 	MXID      id.EventID
 	Sender    whatsapp.JID
 	Timestamp uint64
+	Sent      bool
 	Content   *waProto.Message
 }
 
@@ -100,7 +102,7 @@ func (msg *Message) IsFakeMXID() bool {
 
 func (msg *Message) Scan(row Scannable) *Message {
 	var content []byte
-	err := row.Scan(&msg.Chat.JID, &msg.Chat.Receiver, &msg.JID, &msg.MXID, &msg.Sender, &msg.Timestamp, &content)
+	err := row.Scan(&msg.Chat.JID, &msg.Chat.Receiver, &msg.JID, &msg.MXID, &msg.Sender, &msg.Timestamp, &msg.Sent, &content)
 	if err != nil {
 		if err != sql.ErrNoRows {
 			msg.log.Errorln("Database scan failed:", err)
@@ -134,11 +136,20 @@ func (msg *Message) encodeBinaryContent() []byte {
 }
 
 func (msg *Message) Insert() {
-	_, err := msg.db.Exec("INSERT INTO message (chat_jid, chat_receiver, jid, mxid, sender, timestamp, content) "+
-		"VALUES ($1, $2, $3, $4, $5, $6, $7)",
-		msg.Chat.JID, msg.Chat.Receiver, msg.JID, msg.MXID, msg.Sender, msg.Timestamp, msg.encodeBinaryContent())
+	_, err := msg.db.Exec(`INSERT INTO message
+			(chat_jid, chat_receiver, jid, mxid, sender, timestamp, sent, content)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+		msg.Chat.JID, msg.Chat.Receiver, msg.JID, msg.MXID, msg.Sender, msg.Timestamp, msg.Sent, msg.encodeBinaryContent())
 	if err != nil {
 		msg.log.Warnfln("Failed to insert %s@%s: %v", msg.Chat, msg.JID, err)
+	}
+}
+
+func (msg *Message) MarkSent() {
+	msg.Sent = true
+	_, err := msg.db.Exec("UPDATE message SET sent=true WHERE chat_jid=$1 AND chat_receiver=$2 AND jid=$3", msg.Chat.JID, msg.Chat.Receiver, msg.JID)
+	if err != nil {
+		msg.log.Warnfln("Failed to update %s@%s: %v", msg.Chat, msg.JID, err)
 	}
 }
 
