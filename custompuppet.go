@@ -44,7 +44,7 @@ func (puppet *Puppet) SwitchCustomMXID(accessToken string, mxid id.UserID) error
 	puppet.CustomMXID = mxid
 	puppet.AccessToken = accessToken
 
-	err := puppet.StartCustomMXID()
+	err := puppet.StartCustomMXID(false)
 	if err != nil {
 		return err
 	}
@@ -108,7 +108,7 @@ func (puppet *Puppet) clearCustomMXID() {
 	puppet.customUser = nil
 }
 
-func (puppet *Puppet) StartCustomMXID() error {
+func (puppet *Puppet) StartCustomMXID(reloginOnFail bool) error {
 	if len(puppet.CustomMXID) == 0 {
 		puppet.clearCustomMXID()
 		return nil
@@ -120,10 +120,12 @@ func (puppet *Puppet) StartCustomMXID() error {
 	}
 	resp, err := intent.Whoami()
 	if err != nil {
-		puppet.clearCustomMXID()
-		return err
-	}
-	if resp.UserID != puppet.CustomMXID {
+		if !reloginOnFail || (errors.Is(err, mautrix.MUnknownToken) && !puppet.tryRelogin(err, "initializing double puppeting")) {
+			puppet.clearCustomMXID()
+			return err
+		}
+		intent.AccessToken = puppet.AccessToken
+	} else if resp.UserID != puppet.CustomMXID {
 		puppet.clearCustomMXID()
 		return ErrMismatchingMXID
 	}
@@ -250,8 +252,30 @@ func (puppet *Puppet) handleTypingEvent(portal *Portal, evt *event.Event) {
 	}
 }
 
+func (puppet *Puppet) tryRelogin(cause error, action string) bool {
+	if !puppet.bridge.Config.CanDoublePuppet(puppet.CustomMXID) {
+		return false
+	}
+	puppet.log.Debugfln("Trying to relogin after '%v' while %s", cause, action)
+	accessToken, err := puppet.loginWithSharedSecret(puppet.CustomMXID)
+	if err != nil {
+		puppet.log.Errorfln("Failed to relogin after '%v' while %s: %v", cause, action, err)
+		return false
+	}
+	puppet.log.Infofln("Successfully relogined after '%v' while %s", cause, action)
+	puppet.AccessToken = accessToken
+	return true
+}
+
 func (puppet *Puppet) OnFailedSync(_ *mautrix.RespSync, err error) (time.Duration, error) {
 	puppet.log.Warnln("Sync error:", err)
+	if errors.Is(err, mautrix.MUnknownToken) {
+		if !puppet.tryRelogin(err, "syncing") {
+			return 0, err
+		}
+		puppet.customIntent.AccessToken = puppet.AccessToken
+		return 0, nil
+	}
 	return 10 * time.Second, nil
 }
 

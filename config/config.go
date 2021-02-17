@@ -20,6 +20,7 @@ import (
 	"io/ioutil"
 
 	"gopkg.in/yaml.v2"
+	"maunium.net/go/mautrix/id"
 
 	"maunium.net/go/mautrix/appservice"
 )
@@ -75,6 +76,17 @@ type Config struct {
 	Bridge BridgeConfig `yaml:"bridge"`
 
 	Logging appservice.LogConfig `yaml:"logging"`
+}
+
+func (config *Config) CanDoublePuppet(userID id.UserID) bool {
+	if len(config.Bridge.LoginSharedSecret) == 0 {
+		// Automatic login not enabled
+		return false
+	} else if _, homeserver, _ := userID.Parse(); homeserver != config.Homeserver.Domain {
+		// user is on another homeserver
+		return false
+	}
+	return true
 }
 
 func (config *Config) setDefaults() {

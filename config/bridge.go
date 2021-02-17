@@ -42,6 +42,7 @@ type BridgeConfig struct {
 	MaxConnectionAttempts int  `yaml:"max_connection_attempts"`
 	ConnectionRetryDelay  int  `yaml:"connection_retry_delay"`
 	ReportConnectionRetry bool `yaml:"report_connection_retry"`
+	AggressiveReconnect   bool `yaml:"aggressive_reconnect"`
 	ChatListWait          int  `yaml:"chat_list_wait"`
 	PortalSyncWait        int  `yaml:"portal_sync_wait"`
 	UserMessageBuffer     int  `yaml:"user_message_buffer"`
@@ -57,6 +58,9 @@ type BridgeConfig struct {
 	HistoryDisableNotifs bool   `yaml:"initial_history_disable_notifications"`
 	RecoverChatSync      int    `yaml:"recovery_chat_sync_count"`
 	RecoverHistory       bool   `yaml:"recovery_history_backfill"`
+	ChatMetaSync         bool   `yaml:"chat_meta_sync"`
+	UserAvatarSync       bool   `yaml:"user_avatar_sync"`
+	BridgeMatrixLeave    bool   `yaml:"bridge_matrix_leave"`
 	SyncChatMaxAge       uint64 `yaml:"sync_max_chat_age"`
 
 	SyncWithCustomPuppets bool   `yaml:"sync_with_custom_puppets"`
@@ -116,6 +120,9 @@ func (bc *BridgeConfig) setDefaults() {
 	bc.InitialHistoryFill = 20
 	bc.RecoverChatSync = -1
 	bc.RecoverHistory = true
+	bc.ChatMetaSync = true
+	bc.UserAvatarSync = true
+	bc.BridgeMatrixLeave = true
 	bc.SyncChatMaxAge = 259200
 
 	bc.SyncWithCustomPuppets = true
