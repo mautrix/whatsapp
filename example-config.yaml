@@ -187,9 +187,6 @@ bridge:
     # The prefix for commands. Only required in non-management rooms.
     command_prefix: "!wa"
 
-    # The prefix to special messages that are going to be processed in frontend.
-    frontend_command_prefix: null
-
     # End-to-bridge encryption support options. This requires login_shared_secret to be configured
     # in order to get a device for the bridge bot.
     #

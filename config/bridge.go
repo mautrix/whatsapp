@@ -77,8 +77,6 @@ type BridgeConfig struct {
 
 	CommandPrefix string `yaml:"command_prefix"`
 
-	FrontendCommandPrefix string `yaml:"frontend_command_prefix"`
-
 	Encryption struct {
 		Allow   bool `yaml:"allow"`
 		Default bool `yaml:"default"`
