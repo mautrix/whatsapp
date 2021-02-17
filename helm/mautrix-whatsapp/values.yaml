@@ -93,8 +93,6 @@ bridge:
   # chat portal rooms. This can be useful if the previous field works fine,
   # but causes room avatar/name bugs.
   private_chat_portal_meta: true
-  # Whether or not Matrix m.notice-type messages should be bridged.
-  bridge_notices: true
 
   # Allow invite permission for user. User can invite any bots to room with whatsapp
   # users (private chat and groups)
