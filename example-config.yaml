@@ -106,6 +106,8 @@ bridge:
     # Whether or not the bridge should send a notice to the user's management room when it retries connecting.
     # If false, it will only report when it stops retrying.
     report_connection_retry: true
+    # Whether or not the bridge should reconnect even if WhatsApp says another web client connected.
+    aggressive_reconnect: false
     # Maximum number of seconds to wait for chats to be sent at startup.
     # If this is too low and you have lots of chats, it could cause backfilling to fail.
     chat_list_wait: 30
@@ -132,6 +134,15 @@ bridge:
     recovery_chat_sync_limit: -1
     # Whether or not to sync history when recovering from downtime.
     recovery_history_backfill: true
+    # Whether or not portal info should be fetched from the server when syncing,
+    # instead of relying on finding any changes in the message history.
+    # If you get 599 errors often, you should try disabling this.
+    chat_meta_sync: true
+    # Whether or not puppet avatars should be fetched from the server even if an avatar is already set.
+    # If you get 599 errors often, you should try disabling this.
+    user_avatar_sync: true
+    # Whether or not Matrix users leaving groups should be bridged to WhatsApp
+    bridge_matrix_leave: true
     # Maximum number of seconds since last message in chat to skip
     # syncing the chat in any case. This setting will take priority
     # over both recovery_chat_sync_limit and initial_chat_sync_count.
@@ -166,8 +177,6 @@ bridge:
     # chat portal rooms. This can be useful if the previous field works fine,
     # but causes room avatar/name bugs.
     private_chat_portal_meta: false
-    # Whether or not Matrix m.notice-type messages should be bridged.
-    bridge_notices: true
     # Set this to true to tell the bridge to re-send m.bridge events to all rooms on the next run.
     # This field will automatically be changed back to false after it,
     # except if the config file is not writable.

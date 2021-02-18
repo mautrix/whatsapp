@@ -20,6 +20,7 @@ import (
 	"bytes"
 	"database/sql"
 	"encoding/json"
+	"strings"
 
 	waProto "github.com/Rhymen/go-whatsapp/binary/proto"
 
@@ -91,6 +92,10 @@ type Message struct {
 	Sender    types.WhatsAppID
 	Timestamp uint64
 	Content   *waProto.Message
+}
+
+func (msg *Message) IsFakeMXID() bool {
+	return strings.HasPrefix(msg.MXID.String(), "net.maunium.whatsapp.fake::")
 }
 
 func (msg *Message) Scan(row Scannable) *Message {

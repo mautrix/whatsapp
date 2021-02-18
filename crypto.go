@@ -126,9 +126,7 @@ func (helper *CryptoHelper) loginBot() (*mautrix.Client, error) {
 		return nil, fmt.Errorf("failed to get supported login flows: %w", err)
 	}
 	if !flows.HasFlow(mautrix.AuthTypeAppservice) {
-		// TODO after synapse 1.22, turn this into an error
-		helper.log.Warnln("Encryption enabled in config, but homeserver does not advertise appservice login")
-		//return nil, fmt.Errorf("homeserver does not support appservice login")
+		return nil, fmt.Errorf("homeserver does not support appservice login")
 	}
 	// We set the API token to the AS token here to authenticate the appservice login
 	// It'll get overridden after the login
