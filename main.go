@@ -384,11 +384,9 @@ func (bridge *Bridge) Stop() {
 			continue
 		}
 		bridge.Log.Debugln("Disconnecting", user.MXID)
-		sess, err := user.Conn.Disconnect()
+		err := user.Conn.Disconnect()
 		if err != nil {
 			bridge.Log.Errorfln("Error while disconnecting %s: %v", user.MXID, err)
-		} else {
-			user.SetSession(&sess)
 		}
 	}
 }

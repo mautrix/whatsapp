@@ -291,8 +291,8 @@ func (puppet *Puppet) Sync(source *User, contact whatsapp.Contact) {
 		puppet.log.Errorln("Failed to ensure registered:", err)
 	}
 
-	if contact.Jid == source.JID {
-		contact.Notify = source.Conn.Info.Pushname
+	if contact.JID == source.JID {
+		contact.Notify = source.pushName
 	}
 
 	update := false

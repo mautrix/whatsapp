@@ -93,7 +93,7 @@ func (user *User) Scan(row Scannable) *User {
 	if len(jid.String) > 0 && len(clientID.String) > 0 {
 		user.JID = jid.String + whatsapp.NewUserSuffix
 		user.Session = &whatsapp.Session{
-			ClientId:    clientID.String,
+			ClientID:    clientID.String,
 			ClientToken: clientToken.String,
 			ServerToken: serverToken.String,
 			EncKey:      encKey,
@@ -139,7 +139,7 @@ func (user *User) Insert() {
 	_, err := user.db.Exec(`INSERT INTO "user" (mxid, jid, management_room, last_connection, client_id, client_token, server_token, enc_key, mac_key) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
 		user.MXID, user.jidPtr(),
 		user.ManagementRoom, user.LastConnection,
-		sess.ClientId, sess.ClientToken, sess.ServerToken, sess.EncKey, sess.MacKey)
+		sess.ClientID, sess.ClientToken, sess.ServerToken, sess.EncKey, sess.MacKey)
 	if err != nil {
 		user.log.Warnfln("Failed to insert %s: %v", user.MXID, err)
 	}
@@ -158,7 +158,7 @@ func (user *User) Update() {
 	sess := user.sessionUnptr()
 	_, err := user.db.Exec(`UPDATE "user" SET jid=$1, management_room=$2, last_connection=$3, client_id=$4, client_token=$5, server_token=$6, enc_key=$7, mac_key=$8 WHERE mxid=$9`,
 		user.jidPtr(), user.ManagementRoom, user.LastConnection,
-		sess.ClientId, sess.ClientToken, sess.ServerToken, sess.EncKey, sess.MacKey,
+		sess.ClientID, sess.ClientToken, sess.ServerToken, sess.EncKey, sess.MacKey,
 		user.MXID)
 	if err != nil {
 		user.log.Warnfln("Failed to update %s: %v", user.MXID, err)

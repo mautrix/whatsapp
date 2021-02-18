@@ -17,6 +17,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -61,6 +62,7 @@ type User struct {
 	cleanDisconnection  bool
 	batteryWarningsSent int
 	lastReconnection    int64
+	pushName            string
 
 	chatListReceived chan struct{}
 	syncPortalsDone  chan struct{}
@@ -71,8 +73,9 @@ type User struct {
 	syncStart chan struct{}
 	syncWait  sync.WaitGroup
 
-	mgmtCreateLock sync.Mutex
-	connLock       sync.Mutex
+	mgmtCreateLock  sync.Mutex
+	connLock        sync.Mutex
+	cancelReconnect func()
 }
 
 func (bridge *Bridge) GetUserByMXID(userID id.UserID) *User {
@@ -234,55 +237,56 @@ func (user *User) SetSession(session *whatsapp.Session) {
 
 func (user *User) Connect(evenIfNoSession bool) bool {
 	user.connLock.Lock()
-	if user.Conn != nil && user.Conn.IsConnected() {
+	if user.Conn != nil {
 		user.connLock.Unlock()
-		return true
+		if user.Conn.IsConnected() {
+			return true
+		} else {
+			return user.RestoreSession()
+		}
 	} else if !evenIfNoSession && user.Session == nil {
 		user.connLock.Unlock()
 		return false
-	}
-	if user.Conn != nil {
-		user.Disconnect()
 	}
 	user.log.Debugln("Connecting to WhatsApp")
 	timeout := time.Duration(user.bridge.Config.Bridge.ConnectionTimeout)
 	if timeout == 0 {
 		timeout = 20
 	}
-	conn, err := whatsapp.NewConnWithOptions(&whatsapp.Options{
+	user.Conn = whatsapp.NewConn(&whatsapp.Options{
 		Timeout:         timeout * time.Second,
 		LongClientName:  user.bridge.Config.WhatsApp.OSName,
 		ShortClientName: user.bridge.Config.WhatsApp.BrowserName,
 		ClientVersion:   WAVersion,
+		Log:             user.log.Sub("Conn"),
+		Handler:         []whatsapp.Handler{user},
 	})
-	if err != nil {
-		user.log.Errorln("Failed to connect to WhatsApp:", err)
-		user.sendMarkdownBridgeAlert("\u26a0 Failed to connect to WhatsApp server. " +
-			"This indicates a network problem on the bridge server. See bridge logs for more info.")
-		user.connLock.Unlock()
-		return false
-	}
-	user.Conn = conn
-	user.log.Debugln("WhatsApp connection successful")
-	user.Conn.AddHandler(user)
 	user.connLock.Unlock()
 	return user.RestoreSession()
 }
 
-func (user *User) Disconnect() {
-	sess, err := user.Conn.Disconnect()
+func (user *User) DeleteConnection() {
+	user.connLock.Lock()
+	if user.Conn == nil {
+		user.connLock.Unlock()
+		return
+	}
+	err := user.Conn.Disconnect()
 	if err != nil && err != whatsapp.ErrNotConnected {
 		user.log.Warnln("Error disconnecting: %v", err)
 	}
-	user.SetSession(&sess)
 	user.Conn.RemoveHandlers()
 	user.Conn = nil
 	user.bridge.Metrics.TrackConnectionState(user.JID, false)
+	user.connLock.Unlock()
 }
 
 func (user *User) RestoreSession() bool {
 	if user.Session != nil {
-		sess, err := user.Conn.RestoreWithSession(*user.Session)
+		user.Conn.SetSession(*user.Session)
+		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Minute)
+		defer cancel()
+		err := user.Conn.Restore(true, ctx)
 		if err == whatsapp.ErrAlreadyLoggedIn {
 			return true
 		} else if err != nil {
@@ -290,24 +294,23 @@ func (user *User) RestoreSession() bool {
 			if errors.Is(err, whatsapp.ErrUnpaired) {
 				user.sendMarkdownBridgeAlert("\u26a0 Failed to connect to WhatsApp: unpaired from phone. " +
 					"To re-pair your phone, log in again.")
-				user.Disconnect()
 				user.removeFromJIDMap()
 				//user.JID = ""
 				user.SetSession(nil)
+				user.DeleteConnection()
 				return false
 			} else {
 				user.sendMarkdownBridgeAlert("\u26a0 Failed to connect to WhatsApp. Make sure WhatsApp " +
 					"on your phone is reachable and use `reconnect` to try connecting again.")
 			}
 			user.log.Debugln("Disconnecting due to failed session restore...")
-			_, err := user.Conn.Disconnect()
+			err = user.Conn.Disconnect()
 			if err != nil {
 				user.log.Errorln("Failed to disconnect after failed session restore:", err)
 			}
 			return false
 		}
 		user.ConnectionErrors = 0
-		user.SetSession(&sess)
 		user.log.Debugln("Session restored successfully")
 		user.PostLogin()
 	}
@@ -382,7 +385,7 @@ func (user *User) Login(ce *CommandEvent) {
 	qrChan := make(chan string, 3)
 	eventIDChan := make(chan id.EventID, 1)
 	go user.loginQrChannel(ce, qrChan, eventIDChan)
-	session, err := user.Conn.LoginWithRetry(qrChan, nil, user.bridge.Config.Bridge.LoginQRRegenCount)
+	session, jid, err := user.Conn.Login(qrChan, nil, user.bridge.Config.Bridge.LoginQRRegenCount)
 	qrChan <- "stop"
 	if err != nil {
 		var eventID id.EventID
@@ -416,8 +419,9 @@ func (user *User) Login(ce *CommandEvent) {
 	}
 	// TODO there's a bit of duplication between this and the provisioning API login method
 	//      Also between the two logout methods (commands.go and provisioning.go)
+	user.log.Debugln("Successful login as", jid, "via command")
 	user.ConnectionErrors = 0
-	user.JID = strings.Replace(user.Conn.Info.Wid, whatsapp.OldUserSuffix, whatsapp.NewUserSuffix, 1)
+	user.JID = strings.Replace(jid, whatsapp.OldUserSuffix, whatsapp.NewUserSuffix, 1)
 	user.addToJIDMap()
 	user.SetSession(&session)
 	ce.Reply("Successfully logged in, synchronizing chats...")
@@ -499,31 +503,31 @@ func (user *User) sendMarkdownBridgeAlert(formatString string, args ...interface
 	}
 }
 
-func (user *User) postConnPing(conn *whatsapp.Conn) bool {
-	if user.Conn != conn {
-		user.log.Warnln("Connection changed before scheduled post-connection ping, canceling ping")
-		return false
-	}
+func (user *User) postConnPing() bool {
 	user.log.Debugln("Making post-connection ping")
-	err := conn.AdminTest()
-	if err != nil {
-		user.log.Errorfln("Post-connection ping failed: %v. Disconnecting and then reconnecting after a second", err)
-		sess, disconnectErr := conn.Disconnect()
-		if disconnectErr != nil {
-			user.log.Warnln("Error while disconnecting after failed post-connection ping:", disconnectErr)
+	var err error
+	for i := 0; ; i++ {
+		err = user.Conn.AdminTest()
+		if err == nil {
+			user.log.Debugln("Post-connection ping OK")
+			return true
+		} else if errors.Is(err, whatsapp.ErrConnectionTimeout) && i < 5 {
+			user.log.Warnfln("Post-connection ping timed out, sending new one")
 		} else {
-			user.Session = &sess
+			break
 		}
-		user.bridge.Metrics.TrackDisconnection(user.MXID)
-		go func() {
-			time.Sleep(1 * time.Second)
-			user.tryReconnect(fmt.Sprintf("Post-connection ping failed: %v", err))
-		}()
-		return false
-	} else {
-		user.log.Debugln("Post-connection ping OK")
-		return true
 	}
+	user.log.Errorfln("Post-connection ping failed: %v. Disconnecting and then reconnecting after a second", err)
+	disconnectErr := user.Conn.Disconnect()
+	if disconnectErr != nil {
+		user.log.Warnln("Error while disconnecting after failed post-connection ping:", disconnectErr)
+	}
+	user.bridge.Metrics.TrackDisconnection(user.MXID)
+	go func() {
+		time.Sleep(1 * time.Second)
+		user.tryReconnect(fmt.Sprintf("Post-connection ping failed: %v", err))
+	}()
+	return false
 }
 
 func (user *User) intPostLogin(conn *whatsapp.Conn) {
@@ -538,11 +542,11 @@ func (user *User) intPostLogin(conn *whatsapp.Conn) {
 		user.log.Debugln("Chat list receive confirmation received in PostLogin")
 	case <-time.After(time.Duration(user.bridge.Config.Bridge.ChatListWait) * time.Second):
 		user.log.Warnln("Timed out waiting for chat list to arrive!")
-		user.postConnPing(conn)
+		user.postConnPing()
 		return
 	}
 
-	if !user.postConnPing(conn) {
+	if !user.postConnPing() {
 		user.log.Debugln("Post-connection ping failed, unlocking processing of incoming messages.")
 		return
 	}
@@ -557,16 +561,14 @@ func (user *User) intPostLogin(conn *whatsapp.Conn) {
 	}
 }
 
-type InfoGetter interface {
+type NormalMessage interface {
 	GetInfo() whatsapp.MessageInfo
 }
 
 func (user *User) HandleEvent(event interface{}) {
 	switch v := event.(type) {
-	case whatsapp.TextMessage, whatsapp.ImageMessage, whatsapp.StickerMessage, whatsapp.VideoMessage,
-		whatsapp.AudioMessage, whatsapp.DocumentMessage, whatsapp.ContactMessage, whatsapp.StubMessage,
-		whatsapp.LocationMessage:
-		info := v.(InfoGetter).GetInfo()
+	case NormalMessage:
+		info := v.GetInfo()
 		user.messageInput <- PortalMessage{info.RemoteJid, user, v, info.Timestamp}
 	case whatsapp.MessageRevocation:
 		user.messageInput <- PortalMessage{v.RemoteJid, user, v, 0}
@@ -596,6 +598,8 @@ func (user *User) HandleEvent(event interface{}) {
 		user.HandleCommand(v)
 	case whatsapp.ChatUpdate:
 		user.HandleChatUpdate(v)
+	case whatsapp.ConnInfo:
+		user.HandleConnInfo(v)
 	case json.RawMessage:
 		user.HandleJSONMessage(v)
 	case *waProto.WebMessageInfo:
@@ -614,11 +618,11 @@ func (user *User) HandleStreamEvent(evt whatsapp.StreamEvent) {
 		if user.lastReconnection+60 > time.Now().Unix() {
 			user.lastReconnection = 0
 			user.log.Infoln("Stream went to sleep soon after reconnection, making new post-connection ping in 20 seconds")
-			conn := user.Conn
 			go func() {
 				time.Sleep(20 * time.Second)
 				// TODO if this happens during the post-login sync, it can get stuck forever
-				user.postConnPing(conn)
+				// TODO check if the above is still true
+				user.postConnPing()
 			}()
 		}
 	} else {
@@ -630,10 +634,10 @@ func (user *User) HandleChatList(chats []whatsapp.Chat) {
 	user.log.Infoln("Chat list received")
 	chatMap := make(map[string]whatsapp.Chat)
 	for _, chat := range user.Conn.Store.Chats {
-		chatMap[chat.Jid] = chat
+		chatMap[chat.JID] = chat
 	}
 	for _, chat := range chats {
-		chatMap[chat.Jid] = chat
+		chatMap[chat.JID] = chat
 	}
 	select {
 	case user.chatListReceived <- struct{}{}:
@@ -655,14 +659,14 @@ func (user *User) syncPortals(chatMap map[string]whatsapp.Chat, createAll bool) 
 	for _, chat := range chatMap {
 		ts, err := strconv.ParseUint(chat.LastMessageTime, 10, 64)
 		if err != nil {
-			user.log.Warnfln("Non-integer last message time in %s: %s", chat.Jid, chat.LastMessageTime)
+			user.log.Warnfln("Non-integer last message time in %s: %s", chat.JID, chat.LastMessageTime)
 			continue
 		}
-		portal := user.GetPortalByJID(chat.Jid)
+		portal := user.GetPortalByJID(chat.JID)
 
 		chats = append(chats, Chat{
 			Portal:          portal,
-			Contact:         user.Conn.Store.Contacts[chat.Jid],
+			Contact:         user.Conn.Store.Contacts[chat.JID],
 			LastMessageTime: ts,
 		})
 		var inCommunity, ok bool
@@ -777,7 +781,7 @@ func (user *User) UpdateDirectChats(chats map[id.UserID][]id.RoomID) {
 func (user *User) HandleContactList(contacts []whatsapp.Contact) {
 	contactMap := make(map[string]whatsapp.Contact)
 	for _, contact := range contacts {
-		contactMap[contact.Jid] = contact
+		contactMap[contact.JID] = contact
 	}
 	go user.syncPuppets(contactMap)
 }
@@ -786,10 +790,20 @@ func (user *User) syncPuppets(contacts map[string]whatsapp.Contact) {
 	if contacts == nil {
 		contacts = user.Conn.Store.Contacts
 	}
+
+	_, hasSelf := contacts[user.JID]
+	if !hasSelf {
+		contacts[user.JID] = whatsapp.Contact{
+			Name:   user.pushName,
+			Notify: user.pushName,
+			JID:    user.JID,
+		}
+	}
+
 	user.log.Infoln("Syncing puppet info from contacts")
 	for jid, contact := range contacts {
 		if strings.HasSuffix(jid, whatsapp.NewUserSuffix) {
-			puppet := user.bridge.GetPuppetByJID(contact.Jid)
+			puppet := user.bridge.GetPuppetByJID(contact.JID)
 			puppet.Sync(user, contact)
 		}
 	}
@@ -846,14 +860,18 @@ func (user *User) tryReconnect(msg string) {
 		baseDelay = -baseDelay + 1
 	}
 	delay := baseDelay
-	conn := user.Conn
 	takeover := false
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	user.cancelReconnect = cancel
 	for user.ConnectionErrors <= user.bridge.Config.Bridge.MaxConnectionAttempts {
-		if user.Conn != conn {
-			user.log.Debugln("Connection was recreated, aborting reconnection attempts")
+		select {
+		case <-ctx.Done():
+			user.log.Debugln("tryReconnect context cancelled, aborting reconnection attempts")
 			return
+		default:
 		}
-		err := conn.Restore(takeover)
+		err := user.Conn.Restore(takeover, ctx)
 		takeover = true
 		if err == nil {
 			user.ConnectionErrors = 0
@@ -863,14 +881,23 @@ func (user *User) tryReconnect(msg string) {
 			user.PostLogin()
 			return
 		} else if errors.Is(err, whatsapp.ErrBadRequest) {
-			user.log.Infoln("Got init 400 error when trying to reconnect, resetting connection...")
-			sess, err := conn.Disconnect()
+			user.log.Warnln("Got init 400 error when trying to reconnect, resetting connection...")
+			err = user.Conn.Disconnect()
 			if err != nil {
 				user.log.Debugln("Error while disconnecting for connection reset:", err)
 			}
-			user.SetSession(&sess)
+		} else if errors.Is(err, whatsapp.ErrUnpaired) {
+			user.log.Errorln("Got init 401 (unpaired) error when trying to reconnect, not retrying")
+			user.removeFromJIDMap()
+			//user.JID = ""
+			user.SetSession(nil)
+			user.DeleteConnection()
+			user.sendMarkdownBridgeAlert("\u26a0 Failed to reconnect to WhatsApp: unpaired from phone. " +
+				"To re-pair your phone, log in again.")
+			return
+		} else {
+			user.log.Errorln("Error while trying to reconnect after disconnection:", err)
 		}
-		user.log.Errorln("Error while trying to reconnect after disconnection:", err)
 		tries++
 		user.ConnectionErrors++
 		if user.ConnectionErrors <= user.bridge.Config.Bridge.MaxConnectionAttempts {
@@ -930,10 +957,10 @@ func (user *User) handleMessageLoop() {
 
 func (user *User) HandleNewContact(contact whatsapp.Contact) {
 	user.log.Debugfln("Contact message: %+v", contact)
-	if strings.HasSuffix(contact.Jid, whatsapp.OldUserSuffix) {
-		contact.Jid = strings.Replace(contact.Jid, whatsapp.OldUserSuffix, whatsapp.NewUserSuffix, -1)
+	if strings.HasSuffix(contact.JID, whatsapp.OldUserSuffix) {
+		contact.JID = strings.Replace(contact.JID, whatsapp.OldUserSuffix, whatsapp.NewUserSuffix, -1)
 	}
-	puppet := user.bridge.GetPuppetByJID(contact.Jid)
+	puppet := user.bridge.GetPuppetByJID(contact.JID)
 	puppet.UpdateName(user, contact)
 }
 
@@ -1176,8 +1203,20 @@ func (user *User) HandleChatUpdate(cmd whatsapp.ChatUpdate) {
 		go portal.HandleWhatsAppInvite(cmd.Data.SenderJID, nil, cmd.Data.UserChange.JIDs)
 	case whatsapp.ChatActionIntroduce:
 		if cmd.Data.SenderJID != "unknown" {
-			go portal.Sync(user, whatsapp.Contact{Jid: portal.Key.JID})
+			go portal.Sync(user, whatsapp.Contact{JID: portal.Key.JID})
 		}
+	}
+}
+
+func (user *User) HandleConnInfo(info whatsapp.ConnInfo) {
+	if user.Session != nil && info.Connected && len(info.ClientToken) > 0 {
+		user.log.Debugln("Received new tokens")
+		user.Session.ClientToken = info.ClientToken
+		user.Session.ServerToken = info.ServerToken
+		user.Session.Wid = info.WID
+	}
+	if len(info.PushName) > 0 {
+		user.pushName = info.PushName
 	}
 }
 
