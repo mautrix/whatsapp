@@ -177,6 +177,8 @@ bridge:
     # chat portal rooms. This can be useful if the previous field works fine,
     # but causes room avatar/name bugs.
     private_chat_portal_meta: false
+    # Whether or not Matrix m.notice-type messages should be bridged.
+    bridge_notices: true
     # Set this to true to tell the bridge to re-send m.bridge events to all rooms on the next run.
     # This field will automatically be changed back to false after it,
     # except if the config file is not writable.

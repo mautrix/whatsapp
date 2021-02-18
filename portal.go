@@ -1960,6 +1960,9 @@ func (portal *Portal) convertMatrixMessage(sender *User, evt *event.Event) (*waP
 	switch content.MsgType {
 	case event.MsgText, event.MsgEmote, event.MsgNotice:
 		text := content.Body
+		if content.MsgType == event.MsgNotice && !portal.bridge.Config.Bridge.BridgeNotices {
+			return nil, sender
+		}
 		if content.Format == event.FormatHTML {
 			text, ctxInfo.MentionedJid = portal.bridge.Formatter.ParseMatrix(content.FormattedBody)
 		}
