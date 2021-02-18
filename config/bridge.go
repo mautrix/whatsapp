@@ -73,7 +73,7 @@ type BridgeConfig struct {
 	PrivateChatPortalMeta         bool `yaml:"private_chat_portal_meta"`
 	BridgeNotices                 bool `yaml:"bridge_notices"`
 	ResendBridgeInfo              bool `yaml:"resend_bridge_info"`
-	CreateRoomAsDirect            bool `yaml:"create_room_as_direct	"`
+	CreateRoomAsDirect            bool `yaml:"create_room_as_direct"`
 
 	WhatsappThumbnail bool `yaml:"whatsapp_thumbnail"`
 
