@@ -1214,6 +1214,7 @@ func (user *User) HandleConnInfo(info whatsapp.ConnInfo) {
 		user.Session.ClientToken = info.ClientToken
 		user.Session.ServerToken = info.ServerToken
 		user.Session.Wid = info.WID
+		user.Update()
 	}
 	if len(info.PushName) > 0 {
 		user.pushName = info.PushName
