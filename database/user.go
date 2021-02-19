@@ -202,6 +202,29 @@ func (user *User) SetPortalKeys(newKeys []PortalKeyWithMeta) error {
 	return tx.Commit()
 }
 
+func (user *User) InsertPortalKey(newKey PortalKeyWithMeta) error {
+	tx, err := user.db.Begin()
+	if err != nil {
+		return err
+	}
+	valueStrings := make([]string, 1)
+	values := make([]interface{}, 4)
+	pos := 0
+	valueStrings[0] = fmt.Sprintf("($%d, $%d, $%d, $%d)", pos+1, pos+2, pos+3, pos+4)
+	values[pos] = user.jidPtr()
+	values[pos+1] = newKey.JID
+	values[pos+2] = newKey.Receiver
+	values[pos+3] = newKey.InCommunity
+	query := fmt.Sprintf("INSERT INTO user_portal (user_jid, portal_jid, portal_receiver, in_community) VALUES %s",
+		strings.Join(valueStrings, ", "))
+	_, err = tx.Exec(query, values...)
+	if err != nil {
+		_ = tx.Rollback()
+		return err
+	}
+	return tx.Commit()
+}
+
 func (user *User) IsInPortal(key PortalKey) bool {
 	row := user.db.QueryRow(`SELECT EXISTS(SELECT 1 FROM user_portal WHERE user_jid=$1 AND portal_jid=$2 AND portal_receiver=$3)`, user.jidPtr(), &key.JID, &key.Receiver)
 	var exists bool
