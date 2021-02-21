@@ -779,14 +779,14 @@ func (user *User) UpdateDirectChats(chats map[id.UserID][]id.RoomID) {
 }
 
 func (user *User) HandleContactList(contacts []whatsapp.Contact) {
-	contactMap := make(map[string]whatsapp.Contact)
+	contactMap := make(map[whatsapp.JID]whatsapp.Contact)
 	for _, contact := range contacts {
 		contactMap[contact.JID] = contact
 	}
 	go user.syncPuppets(contactMap)
 }
 
-func (user *User) syncPuppets(contacts map[string]whatsapp.Contact) {
+func (user *User) syncPuppets(contacts map[whatsapp.JID]whatsapp.Contact) {
 	if contacts == nil {
 		contacts = user.Conn.Store.Contacts
 	}
@@ -805,6 +805,9 @@ func (user *User) syncPuppets(contacts map[string]whatsapp.Contact) {
 		if strings.HasSuffix(jid, whatsapp.NewUserSuffix) {
 			puppet := user.bridge.GetPuppetByJID(contact.JID)
 			puppet.Sync(user, contact)
+		} else if strings.HasSuffix(jid, whatsapp.BroadcastSuffix) {
+			portal := user.GetPortalByJID(contact.JID)
+			portal.Sync(user, contact)
 		}
 	}
 	user.log.Infoln("Finished syncing puppet info from contacts")
@@ -960,8 +963,13 @@ func (user *User) HandleNewContact(contact whatsapp.Contact) {
 	if strings.HasSuffix(contact.JID, whatsapp.OldUserSuffix) {
 		contact.JID = strings.Replace(contact.JID, whatsapp.OldUserSuffix, whatsapp.NewUserSuffix, -1)
 	}
-	puppet := user.bridge.GetPuppetByJID(contact.JID)
-	puppet.UpdateName(user, contact)
+	if strings.HasSuffix(contact.JID, whatsapp.NewUserSuffix) {
+		puppet := user.bridge.GetPuppetByJID(contact.JID)
+		puppet.UpdateName(user, contact)
+	} else if strings.HasSuffix(contact.JID, whatsapp.BroadcastSuffix) {
+		portal := user.GetPortalByJID(contact.JID)
+		portal.UpdateName(contact.Name, "", nil, true)
+	}
 }
 
 func (user *User) HandleBatteryMessage(battery whatsapp.BatteryMessage) {

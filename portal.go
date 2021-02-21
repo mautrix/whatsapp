@@ -55,6 +55,11 @@ import (
 	"maunium.net/go/mautrix-whatsapp/database"
 )
 
+const StatusBroadcastTopic = "WhatsApp status updates from your contacts"
+const StatusBroadcastName = "WhatsApp Status Broadcast"
+const BroadcastTopic = "WhatsApp broadcast list"
+const UnnamedBroadcastName = "Unnamed broadcast list"
+
 func (bridge *Bridge) GetPortalByMXID(mxid id.RoomID) *Portal {
 	bridge.portalsLock.Lock()
 	defer bridge.portalsLock.Unlock()
@@ -180,6 +185,7 @@ type Portal struct {
 	messages chan PortalMessage
 
 	isPrivate   *bool
+	isBroadcast *bool
 	hasRelaybot *bool
 }
 
@@ -463,6 +469,9 @@ func (portal *Portal) UpdateAvatar(user *User, avatar *whatsapp.ProfilePicInfo, 
 }
 
 func (portal *Portal) UpdateName(name string, setBy whatsapp.JID, intent *appservice.IntentAPI, updateInfo bool) bool {
+	if name == "" && portal.IsBroadcastRoom() {
+		name = UnnamedBroadcastName
+	}
 	if portal.Name != name {
 		portal.log.Debugfln("Updating name %s -> %s", portal.Name, name)
 		portal.Name = name
@@ -515,8 +524,14 @@ func (portal *Portal) UpdateMetadata(user *User) bool {
 		return false
 	} else if portal.IsStatusBroadcastRoom() {
 		update := false
-		update = portal.UpdateName("WhatsApp Status Broadcast", "", nil, false) || update
-		update = portal.UpdateTopic("WhatsApp status updates from your contacts", "", nil, false) || update
+		update = portal.UpdateName(StatusBroadcastName, "", nil, false) || update
+		update = portal.UpdateTopic(StatusBroadcastTopic, "", nil, false) || update
+		return update
+	} else if portal.IsBroadcastRoom() {
+		update := false
+		contact, _ := user.Conn.Store.Contacts[portal.Key.JID]
+		update = portal.UpdateName(contact.Name, "", nil, false) || update
+		update = portal.UpdateTopic(BroadcastTopic, "", nil, false) || update
 		return update
 	}
 	metadata, err := user.Conn.GetGroupMetaData(portal.Key.JID)
@@ -595,13 +610,9 @@ func (portal *Portal) Sync(user *User, contact whatsapp.Contact) {
 		portal.ensureUserInvited(user)
 	}
 
-	if portal.IsPrivateChat() {
-		return
-	}
-
 	update := false
 	update = portal.UpdateMetadata(user) || update
-	if !portal.IsStatusBroadcastRoom() && portal.Avatar == "" {
+	if !portal.IsPrivateChat() && !portal.IsBroadcastRoom() && portal.Avatar == "" {
 		update = portal.UpdateAvatar(user, nil, false) || update
 	}
 	if update {
@@ -990,6 +1001,14 @@ func (portal *Portal) CreateMatrixRoom(user *User) error {
 	} else if portal.IsStatusBroadcastRoom() {
 		portal.Name = "WhatsApp Status Broadcast"
 		portal.Topic = "WhatsApp status updates from your contacts"
+	} else if portal.IsBroadcastRoom() {
+		contact, ok := user.Conn.Store.Contacts[portal.Key.JID]
+		if ok {
+			portal.Name = contact.Name
+		} else {
+			portal.Name = UnnamedBroadcastName
+		}
+		portal.Topic = BroadcastTopic
 	} else {
 		var err error
 		metadata, err = user.Conn.GetGroupMetaData(portal.Key.JID)
@@ -1107,6 +1126,18 @@ func (portal *Portal) IsPrivateChat() bool {
 	return *portal.isPrivate
 }
 
+func (portal *Portal) IsBroadcastRoom() bool {
+	if portal.isBroadcast == nil {
+		val := strings.HasSuffix(portal.Key.JID, whatsapp.BroadcastSuffix)
+		portal.isBroadcast = &val
+	}
+	return *portal.isBroadcast
+}
+
+func (portal *Portal) IsStatusBroadcastRoom() bool {
+	return portal.Key.JID == "status@broadcast"
+}
+
 func (portal *Portal) HasRelaybot() bool {
 	if portal.bridge.Relaybot == nil {
 		return false
@@ -1115,10 +1146,6 @@ func (portal *Portal) HasRelaybot() bool {
 		portal.hasRelaybot = &val
 	}
 	return *portal.hasRelaybot
-}
-
-func (portal *Portal) IsStatusBroadcastRoom() bool {
-	return portal.Key.JID == "status@broadcast"
 }
 
 func (portal *Portal) MainIntent() *appservice.IntentAPI {

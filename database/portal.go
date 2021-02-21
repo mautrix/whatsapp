@@ -40,7 +40,7 @@ func GroupPortalKey(jid whatsapp.JID) PortalKey {
 }
 
 func NewPortalKey(jid, receiver whatsapp.JID) PortalKey {
-	if strings.HasSuffix(jid, "@g.us") {
+	if strings.HasSuffix(jid, whatsapp.GroupSuffix) {
 		receiver = jid
 	}
 	return PortalKey{
