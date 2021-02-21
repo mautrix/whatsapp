@@ -605,7 +605,7 @@ func (user *User) HandleEvent(event interface{}) {
 	case *waProto.WebMessageInfo:
 		user.updateLastConnectionIfNecessary()
 		// TODO trace log
-		user.log.Debugfln("WebMessageInfo: %+v", v)
+		//user.log.Debugfln("WebMessageInfo: %+v", v)
 	case *waBinary.Node:
 		user.log.Debugfln("Unknown binary message: %+v", v)
 	default:
