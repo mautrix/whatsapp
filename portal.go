@@ -359,6 +359,43 @@ func (portal *Portal) finishHandling(source *User, message *waProto.WebMessageIn
 	portal.log.Debugln("Handled message", message.GetKey().GetId(), "->", mxid)
 }
 
+func (portal *Portal) kickExtraUsers(participantMap map[whatsapp.JID]bool) {
+	members, err := portal.MainIntent().JoinedMembers(portal.MXID)
+	if err != nil {
+		portal.log.Warnln("Failed to get member list:", err)
+	} else {
+		for member := range members.Joined {
+			jid, ok := portal.bridge.ParsePuppetMXID(member)
+			if ok {
+				_, shouldBePresent := participantMap[jid]
+				if !shouldBePresent {
+					_, err := portal.MainIntent().KickUser(portal.MXID, &mautrix.ReqKickUser{
+						UserID: member,
+						Reason: "User had left this WhatsApp chat",
+					})
+					if err != nil {
+						portal.log.Warnfln("Failed to kick user %s who had left: %v", member, err)
+					}
+				}
+			}
+		}
+	}
+}
+
+func (portal *Portal) SyncBroadcastRecipients(metadata *whatsapp.BroadcastListInfo) {
+	participantMap := make(map[whatsapp.JID]bool)
+	for _, recipient := range metadata.Recipients {
+		participantMap[recipient.JID] = true
+
+		puppet := portal.bridge.GetPuppetByJID(recipient.JID)
+		err := puppet.DefaultIntent().EnsureJoined(portal.MXID)
+		if err != nil {
+			portal.log.Warnfln("Failed to make puppet of %s join %s: %v", recipient.JID, portal.MXID, err)
+		}
+	}
+	portal.kickExtraUsers(participantMap)
+}
+
 func (portal *Portal) SyncParticipants(metadata *whatsapp.GroupInfo) {
 	changed := false
 	levels, err := portal.MainIntent().PowerLevels(portal.MXID)
@@ -366,7 +403,7 @@ func (portal *Portal) SyncParticipants(metadata *whatsapp.GroupInfo) {
 		levels = portal.GetBasePowerLevels()
 		changed = true
 	}
-	participantMap := make(map[string]bool)
+	participantMap := make(map[whatsapp.JID]bool)
 	for _, participant := range metadata.Participants {
 		participantMap[participant.JID] = true
 		user := portal.bridge.GetUserByJID(participant.JID)
@@ -395,26 +432,7 @@ func (portal *Portal) SyncParticipants(metadata *whatsapp.GroupInfo) {
 			portal.log.Errorln("Failed to change power levels:", err)
 		}
 	}
-	members, err := portal.MainIntent().JoinedMembers(portal.MXID)
-	if err != nil {
-		portal.log.Warnln("Failed to get member list:", err)
-	} else {
-		for member := range members.Joined {
-			jid, ok := portal.bridge.ParsePuppetMXID(member)
-			if ok {
-				_, shouldBePresent := participantMap[jid]
-				if !shouldBePresent {
-					_, err := portal.MainIntent().KickUser(portal.MXID, &mautrix.ReqKickUser{
-						UserID: member,
-						Reason: "User had left this WhatsApp chat",
-					})
-					if err != nil {
-						portal.log.Warnfln("Failed to kick user %s who had left: %v", member, err)
-					}
-				}
-			}
-		}
-	}
+	portal.kickExtraUsers(participantMap)
 }
 
 func (portal *Portal) UpdateAvatar(user *User, avatar *whatsapp.ProfilePicInfo, updateInfo bool) bool {
@@ -469,7 +487,7 @@ func (portal *Portal) UpdateAvatar(user *User, avatar *whatsapp.ProfilePicInfo, 
 }
 
 func (portal *Portal) UpdateName(name string, setBy whatsapp.JID, intent *appservice.IntentAPI, updateInfo bool) bool {
-	if name == "" && portal.IsBroadcastRoom() {
+	if name == "" && portal.IsBroadcastList() {
 		name = UnnamedBroadcastName
 	}
 	if portal.Name != name {
@@ -522,12 +540,12 @@ func (portal *Portal) UpdateTopic(topic string, setBy whatsapp.JID, intent *apps
 func (portal *Portal) UpdateMetadata(user *User) bool {
 	if portal.IsPrivateChat() {
 		return false
-	} else if portal.IsStatusBroadcastRoom() {
+	} else if portal.IsStatusBroadcastList() {
 		update := false
 		update = portal.UpdateName(StatusBroadcastName, "", nil, false) || update
 		update = portal.UpdateTopic(StatusBroadcastTopic, "", nil, false) || update
 		return update
-	} else if portal.IsBroadcastRoom() {
+	} else if portal.IsBroadcastList() {
 		update := false
 		contact, _ := user.Conn.Store.Contacts[portal.Key.JID]
 		update = portal.UpdateName(contact.Name, "", nil, false) || update
@@ -612,7 +630,7 @@ func (portal *Portal) Sync(user *User, contact whatsapp.Contact) {
 
 	update := false
 	update = portal.UpdateMetadata(user) || update
-	if !portal.IsPrivateChat() && !portal.IsBroadcastRoom() && portal.Avatar == "" {
+	if !portal.IsPrivateChat() && !portal.IsBroadcastList() && portal.Avatar == "" {
 		update = portal.UpdateAvatar(user, nil, false) || update
 	}
 	if update {
@@ -988,6 +1006,7 @@ func (portal *Portal) CreateMatrixRoom(user *User) error {
 	portal.log.Infoln("Creating Matrix room. Info source:", user.MXID)
 
 	var metadata *whatsapp.GroupInfo
+	var broadcastMetadata *whatsapp.BroadcastListInfo
 	if portal.IsPrivateChat() {
 		puppet := portal.bridge.GetPuppetByJID(portal.Key.JID)
 		if portal.bridge.Config.Bridge.PrivateChatPortalMeta {
@@ -998,14 +1017,19 @@ func (portal *Portal) CreateMatrixRoom(user *User) error {
 			portal.Name = ""
 		}
 		portal.Topic = "WhatsApp private chat"
-	} else if portal.IsStatusBroadcastRoom() {
+	} else if portal.IsStatusBroadcastList() {
 		portal.Name = "WhatsApp Status Broadcast"
 		portal.Topic = "WhatsApp status updates from your contacts"
-	} else if portal.IsBroadcastRoom() {
-		contact, ok := user.Conn.Store.Contacts[portal.Key.JID]
-		if ok {
-			portal.Name = contact.Name
+	} else if portal.IsBroadcastList() {
+		var err error
+		broadcastMetadata, err = user.Conn.GetBroadcastMetadata(portal.Key.JID)
+		if err == nil && broadcastMetadata.Status == 0 {
+			portal.Name = broadcastMetadata.Name
 		} else {
+			contact, _ := user.Conn.Store.Contacts[portal.Key.JID]
+			portal.Name = contact.Name
+		}
+		if len(portal.Name) == 0 {
 			portal.Name = UnnamedBroadcastName
 		}
 		portal.Topic = BroadcastTopic
@@ -1097,6 +1121,9 @@ func (portal *Portal) CreateMatrixRoom(user *User) error {
 			_ = customPuppet.CustomIntent().EnsureJoined(portal.MXID)
 		}
 	}
+	if broadcastMetadata != nil {
+		portal.SyncBroadcastRecipients(broadcastMetadata)
+	}
 	user.addPortalToCommunity(portal)
 	if portal.IsPrivateChat() {
 		puppet := user.bridge.GetPuppetByJID(portal.Key.JID)
@@ -1126,7 +1153,7 @@ func (portal *Portal) IsPrivateChat() bool {
 	return *portal.isPrivate
 }
 
-func (portal *Portal) IsBroadcastRoom() bool {
+func (portal *Portal) IsBroadcastList() bool {
 	if portal.isBroadcast == nil {
 		val := strings.HasSuffix(portal.Key.JID, whatsapp.BroadcastSuffix)
 		portal.isBroadcast = &val
@@ -1134,7 +1161,7 @@ func (portal *Portal) IsBroadcastRoom() bool {
 	return *portal.isBroadcast
 }
 
-func (portal *Portal) IsStatusBroadcastRoom() bool {
+func (portal *Portal) IsStatusBroadcastList() bool {
 	return portal.Key.JID == "status@broadcast"
 }
 
@@ -1310,8 +1337,9 @@ func (portal *Portal) HandleTextMessage(source *User, message whatsapp.TextMessa
 }
 
 func (portal *Portal) HandleStubMessage(source *User, message whatsapp.StubMessage, isBackfill bool) {
-	if portal.bridge.Config.Bridge.ChatMetaSync {
+	if portal.bridge.Config.Bridge.ChatMetaSync && (!portal.IsBroadcastList() || isBackfill) {
 		// Chat meta sync is enabled, so we use chat update commands and full-syncs instead of message history
+		// However, broadcast lists don't have update commands, so we handle these if it's not a backfill
 		return
 	}
 	intent := portal.startHandling(source, message.Info)
@@ -1341,9 +1369,9 @@ func (portal *Portal) HandleStubMessage(source *User, message whatsapp.StubMessa
 		eventID = portal.RestrictMessageSending(message.FirstParam == "on")
 	case waProto.WebMessageInfo_GROUP_CHANGE_RESTRICT:
 		eventID = portal.RestrictMetadataChanges(message.FirstParam == "on")
-	case waProto.WebMessageInfo_GROUP_PARTICIPANT_ADD, waProto.WebMessageInfo_GROUP_PARTICIPANT_INVITE:
+	case waProto.WebMessageInfo_GROUP_PARTICIPANT_ADD, waProto.WebMessageInfo_GROUP_PARTICIPANT_INVITE, waProto.WebMessageInfo_BROADCAST_ADD:
 		portal.HandleWhatsAppInvite(senderJID, intent, message.Params)
-	case waProto.WebMessageInfo_GROUP_PARTICIPANT_REMOVE, waProto.WebMessageInfo_GROUP_PARTICIPANT_LEAVE:
+	case waProto.WebMessageInfo_GROUP_PARTICIPANT_REMOVE, waProto.WebMessageInfo_GROUP_PARTICIPANT_LEAVE, waProto.WebMessageInfo_BROADCAST_REMOVE:
 		portal.HandleWhatsAppKick(source, senderJID, message.Params)
 	case waProto.WebMessageInfo_GROUP_PARTICIPANT_PROMOTE:
 		eventID = portal.ChangeAdminStatus(message.Params, true)
@@ -1525,13 +1553,15 @@ func (portal *Portal) HandleWhatsAppKick(source *User, senderJID string, jids []
 		puppet := portal.bridge.GetPuppetByJID(jid)
 		portal.removeUser(puppet.JID == sender.JID, senderIntent, puppet.MXID, puppet.DefaultIntent())
 
-		user := portal.bridge.GetUserByJID(jid)
-		if user != nil {
-			var customIntent *appservice.IntentAPI
-			if puppet.CustomMXID == user.MXID {
-				customIntent = puppet.CustomIntent()
+		if !portal.IsBroadcastList() {
+			user := portal.bridge.GetUserByJID(jid)
+			if user != nil {
+				var customIntent *appservice.IntentAPI
+				if puppet.CustomMXID == user.MXID {
+					customIntent = puppet.CustomIntent()
+				}
+				portal.removeUser(puppet.JID == sender.JID, senderIntent, user.MXID, customIntent)
 			}
-			portal.removeUser(puppet.JID == sender.JID, senderIntent, user.MXID, customIntent)
 		}
 	}
 }
