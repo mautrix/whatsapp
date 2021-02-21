@@ -369,7 +369,7 @@ func (portal *Portal) kickExtraUsers(participantMap map[whatsapp.JID]bool) {
 			if ok {
 				_, shouldBePresent := participantMap[jid]
 				if !shouldBePresent {
-					_, err := portal.MainIntent().KickUser(portal.MXID, &mautrix.ReqKickUser{
+					_, err = portal.MainIntent().KickUser(portal.MXID, &mautrix.ReqKickUser{
 						UserID: member,
 						Reason: "User had left this WhatsApp chat",
 					})
@@ -547,8 +547,14 @@ func (portal *Portal) UpdateMetadata(user *User) bool {
 		return update
 	} else if portal.IsBroadcastList() {
 		update := false
-		contact, _ := user.Conn.Store.Contacts[portal.Key.JID]
-		update = portal.UpdateName(contact.Name, "", nil, false) || update
+		broadcastMetadata, err := user.Conn.GetBroadcastMetadata(portal.Key.JID)
+		if err == nil && broadcastMetadata.Status == 200 {
+			portal.SyncBroadcastRecipients(broadcastMetadata)
+			update = portal.UpdateName(broadcastMetadata.Name, "", nil, false) || update
+		} else {
+			contact, _ := user.Conn.Store.Contacts[portal.Key.JID]
+			update = portal.UpdateName(contact.Name, "", nil, false) || update
+		}
 		update = portal.UpdateTopic(BroadcastTopic, "", nil, false) || update
 		return update
 	}
@@ -1023,7 +1029,7 @@ func (portal *Portal) CreateMatrixRoom(user *User) error {
 	} else if portal.IsBroadcastList() {
 		var err error
 		broadcastMetadata, err = user.Conn.GetBroadcastMetadata(portal.Key.JID)
-		if err == nil && broadcastMetadata.Status == 0 {
+		if err == nil && broadcastMetadata.Status == 200 {
 			portal.Name = broadcastMetadata.Name
 		} else {
 			contact, _ := user.Conn.Store.Contacts[portal.Key.JID]
