@@ -22,25 +22,25 @@ import (
 
 	log "maunium.net/go/maulogger/v2"
 
-	"maunium.net/go/mautrix/id"
+	"github.com/Rhymen/go-whatsapp"
 
-	"maunium.net/go/mautrix-whatsapp/types"
+	"maunium.net/go/mautrix/id"
 )
 
 type PortalKey struct {
-	JID      types.WhatsAppID
-	Receiver types.WhatsAppID
+	JID      whatsapp.JID
+	Receiver whatsapp.JID
 }
 
-func GroupPortalKey(jid types.WhatsAppID) PortalKey {
+func GroupPortalKey(jid whatsapp.JID) PortalKey {
 	return PortalKey{
 		JID:      jid,
 		Receiver: jid,
 	}
 }
 
-func NewPortalKey(jid, receiver types.WhatsAppID) PortalKey {
-	if strings.HasSuffix(jid, "@g.us") {
+func NewPortalKey(jid, receiver whatsapp.JID) PortalKey {
+	if strings.HasSuffix(jid, whatsapp.GroupSuffix) {
 		receiver = jid
 	}
 	return PortalKey{
@@ -80,11 +80,11 @@ func (pq *PortalQuery) GetByMXID(mxid id.RoomID) *Portal {
 	return pq.get("SELECT * FROM portal WHERE mxid=$1", mxid)
 }
 
-func (pq *PortalQuery) GetAllByJID(jid types.WhatsAppID) []*Portal {
+func (pq *PortalQuery) GetAllByJID(jid whatsapp.JID) []*Portal {
 	return pq.getAll("SELECT * FROM portal WHERE jid=$1", jid)
 }
 
-func (pq *PortalQuery) FindPrivateChats(receiver types.WhatsAppID) []*Portal {
+func (pq *PortalQuery) FindPrivateChats(receiver whatsapp.JID) []*Portal {
 	return pq.getAll("SELECT * FROM portal WHERE receiver=$1 AND jid LIKE '%@s.whatsapp.net'", receiver)
 }
 

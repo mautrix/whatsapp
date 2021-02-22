@@ -27,11 +27,12 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	log "maunium.net/go/maulogger/v2"
 
+	"github.com/Rhymen/go-whatsapp"
+
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 
 	"maunium.net/go/mautrix-whatsapp/database"
-	"maunium.net/go/mautrix-whatsapp/types"
 )
 
 type MetricsHandler struct {
@@ -56,11 +57,11 @@ type MetricsHandler struct {
 	unencryptedPrivateCount prometheus.Gauge
 
 	connected       prometheus.Gauge
-	connectedState  map[types.WhatsAppID]bool
+	connectedState  map[whatsapp.JID]bool
 	loggedIn        prometheus.Gauge
-	loggedInState   map[types.WhatsAppID]bool
+	loggedInState   map[whatsapp.JID]bool
 	syncLocked      prometheus.Gauge
-	syncLockedState map[types.WhatsAppID]bool
+	syncLockedState map[whatsapp.JID]bool
 	bufferLength    *prometheus.GaugeVec
 }
 
@@ -109,17 +110,17 @@ func NewMetricsHandler(address string, log log.Logger, db *database.Database) *M
 			Name: "bridge_logged_in",
 			Help: "Users logged into the bridge",
 		}),
-		loggedInState: make(map[types.WhatsAppID]bool),
+		loggedInState: make(map[whatsapp.JID]bool),
 		connected: promauto.NewGauge(prometheus.GaugeOpts{
 			Name: "bridge_connected",
 			Help: "Bridge users connected to WhatsApp",
 		}),
-		connectedState: make(map[types.WhatsAppID]bool),
+		connectedState: make(map[whatsapp.JID]bool),
 		syncLocked: promauto.NewGauge(prometheus.GaugeOpts{
 			Name: "bridge_sync_locked",
 			Help: "Bridge users locked in post-login sync",
 		}),
-		syncLockedState: make(map[types.WhatsAppID]bool),
+		syncLockedState: make(map[whatsapp.JID]bool),
 		bufferLength: promauto.NewGaugeVec(prometheus.GaugeOpts{
 			Name: "bridge_buffer_size",
 			Help: "Number of messages in buffer",
@@ -149,7 +150,7 @@ func (mh *MetricsHandler) TrackDisconnection(userID id.UserID) {
 	mh.disconnections.With(prometheus.Labels{"user_id": string(userID)}).Inc()
 }
 
-func (mh *MetricsHandler) TrackLoginState(jid types.WhatsAppID, loggedIn bool) {
+func (mh *MetricsHandler) TrackLoginState(jid whatsapp.JID, loggedIn bool) {
 	if !mh.running {
 		return
 	}
@@ -164,7 +165,7 @@ func (mh *MetricsHandler) TrackLoginState(jid types.WhatsAppID, loggedIn bool) {
 	}
 }
 
-func (mh *MetricsHandler) TrackConnectionState(jid types.WhatsAppID, connected bool) {
+func (mh *MetricsHandler) TrackConnectionState(jid whatsapp.JID, connected bool) {
 	if !mh.running {
 		return
 	}
@@ -179,7 +180,7 @@ func (mh *MetricsHandler) TrackConnectionState(jid types.WhatsAppID, connected b
 	}
 }
 
-func (mh *MetricsHandler) TrackSyncLock(jid types.WhatsAppID, locked bool) {
+func (mh *MetricsHandler) TrackSyncLock(jid whatsapp.JID, locked bool) {
 	if !mh.running {
 		return
 	}
