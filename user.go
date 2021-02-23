@@ -284,7 +284,7 @@ func (user *User) DeleteConnection() {
 func (user *User) RestoreSession() bool {
 	if user.Session != nil {
 		user.Conn.SetSession(*user.Session)
-		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Minute)
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 		defer cancel()
 		err := user.Conn.Restore(true, ctx)
 		if err == whatsapp.ErrAlreadyLoggedIn {
@@ -841,6 +841,10 @@ func (user *User) HandleError(err error) {
 		user.ConnectionErrors++
 		go user.tryReconnect(fmt.Sprintf("Your WhatsApp connection failed: %v", failed.Err))
 	} else if err == whatsapp.ErrPingFalse {
+		disconnectErr := user.Conn.Disconnect()
+		if disconnectErr != nil {
+			user.log.Warnln("Failed to disconnect after failed ping:", disconnectErr)
+		}
 		user.bridge.Metrics.TrackDisconnection(user.MXID)
 		user.ConnectionErrors++
 		go user.tryReconnect(fmt.Sprintf("Your WhatsApp connection failed: %v", err))
@@ -901,6 +905,9 @@ func (user *User) tryReconnect(msg string) {
 			user.DeleteConnection()
 			user.sendMarkdownBridgeAlert("\u26a0 Failed to reconnect to WhatsApp: unpaired from phone. " +
 				"To re-pair your phone, log in again.")
+			return
+		} else if errors.Is(err, whatsapp.ErrAlreadyLoggedIn) {
+			user.log.Warnln("Reconnection said we're already logged in, not trying anymore")
 			return
 		} else {
 			user.log.Errorln("Error while trying to reconnect after disconnection:", err)

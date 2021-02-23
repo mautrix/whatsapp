@@ -268,6 +268,12 @@ func (prov *ProvisioningAPI) Ping(w http.ResponseWriter, r *http.Request) {
 		user.log.Debugln("Pinging WhatsApp mobile due to /ping API request")
 		err := user.Conn.AdminTest()
 		var errStr string
+		if err == whatsapp.ErrPingFalse {
+			user.log.Debugln("Forwarding ping false error from provisioning API to HandleError")
+			go user.HandleError(err)
+		} else if errors.Is(err, whatsapp.ErrConnectionTimeout) {
+			user.Conn.CountTimeout()
+		}
 		if err != nil {
 			errStr = err.Error()
 		}
