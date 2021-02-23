@@ -840,6 +840,10 @@ func (user *User) HandleError(err error) {
 		user.bridge.Metrics.TrackDisconnection(user.MXID)
 		user.ConnectionErrors++
 		go user.tryReconnect(fmt.Sprintf("Your WhatsApp connection failed: %v", failed.Err))
+	} else if err == whatsapp.ErrPingFalse {
+		user.bridge.Metrics.TrackDisconnection(user.MXID)
+		user.ConnectionErrors++
+		go user.tryReconnect(fmt.Sprintf("Your WhatsApp connection failed: %v", err))
 	}
 	// Otherwise unknown error, probably mostly harmless
 }
