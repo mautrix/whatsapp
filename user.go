@@ -871,7 +871,6 @@ func (user *User) tryReconnect(msg string) {
 		baseDelay = -baseDelay + 1
 	}
 	delay := baseDelay
-	takeover := false
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	user.cancelReconnect = cancel
@@ -882,8 +881,7 @@ func (user *User) tryReconnect(msg string) {
 			return
 		default:
 		}
-		err := user.Conn.Restore(takeover, ctx)
-		takeover = true
+		err := user.Conn.Restore(true, ctx)
 		if err == nil {
 			user.ConnectionErrors = 0
 			if user.bridge.Config.Bridge.ReportConnectionRetry {
