@@ -459,7 +459,7 @@ func (user *User) PostLogin() {
 	user.syncPortalsDone = make(chan struct{}, 1)
 	user.syncWait.Add(1)
 	user.syncStart <- struct{}{}
-	go user.intPostLogin(user.Conn)
+	go user.intPostLogin()
 }
 
 func (user *User) tryAutomaticDoublePuppeting() {
@@ -530,7 +530,7 @@ func (user *User) postConnPing() bool {
 	return false
 }
 
-func (user *User) intPostLogin(conn *whatsapp.Conn) {
+func (user *User) intPostLogin() {
 	defer user.syncWait.Done()
 	user.lastReconnection = time.Now().Unix()
 	user.createCommunity()

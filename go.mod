@@ -12,8 +12,8 @@ require (
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
 	gopkg.in/yaml.v2 v2.3.0
 	maunium.net/go/mauflag v1.0.0
-	maunium.net/go/maulogger/v2 v2.2.2
-	maunium.net/go/mautrix v0.8.3
+	maunium.net/go/maulogger/v2 v2.2.3
+	maunium.net/go/mautrix v0.8.4
 )
 
-replace github.com/Rhymen/go-whatsapp => github.com/tulir/go-whatsapp v0.4.0-rc.1.0.20210223220427-1fc7fa00f13b
+replace github.com/Rhymen/go-whatsapp => github.com/tulir/go-whatsapp v0.4.0-rc.2
