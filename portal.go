@@ -171,6 +171,7 @@ type Portal struct {
 	log    log.Logger
 
 	roomCreateLock sync.Mutex
+	encryptLock    sync.Mutex
 
 	recentlyHandled      [recentlyHandledLength]whatsapp.MessageID
 	recentlyHandledLock  sync.Mutex
@@ -1305,7 +1306,10 @@ func (portal *Portal) sendMessageDirect(intent *appservice.IntentAPI, eventType 
 		}
 	}
 	if portal.Encrypted && portal.bridge.Crypto != nil {
+		// TODO maybe the locking should be inside mautrix-go?
+		portal.encryptLock.Lock()
 		encrypted, err := portal.bridge.Crypto.Encrypt(portal.MXID, eventType, wrappedContent)
+		portal.encryptLock.Unlock()
 		if err != nil {
 			return nil, fmt.Errorf("failed to encrypt event: %w", err)
 		}
