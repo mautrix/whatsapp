@@ -837,6 +837,10 @@ func (user *User) HandleError(err error) {
 		}
 		go user.tryReconnect(fmt.Sprintf("Your WhatsApp connection was closed with websocket status code %d", closed.Code))
 	} else if failed, ok := err.(*whatsapp.ErrConnectionFailed); ok {
+		disconnectErr := user.Conn.Disconnect()
+		if disconnectErr != nil {
+			user.log.Warnln("Failed to disconnect after connection fail:", disconnectErr)
+		}
 		user.bridge.Metrics.TrackDisconnection(user.MXID)
 		user.ConnectionErrors++
 		go user.tryReconnect(fmt.Sprintf("Your WhatsApp connection failed: %v", failed.Err))

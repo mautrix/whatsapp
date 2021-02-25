@@ -303,6 +303,8 @@ github.com/tulir/go-whatsapp v0.4.0-rc.2 h1:fYTC2IFQhL5j/3JyRnlp6PTYmSEnbSrPQgmD
 github.com/tulir/go-whatsapp v0.4.0-rc.2/go.mod h1:rwwuTh1bKqhgrRvOBAr8hDqtuz8Cc1Quqw/0BeXb+/E=
 github.com/tulir/go-whatsapp v0.4.0-rc.2.0.20210224154252-20161c37b47d h1:oxxlITnhw42ZWLB7GbLvHVMHHaKkWFDpk81t/bSwjko=
 github.com/tulir/go-whatsapp v0.4.0-rc.2.0.20210224154252-20161c37b47d/go.mod h1:rwwuTh1bKqhgrRvOBAr8hDqtuz8Cc1Quqw/0BeXb+/E=
+github.com/tulir/go-whatsapp v0.4.0-rc.2.0.20210225114646-8538575a439d h1:qvuNKXOolDmchhccwj4NyCD7vwXwc8l9Quwuxfx0oDk=
+github.com/tulir/go-whatsapp v0.4.0-rc.2.0.20210225114646-8538575a439d/go.mod h1:rwwuTh1bKqhgrRvOBAr8hDqtuz8Cc1Quqw/0BeXb+/E=
 github.com/urfave/cli v1.20.0/go.mod h1:70zkFmudgCuE/ngEzBv17Jvp/497gISqfk5gWijbERA=
 github.com/urfave/cli v1.22.1/go.mod h1:Gos4lmkARVdJ6EkW0WaNv/tZAAMe9V7XWyB60NtXRu0=
 github.com/xiang90/probing v0.0.0-20190116061207-43a291ad63a2/go.mod h1:UETIi67q53MR2AWcXfiuqkDkRtnGDLqkBTpCHuJHxtU=
