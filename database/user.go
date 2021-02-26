@@ -245,3 +245,14 @@ func (user *User) GetInCommunityMap() map[PortalKey]bool {
 	}
 	return keys
 }
+
+func (user *User) CreateUserPortal(newKey PortalKeyWithMeta) {
+	user.log.Debugfln("Creating new portal %s for %s", newKey.PortalKey.JID, newKey.PortalKey.Receiver)
+	_, err := user.db.Exec(`INSERT INTO user_portal (user_jid, portal_jid, portal_receiver, in_community) VALUES ($1, $2, $3, $4)`,
+		user.jidPtr(),
+		newKey.PortalKey.JID, newKey.PortalKey.Receiver,
+		newKey.InCommunity)
+	if err != nil {
+		user.log.Warnfln("Failed to insert %s: %v", user.MXID, err)
+	}
+}

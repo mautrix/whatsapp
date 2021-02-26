@@ -1131,7 +1131,7 @@ func (portal *Portal) CreateMatrixRoom(user *User) error {
 	if broadcastMetadata != nil {
 		portal.SyncBroadcastRecipients(broadcastMetadata)
 	}
-	user.addPortalToCommunity(portal)
+	inCommunity := user.addPortalToCommunity(portal)
 	if portal.IsPrivateChat() {
 		puppet := user.bridge.GetPuppetByJID(portal.Key.JID)
 		user.addPuppetToCommunity(puppet)
@@ -1145,6 +1145,9 @@ func (portal *Portal) CreateMatrixRoom(user *User) error {
 
 		user.UpdateDirectChats(map[id.UserID][]id.RoomID{puppet.MXID: {portal.MXID}})
 	}
+
+	user.CreateUserPortal(database.PortalKeyWithMeta{PortalKey: portal.Key, InCommunity: inCommunity})
+
 	err = portal.FillInitialHistory(user)
 	if err != nil {
 		portal.log.Errorln("Failed to fill history:", err)

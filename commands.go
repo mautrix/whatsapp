@@ -334,7 +334,8 @@ func (handler *CommandHandler) CommandCreate(ce *CommandEvent) {
 	portal.UpdateBridgeInfo()
 
 	ce.Reply("Successfully created WhatsApp group %s", portal.Key.JID)
-	ce.User.addPortalToCommunity(portal)
+	inCommunity := ce.User.addPortalToCommunity(portal)
+	ce.User.CreateUserPortal(database.PortalKeyWithMeta{PortalKey: portal.Key, InCommunity: inCommunity})
 }
 
 const cmdSetPowerLevelHelp = `set-pl [user ID] <power level> - Change the power level in a portal room. Only for bridge admins.`
