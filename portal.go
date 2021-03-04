@@ -1666,7 +1666,7 @@ func (portal *Portal) HandleMediaMessage(source *User, msg mediaMessage) {
 	if err != nil {
 		if errors.Is(err, mautrix.MTooLarge) {
 			portal.sendMediaBridgeFailure(source, intent, msg.info, errors.New("homeserver rejected too large file"))
-		} else if httpErr := err.(mautrix.HTTPError); httpErr.IsStatus(413) {
+		} else if httpErr, ok := err.(mautrix.HTTPError); ok && httpErr.IsStatus(413) {
 			portal.sendMediaBridgeFailure(source, intent, msg.info, errors.New("proxy rejected too large file"))
 		} else {
 			portal.sendMediaBridgeFailure(source, intent, msg.info, fmt.Errorf("failed to upload media: %w", err))
