@@ -752,9 +752,12 @@ func (user *User) UpdateDirectChats(chats map[id.UserID][]id.RoomID) {
 	var err error
 	if user.bridge.Config.Homeserver.Asmux {
 		urlPath := intent.BuildBaseURL("_matrix", "client", "unstable", "net.maunium.asmux", "dms")
-		_, err = intent.MakeFullRequest(method, urlPath, http.Header{
-			"X-Asmux-Auth": {user.bridge.AS.Registration.AppToken},
-		}, chats, nil)
+		_, err = intent.MakeFullRequest(mautrix.FullRequest{
+			Method:      method,
+			URL:         urlPath,
+			Headers:     http.Header{"X-Asmux-Auth": {user.bridge.AS.Registration.AppToken}},
+			RequestJSON: chats,
+		})
 	} else {
 		existingChats := make(map[id.UserID][]id.RoomID)
 		err = intent.GetAccountData(event.AccountDataDirectChats.Type, &existingChats)
