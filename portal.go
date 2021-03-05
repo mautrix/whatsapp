@@ -1950,15 +1950,19 @@ func (portal *Portal) sendMatrixConnectionError(sender *User, eventID id.EventID
 		portal.log.Debugln("Ignoring event", eventID, "from", sender.MXID, "as user has no session")
 		return true
 	} else if !sender.IsConnected() {
-		portal.log.Debugln("Ignoring event", eventID, "from", sender.MXID, "as user is not connected")
 		inRoom := ""
 		if portal.IsPrivateChat() {
 			inRoom = " in your management room"
 		}
-		reconnect := fmt.Sprintf("Use `%s reconnect`%s to reconnect.", portal.bridge.Config.Bridge.CommandPrefix, inRoom)
 		if sender.IsLoginInProgress() {
-			reconnect = "You have a login attempt in progress, please wait."
+			portal.log.Debugln("Waiting for connection before handling event", eventID, "from", sender.MXID)
+			sender.Conn.WaitForLogin()
+			if sender.IsConnected() {
+				return false
+			}
 		}
+		reconnect := fmt.Sprintf("Use `%s reconnect`%s to reconnect.", portal.bridge.Config.Bridge.CommandPrefix, inRoom)
+		portal.log.Debugln("Ignoring event", eventID, "from", sender.MXID, "as user is not connected")
 		msg := format.RenderMarkdown("\u26a0 You are not connected to WhatsApp, so your message was not bridged. "+reconnect, true, false)
 		msg.MsgType = event.MsgNotice
 		_, err := portal.sendMainIntentMessage(msg)
