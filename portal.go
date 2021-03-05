@@ -1383,7 +1383,7 @@ func (portal *Portal) HandleStubMessage(source *User, message whatsapp.StubMessa
 	case waProto.WebMessageInfo_GROUP_CHANGE_RESTRICT:
 		eventID = portal.RestrictMetadataChanges(message.FirstParam == "on")
 	case waProto.WebMessageInfo_GROUP_PARTICIPANT_ADD, waProto.WebMessageInfo_GROUP_PARTICIPANT_INVITE, waProto.WebMessageInfo_BROADCAST_ADD:
-		portal.HandleWhatsAppInvite(senderJID, intent, message.Params)
+		eventID = portal.HandleWhatsAppInvite(senderJID, intent, message.Params)
 	case waProto.WebMessageInfo_GROUP_PARTICIPANT_REMOVE, waProto.WebMessageInfo_GROUP_PARTICIPANT_LEAVE, waProto.WebMessageInfo_BROADCAST_REMOVE:
 		portal.HandleWhatsAppKick(source, senderJID, message.Params)
 	case waProto.WebMessageInfo_GROUP_PARTICIPANT_PROMOTE:
@@ -1579,7 +1579,7 @@ func (portal *Portal) HandleWhatsAppKick(source *User, senderJID string, jids []
 	}
 }
 
-func (portal *Portal) HandleWhatsAppInvite(senderJID string, intent *appservice.IntentAPI, jids []string) {
+func (portal *Portal) HandleWhatsAppInvite(senderJID string, intent *appservice.IntentAPI, jids []string) (evtID id.EventID) {
 	if intent == nil {
 		intent = portal.MainIntent()
 		if senderJID != "unknown" {
@@ -1589,16 +1589,29 @@ func (portal *Portal) HandleWhatsAppInvite(senderJID string, intent *appservice.
 	}
 	for _, jid := range jids {
 		puppet := portal.bridge.GetPuppetByJID(jid)
-		_, err := intent.InviteUser(portal.MXID, &mautrix.ReqInviteUser{UserID: puppet.MXID})
+		content := event.Content{
+			Parsed: event.MemberEventContent{
+				Membership:  "invite",
+				Displayname: puppet.Displayname,
+				AvatarURL:   puppet.AvatarURL.CUString(),
+			},
+			Raw: map[string]interface{}{
+				"net.maunium.whatsapp.puppet": true,
+			},
+		}
+		resp, err := intent.SendStateEvent(portal.MXID, event.StateMember, puppet.MXID.String(), &content)
 		if err != nil {
 			portal.log.Warnfln("Failed to invite %s as %s: %v", puppet.MXID, intent.UserID, err)
 			_ = portal.MainIntent().EnsureInvited(portal.MXID, puppet.MXID)
+		} else {
+			evtID = resp.EventID
 		}
 		err = puppet.DefaultIntent().EnsureJoined(portal.MXID)
 		if err != nil {
 			portal.log.Errorfln("Failed to ensure %s is joined: %v", puppet.MXID, err)
 		}
 	}
+	return
 }
 
 type base struct {
@@ -2373,7 +2386,7 @@ func (portal *Portal) HandleMatrixInvite(sender *User, evt *event.Event) {
 			portal.log.Errorfln("Failed to add %s to group as %s: %v", puppet.JID, sender.MXID, err)
 			return
 		}
-		portal.log.Infoln("Add %s response: %s", puppet.JID, <-resp)
+		portal.log.Infofln("Add %s response: %s", puppet.JID, <-resp)
 	}
 }
 
