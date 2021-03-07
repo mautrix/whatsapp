@@ -873,9 +873,13 @@ func (handler *CommandHandler) CommandPM(ce *CommandEvent) {
 	puppet.Sync(user, contact)
 	portal := user.bridge.GetPortalByJID(database.NewPortalKey(contact.JID, user.JID))
 	if len(portal.MXID) > 0 {
-		err := portal.MainIntent().EnsureInvited(portal.MXID, user.MXID)
+		var err error
+		if !user.IsRelaybot {
+			err = portal.MainIntent().EnsureInvited(portal.MXID, user.MXID)
+		}
 		if err != nil {
 			portal.log.Warnfln("Failed to invite %s to portal: %v. Creating new portal", user.MXID, err)
+			portal.MXID = ""
 		} else {
 			ce.Reply("You already have a private chat portal with that user at [%s](https://matrix.to/#/%s)", puppet.Displayname, portal.MXID)
 			return

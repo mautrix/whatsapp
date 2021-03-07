@@ -1122,7 +1122,7 @@ func (portal *Portal) CreateMatrixRoom(user *User) error {
 		if metadata.Announce {
 			portal.RestrictMessageSending(metadata.Announce)
 		}
-	} else {
+	} else if !user.IsRelaybot {
 		customPuppet := portal.bridge.GetPuppetByCustomMXID(user.MXID)
 		if customPuppet != nil && customPuppet.CustomIntent() != nil {
 			_ = customPuppet.CustomIntent().EnsureJoined(portal.MXID)
@@ -1132,7 +1132,7 @@ func (portal *Portal) CreateMatrixRoom(user *User) error {
 		portal.SyncBroadcastRecipients(broadcastMetadata)
 	}
 	inCommunity := user.addPortalToCommunity(portal)
-	if portal.IsPrivateChat() {
+	if portal.IsPrivateChat() && !user.IsRelaybot {
 		puppet := user.bridge.GetPuppetByJID(portal.Key.JID)
 		user.addPuppetToCommunity(puppet)
 
