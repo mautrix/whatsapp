@@ -313,6 +313,8 @@ github.com/tulir/go-whatsapp v0.4.0-rc.3 h1:Z744njj2Jmwdh8r4wWJg5gRlFoh9P0aeOabc
 github.com/tulir/go-whatsapp v0.4.0-rc.3/go.mod h1:rwwuTh1bKqhgrRvOBAr8hDqtuz8Cc1Quqw/0BeXb+/E=
 github.com/tulir/go-whatsapp v0.4.0-rc.3.0.20210305145305-1afcd8642930 h1:9FMxSLplYTMB4HQWT0XmlINAHs3AgwamFxO4S2G0M9s=
 github.com/tulir/go-whatsapp v0.4.0-rc.3.0.20210305145305-1afcd8642930/go.mod h1:rwwuTh1bKqhgrRvOBAr8hDqtuz8Cc1Quqw/0BeXb+/E=
+github.com/tulir/go-whatsapp v0.4.0-rc.4 h1:S0ZLzeZPYUj6fATACy7Kzok9TcnntLa1xDJKTBnN19k=
+github.com/tulir/go-whatsapp v0.4.0-rc.4/go.mod h1:rwwuTh1bKqhgrRvOBAr8hDqtuz8Cc1Quqw/0BeXb+/E=
 github.com/urfave/cli v1.20.0/go.mod h1:70zkFmudgCuE/ngEzBv17Jvp/497gISqfk5gWijbERA=
 github.com/urfave/cli v1.22.1/go.mod h1:Gos4lmkARVdJ6EkW0WaNv/tZAAMe9V7XWyB60NtXRu0=
 github.com/xiang90/probing v0.0.0-20190116061207-43a291ad63a2/go.mod h1:UETIi67q53MR2AWcXfiuqkDkRtnGDLqkBTpCHuJHxtU=
@@ -496,5 +498,7 @@ maunium.net/go/mautrix v0.8.7-0.20210304173449-b87e026581a5 h1:Tbx+LMN+PkJBRdHPx
 maunium.net/go/mautrix v0.8.7-0.20210304173449-b87e026581a5/go.mod h1:mckyHSKKyI0PQF2K9MgWMMDUWH1meCNggE28ILTLuMg=
 maunium.net/go/mautrix v0.9.0 h1:+u2NDmNWUwOqUmlQgDiDo9gE0XLPqfB0UeZYwx9XghI=
 maunium.net/go/mautrix v0.9.0/go.mod h1:mckyHSKKyI0PQF2K9MgWMMDUWH1meCNggE28ILTLuMg=
+maunium.net/go/mautrix v0.9.1-0.20210307225120-4e7cb8da4d83 h1:rXZpKROiWoye9wmu0SOadsyaWOb6/wmPfZqSXCA8ipM=
+maunium.net/go/mautrix v0.9.1-0.20210307225120-4e7cb8da4d83/go.mod h1:mckyHSKKyI0PQF2K9MgWMMDUWH1meCNggE28ILTLuMg=
 sigs.k8s.io/yaml v1.1.0/go.mod h1:UJmg0vDUVViEyp3mgSv9WPwZCDxu4rQW1olrI1uml+o=
 sourcegraph.com/sourcegraph/appdash v0.0.0-20190731080439-ebfcffb1b5c0/go.mod h1:hI742Nqp5OhwiqlzhgfbWU4mW4yO10fP+LoT9WOswdU=
