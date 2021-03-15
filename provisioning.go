@@ -13,6 +13,7 @@
 //
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
 package main
 
 import (
@@ -51,6 +52,7 @@ func (prov *ProvisioningAPI) Init() {
 	r.HandleFunc("/delete_connection", prov.DeleteConnection).Methods(http.MethodPost)
 	r.HandleFunc("/disconnect", prov.Disconnect).Methods(http.MethodPost)
 	r.HandleFunc("/reconnect", prov.Reconnect).Methods(http.MethodPost)
+	prov.bridge.AS.Router.HandleFunc("/_matrix/app/com.beeper.asmux/ping", prov.AsmuxPing).Methods(http.MethodPost)
 }
 
 type responseWrap struct {
