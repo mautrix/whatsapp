@@ -26,8 +26,6 @@ import (
 
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
-
-	"maunium.net/go/mautrix-whatsapp/types"
 )
 
 type BridgeConfig struct {
@@ -71,6 +69,7 @@ type BridgeConfig struct {
 
 	InviteOwnPuppetForBackfilling bool `yaml:"invite_own_puppet_for_backfilling"`
 	PrivateChatPortalMeta         bool `yaml:"private_chat_portal_meta"`
+	BridgeNotices         		  bool `yaml:"bridge_notices"`
 	ResendBridgeInfo              bool `yaml:"resend_bridge_info"`
 
 	WhatsappThumbnail bool `yaml:"whatsapp_thumbnail"`
@@ -131,6 +130,7 @@ func (bc *BridgeConfig) setDefaults() {
 
 	bc.InviteOwnPuppetForBackfilling = true
 	bc.PrivateChatPortalMeta = false
+	bc.BridgeNotices = true
 }
 
 type umBridgeConfig BridgeConfig
@@ -167,8 +167,8 @@ type UsernameTemplateArgs struct {
 
 func (bc BridgeConfig) FormatDisplayname(contact whatsapp.Contact) (string, int8) {
 	var buf bytes.Buffer
-	if index := strings.IndexRune(contact.Jid, '@'); index > 0 {
-		contact.Jid = "+" + contact.Jid[:index]
+	if index := strings.IndexRune(contact.JID, '@'); index > 0 {
+		contact.JID = "+" + contact.JID[:index]
 	}
 	bc.displaynameTemplate.Execute(&buf, contact)
 	var quality int8
@@ -177,7 +177,7 @@ func (bc BridgeConfig) FormatDisplayname(contact whatsapp.Contact) (string, int8
 		quality = 3
 	case len(contact.Name) > 0 || len(contact.Short) > 0:
 		quality = 2
-	case len(contact.Jid) > 0:
+	case len(contact.JID) > 0:
 		quality = 1
 	default:
 		quality = 0
@@ -185,7 +185,7 @@ func (bc BridgeConfig) FormatDisplayname(contact whatsapp.Contact) (string, int8
 	return buf.String(), quality
 }
 
-func (bc BridgeConfig) FormatUsername(userID types.WhatsAppID) string {
+func (bc BridgeConfig) FormatUsername(userID whatsapp.JID) string {
 	var buf bytes.Buffer
 	bc.usernameTemplate.Execute(&buf, userID)
 	return buf.String()
