@@ -164,7 +164,7 @@ func (puppet *Puppet) ProcessResponse(resp *mautrix.RespSync, _ string) error {
 	}
 	for roomID, events := range resp.Rooms.Join {
 		portal := puppet.bridge.GetPortalByMXID(roomID)
-		if portal == nil {
+		if portal == nil || portal.IsBroadcastList() {
 			continue
 		}
 		for _, evt := range events.Ephemeral.Events {

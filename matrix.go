@@ -254,6 +254,10 @@ func (mx *MatrixHandler) HandleMembership(evt *event.Event) {
 		return
 	}
 
+	if mx.shouldIgnoreEvent(evt) {
+		return
+	}
+
 	user := mx.bridge.GetUserByMXID(evt.Sender)
 	if user == nil || !user.Whitelisted || !user.IsConnected() {
 		return
