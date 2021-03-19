@@ -196,7 +196,10 @@ func (portal *Portal) handleMessageLoop() {
 	for msg := range portal.messages {
 		if len(portal.MXID) == 0 {
 			if msg.timestamp+MaxMessageAgeToCreatePortal < uint64(time.Now().Unix()) {
-				portal.log.Debugln("Not creating portal room for incoming message as the message is too old.")
+				portal.log.Debugln("Not creating portal room for incoming message: message is too old")
+				continue
+			} else if !portal.shouldCreateRoom(msg) {
+				portal.log.Debugln("Not creating portal room for incoming message: message is not a chat message")
 				continue
 			}
 			portal.log.Debugln("Creating Matrix room from incoming message")
@@ -210,6 +213,16 @@ func (portal *Portal) handleMessageLoop() {
 		portal.handleMessage(msg, false)
 		portal.backfillLock.Unlock()
 	}
+}
+
+func (portal *Portal) shouldCreateRoom(msg PortalMessage) bool {
+	stubMsg, ok := msg.data.(whatsapp.StubMessage)
+	if ok {
+		// This could be more specific: if someone else was added, we might not care,
+		// but if the local user was added, we definitely care.
+		return stubMsg.Type == waProto.WebMessageInfo_GROUP_PARTICIPANT_ADD || stubMsg.Type == waProto.WebMessageInfo_GROUP_PARTICIPANT_INVITE
+	}
+	return true
 }
 
 func (portal *Portal) handleMessage(msg PortalMessage, isBackfill bool) {
