@@ -133,7 +133,6 @@ func (prov *ProvisioningAPI) AsmuxPing(w http.ResponseWriter, r *http.Request) {
 				go user.HandleError(err)
 				resp.Error = AsmuxWAPingFalse
 			} else if errors.Is(err, whatsapp.ErrConnectionTimeout) {
-				user.Conn.CountTimeout()
 				resp.Error = AsmuxWATimeout
 			} else if err != nil {
 				resp.Error = AsmuxWAPingError
