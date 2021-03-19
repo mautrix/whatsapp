@@ -21,6 +21,7 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
+	"sync"
 
 	"github.com/Rhymen/go-whatsapp"
 
@@ -155,6 +156,8 @@ type Puppet struct {
 	customIntent   *appservice.IntentAPI
 	customTypingIn map[id.RoomID]bool
 	customUser     *User
+
+	syncLock sync.Mutex
 }
 
 func (puppet *Puppet) PhoneNumber() string {
@@ -285,7 +288,23 @@ func (puppet *Puppet) updatePortalName() {
 	})
 }
 
+func (puppet *Puppet) SyncContactIfNecessary(source *User) {
+	if len(puppet.Displayname) > 0 {
+		return
+	}
+
+	contact, ok := source.Conn.Store.Contacts[puppet.JID]
+	if !ok {
+		return
+	}
+
+	puppet.log.Debugfln("Syncing contact info through %s / %s because puppet has no displayname", source.MXID, source.JID)
+	puppet.Sync(source, contact)
+}
+
 func (puppet *Puppet) Sync(source *User, contact whatsapp.Contact) {
+	puppet.syncLock.Lock()
+	defer puppet.syncLock.Unlock()
 	err := puppet.DefaultIntent().EnsureRegistered()
 	if err != nil {
 		puppet.log.Errorln("Failed to ensure registered:", err)
