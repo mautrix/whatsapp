@@ -440,6 +440,7 @@ func (user *User) Login(ce *CommandEvent) {
 type Chat struct {
 	Portal          *Portal
 	LastMessageTime uint64
+	MarkAsRead      bool
 	Contact         whatsapp.Contact
 }
 
@@ -679,6 +680,7 @@ func (user *User) syncPortals(chatMap map[string]whatsapp.Chat, createAll bool) 
 			Portal:          portal,
 			Contact:         user.Conn.Store.Contacts[chat.JID],
 			LastMessageTime: ts,
+			MarkAsRead:      chat.Unread == "0",
 		})
 		var inCommunity, ok bool
 		if inCommunity, ok = existingKeys[portal.Key]; !ok || !inCommunity {
@@ -706,6 +708,7 @@ func (user *User) syncPortals(chatMap map[string]whatsapp.Chat, createAll bool) 
 	}
 	now := uint64(time.Now().Unix())
 	user.log.Infoln("Syncing portals")
+	doublePuppet := user.bridge.GetPuppetByCustomMXID(user.MXID)
 	for i, chat := range chats {
 		if chat.LastMessageTime+user.bridge.Config.Bridge.SyncChatMaxAge < now {
 			break
@@ -719,6 +722,15 @@ func (user *User) syncPortals(chatMap map[string]whatsapp.Chat, createAll bool) 
 			err = chat.Portal.BackfillHistory(user, chat.LastMessageTime)
 			if err != nil {
 				chat.Portal.log.Errorln("Error backfilling history:", err)
+			}
+			if chat.MarkAsRead && doublePuppet != nil && doublePuppet.CustomIntent() != nil {
+				lastMessage := user.bridge.DB.Message.GetLastInChat(chat.Portal.Key)
+				if lastMessage != nil {
+					err = doublePuppet.CustomIntent().MarkRead(chat.Portal.MXID, lastMessage.MXID)
+					if err != nil {
+						user.log.Warnln("Failed to mark %s in %s as read after backfill: %v", lastMessage.MXID, chat.Portal.MXID, err)
+					}
+				}
 			}
 		}
 	}
