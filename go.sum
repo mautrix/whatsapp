@@ -506,5 +506,7 @@ maunium.net/go/mautrix v0.9.1-0.20210307225120-4e7cb8da4d83 h1:rXZpKROiWoye9wmu0
 maunium.net/go/mautrix v0.9.1-0.20210307225120-4e7cb8da4d83/go.mod h1:mckyHSKKyI0PQF2K9MgWMMDUWH1meCNggE28ILTLuMg=
 maunium.net/go/mautrix v0.9.2 h1:siyu2A4t9nao8i8azGz+UD1jx1r1u4kAvB6ugsH6PF8=
 maunium.net/go/mautrix v0.9.2/go.mod h1:mckyHSKKyI0PQF2K9MgWMMDUWH1meCNggE28ILTLuMg=
+maunium.net/go/mautrix v0.9.3 h1:v7tcbsD5xhCGqLv4V/CU0eqIgmGk3PlB8Ca7r1J85dA=
+maunium.net/go/mautrix v0.9.3/go.mod h1:mckyHSKKyI0PQF2K9MgWMMDUWH1meCNggE28ILTLuMg=
 sigs.k8s.io/yaml v1.1.0/go.mod h1:UJmg0vDUVViEyp3mgSv9WPwZCDxu4rQW1olrI1uml+o=
 sourcegraph.com/sourcegraph/appdash v0.0.0-20190731080439-ebfcffb1b5c0/go.mod h1:hI742Nqp5OhwiqlzhgfbWU4mW4yO10fP+LoT9WOswdU=

@@ -61,6 +61,7 @@ func init() {
 	if Tag != Version && !strings.HasSuffix(Version, "+dev") {
 		Version += "+dev"
 	}
+	mautrix.DefaultUserAgent = fmt.Sprintf("mautrix-whatsapp/%s %s", Version, mautrix.DefaultUserAgent)
 	WAVersion = strings.FieldsFunc(Version, func(r rune) bool { return r == '-' || r == '+' })[0]
 }
 
