@@ -893,8 +893,9 @@ func (portal *Portal) FillInitialHistory(user *User) error {
 	var messages []interface{}
 	before := ""
 	fromMe := true
-	chunkNum := 1
+	chunkNum := 0
 	for n > 0 {
+		chunkNum += 1
 		count := 50
 		if n < count {
 			count = n
