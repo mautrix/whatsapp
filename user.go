@@ -26,6 +26,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/skip2/go-qrcode"
@@ -72,6 +73,7 @@ type User struct {
 
 	syncStart chan struct{}
 	syncWait  sync.WaitGroup
+	syncing   int32
 
 	mgmtCreateLock  sync.Mutex
 	connLock        sync.Mutex
@@ -462,10 +464,13 @@ func (user *User) PostLogin() {
 	user.sendBridgeStatus(AsmuxPong{OK: true})
 	user.bridge.Metrics.TrackConnectionState(user.JID, true)
 	user.bridge.Metrics.TrackLoginState(user.JID, true)
-	user.bridge.Metrics.TrackBufferLength(user.MXID, 0)
+	user.bridge.Metrics.TrackBufferLength(user.MXID, len(user.messageOutput))
+	if !atomic.CompareAndSwapInt32(&user.syncing, 0, 1) {
+		// TODO we should cleanly stop the old sync and start a new one instead of not starting a new one
+		user.log.Warnln("There seems to be a post-sync already in progress, not starting a new one")
+		return
+	}
 	user.log.Debugln("Locking processing of incoming messages and starting post-login sync")
-	// TODO can an old sync still be ongoing when PostLogin is called again?
-	// TODO 2: can the new sync happen before this happens?
 	user.chatListReceived = make(chan struct{}, 1)
 	user.syncPortalsDone = make(chan struct{}, 1)
 	user.syncWait.Add(1)
@@ -543,6 +548,7 @@ func (user *User) postConnPing() bool {
 }
 
 func (user *User) intPostLogin() {
+	defer atomic.StoreInt32(&user.syncing, 0)
 	defer user.syncWait.Done()
 	user.lastReconnection = time.Now().Unix()
 	user.createCommunity()
