@@ -141,9 +141,7 @@ func (helper *CryptoHelper) loginBot() (*mautrix.Client, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to log in as bridge bot: %w", err)
 	}
-	if len(deviceID) == 0 {
-		helper.store.DeviceID = resp.DeviceID
-	}
+	helper.store.DeviceID = resp.DeviceID
 	return client, nil
 }
 
