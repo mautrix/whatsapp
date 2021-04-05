@@ -295,7 +295,7 @@ func (puppet *Puppet) SyncContactIfNecessary(source *User) {
 
 	contact, ok := source.Conn.Store.Contacts[puppet.JID]
 	if !ok {
-		puppet.log.Warnln("No contact info found through %s in SyncContactIfNecessary", source.MXID)
+		puppet.log.Warnfln("No contact info found through %s in SyncContactIfNecessary", source.MXID)
 		contact.JID = puppet.JID
 		// Sync anyway to set a phone number name
 	} else {

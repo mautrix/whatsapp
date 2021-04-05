@@ -102,6 +102,7 @@ func (user *User) sendBridgeStatus(state AsmuxPong) {
 	}
 	cli := user.bridge.AS.BotClient()
 	url := cli.BuildBaseURL("_matrix", "client", "unstable", "com.beeper.asmux", "pong")
+	user.log.Debugfln("Sending bridge state to asmux: %+v", state)
 	_, err := cli.MakeRequest("POST", url, &state, nil)
 	if err != nil {
 		user.log.Warnln("Failed to update bridge state in asmux:", err)
@@ -148,6 +149,7 @@ func (prov *ProvisioningAPI) AsmuxPing(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	resp.fill()
+	user.log.Debugfln("Responding bridge state to asmux: %+v", resp)
 	jsonResponse(w, http.StatusOK, &resp)
 	user.prevBridgeStatus = &resp
 }
