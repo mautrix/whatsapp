@@ -122,6 +122,7 @@ func (helper *CryptoHelper) loginBot() (*mautrix.Client, error) {
 	}
 	client.Logger = helper.baseLog.Sub("Bot")
 	client.Client = helper.bridge.AS.HTTPClient
+	client.DefaultHTTPRetries = helper.bridge.AS.DefaultHTTPRetries
 	flows, err := client.GetLoginFlows()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get supported login flows: %w", err)

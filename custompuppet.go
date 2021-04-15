@@ -90,6 +90,7 @@ func (puppet *Puppet) newCustomIntent() (*appservice.IntentAPI, error) {
 	}
 	client.Logger = puppet.bridge.AS.Log.Sub(string(puppet.CustomMXID))
 	client.Client = puppet.bridge.AS.HTTPClient
+	client.DefaultHTTPRetries = puppet.bridge.AS.DefaultHTTPRetries
 	client.Syncer = puppet
 	client.Store = puppet
 
