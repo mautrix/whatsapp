@@ -2343,8 +2343,8 @@ func (portal *Portal) HandleMatrixLeave(sender *User) {
 			return
 		}
 		portal.log.Infoln("Leave response:", <-resp)
-		portal.CleanupIfEmpty()
 	}
+	portal.CleanupIfEmpty()
 }
 
 func (portal *Portal) HandleMatrixKick(sender *User, evt *event.Event) {
