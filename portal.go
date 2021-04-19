@@ -308,7 +308,7 @@ func (portal *Portal) markHandled(source *User, message *waProto.WebMessageInfo,
 	msg.Chat = portal.Key
 	msg.JID = message.GetKey().GetId()
 	msg.MXID = mxid
-	msg.Timestamp = message.GetMessageTimestamp()
+	msg.Timestamp = int64(message.GetMessageTimestamp())
 	if message.GetKey().GetFromMe() {
 		msg.Sender = source.JID
 	} else if portal.IsPrivateChat() {
@@ -765,7 +765,7 @@ func (portal *Portal) RestrictMetadataChanges(restrict bool) id.EventID {
 	return ""
 }
 
-func (portal *Portal) BackfillHistory(user *User, lastMessageTime uint64) error {
+func (portal *Portal) BackfillHistory(user *User, lastMessageTime int64) error {
 	if !portal.bridge.Config.Bridge.RecoverHistory {
 		return nil
 	}

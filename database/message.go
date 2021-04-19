@@ -91,7 +91,7 @@ type Message struct {
 	JID       whatsapp.MessageID
 	MXID      id.EventID
 	Sender    whatsapp.JID
-	Timestamp uint64
+	Timestamp int64
 	Sent      bool
 	Content   *waProto.Message
 }

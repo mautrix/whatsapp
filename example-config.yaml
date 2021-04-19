@@ -183,6 +183,12 @@ bridge:
     # This field will automatically be changed back to false after it,
     # except if the config file is not writable.
     resend_bridge_info: false
+    # When using double puppeting, should muted chats be muted in Matrix?
+    mute_bridging: false
+    # When using double puppeting, should archived chats be moved to a specific tag in Matrix?
+    # Note that WhatsApp unarchives chats when a message is received, which will also be mirrored to Matrix.
+    # This can be set to a tag (e.g. m.lowpriority), or null to disable.
+    archive_tag: null
 
     # Whether or not thumbnails from WhatsApp should be sent.
     # They're disabled by default due to very low resolution.
