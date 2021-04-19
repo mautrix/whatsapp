@@ -421,11 +421,11 @@ func (handler *CommandHandler) CommandLogout(ce *CommandEvent) {
 	ce.Reply("Logged out successfully.")
 }
 
-const cmdToggleHelp = `toggle <presence|receipts> - Toggle bridging of presence or read receipts`
+const cmdToggleHelp = `toggle <presence|receipts|all> - Toggle bridging of presence or read receipts`
 
 func (handler *CommandHandler) CommandToggle(ce *CommandEvent) {
-	if len(ce.Args) == 0 || (ce.Args[0] != "presence" && ce.Args[0] != "receipts") {
-		ce.Reply("**Usage:** `toggle <presence|receipts>`")
+	if len(ce.Args) == 0 || (ce.Args[0] != "presence" && ce.Args[0] != "receipts" && ce.Args[0] != "all") {
+		ce.Reply("**Usage:** `toggle <presence|receipts|all>`")
 		return
 	}
 	if ce.User.Session == nil {
@@ -437,7 +437,7 @@ func (handler *CommandHandler) CommandToggle(ce *CommandEvent) {
 		ce.Reply("You're not logged in with your Matrix account.")
 		return
 	}
-	if ce.Args[0] == "presence" {
+	if ce.Args[0] == "presence" || ce.Args[0] == "all" {
 		customPuppet.EnablePresence = !customPuppet.EnablePresence
 		var newPresence whatsapp.Presence
 		if customPuppet.EnablePresence {
@@ -453,7 +453,8 @@ func (handler *CommandHandler) CommandToggle(ce *CommandEvent) {
 				ce.User.log.Warnln("Failed to set presence:", err)
 			}
 		}
-	} else if ce.Args[0] == "receipts" {
+	}
+	if ce.Args[0] == "receipts" || ce.Args[0] == "all" {
 		customPuppet.EnableReceipts = !customPuppet.EnableReceipts
 		if customPuppet.EnableReceipts {
 			ce.Reply("Enabled read receipt bridging")
