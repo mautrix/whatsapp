@@ -189,6 +189,8 @@ bridge:
     # Note that WhatsApp unarchives chats when a message is received, which will also be mirrored to Matrix.
     # This can be set to a tag (e.g. m.lowpriority), or null to disable.
     archive_tag: null
+    # Same as above, but for pinned chats. The favorite tag is called m.favourite
+    pinned_tag: null
 
     # Whether or not thumbnails from WhatsApp should be sent.
     # They're disabled by default due to very low resolution.

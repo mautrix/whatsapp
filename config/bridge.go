@@ -73,6 +73,7 @@ type BridgeConfig struct {
 	ResendBridgeInfo              bool   `yaml:"resend_bridge_info"`
 	MuteBridging                  bool   `yaml:"mute_bridging"`
 	ArchiveTag                    string `yaml:"archive_tag"`
+	PinnedTag                     string `yaml:"pinned_tag"`
 
 	WhatsappThumbnail bool `yaml:"whatsapp_thumbnail"`
 

@@ -626,7 +626,12 @@ func (user *User) HandleEvent(event interface{}) {
 	case whatsapp.ArchiveMessage:
 		portal := user.bridge.GetPortalByJID(user.PortalKey(v.JID))
 		if portal != nil {
-			go user.updateChatArchive(nil, portal, v.IsArchived)
+			go user.updateChatTag(nil, portal, user.bridge.Config.Bridge.ArchiveTag, v.IsArchived)
+		}
+	case whatsapp.PinMessage:
+		portal := user.bridge.GetPortalByJID(user.PortalKey(v.JID))
+		if portal != nil {
+			go user.updateChatTag(nil, portal, user.bridge.Config.Bridge.PinnedTag, v.IsPinned)
 		}
 	case json.RawMessage:
 		user.HandleJSONMessage(v)
@@ -699,8 +704,17 @@ func (user *User) updateChatMute(intent *appservice.IntentAPI, portal *Portal, m
 	}
 }
 
-func (user *User) updateChatArchive(intent *appservice.IntentAPI, portal *Portal, archived bool) {
-	if len(portal.MXID) == 0 || len(user.bridge.Config.Bridge.ArchiveTag) == 0 {
+type CustomTagData struct {
+	Order        json.Number `json:"order"`
+	DoublePuppet bool        `json:"net.maunium.whatsapp.puppet"`
+}
+
+type CustomTagEventContent struct {
+	Tags map[string]CustomTagData `json:"tags"`
+}
+
+func (user *User) updateChatTag(intent *appservice.IntentAPI, portal *Portal, tag string, active bool) {
+	if len(portal.MXID) == 0 || len(tag) == 0 {
 		return
 	} else if intent == nil {
 		doublePuppet := user.bridge.GetPuppetByCustomMXID(user.MXID)
@@ -709,16 +723,24 @@ func (user *User) updateChatArchive(intent *appservice.IntentAPI, portal *Portal
 		}
 		intent = doublePuppet.CustomIntent()
 	}
-	var err error
-	if archived {
-		user.log.Debugln("Adding tag", user.bridge.Config.Bridge.ArchiveTag, "to", portal.MXID)
-		err = intent.AddTag(portal.MXID, user.bridge.Config.Bridge.ArchiveTag, 0.5)
+	var existingTags CustomTagEventContent
+	err := intent.GetTagsWithCustomData(portal.MXID, &existingTags)
+	if err != nil && !errors.Is(err, mautrix.MNotFound) {
+		user.log.Warnfln("Failed to get tags of %s: %v", portal.MXID, err)
+	}
+	currentTag, ok := existingTags.Tags[tag]
+	if active && !ok {
+		user.log.Debugln("Adding tag", tag, "to", portal.MXID)
+		data := CustomTagData{"0.5", true}
+		err = intent.AddTagWithCustomData(portal.MXID, tag, &data)
+	} else if !active && ok && currentTag.DoublePuppet {
+		user.log.Debugln("Removing tag", tag, "from", portal.MXID)
+		err = intent.RemoveTag(portal.MXID, tag)
 	} else {
-		user.log.Debugln("Removing tag", user.bridge.Config.Bridge.ArchiveTag, "from", portal.MXID)
-		err = intent.RemoveTag(portal.MXID, user.bridge.Config.Bridge.ArchiveTag)
+		err = nil
 	}
 	if err != nil {
-		user.log.Warnfln("Failed to update tag for %s through double puppet: %v", portal.MXID, err)
+		user.log.Warnfln("Failed to update tag %s for %s through double puppet: %v", tag, portal.MXID, err)
 	}
 }
 
@@ -737,7 +759,8 @@ func (user *User) syncChatDoublePuppetDetails(doublePuppet *Puppet, chat Chat) {
 		}
 	}
 	user.updateChatMute(intent, chat.Portal, chat.MutedUntil)
-	user.updateChatArchive(intent, chat.Portal, chat.IsArchived)
+	user.updateChatTag(intent, chat.Portal, user.bridge.Config.Bridge.ArchiveTag, chat.IsArchived)
+	user.updateChatTag(intent, chat.Portal, user.bridge.Config.Bridge.PinnedTag, chat.IsPinned)
 }
 
 func (user *User) syncPortal(chat Chat) {
