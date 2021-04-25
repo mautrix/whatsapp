@@ -48,6 +48,7 @@ var (
 	Version = "0.1.6"
 	// This is filled by init()
 	WAVersion = ""
+	VersionString = ""
 	// These are filled at build time with the -X linker flag
 	Tag       = "unknown"
 	Commit    = "unknown"
@@ -58,11 +59,20 @@ func init() {
 	if len(Tag) > 0 && Tag[0] == 'v' {
 		Tag = Tag[1:]
 	}
-	if Tag != Version && !strings.HasSuffix(Version, "+dev") {
-		Version += "+dev"
+	if Tag != Version {
+		suffix := ""
+		if !strings.HasSuffix(Version, "+dev") {
+			suffix = "+dev"
+		}
+		if len(Commit) > 8 {
+			Version = fmt.Sprintf("%s%s.%s", Version, suffix, Commit[:8])
+		} else {
+			Version = fmt.Sprintf("%s%s.unknown", Version, suffix)
+		}
 	}
 	mautrix.DefaultUserAgent = fmt.Sprintf("mautrix-whatsapp/%s %s", Version, mautrix.DefaultUserAgent)
 	WAVersion = strings.FieldsFunc(Version, func(r rune) bool { return r == '-' || r == '+' })[0]
+	VersionString = fmt.Sprintf("%s %s (%s)", Name, Version, BuildTime)
 }
 
 var configPath = flag.MakeFull("c", "config", "The path to your config file.", "config.yaml").String()
@@ -223,6 +233,7 @@ func (bridge *Bridge) Init() {
 		}
 	}
 	bridge.AS.Log = log.Sub("Matrix")
+	bridge.Log.Infoln("Initializing", VersionString)
 
 	bridge.Log.Debugln("Initializing database connection")
 	bridge.DB, err = database.New(bridge.Config.AppService.Database.Type, bridge.Config.AppService.Database.URI, bridge.Log)
@@ -429,13 +440,7 @@ func main() {
 		flag.PrintHelp()
 		os.Exit(0)
 	} else if *version {
-		if Tag == Version {
-			fmt.Printf("%s %s (%s)\n", Name, Tag, BuildTime)
-		} else if len(Commit) > 8 {
-			fmt.Printf("%s %s.%s (%s)\n", Name, Version, Commit[:8], BuildTime)
-		} else {
-			fmt.Printf("%s %s.unknown\n", Name, Version)
-		}
+		fmt.Println(VersionString)
 		return
 	}
 
