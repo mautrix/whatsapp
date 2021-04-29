@@ -192,6 +192,22 @@ type Portal struct {
 
 const MaxMessageAgeToCreatePortal = 5 * 60 // 5 minutes
 
+func (portal *Portal) syncDoublePuppetDetailsAfterCreate(source *User) {
+	doublePuppet := portal.bridge.GetPuppetByCustomMXID(source.MXID)
+	if doublePuppet == nil {
+		return
+	}
+	chat, ok := source.Conn.Store.Chats[portal.Key.JID]
+	if !ok {
+		portal.log.Debugln("Not syncing chat mute/tags with %s: chat info not found", source.MXID)
+		return
+	}
+	source.syncChatDoublePuppetDetails(doublePuppet, Chat{
+		Chat:    chat,
+		Portal:  portal,
+	}, true)
+}
+
 func (portal *Portal) handleMessageLoop() {
 	for msg := range portal.messages {
 		if len(portal.MXID) == 0 {
@@ -208,6 +224,7 @@ func (portal *Portal) handleMessageLoop() {
 				portal.log.Errorln("Failed to create portal room:", err)
 				return
 			}
+			portal.syncDoublePuppetDetailsAfterCreate(msg.source)
 		}
 		portal.backfillLock.Lock()
 		portal.handleMessage(msg, false)

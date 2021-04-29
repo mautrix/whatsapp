@@ -191,6 +191,8 @@ bridge:
     archive_tag: null
     # Same as above, but for pinned chats. The favorite tag is called m.favourite
     pinned_tag: null
+    # Whether or not mute status and tags should only be bridged when the portal room is created.
+    tag_only_on_create: true
 
     # Whether or not thumbnails from WhatsApp should be sent.
     # They're disabled by default due to very low resolution.

@@ -744,7 +744,7 @@ func (user *User) updateChatTag(intent *appservice.IntentAPI, portal *Portal, ta
 	}
 }
 
-func (user *User) syncChatDoublePuppetDetails(doublePuppet *Puppet, chat Chat) {
+func (user *User) syncChatDoublePuppetDetails(doublePuppet *Puppet, chat Chat, justCreated bool) {
 	if doublePuppet == nil || doublePuppet.CustomIntent() == nil {
 		return
 	}
@@ -758,9 +758,11 @@ func (user *User) syncChatDoublePuppetDetails(doublePuppet *Puppet, chat Chat) {
 			}
 		}
 	}
-	user.updateChatMute(intent, chat.Portal, chat.MutedUntil)
-	user.updateChatTag(intent, chat.Portal, user.bridge.Config.Bridge.ArchiveTag, chat.IsArchived)
-	user.updateChatTag(intent, chat.Portal, user.bridge.Config.Bridge.PinnedTag, chat.IsPinned)
+	if justCreated || !user.bridge.Config.Bridge.TagOnlyOnCreate {
+		user.updateChatMute(intent, chat.Portal, chat.MutedUntil)
+		user.updateChatTag(intent, chat.Portal, user.bridge.Config.Bridge.ArchiveTag, chat.IsArchived)
+		user.updateChatTag(intent, chat.Portal, user.bridge.Config.Bridge.PinnedTag, chat.IsPinned)
+	}
 }
 
 func (user *User) syncPortal(chat Chat) {
@@ -832,8 +834,9 @@ func (user *User) syncPortals(chatMap map[string]whatsapp.Chat, createAll bool) 
 		}
 		create := (chat.LastMessageTime >= user.LastConnection && user.LastConnection > 0) || i < limit
 		if len(chat.Portal.MXID) > 0 || create || createAll {
+			justCreated := len(chat.Portal.MXID) == 0
 			user.syncPortal(chat)
-			user.syncChatDoublePuppetDetails(doublePuppet, chat)
+			user.syncChatDoublePuppetDetails(doublePuppet, chat, justCreated)
 		}
 	}
 	if user.Conn != connAtStart {
