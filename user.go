@@ -690,7 +690,7 @@ func (user *User) updateChatMute(intent *appservice.IntentAPI, portal *Portal, m
 		intent = doublePuppet.CustomIntent()
 	}
 	var err error
-	if mutedUntil < time.Now().Unix() {
+	if mutedUntil != -1 && mutedUntil < time.Now().Unix() {
 		user.log.Debugfln("Portal %s is muted until %d, unmuting...", portal.MXID, mutedUntil)
 		err = intent.DeletePushRule("global", pushrules.RoomRule, string(portal.MXID))
 	} else {
