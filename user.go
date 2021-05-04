@@ -633,7 +633,7 @@ func (user *User) HandleEvent(event interface{}) {
 		if portal != nil {
 			go user.updateChatTag(nil, portal, user.bridge.Config.Bridge.PinnedTag, v.IsPinned)
 		}
-	case json.RawMessage:
+	case whatsapp.RawJSONMessage:
 		user.HandleJSONMessage(v)
 	case *waProto.WebMessageInfo:
 		user.updateLastConnectionIfNecessary()
@@ -1380,11 +1380,11 @@ func (user *User) HandleConnInfo(info whatsapp.ConnInfo) {
 	}
 }
 
-func (user *User) HandleJSONMessage(message json.RawMessage) {
-	if !json.Valid(message) {
+func (user *User) HandleJSONMessage(evt whatsapp.RawJSONMessage) {
+	if !json.Valid(evt.RawMessage) {
 		return
 	}
-	user.log.Debugfln("JSON message: %s", message)
+	user.log.Debugfln("JSON message with tag %s: %s", evt.Tag, evt.RawMessage)
 	user.updateLastConnectionIfNecessary()
 }
 
