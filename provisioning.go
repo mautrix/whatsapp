@@ -32,6 +32,7 @@ import (
 	"github.com/Rhymen/go-whatsapp"
 
 	log "maunium.net/go/maulogger/v2"
+
 	"maunium.net/go/mautrix/id"
 )
 
@@ -399,7 +400,7 @@ func (prov *ProvisioningAPI) Login(w http.ResponseWriter, r *http.Request) {
 	})
 
 	user.log.Debugln("Starting login via provisioning API")
-	session, jid, err := user.Conn.Login(qrChan, ctx, user.bridge.Config.Bridge.LoginQRRegenCount)
+	session, jid, err := user.Conn.Login(qrChan, ctx)
 	qrChan <- "stop"
 	if err != nil {
 		var msg string

@@ -95,9 +95,6 @@ bridge:
     # sent to WhatsApp. If fetch_message_on_timeout is enabled, a successful post-timeout fetch will
     # trigger a read receipt too.
     delivery_receipts: false
-    # Number of times to regenerate QR code when logging in.
-    # The regenerated QR code is sent as an edit and essentially multiplies the login timeout (20 seconds)
-    login_qr_regen_count: 2
     # Maximum number of times to retry connecting on connection error.
     max_connection_attempts: 3
     # Number of seconds to wait between connection attempts.
