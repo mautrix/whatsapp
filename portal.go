@@ -38,12 +38,14 @@ import (
 	"reflect"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Rhymen/go-whatsapp"
 	waProto "github.com/Rhymen/go-whatsapp/binary/proto"
 
 	log "maunium.net/go/maulogger/v2"
+
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/appservice"
 	"maunium.net/go/mautrix/crypto/attachment"
@@ -365,6 +367,13 @@ func (portal *Portal) getMessageIntent(user *User, info whatsapp.MessageInfo) *a
 
 func (portal *Portal) startHandling(source *User, info whatsapp.MessageInfo) *appservice.IntentAPI {
 	// TODO these should all be trace logs
+	if portal.lastMessageTs == 0 {
+		portal.log.Debugln("Fetching last message from database to get its timestamp")
+		lastMessage := portal.bridge.DB.Message.GetLastInChat(portal.Key)
+		if lastMessage != nil {
+			atomic.CompareAndSwapUint64(&portal.lastMessageTs, 0, uint64(lastMessage.Timestamp))
+		}
+	}
 	if portal.lastMessageTs > info.Timestamp+1 {
 		portal.log.Debugfln("Not handling %s: message is older (%d) than last bridge message (%d)", info.Id, info.Timestamp, portal.lastMessageTs)
 	} else if portal.isRecentlyHandled(info.Id) {
@@ -2128,7 +2137,7 @@ func (portal *Portal) convertMatrixMessage(sender *User, evt *event.Event) (*waP
 			FileLength:    &media.FileLength,
 		}
 	default:
-		portal.log.Debugln("Unhandled Matrix event %s: unknown msgtype %s", evt.ID, content.MsgType)
+		portal.log.Debugfln("Unhandled Matrix event %s: unknown msgtype %s", evt.ID, content.MsgType)
 		return nil, sender
 	}
 	return info, sender
