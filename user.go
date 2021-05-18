@@ -756,7 +756,7 @@ func (user *User) syncChatDoublePuppetDetails(doublePuppet *Puppet, chat Chat, j
 	}
 	intent := doublePuppet.CustomIntent()
 	if chat.UnreadCount == 0 && (justCreated || !user.bridge.Config.Bridge.MarkReadOnlyOnCreate) {
-		lastMessage := user.bridge.DB.Message.GetLastInChat(chat.Portal.Key)
+		lastMessage := user.bridge.DB.Message.GetLastInChatBefore(chat.Portal.Key, chat.ReceivedAt.Unix())
 		if lastMessage != nil {
 			err := intent.MarkReadWithContent(chat.Portal.MXID, lastMessage.MXID, &CustomReadReceipt{DoublePuppet: true})
 			if err != nil {

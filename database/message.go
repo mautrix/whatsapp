@@ -21,6 +21,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"strings"
+	"time"
 
 	"github.com/Rhymen/go-whatsapp"
 	waProto "github.com/Rhymen/go-whatsapp/binary/proto"
@@ -65,9 +66,13 @@ func (mq *MessageQuery) GetByMXID(mxid id.EventID) *Message {
 }
 
 func (mq *MessageQuery) GetLastInChat(chat PortalKey) *Message {
+	return mq.GetLastInChatBefore(chat, time.Now().Unix()+60)
+}
+
+func (mq *MessageQuery) GetLastInChatBefore(chat PortalKey, maxTimestamp int64) *Message {
 	msg := mq.get("SELECT chat_jid, chat_receiver, jid, mxid, sender, timestamp, sent, content "+
-		"FROM message WHERE chat_jid=$1 AND chat_receiver=$2 AND sent=true ORDER BY timestamp DESC LIMIT 1",
-		chat.JID, chat.Receiver)
+		"FROM message WHERE chat_jid=$1 AND chat_receiver=$2 AND timestamp<=$3 AND sent=true ORDER BY timestamp DESC LIMIT 1",
+		chat.JID, chat.Receiver, maxTimestamp)
 	if msg == nil || msg.Timestamp == 0 {
 		// Old db, we don't know what the last message is.
 		return nil
