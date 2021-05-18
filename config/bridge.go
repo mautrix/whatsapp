@@ -74,6 +74,7 @@ type BridgeConfig struct {
 	ArchiveTag                    string `yaml:"archive_tag"`
 	PinnedTag                     string `yaml:"pinned_tag"`
 	TagOnlyOnCreate               bool   `yaml:"tag_only_on_create"`
+	MarkReadOnlyOnCreate          bool   `yaml:"mark_read_only_on_create"`
 
 	WhatsappThumbnail bool `yaml:"whatsapp_thumbnail"`
 
