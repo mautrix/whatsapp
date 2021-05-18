@@ -757,6 +757,8 @@ func (user *User) syncChatDoublePuppetDetails(doublePuppet *Puppet, chat Chat, j
 				user.log.Warnln("Failed to mark %s in %s as read after backfill: %v", lastMessage.MXID, chat.Portal.MXID, err)
 			}
 		}
+	} else if chat.UnreadCount == -1 {
+		user.log.Debugfln("Invalid unread count (missing field?) in chat info %+v", chat.Source)
 	}
 	if justCreated || !user.bridge.Config.Bridge.TagOnlyOnCreate {
 		user.updateChatMute(intent, chat.Portal, chat.MutedUntil)
