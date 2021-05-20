@@ -17,8 +17,10 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"net/http"
+	"sync/atomic"
 	"time"
 
 	"github.com/Rhymen/go-whatsapp"
@@ -97,7 +99,7 @@ func (user *User) sendBridgeStatus(state AsmuxPong) {
 		return
 	}
 	state.fill()
-	if user.prevBridgeStatus.shouldDeduplicate(&state) {
+	if user.prevBridgeStatus != nil && user.prevBridgeStatus.shouldDeduplicate(&state) {
 		return
 	}
 	cli := user.bridge.AS.BotClient()
@@ -110,6 +112,8 @@ func (user *User) sendBridgeStatus(state AsmuxPong) {
 		user.prevBridgeStatus = &state
 	}
 }
+
+var asmuxPingID uint32 = 0
 
 func (prov *ProvisioningAPI) AsmuxPing(w http.ResponseWriter, r *http.Request) {
 	if !prov.bridge.AS.CheckServerToken(w, r) {
@@ -126,9 +130,15 @@ func (prov *ProvisioningAPI) AsmuxPing(w http.ResponseWriter, r *http.Request) {
 		}
 	} else {
 		if user.Conn.IsConnected() && user.Conn.IsLoggedIn() {
-			user.log.Debugln("Pinging WhatsApp mobile due to asmux /ping API request")
+			pingID := atomic.AddUint32(&asmuxPingID, 1)
+			user.log.Debugfln("Pinging WhatsApp mobile due to asmux /ping API request (ID %d)", pingID)
 			err := user.Conn.AdminTestWithSuppress(true)
-			user.log.Debugln("Ping response:", err)
+			if errors.Is(r.Context().Err(), context.Canceled) {
+				user.log.Warnfln("Ping request %d was canceled before we responded (response was %v)", pingID, err)
+				user.prevBridgeStatus = nil
+				return
+			}
+			user.log.Debugfln("Ping %d response: %v", pingID, err)
 			if err == whatsapp.ErrPingFalse {
 				user.log.Debugln("Forwarding ping false error from provisioning API to HandleError")
 				go user.HandleError(err)
