@@ -569,7 +569,7 @@ func (handler *CommandHandler) CommandDisconnect(ce *CommandEvent) {
 		return
 	}
 	ce.User.bridge.Metrics.TrackConnectionState(ce.User.JID, false)
-	ce.User.sendBridgeStatus(AsmuxPong{Error: AsmuxWANotConnected})
+	ce.User.sendBridgeState(BridgeState{Error: WANotConnected})
 	ce.Reply("Successfully disconnected. Use the `reconnect` command to reconnect.")
 }
 

@@ -81,7 +81,7 @@ type User struct {
 	connLock        sync.Mutex
 	cancelReconnect func()
 
-	prevBridgeStatus *AsmuxPong
+	prevBridgeStatus *BridgeState
 }
 
 func (bridge *Bridge) GetUserByMXID(userID id.UserID) *User {
@@ -122,7 +122,7 @@ func (user *User) removeFromJIDMap() {
 	}
 	user.bridge.usersLock.Unlock()
 	user.bridge.Metrics.TrackLoginState(user.JID, false)
-	user.sendBridgeStatus(AsmuxPong{Error: AsmuxWANotLoggedIn})
+	user.sendBridgeState(BridgeState{Error: WANotLoggedIn})
 }
 
 func (bridge *Bridge) GetAllUsers() []*User {
@@ -257,7 +257,7 @@ func (user *User) Connect(evenIfNoSession bool) bool {
 	}
 	user.log.Debugln("Connecting to WhatsApp")
 	if user.Session != nil {
-		user.sendBridgeStatus(AsmuxPong{Error: AsmuxWAConnecting})
+		user.sendBridgeState(BridgeState{Error: WAConnecting})
 	}
 	timeout := time.Duration(user.bridge.Config.Bridge.ConnectionTimeout)
 	if timeout == 0 {
@@ -289,7 +289,7 @@ func (user *User) DeleteConnection() {
 	user.Conn.RemoveHandlers()
 	user.Conn = nil
 	user.bridge.Metrics.TrackConnectionState(user.JID, false)
-	user.sendBridgeStatus(AsmuxPong{Error: AsmuxWANotConnected})
+	user.sendBridgeState(BridgeState{Error: WANotConnected})
 	user.connLock.Unlock()
 }
 
@@ -312,7 +312,7 @@ func (user *User) RestoreSession() bool {
 				user.DeleteConnection()
 				return false
 			} else {
-				user.sendBridgeStatus(AsmuxPong{Error: AsmuxWANotConnected})
+				user.sendBridgeState(BridgeState{Error: WANotConnected})
 				user.sendMarkdownBridgeAlert("\u26a0 Failed to connect to WhatsApp. Make sure WhatsApp " +
 					"on your phone is reachable and use `reconnect` to try connecting again.")
 			}
@@ -462,7 +462,7 @@ func (cl ChatList) Swap(i, j int) {
 }
 
 func (user *User) PostLogin() {
-	user.sendBridgeStatus(AsmuxPong{OK: true})
+	user.sendBridgeState(BridgeState{OK: true})
 	user.bridge.Metrics.TrackConnectionState(user.JID, true)
 	user.bridge.Metrics.TrackLoginState(user.JID, true)
 	user.bridge.Metrics.TrackBufferLength(user.MXID, len(user.messageOutput))
@@ -539,7 +539,7 @@ func (user *User) postConnPing() bool {
 	if disconnectErr != nil {
 		user.log.Warnln("Error while disconnecting after failed post-connection ping:", disconnectErr)
 	}
-	user.sendBridgeStatus(AsmuxPong{Error: AsmuxWANotConnected})
+	user.sendBridgeState(BridgeState{Error: WANotConnected})
 	user.bridge.Metrics.TrackDisconnection(user.MXID)
 	go func() {
 		time.Sleep(1 * time.Second)
@@ -969,7 +969,7 @@ func (user *User) HandleError(err error) {
 		if closed.Code == 1000 && user.cleanDisconnection {
 			user.cleanDisconnection = false
 			if !user.bridge.Config.Bridge.AggressiveReconnect {
-				user.sendBridgeStatus(AsmuxPong{Error: AsmuxWANotConnected})
+				user.sendBridgeState(BridgeState{Error: WANotConnected})
 				user.bridge.Metrics.TrackConnectionState(user.JID, false)
 				user.log.Infoln("Clean disconnection by server")
 				return
@@ -1002,7 +1002,7 @@ func (user *User) tryReconnect(msg string) {
 	user.bridge.Metrics.TrackConnectionState(user.JID, false)
 	if user.ConnectionErrors > user.bridge.Config.Bridge.MaxConnectionAttempts {
 		user.sendMarkdownBridgeAlert("%s. Use the `reconnect` command to reconnect.", msg)
-		user.sendBridgeStatus(AsmuxPong{Error: AsmuxWANotConnected})
+		user.sendBridgeState(BridgeState{Error: WANotConnected})
 		return
 	}
 	if user.bridge.Config.Bridge.ReportConnectionRetry {
@@ -1028,7 +1028,7 @@ func (user *User) tryReconnect(msg string) {
 			return
 		default:
 		}
-		user.sendBridgeStatus(AsmuxPong{Error: AsmuxWAConnecting})
+		user.sendBridgeState(BridgeState{Error: WAConnecting})
 		err := user.Conn.Restore(true, ctx)
 		if err == nil {
 			user.ConnectionErrors = 0
@@ -1051,7 +1051,7 @@ func (user *User) tryReconnect(msg string) {
 			user.DeleteConnection()
 			user.sendMarkdownBridgeAlert("\u26a0 Failed to reconnect to WhatsApp: unpaired from phone. " +
 				"To re-pair your phone, log in again.")
-			user.sendBridgeStatus(AsmuxPong{Error: AsmuxWANotLoggedIn})
+			user.sendBridgeState(BridgeState{Error: WANotLoggedIn})
 			return
 		} else if errors.Is(err, whatsapp.ErrAlreadyLoggedIn) {
 			user.log.Warnln("Reconnection said we're already logged in, not trying anymore")
@@ -1072,7 +1072,7 @@ func (user *User) tryReconnect(msg string) {
 		}
 	}
 
-	user.sendBridgeStatus(AsmuxPong{Error: AsmuxWANotConnected})
+	user.sendBridgeState(BridgeState{Error: WANotConnected})
 	if user.bridge.Config.Bridge.ReportConnectionRetry {
 		user.sendMarkdownBridgeAlert("%d reconnection attempts failed. Use the `reconnect` command to try to reconnect manually.", tries)
 	} else {

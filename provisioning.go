@@ -53,7 +53,8 @@ func (prov *ProvisioningAPI) Init() {
 	r.HandleFunc("/delete_connection", prov.DeleteConnection).Methods(http.MethodPost)
 	r.HandleFunc("/disconnect", prov.Disconnect).Methods(http.MethodPost)
 	r.HandleFunc("/reconnect", prov.Reconnect).Methods(http.MethodPost)
-	prov.bridge.AS.Router.HandleFunc("/_matrix/app/com.beeper.asmux/ping", prov.AsmuxPing).Methods(http.MethodPost)
+	prov.bridge.AS.Router.HandleFunc("/_matrix/app/com.beeper.asmux/ping", prov.BridgeStatePing).Methods(http.MethodPost)
+	prov.bridge.AS.Router.HandleFunc("/_matrix/app/com.beeper.bridge_state", prov.BridgeStatePing).Methods(http.MethodPost)
 }
 
 type responseWrap struct {
