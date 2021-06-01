@@ -80,7 +80,7 @@ func (pong *BridgeState) shouldDeduplicate(newPong *BridgeState) bool {
 }
 
 func (user *User) setupAdminTestHooks() {
-	if !user.bridge.Config.Homeserver.Asmux {
+	if len(user.bridge.Config.Homeserver.StatusEndpoint) == 0 {
 		return
 	}
 	user.Conn.AdminTestHook = func(err error) {
@@ -117,13 +117,14 @@ func (user *User) sendBridgeState(state BridgeState) {
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30 * time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
 	var req *http.Request
 	var resp *http.Response
 	if req, err = http.NewRequestWithContext(ctx, http.MethodPost, user.bridge.Config.Homeserver.StatusEndpoint, &body); err != nil {
 		user.log.Warnln("Failed to prepare bridge state update request:", err)
+	} else if req.Header.Set("Authorization", "Bearer "+user.bridge.Config.AppService.ASToken); false {
 	} else if resp, err = http.DefaultClient.Do(req); err != nil {
 		user.log.Warnln("Failed to send bridge state update:", err)
 	} else if resp.StatusCode < 200 || resp.StatusCode > 299 {
@@ -131,9 +132,10 @@ func (user *User) sendBridgeState(state BridgeState) {
 		if respBody != nil {
 			respBody = bytes.ReplaceAll(respBody, []byte("\n"), []byte("\\n"))
 		}
-		user.log.Warnfln("Unexpected status code %d sending bridge state update: %s", respBody)
+		user.log.Warnfln("Unexpected status code %d sending bridge state update: %s", resp.StatusCode, respBody)
 	} else {
 		user.prevBridgeStatus = &state
+		user.log.Debugfln("Sent new bridge state %+v", state)
 	}
 	if resp != nil && resp.Body != nil {
 		_ = resp.Body.Close()
@@ -158,7 +160,7 @@ func (prov *ProvisioningAPI) BridgeStatePing(w http.ResponseWriter, r *http.Requ
 	} else {
 		if user.Conn.IsConnected() && user.Conn.IsLoggedIn() {
 			pingID := atomic.AddUint32(&bridgeStatePingID, 1)
-			user.log.Debugfln("Pinging WhatsApp mobile due to asmux /ping API request (ID %d)", pingID)
+			user.log.Debugfln("Pinging WhatsApp mobile due to bridge status /ping API request (ID %d)", pingID)
 			err := user.Conn.AdminTestWithSuppress(true)
 			if errors.Is(r.Context().Err(), context.Canceled) {
 				user.log.Warnfln("Ping request %d was canceled before we responded (response was %v)", pingID, err)
@@ -187,7 +189,7 @@ func (prov *ProvisioningAPI) BridgeStatePing(w http.ResponseWriter, r *http.Requ
 	}
 	resp.UserID = user.MXID
 	resp.fill()
-	user.log.Debugfln("Responding bridge state to asmux: %+v", resp)
+	user.log.Debugfln("Responding bridge state in bridge status endpoint: %+v", resp)
 	jsonResponse(w, http.StatusOK, &resp)
 	user.prevBridgeStatus = &resp
 }
