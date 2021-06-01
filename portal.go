@@ -61,6 +61,8 @@ const StatusBroadcastTopic = "WhatsApp status updates from your contacts"
 const StatusBroadcastName = "WhatsApp Status Broadcast"
 const BroadcastTopic = "WhatsApp broadcast list"
 const UnnamedBroadcastName = "Unnamed broadcast list"
+const PrivateChatTopic = "WhatsApp private chat"
+var ErrStatusBroadcastDisabled = errors.New("status bridging is disabled")
 
 func (bridge *Bridge) GetPortalByMXID(mxid id.RoomID) *Portal {
 	bridge.portalsLock.Lock()
@@ -655,7 +657,7 @@ func (portal *Portal) ensureUserInvited(user *User) {
 	}
 }
 
-func (portal *Portal) Sync(user *User, contact whatsapp.Contact) {
+func (portal *Portal) Sync(user *User, contact whatsapp.Contact) bool {
 	portal.log.Infoln("Syncing portal for", user.MXID)
 
 	if user.IsRelaybot {
@@ -670,7 +672,7 @@ func (portal *Portal) Sync(user *User, contact whatsapp.Contact) {
 		err := portal.CreateMatrixRoom(user)
 		if err != nil {
 			portal.log.Errorln("Failed to create portal room:", err)
-			return
+			return false
 		}
 	} else {
 		portal.ensureUserInvited(user)
@@ -685,6 +687,7 @@ func (portal *Portal) Sync(user *User, contact whatsapp.Contact) {
 		portal.Update()
 		portal.UpdateBridgeInfo()
 	}
+	return true
 }
 
 func (portal *Portal) GetBasePowerLevels() *event.PowerLevelsEventContent {
@@ -1066,10 +1069,14 @@ func (portal *Portal) CreateMatrixRoom(user *User) error {
 		} else {
 			portal.Name = ""
 		}
-		portal.Topic = "WhatsApp private chat"
+		portal.Topic = PrivateChatTopic
 	} else if portal.IsStatusBroadcastList() {
-		portal.Name = "WhatsApp Status Broadcast"
-		portal.Topic = "WhatsApp status updates from your contacts"
+		if !portal.bridge.Config.Bridge.EnableStatusBroadcast {
+			portal.log.Debugln("Status bridging is disabled in config, not creating room after all")
+			return ErrStatusBroadcastDisabled
+		}
+		portal.Name = StatusBroadcastName
+		portal.Topic = StatusBroadcastTopic
 	} else if portal.IsBroadcastList() {
 		var err error
 		broadcastMetadata, err = user.Conn.GetBroadcastMetadata(portal.Key.JID)

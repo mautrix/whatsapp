@@ -7,7 +7,7 @@ homeserver:
 
     # The URL to push real-time bridge status to.
     # If set, the bridge will make POST requests to this URL whenever a user's whatsapp connection state changes.
-    # The bridge will use the as_token to authorize requests.
+    # The bridge will use the appservice as_token to authorize requests.
     status_endpoint: null
 
 # Application service host/registration related details.
@@ -195,6 +195,9 @@ bridge:
     pinned_tag: null
     # Whether or not mute status and tags should only be bridged when the portal room is created.
     tag_only_on_create: true
+    # Whether or not WhatsApp status messages should be bridged into a Matrix room.
+    # Disabling this won't affect already created status broadcast rooms.
+    enable_status_broadcast: true
 
     # Whether or not thumbnails from WhatsApp should be sent.
     # They're disabled by default due to very low resolution.

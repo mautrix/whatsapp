@@ -75,6 +75,7 @@ type BridgeConfig struct {
 	PinnedTag                     string `yaml:"pinned_tag"`
 	TagOnlyOnCreate               bool   `yaml:"tag_only_on_create"`
 	MarkReadOnlyOnCreate          bool   `yaml:"mark_read_only_on_create"`
+	EnableStatusBroadcast         bool   `yaml:"enable_status_broadcast"`
 
 	WhatsappThumbnail bool `yaml:"whatsapp_thumbnail"`
 
@@ -134,6 +135,7 @@ func (bc *BridgeConfig) setDefaults() {
 	bc.InviteOwnPuppetForBackfilling = true
 	bc.PrivateChatPortalMeta = false
 	bc.BridgeNotices = true
+	bc.EnableStatusBroadcast = true
 }
 
 type umBridgeConfig BridgeConfig

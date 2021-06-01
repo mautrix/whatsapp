@@ -751,7 +751,7 @@ type CustomReadReceipt struct {
 }
 
 func (user *User) syncChatDoublePuppetDetails(doublePuppet *Puppet, chat Chat, justCreated bool) {
-	if doublePuppet == nil || doublePuppet.CustomIntent() == nil {
+	if doublePuppet == nil || doublePuppet.CustomIntent() == nil || len(chat.Portal.MXID) == 0 {
 		return
 	}
 	intent := doublePuppet.CustomIntent()
@@ -776,7 +776,10 @@ func (user *User) syncChatDoublePuppetDetails(doublePuppet *Puppet, chat Chat, j
 func (user *User) syncPortal(chat Chat) {
 	// Don't sync unless chat meta sync is enabled or portal doesn't exist
 	if user.bridge.Config.Bridge.ChatMetaSync || len(chat.Portal.MXID) == 0 {
-		chat.Portal.Sync(user, chat.Contact)
+		failedToCreate := chat.Portal.Sync(user, chat.Contact)
+		if failedToCreate {
+			return
+		}
 	}
 	err := chat.Portal.BackfillHistory(user, chat.LastMessageTime)
 	if err != nil {

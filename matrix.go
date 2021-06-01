@@ -165,7 +165,7 @@ func (mx *MatrixHandler) handlePrivatePortal(roomID id.RoomID, inviter *User, pu
 
 func (mx *MatrixHandler) createPrivatePortalFromInvite(roomID id.RoomID, inviter *User, puppet *Puppet, portal *Portal) {
 	portal.MXID = roomID
-	portal.Topic = "WhatsApp private chat"
+	portal.Topic = PrivateChatTopic
 	_, _ = portal.MainIntent().SetRoomTopic(portal.MXID, portal.Topic)
 	if portal.bridge.Config.Bridge.PrivateChatPortalMeta {
 		portal.Name = puppet.Displayname
