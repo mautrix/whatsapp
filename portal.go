@@ -205,8 +205,8 @@ func (portal *Portal) syncDoublePuppetDetailsAfterCreate(source *User) {
 		return
 	}
 	source.syncChatDoublePuppetDetails(doublePuppet, Chat{
-		Chat:    chat,
-		Portal:  portal,
+		Chat:   chat,
+		Portal: portal,
 	}, true)
 }
 
@@ -2003,7 +2003,7 @@ func (portal *Portal) convertMatrixMessage(sender *User, evt *event.Event) (*waP
 	}
 
 	ts := uint64(evt.Timestamp / 1000)
-	status := waProto.WebMessageInfo_ERROR
+	status := waProto.WebMessageInfo_PENDING
 	fromMe := true
 	info := &waProto.WebMessageInfo{
 		Key: &waProto.MessageKey{
@@ -2011,9 +2011,10 @@ func (portal *Portal) convertMatrixMessage(sender *User, evt *event.Event) (*waP
 			Id:        makeMessageID(),
 			RemoteJid: &portal.Key.JID,
 		},
-		MessageTimestamp: &ts,
-		Message:          &waProto.Message{},
-		Status:           &status,
+		MessageTimestamp:    &ts,
+		MessageC2STimestamp: &ts,
+		Message:             &waProto.Message{},
+		Status:              &status,
 	}
 	ctxInfo := &waProto.ContextInfo{}
 	replyToID := content.GetReplyTo()
@@ -2187,11 +2188,11 @@ func (portal *Portal) HandleMatrixMessage(sender *User, evt *event.Event) {
 		return
 	}
 	dbMsg := portal.markHandled(sender, info, evt.ID, false)
-	portal.log.Debugln("Sending event", evt.ID, "to WhatsApp", info.Key.GetId())
 	portal.sendRaw(sender, evt, info, dbMsg)
 }
 
 func (portal *Portal) sendRaw(sender *User, evt *event.Event, info *waProto.WebMessageInfo, dbMsg *database.Message) {
+	portal.log.Debugln("Sending event", evt.ID, "to WhatsApp", info.Key.GetId())
 	errChan := make(chan error, 1)
 	go sender.Conn.SendRaw(info, errChan)
 

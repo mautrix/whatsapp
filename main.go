@@ -17,6 +17,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/signal"
@@ -196,7 +197,7 @@ func (bridge *Bridge) ensureConnection() {
 	for {
 		resp, err := bridge.Bot.Whoami()
 		if err != nil {
-			if httpErr, ok := err.(mautrix.HTTPError); ok && httpErr.RespError != nil && httpErr.RespError.ErrCode == "M_UNKNOWN_ACCESS_TOKEN" {
+			if errors.Is(err, mautrix.MUnknownToken) {
 				bridge.Log.Fatalln("Access token invalid. Is the registration installed in your homeserver correctly?")
 				os.Exit(16)
 			}
