@@ -21,6 +21,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io/ioutil"
 	"net/http"
 	"sync/atomic"
@@ -99,6 +100,22 @@ func (user *User) setupAdminTestHooks() {
 	}
 }
 
+func (user *User) createBridgeStateRequest(ctx context.Context, state *BridgeState) (req *http.Request, err error) {
+	var body bytes.Buffer
+	if err = json.NewEncoder(&body).Encode(&state); err != nil {
+		return nil, fmt.Errorf("failed to encode bridge state JSON: %w", err)
+	}
+
+	req, err = http.NewRequestWithContext(ctx, http.MethodPost, user.bridge.Config.Homeserver.StatusEndpoint, &body)
+	if err != nil {
+		return
+	}
+
+	req.Header.Set("Authorization", "Bearer "+user.bridge.Config.AppService.ASToken)
+	req.Header.Set("Content-Type", "application/json")
+	return
+}
+
 func (user *User) sendBridgeState(state BridgeState) {
 	if len(user.bridge.Config.Homeserver.StatusEndpoint) == 0 {
 		return
@@ -110,21 +127,12 @@ func (user *User) sendBridgeState(state BridgeState) {
 		return
 	}
 
-	var body bytes.Buffer
-	var err error
-	if err = json.NewEncoder(&body).Encode(&state); err != nil {
-		user.log.Warnln("Failed to encode bridge state update JSON:", err)
-		return
-	}
-
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	var req *http.Request
 	var resp *http.Response
-	if req, err = http.NewRequestWithContext(ctx, http.MethodPost, user.bridge.Config.Homeserver.StatusEndpoint, &body); err != nil {
+	if req, err := user.createBridgeStateRequest(ctx, &state); err != nil {
 		user.log.Warnln("Failed to prepare bridge state update request:", err)
-	} else if req.Header.Set("Authorization", "Bearer "+user.bridge.Config.AppService.ASToken); false {
 	} else if resp, err = http.DefaultClient.Do(req); err != nil {
 		user.log.Warnln("Failed to send bridge state update:", err)
 	} else if resp.StatusCode < 200 || resp.StatusCode > 299 {
