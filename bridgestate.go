@@ -24,17 +24,19 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"strings"
 	"sync/atomic"
 	"time"
 
 	"github.com/Rhymen/go-whatsapp"
+
 	"maunium.net/go/mautrix/id"
 )
 
 type BridgeErrorCode string
 
 const (
-	WANotLoggedIn  BridgeErrorCode = "wa-not-logged-in"
+	WANotLoggedIn  BridgeErrorCode = "logged-out"
 	WANotConnected BridgeErrorCode = "wa-not-connected"
 	WAConnecting   BridgeErrorCode = "wa-connecting"
 	WATimeout      BridgeErrorCode = "wa-timeout"
@@ -52,17 +54,24 @@ var bridgeHumanErrors = map[BridgeErrorCode]string{
 }
 
 type BridgeState struct {
-	OK          bool            `json:"ok"`
-	Timestamp   int64           `json:"timestamp"`
-	TTL         int             `json:"ttl"`
+	OK        bool  `json:"ok"`
+	Timestamp int64 `json:"timestamp"`
+	TTL       int   `json:"ttl"`
+
 	ErrorSource string          `json:"error_source,omitempty"`
 	Error       BridgeErrorCode `json:"error,omitempty"`
 	Message     string          `json:"message,omitempty"`
 
-	UserID id.UserID `json:"user_id"`
+	UserID     id.UserID `json:"user_id"`
+	RemoteID   string    `json:"remote_id"`
+	RemoteName string    `json:"remote_name"`
 }
 
-func (pong *BridgeState) fill() {
+func (pong *BridgeState) fill(user *User) {
+	pong.UserID = user.MXID
+	pong.RemoteID = strings.TrimSuffix(user.JID, whatsapp.NewUserSuffix)
+	pong.RemoteName = fmt.Sprintf("+%s", pong.RemoteID)
+
 	pong.Timestamp = time.Now().Unix()
 	if !pong.OK {
 		pong.TTL = 60
@@ -121,8 +130,7 @@ func (user *User) sendBridgeState(state BridgeState) {
 		return
 	}
 
-	state.UserID = user.MXID
-	state.fill()
+	state.fill(user)
 	if user.prevBridgeStatus != nil && user.prevBridgeStatus.shouldDeduplicate(&state) {
 		return
 	}
@@ -195,8 +203,7 @@ func (prov *ProvisioningAPI) BridgeStatePing(w http.ResponseWriter, r *http.Requ
 			resp.Error = WANotConnected
 		}
 	}
-	resp.UserID = user.MXID
-	resp.fill()
+	resp.fill(user)
 	user.log.Debugfln("Responding bridge state in bridge status endpoint: %+v", resp)
 	jsonResponse(w, http.StatusOK, &resp)
 	user.prevBridgeStatus = &resp
