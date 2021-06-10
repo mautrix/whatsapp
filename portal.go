@@ -367,7 +367,7 @@ func (portal *Portal) getMessageIntent(user *User, info whatsapp.MessageInfo) *a
 	return portal.bridge.GetPuppetByJID(info.SenderJid).IntentFor(portal)
 }
 
-func (portal *Portal) startHandling(source *User, info whatsapp.MessageInfo) *appservice.IntentAPI {
+func (portal *Portal) startHandling(source *User, info whatsapp.MessageInfo, msgType string) *appservice.IntentAPI {
 	// TODO these should all be trace logs
 	if portal.lastMessageTs == 0 {
 		portal.log.Debugln("Fetching last message from database to get its timestamp")
@@ -377,18 +377,18 @@ func (portal *Portal) startHandling(source *User, info whatsapp.MessageInfo) *ap
 		}
 	}
 	if portal.lastMessageTs > info.Timestamp+1 {
-		portal.log.Debugfln("Not handling %s: message is older (%d) than last bridge message (%d)", info.Id, info.Timestamp, portal.lastMessageTs)
+		portal.log.Debugfln("Not handling %s (%s): message is older (%d) than last bridge message (%d)", info.Id, msgType, info.Timestamp, portal.lastMessageTs)
 	} else if portal.isRecentlyHandled(info.Id) {
-		portal.log.Debugfln("Not handling %s: message was recently handled", info.Id)
+		portal.log.Debugfln("Not handling %s (%s): message was recently handled", info.Id, msgType)
 	} else if portal.isDuplicate(info.Id) {
-		portal.log.Debugfln("Not handling %s: message is duplicate", info.Id)
+		portal.log.Debugfln("Not handling %s (%s): message is duplicate", info.Id, msgType)
 	} else {
 		portal.lastMessageTs = info.Timestamp
 		intent := portal.getMessageIntent(source, info)
 		if intent != nil {
-			portal.log.Debugfln("Starting handling of %s (ts: %d)", info.Id, info.Timestamp)
+			portal.log.Debugfln("Starting handling of %s (%s, ts: %d)", info.Id, msgType, info.Timestamp)
 		} else {
-			portal.log.Debugfln("Not handling %s: sender is not known", info.Id)
+			portal.log.Debugfln("Not handling %s (%s): sender is not known", info.Id, msgType)
 		}
 		return intent
 	}
@@ -1349,7 +1349,7 @@ func (portal *Portal) sendMessage(intent *appservice.IntentAPI, eventType event.
 }
 
 func (portal *Portal) HandleTextMessage(source *User, message whatsapp.TextMessage) {
-	intent := portal.startHandling(source, message.Info)
+	intent := portal.startHandling(source, message.Info, "text")
 	if intent == nil {
 		return
 	}
@@ -1377,7 +1377,7 @@ func (portal *Portal) HandleStubMessage(source *User, message whatsapp.StubMessa
 		// However, broadcast lists don't have update commands, so we handle these if it's not a backfill
 		return
 	}
-	intent := portal.startHandling(source, message.Info)
+	intent := portal.startHandling(source, message.Info, fmt.Sprintf("stub %s", message.Type.String()))
 	if intent == nil {
 		return
 	}
@@ -1422,7 +1422,7 @@ func (portal *Portal) HandleStubMessage(source *User, message whatsapp.StubMessa
 }
 
 func (portal *Portal) HandleLocationMessage(source *User, message whatsapp.LocationMessage) {
-	intent := portal.startHandling(source, message.Info)
+	intent := portal.startHandling(source, message.Info, "location")
 	if intent == nil {
 		return
 	}
@@ -1481,7 +1481,7 @@ func (portal *Portal) HandleLocationMessage(source *User, message whatsapp.Locat
 }
 
 func (portal *Portal) HandleContactMessage(source *User, message whatsapp.ContactMessage) {
-	intent := portal.startHandling(source, message.Info)
+	intent := portal.startHandling(source, message.Info, "contact")
 	if intent == nil {
 		return
 	}
@@ -1654,7 +1654,7 @@ type mediaMessage struct {
 }
 
 func (portal *Portal) HandleMediaMessage(source *User, msg mediaMessage) {
-	intent := portal.startHandling(source, msg.info)
+	intent := portal.startHandling(source, msg.info, fmt.Sprintf("media %s", msg.mimeType))
 	if intent == nil {
 		return
 	}
