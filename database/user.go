@@ -77,7 +77,7 @@ type User struct {
 	JID            whatsapp.JID
 	ManagementRoom id.RoomID
 	Session        *whatsapp.Session
-	LastConnection uint64
+	LastConnection int64
 }
 
 func (user *User) Scan(row Scannable) *User {
@@ -146,7 +146,7 @@ func (user *User) Insert() {
 }
 
 func (user *User) UpdateLastConnection() {
-	user.LastConnection = uint64(time.Now().Unix())
+	user.LastConnection = time.Now().Unix()
 	_, err := user.db.Exec(`UPDATE "user" SET last_connection=$1 WHERE mxid=$2`,
 		user.LastConnection, user.MXID)
 	if err != nil {

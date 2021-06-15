@@ -27,9 +27,10 @@ import (
 
 type Config struct {
 	Homeserver struct {
-		Address string `yaml:"address"`
-		Domain  string `yaml:"domain"`
-		Asmux   bool   `yaml:"asmux"`
+		Address        string `yaml:"address"`
+		Domain         string `yaml:"domain"`
+		Asmux          bool   `yaml:"asmux"`
+		StatusEndpoint string `yaml:"status_endpoint"`
 	} `yaml:"homeserver"`
 
 	AppService struct {
@@ -69,8 +70,8 @@ type Config struct {
 	} `yaml:"metrics"`
 
 	WhatsApp struct {
-		OSName string `yaml:"os_name"`
-		BrowserName  string `yaml:"browser_name"`
+		OSName      string `yaml:"os_name"`
+		BrowserName string `yaml:"browser_name"`
 	} `yaml:"whatsapp"`
 
 	Bridge BridgeConfig `yaml:"bridge"`
@@ -123,6 +124,7 @@ func (config *Config) MakeAppService() (*appservice.AppService, error) {
 	as.HomeserverURL = config.Homeserver.Address
 	as.Host.Hostname = config.AppService.Hostname
 	as.Host.Port = config.AppService.Port
+	as.DefaultHTTPRetries = 4
 	var err error
 	as.Registration, err = config.GetRegistration()
 	return as, err

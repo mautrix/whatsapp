@@ -121,6 +121,8 @@ func (helper *CryptoHelper) loginBot() (*mautrix.Client, error) {
 		return nil, fmt.Errorf("failed to initialize client: %w", err)
 	}
 	client.Logger = helper.baseLog.Sub("Bot")
+	client.Client = helper.bridge.AS.HTTPClient
+	client.DefaultHTTPRetries = helper.bridge.AS.DefaultHTTPRetries
 	flows, err := client.GetLoginFlows()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get supported login flows: %w", err)
@@ -141,9 +143,7 @@ func (helper *CryptoHelper) loginBot() (*mautrix.Client, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to log in as bridge bot: %w", err)
 	}
-	if len(deviceID) == 0 {
-		helper.store.DeviceID = resp.DeviceID
-	}
+	helper.store.DeviceID = resp.DeviceID
 	return client, nil
 }
 
