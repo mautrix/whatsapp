@@ -989,7 +989,7 @@ func (user *User) HandleError(err error) {
 		user.bridge.Metrics.TrackDisconnection(user.MXID)
 		user.ConnectionErrors++
 		go user.tryReconnect(fmt.Sprintf("Your WhatsApp connection failed: %v", failed.Err))
-	} else if err == whatsapp.ErrPingFalse {
+	} else if err == whatsapp.ErrPingFalse || err == whatsapp.ErrWebsocketKeepaliveFailed {
 		disconnectErr := user.Conn.Disconnect()
 		if disconnectErr != nil {
 			user.log.Warnln("Failed to disconnect after failed ping:", disconnectErr)

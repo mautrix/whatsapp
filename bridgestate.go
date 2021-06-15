@@ -36,21 +36,23 @@ import (
 type BridgeErrorCode string
 
 const (
-	WANotLoggedIn  BridgeErrorCode = "logged-out"
-	WANotConnected BridgeErrorCode = "wa-not-connected"
-	WAConnecting   BridgeErrorCode = "wa-connecting"
-	WATimeout      BridgeErrorCode = "wa-timeout"
-	WAPingFalse    BridgeErrorCode = "wa-ping-false"
-	WAPingError    BridgeErrorCode = "wa-ping-error"
+	WANotLoggedIn   BridgeErrorCode = "logged-out"
+	WANotConnected  BridgeErrorCode = "wa-not-connected"
+	WAConnecting    BridgeErrorCode = "wa-connecting"
+	WATimeout       BridgeErrorCode = "wa-timeout"
+	WAServerTimeout BridgeErrorCode = "wa-server-timeout"
+	WAPingFalse     BridgeErrorCode = "wa-ping-false"
+	WAPingError     BridgeErrorCode = "wa-ping-error"
 )
 
 var bridgeHumanErrors = map[BridgeErrorCode]string{
-	WANotLoggedIn:  "You're not logged into WhatsApp",
-	WANotConnected: "You're not connected to WhatsApp",
-	WAConnecting:   "Trying to reconnect to WhatsApp. Please make sure WhatsApp is running on your phone and connected to the internet.",
-	WATimeout:      "WhatsApp on your phone is not responding. Please make sure it is running and connected to the internet.",
-	WAPingFalse:    "WhatsApp returned an error, reconnecting. Please make sure WhatsApp is running on your phone and connected to the internet.",
-	WAPingError:    "WhatsApp returned an unknown error",
+	WANotLoggedIn:   "You're not logged into WhatsApp",
+	WANotConnected:  "You're not connected to WhatsApp",
+	WAConnecting:    "Trying to reconnect to WhatsApp. Please make sure WhatsApp is running on your phone and connected to the internet.",
+	WATimeout:       "WhatsApp on your phone is not responding. Please make sure it is running and connected to the internet.",
+	WAServerTimeout: "The WhatsApp web servers are not responding. The bridge will try to reconnect.",
+	WAPingFalse:     "WhatsApp returned an error, reconnecting. Please make sure WhatsApp is running on your phone and connected to the internet.",
+	WAPingError:     "WhatsApp returned an unknown error",
 }
 
 type BridgeState struct {
@@ -96,6 +98,8 @@ func (user *User) setupAdminTestHooks() {
 	user.Conn.AdminTestHook = func(err error) {
 		if errors.Is(err, whatsapp.ErrConnectionTimeout) {
 			user.sendBridgeState(BridgeState{Error: WATimeout})
+		} else if errors.Is(err, whatsapp.ErrWebsocketKeepaliveFailed) {
+			user.sendBridgeState(BridgeState{Error: WAServerTimeout})
 		} else if errors.Is(err, whatsapp.ErrPingFalse) {
 			user.sendBridgeState(BridgeState{Error: WAPingFalse})
 		} else if err == nil {
@@ -104,8 +108,12 @@ func (user *User) setupAdminTestHooks() {
 			user.sendBridgeState(BridgeState{Error: WAPingError})
 		}
 	}
-	user.Conn.CountTimeoutHook = func() {
-		user.sendBridgeState(BridgeState{Error: WATimeout})
+	user.Conn.CountTimeoutHook = func(wsKeepaliveErrorCount int) {
+		if wsKeepaliveErrorCount > 0 {
+			user.sendBridgeState(BridgeState{Error: WAServerTimeout})
+		} else {
+			user.sendBridgeState(BridgeState{Error: WATimeout})
+		}
 	}
 }
 
@@ -190,6 +198,8 @@ func (prov *ProvisioningAPI) BridgeStatePing(w http.ResponseWriter, r *http.Requ
 				resp.Error = WAPingFalse
 			} else if errors.Is(err, whatsapp.ErrConnectionTimeout) {
 				resp.Error = WATimeout
+			}else if errors.Is(err, whatsapp.ErrWebsocketKeepaliveFailed) {
+				resp.Error = WAServerTimeout
 			} else if err != nil {
 				resp.Error = WAPingError
 			} else {
