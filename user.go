@@ -760,7 +760,7 @@ func (user *User) syncChatDoublePuppetDetails(doublePuppet *Puppet, chat Chat, j
 		if lastMessage != nil {
 			err := intent.MarkReadWithContent(chat.Portal.MXID, lastMessage.MXID, &CustomReadReceipt{DoublePuppet: true})
 			if err != nil {
-				user.log.Warnln("Failed to mark %s in %s as read after backfill: %v", lastMessage.MXID, chat.Portal.MXID, err)
+				user.log.Warnfln("Failed to mark %s in %s as read after backfill: %v", lastMessage.MXID, chat.Portal.MXID, err)
 			}
 		}
 	} else if chat.UnreadCount == -1 {
@@ -1236,7 +1236,7 @@ func (user *User) HandleMsgInfo(info whatsapp.JSONMsgInfo) {
 
 			err := intent.MarkReadWithContent(portal.MXID, msg.MXID, &CustomReadReceipt{DoublePuppet: intent.IsCustomPuppet})
 			if err != nil {
-				user.log.Warnln("Failed to mark message %s as read by %s: %v", msg.MXID, info.SenderJID, err)
+				user.log.Warnfln("Failed to mark message %s as read by %s: %v", msg.MXID, info.SenderJID, err)
 			}
 		}
 	}

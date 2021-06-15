@@ -2162,10 +2162,14 @@ func (portal *Portal) wasMessageSent(sender *User, id string) bool {
 	return true
 }
 
-func (portal *Portal) sendErrorMessage(message string) id.EventID {
+func (portal *Portal) sendErrorMessage(message string, confirmed bool) id.EventID {
+	certainty := "may not have been"
+	if confirmed {
+		certainty = "was not"
+	}
 	resp, err := portal.sendMainIntentMessage(event.MessageEventContent{
 		MsgType: event.MsgNotice,
-		Body:    fmt.Sprintf("\u26a0 Your message may not have been bridged: %v", message),
+		Body:    fmt.Sprintf("\u26a0 Your message %s bridged: %v", certainty, message),
 	})
 	if err != nil {
 		portal.log.Warnfln("Failed to send bridging error message:", err)
@@ -2213,13 +2217,30 @@ func (portal *Portal) sendRaw(sender *User, evt *event.Event, info *waProto.WebM
 			portal.sendDeliveryReceipt(evt.ID)
 		} else {
 			portal.log.Warnfln("Response when bridging Matrix event %s is taking long to arrive", evt.ID)
-			errorEventID = portal.sendErrorMessage("message sending timed out")
+			errorEventID = portal.sendErrorMessage("message sending timed out", false)
 		}
 		err = <-errChan
 	}
 	if err != nil {
-		portal.log.Errorfln("Error handling Matrix event %s: %v", evt.ID, err)
-		portal.sendErrorMessage(err.Error())
+		var statusErr whatsapp.StatusResponse
+		errors.As(err, &statusErr)
+		var confirmed bool
+		var errMsg string
+		switch statusErr.Status {
+		case 400:
+			portal.log.Errorfln("400 response handling Matrix event %s: %+v", evt.ID, statusErr.Extra)
+			errMsg = "WhatsApp rejected the message (status code 400)."
+			if info.Message.ImageMessage != nil || info.Message.VideoMessage != nil || info.Message.AudioMessage != nil || info.Message.DocumentMessage != nil {
+				errMsg += " The attachment type you sent may be unsupported."
+			}
+			confirmed = true
+		case 599:
+			errMsg = "WhatsApp rate-limited the message (status code 599)."
+		default:
+			portal.log.Errorfln("Error handling Matrix event %s: %v", evt.ID, err)
+			errMsg = err.Error()
+		}
+		portal.sendErrorMessage(errMsg, confirmed)
 	} else {
 		portal.log.Debugfln("Handled Matrix event %s", evt.ID)
 		portal.sendDeliveryReceipt(evt.ID)
