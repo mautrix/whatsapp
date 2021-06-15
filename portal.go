@@ -364,7 +364,9 @@ func (portal *Portal) getMessageIntent(user *User, info whatsapp.MessageInfo) *a
 			return nil
 		}
 	}
-	return portal.bridge.GetPuppetByJID(info.SenderJid).IntentFor(portal)
+	puppet := portal.bridge.GetPuppetByJID(info.SenderJid)
+	puppet.SyncContactIfNecessary(user)
+	return puppet.IntentFor(portal)
 }
 
 func (portal *Portal) startHandling(source *User, info whatsapp.MessageInfo, msgType string) *appservice.IntentAPI {
@@ -1405,7 +1407,7 @@ func (portal *Portal) HandleStubMessage(source *User, message whatsapp.StubMessa
 	case waProto.WebMessageInfo_GROUP_CHANGE_RESTRICT:
 		eventID = portal.RestrictMetadataChanges(message.FirstParam == "on")
 	case waProto.WebMessageInfo_GROUP_PARTICIPANT_ADD, waProto.WebMessageInfo_GROUP_PARTICIPANT_INVITE, waProto.WebMessageInfo_BROADCAST_ADD:
-		eventID = portal.HandleWhatsAppInvite(senderJID, intent, message.Params)
+		eventID = portal.HandleWhatsAppInvite(source, senderJID, intent, message.Params)
 	case waProto.WebMessageInfo_GROUP_PARTICIPANT_REMOVE, waProto.WebMessageInfo_GROUP_PARTICIPANT_LEAVE, waProto.WebMessageInfo_BROADCAST_REMOVE:
 		portal.HandleWhatsAppKick(source, senderJID, message.Params)
 	case waProto.WebMessageInfo_GROUP_PARTICIPANT_PROMOTE:
@@ -1601,7 +1603,7 @@ func (portal *Portal) HandleWhatsAppKick(source *User, senderJID string, jids []
 	}
 }
 
-func (portal *Portal) HandleWhatsAppInvite(senderJID string, intent *appservice.IntentAPI, jids []string) (evtID id.EventID) {
+func (portal *Portal) HandleWhatsAppInvite(source *User, senderJID string, intent *appservice.IntentAPI, jids []string) (evtID id.EventID) {
 	if intent == nil {
 		intent = portal.MainIntent()
 		if senderJID != "unknown" {
@@ -1611,6 +1613,7 @@ func (portal *Portal) HandleWhatsAppInvite(senderJID string, intent *appservice.
 	}
 	for _, jid := range jids {
 		puppet := portal.bridge.GetPuppetByJID(jid)
+		puppet.SyncContactIfNecessary(source)
 		content := event.Content{
 			Parsed: event.MemberEventContent{
 				Membership:  "invite",

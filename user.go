@@ -1370,7 +1370,7 @@ func (user *User) HandleChatUpdate(cmd whatsapp.ChatUpdate) {
 	case whatsapp.ChatActionRemove:
 		go portal.HandleWhatsAppKick(nil, cmd.Data.SenderJID, cmd.Data.UserChange.JIDs)
 	case whatsapp.ChatActionAdd:
-		go portal.HandleWhatsAppInvite(cmd.Data.SenderJID, nil, cmd.Data.UserChange.JIDs)
+		go portal.HandleWhatsAppInvite(user, cmd.Data.SenderJID, nil, cmd.Data.UserChange.JIDs)
 	case whatsapp.ChatActionIntroduce:
 		if cmd.Data.SenderJID != "unknown" {
 			go portal.Sync(user, whatsapp.Contact{JID: portal.Key.JID})
