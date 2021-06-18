@@ -228,7 +228,7 @@ func (portal *Portal) handleMessageLoop() {
 			err := portal.CreateMatrixRoom(msg.source)
 			if err != nil {
 				portal.log.Errorln("Failed to create portal room:", err)
-				return
+				continue
 			}
 			portal.syncDoublePuppetDetailsAfterCreate(msg.source)
 		}
