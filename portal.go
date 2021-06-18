@@ -201,7 +201,9 @@ func (portal *Portal) syncDoublePuppetDetailsAfterCreate(source *User) {
 	if doublePuppet == nil {
 		return
 	}
+	source.Conn.Store.ChatsLock.RLock()
 	chat, ok := source.Conn.Store.Chats[portal.Key.JID]
+	source.Conn.Store.ChatsLock.RUnlock()
 	if !ok {
 		portal.log.Debugln("Not syncing chat mute/tags with %s: chat info not found", source.MXID)
 		return
@@ -598,7 +600,9 @@ func (portal *Portal) UpdateMetadata(user *User) bool {
 			portal.SyncBroadcastRecipients(user, broadcastMetadata)
 			update = portal.UpdateName(broadcastMetadata.Name, "", nil, false) || update
 		} else {
+			user.Conn.Store.ContactsLock.RLock()
 			contact, _ := user.Conn.Store.Contacts[portal.Key.JID]
+			user.Conn.Store.ContactsLock.RUnlock()
 			update = portal.UpdateName(contact.Name, "", nil, false) || update
 		}
 		update = portal.UpdateTopic(BroadcastTopic, "", nil, false) || update
@@ -1085,7 +1089,9 @@ func (portal *Portal) CreateMatrixRoom(user *User) error {
 		if err == nil && broadcastMetadata.Status == 200 {
 			portal.Name = broadcastMetadata.Name
 		} else {
+			user.Conn.Store.ContactsLock.RLock()
 			contact, _ := user.Conn.Store.Contacts[portal.Key.JID]
+			user.Conn.Store.ContactsLock.RUnlock()
 			portal.Name = contact.Name
 		}
 		if len(portal.Name) == 0 {

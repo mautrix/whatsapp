@@ -667,9 +667,11 @@ func (user *User) HandleStreamEvent(evt whatsapp.StreamEvent) {
 func (user *User) HandleChatList(chats []whatsapp.Chat) {
 	user.log.Infoln("Chat list received")
 	chatMap := make(map[string]whatsapp.Chat)
+	user.Conn.Store.ChatsLock.RLock()
 	for _, chat := range user.Conn.Store.Chats {
 		chatMap[chat.JID] = chat
 	}
+	user.Conn.Store.ChatsLock.RUnlock()
 	for _, chat := range chats {
 		chatMap[chat.JID] = chat
 	}
@@ -798,10 +800,13 @@ func (user *User) collectChatList(chatMap map[string]whatsapp.Chat) ChatList {
 	for _, chat := range chatMap {
 		portal := user.GetPortalByJID(chat.JID)
 
+		user.Conn.Store.ContactsLock.RLock()
+		contact, _ := user.Conn.Store.Contacts[chat.JID]
+		user.Conn.Store.ContactsLock.RUnlock()
 		chats = append(chats, Chat{
 			Chat:    chat,
 			Portal:  portal,
-			Contact: user.Conn.Store.Contacts[chat.JID],
+			Contact: contact,
 		})
 		var inCommunity, ok bool
 		if inCommunity, ok = existingKeys[portal.Key]; !ok || !inCommunity {
