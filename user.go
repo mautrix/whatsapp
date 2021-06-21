@@ -677,7 +677,9 @@ func (user *User) HandleChatList(chats []whatsapp.Chat) {
 	}
 	select {
 	case user.chatListReceived <- struct{}{}:
+		user.log.Debugln("Sent chat list receive confirmation from HandleChatList")
 	default:
+		user.log.Debugln("Failed to send chat list receive confirmation from HandleChatList, channel probably full")
 	}
 	go user.syncPortals(chatMap, false)
 }

@@ -62,6 +62,7 @@ const StatusBroadcastName = "WhatsApp Status Broadcast"
 const BroadcastTopic = "WhatsApp broadcast list"
 const UnnamedBroadcastName = "Unnamed broadcast list"
 const PrivateChatTopic = "WhatsApp private chat"
+
 var ErrStatusBroadcastDisabled = errors.New("status bridging is disabled")
 
 func (bridge *Bridge) GetPortalByMXID(mxid id.RoomID) *Portal {
@@ -380,8 +381,12 @@ func (portal *Portal) startHandling(source *User, info whatsapp.MessageInfo, msg
 			atomic.CompareAndSwapUint64(&portal.lastMessageTs, 0, uint64(lastMessage.Timestamp))
 		}
 	}
-	if portal.lastMessageTs > info.Timestamp+1 {
-		portal.log.Debugfln("Not handling %s (%s): message is older (%d) than last bridge message (%d)", info.Id, msgType, info.Timestamp, portal.lastMessageTs)
+
+	// If there are messages slightly older than the last message, it's possible the order is just wrong,
+	// so don't short-circuit and check the database for duplicates.
+	const timestampIgnoreFuzziness = 5 * 60
+	if portal.lastMessageTs > info.Timestamp+timestampIgnoreFuzziness {
+		portal.log.Debugfln("Not handling %s (%s): message is >5 minutes older (%d) than last bridge message (%d)", info.Id, msgType, info.Timestamp, portal.lastMessageTs)
 	} else if portal.isRecentlyHandled(info.Id) {
 		portal.log.Debugfln("Not handling %s (%s): message was recently handled", info.Id, msgType)
 	} else if portal.isDuplicate(info.Id) {
