@@ -273,12 +273,12 @@ func (portal *Portal) handleMessage(msg PortalMessage, isBackfill bool) {
 			base:      base{data.Download, data.Info, data.ContextInfo, data.Type},
 			thumbnail: data.Thumbnail,
 			caption:   data.Caption,
-			length:    data.Length,
+			length:    data.Length * 1000,
 		})
 	case whatsapp.AudioMessage:
 		portal.HandleMediaMessage(msg.source, mediaMessage{
 			base:   base{data.Download, data.Info, data.ContextInfo, data.Type},
-			length: data.Length,
+			length: data.Length * 1000,
 		})
 	case whatsapp.DocumentMessage:
 		fileName := data.FileName
@@ -2110,7 +2110,7 @@ func (portal *Portal) convertMatrixMessage(sender *User, evt *event.Event) (*waP
 		if media == nil {
 			return nil, sender
 		}
-		duration := uint32(content.GetInfo().Duration)
+		duration := uint32(content.GetInfo().Duration / 1000)
 		ctxInfo.MentionedJid = media.MentionedJIDs
 		info.Message.VideoMessage = &waProto.VideoMessage{
 			ContextInfo:   ctxInfo,
@@ -2130,7 +2130,7 @@ func (portal *Portal) convertMatrixMessage(sender *User, evt *event.Event) (*waP
 		if media == nil {
 			return nil, sender
 		}
-		duration := uint32(content.GetInfo().Duration)
+		duration := uint32(content.GetInfo().Duration / 1000)
 		info.Message.AudioMessage = &waProto.AudioMessage{
 			ContextInfo:   ctxInfo,
 			Url:           &media.URL,
