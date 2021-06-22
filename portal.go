@@ -1801,11 +1801,10 @@ func (portal *Portal) HandleMediaMessage(source *User, msg mediaMessage) {
 
 		portal.bridge.Formatter.ParseWhatsApp(captionContent, msg.context.MentionedJID)
 
-		_, err := portal.sendMessage(intent, event.EventMessage, captionContent, ts)
+		resp, err = portal.sendMessage(intent, event.EventMessage, captionContent, ts)
 		if err != nil {
 			portal.log.Warnfln("Failed to handle caption of message %s: %v", msg.info.Id, err)
 		}
-		// TODO store caption mxid?
 	}
 
 	portal.finishHandling(source, msg.info.Source, resp.EventID)
