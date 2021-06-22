@@ -2015,6 +2015,17 @@ func (portal *Portal) addRelaybotFormat(sender *User, content *event.MessageEven
 	return true
 }
 
+func addCodecToMime(mimeType, codec string) string {
+	mediaType, params, err := mime.ParseMediaType(mimeType)
+	if err != nil {
+		return mimeType
+	}
+	if _, ok := params["codecs"]; !ok {
+		params["codecs"] = codec
+	}
+	return mime.FormatMediaType(mediaType, params)
+}
+
 func (portal *Portal) convertMatrixMessage(sender *User, evt *event.Event) (*waProto.WebMessageInfo, *User) {
 	content, ok := evt.Content.Parsed.(*event.MessageEventContent)
 	if !ok {
@@ -2024,10 +2035,10 @@ func (portal *Portal) convertMatrixMessage(sender *User, evt *event.Event) (*waP
 
 	ts := uint64(evt.Timestamp / 1000)
 	status := waProto.WebMessageInfo_PENDING
-	fromMe := true
+	trueVal := true
 	info := &waProto.WebMessageInfo{
 		Key: &waProto.MessageKey{
-			FromMe:    &fromMe,
+			FromMe:    &trueVal,
 			Id:        makeMessageID(),
 			RemoteJid: &portal.Key.JID,
 		},
@@ -2140,6 +2151,12 @@ func (portal *Portal) convertMatrixMessage(sender *User, evt *event.Event) (*waP
 			FileEncSha256: media.FileEncSHA256,
 			FileSha256:    media.FileSHA256,
 			FileLength:    &media.FileLength,
+		}
+		if _, isVoice := evt.Content.Raw["org.matrix.msc3245.voice"]; isVoice {
+			info.Message.AudioMessage.Ptt = &trueVal
+			// hacky hack to add the codecs param that whatsapp seems to require
+			mimeWithCodec := addCodecToMime(content.GetInfo().MimeType, "opus")
+			info.Message.AudioMessage.Mimetype = &mimeWithCodec
 		}
 	case event.MsgFile:
 		media := portal.preprocessMatrixMedia(sender, relaybotFormatted, content, evt.ID, whatsapp.MediaDocument)
