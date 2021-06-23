@@ -2152,7 +2152,9 @@ func (portal *Portal) convertMatrixMessage(sender *User, evt *event.Event) (*waP
 			FileSha256:    media.FileSHA256,
 			FileLength:    &media.FileLength,
 		}
-		if _, isVoice := evt.Content.Raw["org.matrix.msc3245.voice"]; isVoice {
+		_, isMSC3245Voice := evt.Content.Raw["org.matrix.msc3245.voice"]
+		_, isMSC2516Voice := evt.Content.Raw["org.matrix.msc2516.voice"]
+		if isMSC3245Voice || isMSC2516Voice {
 			info.Message.AudioMessage.Ptt = &trueVal
 			// hacky hack to add the codecs param that whatsapp seems to require
 			mimeWithCodec := addCodecToMime(content.GetInfo().MimeType, "opus")
