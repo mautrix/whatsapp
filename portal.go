@@ -254,29 +254,35 @@ func (portal *Portal) handleMessage(msg PortalMessage, isBackfill bool) {
 		portal.log.Warnln("handleMessage called even though portal.MXID is empty")
 		return
 	}
+	var triedToHandle bool
+	var trackMessageCallback func()
+	dataType := reflect.TypeOf(msg.data)
+	if !isBackfill {
+		trackMessageCallback = portal.bridge.Metrics.TrackWhatsAppMessage(msg.timestamp, dataType.Name())
+	}
 	switch data := msg.data.(type) {
 	case whatsapp.TextMessage:
-		portal.HandleTextMessage(msg.source, data)
+		triedToHandle = portal.HandleTextMessage(msg.source, data)
 	case whatsapp.ImageMessage:
-		portal.HandleMediaMessage(msg.source, mediaMessage{
+		triedToHandle = portal.HandleMediaMessage(msg.source, mediaMessage{
 			base:      base{data.Download, data.Info, data.ContextInfo, data.Type},
 			thumbnail: data.Thumbnail,
 			caption:   data.Caption,
 		})
 	case whatsapp.StickerMessage:
-		portal.HandleMediaMessage(msg.source, mediaMessage{
+		triedToHandle = portal.HandleMediaMessage(msg.source, mediaMessage{
 			base:          base{data.Download, data.Info, data.ContextInfo, data.Type},
 			sendAsSticker: true,
 		})
 	case whatsapp.VideoMessage:
-		portal.HandleMediaMessage(msg.source, mediaMessage{
+		triedToHandle = portal.HandleMediaMessage(msg.source, mediaMessage{
 			base:      base{data.Download, data.Info, data.ContextInfo, data.Type},
 			thumbnail: data.Thumbnail,
 			caption:   data.Caption,
 			length:    data.Length * 1000,
 		})
 	case whatsapp.AudioMessage:
-		portal.HandleMediaMessage(msg.source, mediaMessage{
+		triedToHandle = portal.HandleMediaMessage(msg.source, mediaMessage{
 			base:   base{data.Download, data.Info, data.ContextInfo, data.Type},
 			length: data.Length * 1000,
 		})
@@ -285,23 +291,26 @@ func (portal *Portal) handleMessage(msg PortalMessage, isBackfill bool) {
 		if len(fileName) == 0 {
 			fileName = data.Title
 		}
-		portal.HandleMediaMessage(msg.source, mediaMessage{
+		triedToHandle = portal.HandleMediaMessage(msg.source, mediaMessage{
 			base:      base{data.Download, data.Info, data.ContextInfo, data.Type},
 			thumbnail: data.Thumbnail,
 			fileName:  fileName,
 		})
 	case whatsapp.ContactMessage:
-		portal.HandleContactMessage(msg.source, data)
+		triedToHandle = portal.HandleContactMessage(msg.source, data)
 	case whatsapp.LocationMessage:
-		portal.HandleLocationMessage(msg.source, data)
+		triedToHandle = portal.HandleLocationMessage(msg.source, data)
 	case whatsapp.StubMessage:
-		portal.HandleStubMessage(msg.source, data, isBackfill)
+		triedToHandle = portal.HandleStubMessage(msg.source, data, isBackfill)
 	case whatsapp.MessageRevocation:
-		portal.HandleMessageRevoke(msg.source, data)
+		triedToHandle = portal.HandleMessageRevoke(msg.source, data)
 	case FakeMessage:
-		portal.HandleFakeMessage(msg.source, data)
+		triedToHandle = portal.HandleFakeMessage(msg.source, data)
 	default:
-		portal.log.Warnln("Unknown message type:", reflect.TypeOf(msg.data))
+		portal.log.Warnln("Unknown message type:", dataType)
+	}
+	if triedToHandle && trackMessageCallback != nil {
+		trackMessageCallback()
 	}
 }
 
@@ -1281,10 +1290,10 @@ func (portal *Portal) SetReply(content *event.MessageEventContent, info whatsapp
 	return
 }
 
-func (portal *Portal) HandleMessageRevoke(user *User, message whatsapp.MessageRevocation) {
+func (portal *Portal) HandleMessageRevoke(user *User, message whatsapp.MessageRevocation) bool {
 	msg := portal.bridge.DB.Message.GetByJID(portal.Key, message.Id)
 	if msg == nil || msg.IsFakeMXID() {
-		return
+		return false
 	}
 	var intent *appservice.IntentAPI
 	if message.FromMe {
@@ -1302,14 +1311,15 @@ func (portal *Portal) HandleMessageRevoke(user *User, message whatsapp.MessageRe
 	_, err := intent.RedactEvent(portal.MXID, msg.MXID)
 	if err != nil {
 		portal.log.Errorln("Failed to redact %s: %v", msg.JID, err)
-		return
+	} else {
+		msg.Delete()
 	}
-	msg.Delete()
+	return true
 }
 
-func (portal *Portal) HandleFakeMessage(_ *User, message FakeMessage) {
+func (portal *Portal) HandleFakeMessage(_ *User, message FakeMessage) bool {
 	if portal.isRecentlyHandled(message.ID) {
-		return
+		return false
 	}
 
 	content := event.MessageEventContent{
@@ -1322,7 +1332,7 @@ func (portal *Portal) HandleFakeMessage(_ *User, message FakeMessage) {
 	_, err := portal.sendMainIntentMessage(content)
 	if err != nil {
 		portal.log.Errorfln("Failed to handle fake message %s: %v", message.ID, err)
-		return
+		return true
 	}
 
 	portal.recentlyHandledLock.Lock()
@@ -1330,6 +1340,7 @@ func (portal *Portal) HandleFakeMessage(_ *User, message FakeMessage) {
 	portal.recentlyHandledIndex = (portal.recentlyHandledIndex + 1) % recentlyHandledLength
 	portal.recentlyHandledLock.Unlock()
 	portal.recentlyHandled[index] = message.ID
+	return true
 }
 
 func (portal *Portal) sendMainIntentMessage(content interface{}) (*mautrix.RespSendEvent, error) {
@@ -1361,10 +1372,10 @@ func (portal *Portal) sendMessage(intent *appservice.IntentAPI, eventType event.
 	}
 }
 
-func (portal *Portal) HandleTextMessage(source *User, message whatsapp.TextMessage) {
+func (portal *Portal) HandleTextMessage(source *User, message whatsapp.TextMessage) bool {
 	intent := portal.startHandling(source, message.Info, "text")
 	if intent == nil {
-		return
+		return false
 	}
 
 	content := &event.MessageEventContent{
@@ -1379,20 +1390,21 @@ func (portal *Portal) HandleTextMessage(source *User, message whatsapp.TextMessa
 	resp, err := portal.sendMessage(intent, event.EventMessage, content, int64(message.Info.Timestamp*1000))
 	if err != nil {
 		portal.log.Errorfln("Failed to handle message %s: %v", message.Info.Id, err)
-		return
+	} else {
+		portal.finishHandling(source, message.Info.Source, resp.EventID)
 	}
-	portal.finishHandling(source, message.Info.Source, resp.EventID)
+	return true
 }
 
-func (portal *Portal) HandleStubMessage(source *User, message whatsapp.StubMessage, isBackfill bool) {
+func (portal *Portal) HandleStubMessage(source *User, message whatsapp.StubMessage, isBackfill bool) bool {
 	if portal.bridge.Config.Bridge.ChatMetaSync && (!portal.IsBroadcastList() || isBackfill) {
 		// Chat meta sync is enabled, so we use chat update commands and full-syncs instead of message history
 		// However, broadcast lists don't have update commands, so we handle these if it's not a backfill
-		return
+		return false
 	}
 	intent := portal.startHandling(source, message.Info, fmt.Sprintf("stub %s", message.Type.String()))
 	if intent == nil {
-		return
+		return false
 	}
 	var senderJID string
 	if message.Info.FromMe {
@@ -1426,18 +1438,19 @@ func (portal *Portal) HandleStubMessage(source *User, message whatsapp.StubMessa
 	case waProto.WebMessageInfo_GROUP_PARTICIPANT_DEMOTE:
 		eventID = portal.ChangeAdminStatus(message.Params, false)
 	default:
-		return
+		return false
 	}
 	if len(eventID) == 0 {
 		eventID = id.EventID(fmt.Sprintf("net.maunium.whatsapp.fake::%s", message.Info.Id))
 	}
 	portal.markHandled(source, message.Info.Source, eventID, true)
+	return true
 }
 
-func (portal *Portal) HandleLocationMessage(source *User, message whatsapp.LocationMessage) {
+func (portal *Portal) HandleLocationMessage(source *User, message whatsapp.LocationMessage) bool {
 	intent := portal.startHandling(source, message.Info, "location")
 	if intent == nil {
-		return
+		return false
 	}
 
 	url := message.Url
@@ -1488,15 +1501,16 @@ func (portal *Portal) HandleLocationMessage(source *User, message whatsapp.Locat
 	resp, err := portal.sendMessage(intent, event.EventMessage, content, int64(message.Info.Timestamp*1000))
 	if err != nil {
 		portal.log.Errorfln("Failed to handle message %s: %v", message.Info.Id, err)
-		return
+	} else {
+		portal.finishHandling(source, message.Info.Source, resp.EventID)
 	}
-	portal.finishHandling(source, message.Info.Source, resp.EventID)
+	return true
 }
 
-func (portal *Portal) HandleContactMessage(source *User, message whatsapp.ContactMessage) {
+func (portal *Portal) HandleContactMessage(source *User, message whatsapp.ContactMessage) bool {
 	intent := portal.startHandling(source, message.Info, "contact")
 	if intent == nil {
-		return
+		return false
 	}
 
 	fileName := fmt.Sprintf("%s.vcf", message.DisplayName)
@@ -1507,7 +1521,7 @@ func (portal *Portal) HandleContactMessage(source *User, message whatsapp.Contac
 	uploadResp, err := intent.UploadBytesWithName(data, uploadMimeType, fileName)
 	if err != nil {
 		portal.log.Errorfln("Failed to upload vcard of %s: %v", message.DisplayName, err)
-		return
+		return true
 	}
 
 	content := &event.MessageEventContent{
@@ -1531,9 +1545,10 @@ func (portal *Portal) HandleContactMessage(source *User, message whatsapp.Contac
 	resp, err := portal.sendMessage(intent, event.EventMessage, content, int64(message.Info.Timestamp*1000))
 	if err != nil {
 		portal.log.Errorfln("Failed to handle message %s: %v", message.Info.Id, err)
-		return
+	} else {
+		portal.finishHandling(source, message.Info.Source, resp.EventID)
 	}
-	portal.finishHandling(source, message.Info.Source, resp.EventID)
+	return true
 }
 
 func (portal *Portal) sendMediaBridgeFailure(source *User, intent *appservice.IntentAPI, info whatsapp.MessageInfo, bridgeErr error) {
@@ -1667,10 +1682,10 @@ type mediaMessage struct {
 	sendAsSticker bool
 }
 
-func (portal *Portal) HandleMediaMessage(source *User, msg mediaMessage) {
+func (portal *Portal) HandleMediaMessage(source *User, msg mediaMessage) bool {
 	intent := portal.startHandling(source, msg.info, fmt.Sprintf("media %s", msg.mimeType))
 	if intent == nil {
-		return
+		return false
 	}
 
 	data, err := msg.download()
@@ -1679,16 +1694,16 @@ func (portal *Portal) HandleMediaMessage(source *User, msg mediaMessage) {
 		_, err = source.Conn.LoadMediaInfo(msg.info.RemoteJid, msg.info.Id, msg.info.FromMe)
 		if err != nil {
 			portal.sendMediaBridgeFailure(source, intent, msg.info, fmt.Errorf("failed to load media info: %w", err))
-			return
+			return true
 		}
 		data, err = msg.download()
 	}
 	if err == whatsapp.ErrNoURLPresent {
 		portal.log.Debugfln("No URL present error for media message %s, ignoring...", msg.info.Id)
-		return
+		return true
 	} else if err != nil {
 		portal.sendMediaBridgeFailure(source, intent, msg.info, err)
-		return
+		return true
 	}
 
 	var width, height int
@@ -1708,7 +1723,7 @@ func (portal *Portal) HandleMediaMessage(source *User, msg mediaMessage) {
 		} else {
 			portal.sendMediaBridgeFailure(source, intent, msg.info, fmt.Errorf("failed to upload media: %w", err))
 		}
-		return
+		return true
 	}
 
 	if msg.fileName == "" {
@@ -1790,7 +1805,7 @@ func (portal *Portal) HandleMediaMessage(source *User, msg mediaMessage) {
 	resp, err := portal.sendMessage(intent, eventType, content, ts)
 	if err != nil {
 		portal.log.Errorfln("Failed to handle message %s: %v", msg.info.Id, err)
-		return
+		return true
 	}
 
 	if len(msg.caption) > 0 {
@@ -1808,6 +1823,7 @@ func (portal *Portal) HandleMediaMessage(source *User, msg mediaMessage) {
 	}
 
 	portal.finishHandling(source, msg.info.Source, resp.EventID)
+	return true
 }
 
 func makeMessageID() *string {
