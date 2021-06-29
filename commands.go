@@ -206,13 +206,13 @@ func (handler *CommandHandler) CommandDevTest(_ *CommandEvent) {
 const cmdVersionHelp = `version - View the bridge version`
 
 func (handler *CommandHandler) CommandVersion(ce *CommandEvent) {
-	version := fmt.Sprintf("v%s.unknown", Version)
+	linkifiedVersion := fmt.Sprintf("v%s", Version)
 	if Tag == Version {
-		version = fmt.Sprintf("[v%s](%s/releases/v%s) (%s)", Version, URL, Tag, BuildTime)
+		linkifiedVersion = fmt.Sprintf("[v%s](%s/releases/v%s)", Version, URL, Tag)
 	} else if len(Commit) > 8 {
-		version = fmt.Sprintf("v%s.[%s](%s/commit/%s) (%s)", Version, Commit[:8], URL, Commit, BuildTime)
+		linkifiedVersion = strings.Replace(linkifiedVersion, Commit[:8], fmt.Sprintf("[%s](%s/commit/%s)", Commit[:8], URL, Commit), 1)
 	}
-	ce.Reply(fmt.Sprintf("[%s](%s) %s", Name, URL, version))
+	ce.Reply(fmt.Sprintf("[%s](%s) %s (%s)", Name, URL, linkifiedVersion, BuildTime))
 }
 
 const cmdInviteLinkHelp = `invite-link - Get an invite link to the current group chat.`
@@ -421,11 +421,11 @@ func (handler *CommandHandler) CommandLogout(ce *CommandEvent) {
 	ce.Reply("Logged out successfully.")
 }
 
-const cmdToggleHelp = `toggle <presence|receipts> - Toggle bridging of presence or read receipts`
+const cmdToggleHelp = `toggle <presence|receipts|all> - Toggle bridging of presence or read receipts`
 
 func (handler *CommandHandler) CommandToggle(ce *CommandEvent) {
-	if len(ce.Args) == 0 || (ce.Args[0] != "presence" && ce.Args[0] != "receipts") {
-		ce.Reply("**Usage:** `toggle <presence|receipts>`")
+	if len(ce.Args) == 0 || (ce.Args[0] != "presence" && ce.Args[0] != "receipts" && ce.Args[0] != "all") {
+		ce.Reply("**Usage:** `toggle <presence|receipts|all>`")
 		return
 	}
 	if ce.User.Session == nil {
@@ -437,7 +437,7 @@ func (handler *CommandHandler) CommandToggle(ce *CommandEvent) {
 		ce.Reply("You're not logged in with your Matrix account.")
 		return
 	}
-	if ce.Args[0] == "presence" {
+	if ce.Args[0] == "presence" || ce.Args[0] == "all" {
 		customPuppet.EnablePresence = !customPuppet.EnablePresence
 		var newPresence whatsapp.Presence
 		if customPuppet.EnablePresence {
@@ -453,7 +453,8 @@ func (handler *CommandHandler) CommandToggle(ce *CommandEvent) {
 				ce.User.log.Warnln("Failed to set presence:", err)
 			}
 		}
-	} else if ce.Args[0] == "receipts" {
+	}
+	if ce.Args[0] == "receipts" || ce.Args[0] == "all" {
 		customPuppet.EnableReceipts = !customPuppet.EnableReceipts
 		if customPuppet.EnableReceipts {
 			ce.Reply("Enabled read receipt bridging")
@@ -568,7 +569,7 @@ func (handler *CommandHandler) CommandDisconnect(ce *CommandEvent) {
 		return
 	}
 	ce.User.bridge.Metrics.TrackConnectionState(ce.User.JID, false)
-	ce.User.sendBridgeStatus(AsmuxPong{Error: AsmuxWANotConnected})
+	ce.User.sendBridgeState(BridgeState{Error: WANotConnected})
 	ce.Reply("Successfully disconnected. Use the `reconnect` command to reconnect.")
 }
 
@@ -605,6 +606,7 @@ func (handler *CommandHandler) CommandHelp(ce *CommandEvent) {
 
 	ce.Reply("* " + strings.Join([]string{
 		cmdPrefix + cmdHelpHelp,
+		cmdPrefix + cmdVersionHelp,
 		cmdPrefix + cmdLoginHelp,
 		cmdPrefix + cmdLogoutHelp,
 		cmdPrefix + cmdDeleteSessionHelp,
@@ -777,7 +779,9 @@ func (handler *CommandHandler) CommandList(ce *CommandEvent) {
 	if contacts {
 		typeName = "Contacts"
 	}
+	ce.User.Conn.Store.ContactsLock.RLock()
 	result := formatContacts(contacts, ce.User.Conn.Store.Contacts)
+	ce.User.Conn.Store.ContactsLock.RUnlock()
 	if len(result) == 0 {
 		ce.Reply("No %s found", strings.ToLower(typeName))
 		return
@@ -815,7 +819,9 @@ func (handler *CommandHandler) CommandOpen(ce *CommandEvent) {
 		return
 	}
 
+	user.Conn.Store.ContactsLock.RLock()
 	contact, ok := user.Conn.Store.Contacts[jid]
+	user.Conn.Store.ContactsLock.RUnlock()
 	if !ok {
 		ce.Reply("Group JID not found in contacts. Try syncing contacts with `sync` first.")
 		return
@@ -861,7 +867,9 @@ func (handler *CommandHandler) CommandPM(ce *CommandEvent) {
 
 	handler.log.Debugln("Importing", jid, "for", user)
 
+	user.Conn.Store.ContactsLock.RLock()
 	contact, ok := user.Conn.Store.Contacts[jid]
+	user.Conn.Store.ContactsLock.RUnlock()
 	if !ok {
 		if !force {
 			ce.Reply("Phone number not found in contacts. Try syncing contacts with `sync` first. " +

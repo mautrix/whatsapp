@@ -44,7 +44,9 @@ type MetricsHandler struct {
 	ctx          context.Context
 	stopRecorder func()
 
-	messageHandling         *prometheus.HistogramVec
+	matrixEventHandling     *prometheus.HistogramVec
+	whatsappMessageAge      prometheus.Histogram
+	whatsappMessageHandling *prometheus.HistogramVec
 	countCollection         prometheus.Histogram
 	disconnections          *prometheus.CounterVec
 	puppetCount             prometheus.Gauge
@@ -76,10 +78,19 @@ func NewMetricsHandler(address string, log log.Logger, db *database.Database) *M
 		log:     log,
 		running: false,
 
-		messageHandling: promauto.NewHistogramVec(prometheus.HistogramOpts{
+		matrixEventHandling: promauto.NewHistogramVec(prometheus.HistogramOpts{
 			Name: "matrix_event",
 			Help: "Time spent processing Matrix events",
 		}, []string{"event_type"}),
+		whatsappMessageAge: promauto.NewHistogram(prometheus.HistogramOpts{
+			Name: "whatsapp_message_age",
+			Help: "Age of messages received from WhatsApp",
+			Buckets: []float64{1, 2, 3, 5, 7.5, 10, 20, 30, 60},
+		}),
+		whatsappMessageHandling: promauto.NewHistogramVec(prometheus.HistogramOpts{
+			Name: "whatsapp_message",
+			Help: "Time spent processing WhatsApp messages",
+		}, []string{"message_type"}),
 		countCollection: promauto.NewHistogram(prometheus.HistogramOpts{
 			Name: "whatsapp_count_collection",
 			Help: "Time spent collecting the whatsapp_*_total metrics",
@@ -130,16 +141,31 @@ func NewMetricsHandler(address string, log log.Logger, db *database.Database) *M
 
 func noop() {}
 
-func (mh *MetricsHandler) TrackEvent(eventType event.Type) func() {
+func (mh *MetricsHandler) TrackMatrixEvent(eventType event.Type) func() {
 	if !mh.running {
 		return noop
 	}
 	start := time.Now()
 	return func() {
 		duration := time.Now().Sub(start)
-		mh.messageHandling.
+		mh.matrixEventHandling.
 			With(prometheus.Labels{"event_type": eventType.Type}).
 			Observe(duration.Seconds())
+	}
+}
+
+func (mh *MetricsHandler) TrackWhatsAppMessage(timestamp uint64, messageType string) func() {
+	if !mh.running {
+		return noop
+	}
+
+	start := time.Now()
+	return func() {
+		duration := time.Now().Sub(start)
+		mh.whatsappMessageHandling.
+			With(prometheus.Labels{"message_type": messageType}).
+			Observe(duration.Seconds())
+		mh.whatsappMessageAge.Observe(time.Now().Sub(time.Unix(int64(timestamp), 0)).Seconds())
 	}
 }
 

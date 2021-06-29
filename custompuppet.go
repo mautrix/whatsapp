@@ -89,6 +89,8 @@ func (puppet *Puppet) newCustomIntent() (*appservice.IntentAPI, error) {
 		return nil, err
 	}
 	client.Logger = puppet.bridge.AS.Log.Sub(string(puppet.CustomMXID))
+	client.Client = puppet.bridge.AS.HTTPClient
+	client.DefaultHTTPRetries = puppet.bridge.AS.DefaultHTTPRetries
 	client.Syncer = puppet
 	client.Store = puppet
 
@@ -213,17 +215,17 @@ func (puppet *Puppet) handlePresenceEvent(event *event.Event) {
 
 func (puppet *Puppet) handleReceiptEvent(portal *Portal, event *event.Event) {
 	for eventID, receipts := range *event.Content.AsReceipt() {
-		if _, ok := receipts.Read[puppet.CustomMXID]; !ok {
-			continue
-		}
-		message := puppet.bridge.DB.Message.GetByMXID(eventID)
-		if message == nil {
-			continue
-		}
-		puppet.customUser.log.Debugfln("Marking %s/%s in %s/%s as read", message.JID, message.MXID, portal.Key.JID, portal.MXID)
-		_, err := puppet.customUser.Conn.Read(portal.Key.JID, message.JID)
-		if err != nil {
-			puppet.customUser.log.Warnln("Error marking read:", err)
+		if receipt, ok := receipts.Read[puppet.CustomMXID]; !ok {
+			// Ignore receipt events where this user isn't present.
+		} else if isDoublePuppeted, _ := receipt.Extra["net.maunium.whatsapp.puppet"].(bool); isDoublePuppeted {
+			puppet.customUser.log.Debugfln("Ignoring double puppeted read receipt %+v", event.Content.Raw)
+			// Ignore double puppeted read receipts.
+		} else if message := puppet.bridge.DB.Message.GetByMXID(eventID); message != nil {
+			puppet.customUser.log.Debugfln("Marking %s/%s in %s/%s as read", message.JID, message.MXID, portal.Key.JID, portal.MXID)
+			_, err := puppet.customUser.Conn.Read(portal.Key.JID, message.JID)
+			if err != nil {
+				puppet.customUser.log.Warnln("Error marking read:", err)
+			}
 		}
 	}
 }

@@ -36,7 +36,6 @@ type BridgeConfig struct {
 	ConnectionTimeout     int  `yaml:"connection_timeout"`
 	FetchMessageOnTimeout bool `yaml:"fetch_message_on_timeout"`
 	DeliveryReceipts      bool `yaml:"delivery_receipts"`
-	LoginQRRegenCount     int  `yaml:"login_qr_regen_count"`
 	MaxConnectionAttempts int  `yaml:"max_connection_attempts"`
 	ConnectionRetryDelay  int  `yaml:"connection_retry_delay"`
 	ReportConnectionRetry bool `yaml:"report_connection_retry"`
@@ -51,15 +50,15 @@ type BridgeConfig struct {
 		End   bool `yaml:"end"`
 	} `yaml:"call_notices"`
 
-	InitialChatSync      int    `yaml:"initial_chat_sync_count"`
-	InitialHistoryFill   int    `yaml:"initial_history_fill_count"`
-	HistoryDisableNotifs bool   `yaml:"initial_history_disable_notifications"`
-	RecoverChatSync      int    `yaml:"recovery_chat_sync_count"`
-	RecoverHistory       bool   `yaml:"recovery_history_backfill"`
-	ChatMetaSync         bool   `yaml:"chat_meta_sync"`
-	UserAvatarSync       bool   `yaml:"user_avatar_sync"`
-	BridgeMatrixLeave    bool   `yaml:"bridge_matrix_leave"`
-	SyncChatMaxAge       uint64 `yaml:"sync_max_chat_age"`
+	InitialChatSync      int   `yaml:"initial_chat_sync_count"`
+	InitialHistoryFill   int   `yaml:"initial_history_fill_count"`
+	HistoryDisableNotifs bool  `yaml:"initial_history_disable_notifications"`
+	RecoverChatSync      int   `yaml:"recovery_chat_sync_count"`
+	RecoverHistory       bool  `yaml:"recovery_history_backfill"`
+	ChatMetaSync         bool  `yaml:"chat_meta_sync"`
+	UserAvatarSync       bool  `yaml:"user_avatar_sync"`
+	BridgeMatrixLeave    bool  `yaml:"bridge_matrix_leave"`
+	SyncChatMaxAge       int64 `yaml:"sync_max_chat_age"`
 
 	SyncWithCustomPuppets bool   `yaml:"sync_with_custom_puppets"`
 	SyncDirectChatList    bool   `yaml:"sync_direct_chat_list"`
@@ -67,10 +66,16 @@ type BridgeConfig struct {
 	DefaultBridgePresence bool   `yaml:"default_bridge_presence"`
 	LoginSharedSecret     string `yaml:"login_shared_secret"`
 
-	InviteOwnPuppetForBackfilling bool `yaml:"invite_own_puppet_for_backfilling"`
-	PrivateChatPortalMeta         bool `yaml:"private_chat_portal_meta"`
-	BridgeNotices         		  bool `yaml:"bridge_notices"`
-	ResendBridgeInfo              bool `yaml:"resend_bridge_info"`
+	InviteOwnPuppetForBackfilling bool   `yaml:"invite_own_puppet_for_backfilling"`
+	PrivateChatPortalMeta         bool   `yaml:"private_chat_portal_meta"`
+	BridgeNotices                 bool   `yaml:"bridge_notices"`
+	ResendBridgeInfo              bool   `yaml:"resend_bridge_info"`
+	MuteBridging                  bool   `yaml:"mute_bridging"`
+	ArchiveTag                    string `yaml:"archive_tag"`
+	PinnedTag                     string `yaml:"pinned_tag"`
+	TagOnlyOnCreate               bool   `yaml:"tag_only_on_create"`
+	MarkReadOnlyOnCreate          bool   `yaml:"mark_read_only_on_create"`
+	EnableStatusBroadcast         bool   `yaml:"enable_status_broadcast"`
 
 	WhatsappThumbnail bool `yaml:"whatsapp_thumbnail"`
 
@@ -102,7 +107,6 @@ func (bc *BridgeConfig) setDefaults() {
 	bc.ConnectionTimeout = 20
 	bc.FetchMessageOnTimeout = false
 	bc.DeliveryReceipts = false
-	bc.LoginQRRegenCount = 2
 	bc.MaxConnectionAttempts = 3
 	bc.ConnectionRetryDelay = -1
 	bc.ReportConnectionRetry = true
@@ -131,6 +135,7 @@ func (bc *BridgeConfig) setDefaults() {
 	bc.InviteOwnPuppetForBackfilling = true
 	bc.PrivateChatPortalMeta = false
 	bc.BridgeNotices = true
+	bc.EnableStatusBroadcast = true
 }
 
 type umBridgeConfig BridgeConfig

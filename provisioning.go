@@ -32,6 +32,7 @@ import (
 	"github.com/Rhymen/go-whatsapp"
 
 	log "maunium.net/go/maulogger/v2"
+
 	"maunium.net/go/mautrix/id"
 )
 
@@ -52,7 +53,8 @@ func (prov *ProvisioningAPI) Init() {
 	r.HandleFunc("/delete_connection", prov.DeleteConnection).Methods(http.MethodPost)
 	r.HandleFunc("/disconnect", prov.Disconnect).Methods(http.MethodPost)
 	r.HandleFunc("/reconnect", prov.Reconnect).Methods(http.MethodPost)
-	prov.bridge.AS.Router.HandleFunc("/_matrix/app/com.beeper.asmux/ping", prov.AsmuxPing).Methods(http.MethodPost)
+	prov.bridge.AS.Router.HandleFunc("/_matrix/app/com.beeper.asmux/ping", prov.BridgeStatePing).Methods(http.MethodPost)
+	prov.bridge.AS.Router.HandleFunc("/_matrix/app/com.beeper.bridge_state", prov.BridgeStatePing).Methods(http.MethodPost)
 }
 
 type responseWrap struct {
@@ -273,8 +275,6 @@ func (prov *ProvisioningAPI) Ping(w http.ResponseWriter, r *http.Request) {
 		if err == whatsapp.ErrPingFalse {
 			user.log.Debugln("Forwarding ping false error from provisioning API to HandleError")
 			go user.HandleError(err)
-		} else if errors.Is(err, whatsapp.ErrConnectionTimeout) {
-			user.Conn.CountTimeout()
 		}
 		if err != nil {
 			errStr = err.Error()
@@ -401,7 +401,7 @@ func (prov *ProvisioningAPI) Login(w http.ResponseWriter, r *http.Request) {
 	})
 
 	user.log.Debugln("Starting login via provisioning API")
-	session, jid, err := user.Conn.Login(qrChan, ctx, user.bridge.Config.Bridge.LoginQRRegenCount)
+	session, jid, err := user.Conn.Login(qrChan, ctx)
 	qrChan <- "stop"
 	if err != nil {
 		var msg string
