@@ -83,12 +83,12 @@ func NewMetricsHandler(address string, log log.Logger, db *database.Database) *M
 			Help: "Time spent processing Matrix events",
 		}, []string{"event_type"}),
 		whatsappMessageAge: promauto.NewHistogram(prometheus.HistogramOpts{
-			Name: "whatsapp_message_age",
-			Help: "Age of messages received from WhatsApp",
+			Name:    "remote_event_age",
+			Help:    "Age of messages received from WhatsApp",
 			Buckets: []float64{1, 2, 3, 5, 7.5, 10, 20, 30, 60},
 		}),
 		whatsappMessageHandling: promauto.NewHistogramVec(prometheus.HistogramOpts{
-			Name: "whatsapp_message",
+			Name: "remote_event",
 			Help: "Time spent processing WhatsApp messages",
 		}, []string{"message_type"}),
 		countCollection: promauto.NewHistogram(prometheus.HistogramOpts{
