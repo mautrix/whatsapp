@@ -1365,6 +1365,7 @@ func (portal *Portal) sendMessage(intent *appservice.IntentAPI, eventType event.
 		eventType = event.EventEncrypted
 		wrappedContent.Parsed = encrypted
 	}
+	_, _ = intent.UserTyping(portal.MXID, false, 0)
 	if timestamp == 0 {
 		return intent.SendMessageEvent(portal.MXID, eventType, &wrappedContent)
 	} else {
@@ -1386,7 +1387,6 @@ func (portal *Portal) HandleTextMessage(source *User, message whatsapp.TextMessa
 	portal.bridge.Formatter.ParseWhatsApp(content, message.ContextInfo.MentionedJID)
 	portal.SetReply(content, message.ContextInfo)
 
-	_, _ = intent.UserTyping(portal.MXID, false, 0)
 	resp, err := portal.sendMessage(intent, event.EventMessage, content, int64(message.Info.Timestamp*1000))
 	if err != nil {
 		portal.log.Errorfln("Failed to handle message %s: %v", message.Info.Id, err)
@@ -1497,7 +1497,6 @@ func (portal *Portal) HandleLocationMessage(source *User, message whatsapp.Locat
 
 	portal.SetReply(content, message.ContextInfo)
 
-	_, _ = intent.UserTyping(portal.MXID, false, 0)
 	resp, err := portal.sendMessage(intent, event.EventMessage, content, int64(message.Info.Timestamp*1000))
 	if err != nil {
 		portal.log.Errorfln("Failed to handle message %s: %v", message.Info.Id, err)
@@ -1541,7 +1540,6 @@ func (portal *Portal) HandleContactMessage(source *User, message whatsapp.Contac
 
 	portal.SetReply(content, message.ContextInfo)
 
-	_, _ = intent.UserTyping(portal.MXID, false, 0)
 	resp, err := portal.sendMessage(intent, event.EventMessage, content, int64(message.Info.Timestamp*1000))
 	if err != nil {
 		portal.log.Errorfln("Failed to handle message %s: %v", message.Info.Id, err)
@@ -1796,7 +1794,6 @@ func (portal *Portal) HandleMediaMessage(source *User, msg mediaMessage) bool {
 		content.MsgType = event.MsgFile
 	}
 
-	_, _ = intent.UserTyping(portal.MXID, false, 0)
 	ts := int64(msg.info.Timestamp * 1000)
 	eventType := event.EventMessage
 	if msg.sendAsSticker {
