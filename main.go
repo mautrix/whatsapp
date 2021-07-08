@@ -280,10 +280,6 @@ func (bridge *Bridge) Init() {
 }
 
 func (mh *Bridge) UpdateActivePuppetCount() {
-	if mh.Config.AppService.Limits.MinPuppetActiveDays == 0 {
-		// We only care about this when we're actively tracking
-		return
-	}
 	mh.Log.Debugfln("Updating active puppet count")
 
 	var minActivityTime = int64(ONE_DAY_S * mh.Config.AppService.Limits.MinPuppetActiveDays)
