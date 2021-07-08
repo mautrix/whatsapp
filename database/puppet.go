@@ -137,22 +137,27 @@ func (puppet *Puppet) Update() {
 	_, err := puppet.db.Exec("UPDATE puppet SET displayname=$1, name_quality=$2, avatar=$3, avatar_url=$4, custom_mxid=$5, access_token=$6, next_batch=$7, enable_presence=$8, enable_receipts=$9 WHERE jid=$10",
 		puppet.Displayname, puppet.NameQuality, puppet.Avatar, puppet.AvatarURL.String(), puppet.CustomMXID, puppet.AccessToken, puppet.NextBatch, puppet.EnablePresence, puppet.EnableReceipts, puppet.JID)
 	if err != nil {
-		puppet.log.Warnfln("Failed to update %s->%s: %v", puppet.JID, err)
+		puppet.log.Warnfln("Failed to update %s: %v", puppet.JID, err)
 	}
 }
 
 func (puppet *Puppet) UpdateActivityTs(ts uint64) {
-	puppet.LastActivityTs = int64(ts)
+	var signedTs = int64(ts)
+	if puppet.LastActivityTs > signedTs {
+		return
+	}
+	puppet.log.Debugfln("Updating activity time for %s to %d", puppet.JID, signedTs)
+	puppet.LastActivityTs = signedTs
 	_, err := puppet.db.Exec("UPDATE puppet SET last_activity_ts=$1 WHERE jid=$2", puppet.LastActivityTs, puppet.JID)
 	if err != nil {
-		puppet.log.Warnfln("Failed to update last_activity_ts %s->%s: %v", puppet.JID, err)
+		puppet.log.Warnfln("Failed to update last_activity_ts for %s: %v", puppet.JID, err)
 	}
 
 	if puppet.FirstActivityTs == 0 {
-		puppet.FirstActivityTs = puppet.LastActivityTs
+		puppet.FirstActivityTs = signedTs
 		_, err = puppet.db.Exec("UPDATE puppet SET first_activity_ts=$1 WHERE jid=$2 AND first_activity_ts is NULL", puppet.FirstActivityTs, puppet.JID)
 		if err != nil {
-			puppet.log.Warnfln("Failed to update first_activity_ts %s->%s: %v", puppet.JID, err)
+			puppet.log.Warnfln("Failed to update first_activity_ts %s: %v", puppet.JID, err)
 		}
 	}
 }

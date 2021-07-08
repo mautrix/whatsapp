@@ -316,9 +316,6 @@ func (portal *Portal) handleMessage(msg PortalMessage, isBackfill bool) {
 	if triedToHandle && trackMessageCallback != nil {
 		trackMessageCallback()
 	}
-	sender := portal.bridge.GetPuppetByJID(msg.source.JID)
-	sender.UpdateActivityTs(msg.timestamp)
-	portal.bridge.UpdateActivePuppetCount()
 }
 
 func (portal *Portal) isRecentlyHandled(id whatsapp.MessageID) bool {
@@ -1400,6 +1397,9 @@ func (portal *Portal) HandleTextMessage(source *User, message whatsapp.TextMessa
 	} else {
 		portal.finishHandling(source, message.Info.Source, resp.EventID)
 	}
+	sender := portal.bridge.GetPuppetByJID(message.Info.SenderJid)
+	sender.UpdateActivityTs(message.Info.Timestamp)
+	portal.bridge.UpdateActivePuppetCount()
 	return true
 }
 

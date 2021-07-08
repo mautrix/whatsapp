@@ -41,7 +41,7 @@ import (
 	"maunium.net/go/mautrix-whatsapp/database/upgrades"
 )
 
-const ONE_DAY_MS = 24 * 60 * 60 * 1000
+const ONE_DAY_S = 24 * 60 * 60
 
 var (
 	// These are static
@@ -185,6 +185,10 @@ func NewBridge() *Bridge {
 		portalsByJID:        make(map[database.PortalKey]*Portal),
 		puppets:             make(map[whatsapp.JID]*Puppet),
 		puppetsByCustomMXID: make(map[id.UserID]*Puppet),
+		PuppetActivity: &PuppetActivity{
+			currentUserCount: 0,
+			isBlocked:        false,
+		},
 	}
 
 	var err error
@@ -225,11 +229,6 @@ func (bridge *Bridge) Init() {
 	}
 	_, _ = bridge.AS.Init()
 	bridge.Bot = bridge.AS.BotIntent()
-	bridge.PuppetActivity = &PuppetActivity{
-		currentUserCount: 0,
-		isBlocked:        false,
-	}
-
 	bridge.Log = log.Create()
 	bridge.Config.Logging.Configure(bridge.Log)
 	log.DefaultLogger = bridge.Log.(*log.BasicLogger)
@@ -285,9 +284,12 @@ func (mh *Bridge) UpdateActivePuppetCount() {
 		// We only care about this when we're actively tracking
 		return
 	}
+	mh.Log.Debugfln("Updating active puppet count")
 
+	var minActivityTime = int64(ONE_DAY_S * mh.Config.AppService.Limits.MinPuppetActiveDays)
 	var activePuppetCount uint
 	var firstActivityTs, lastActivityTs int64
+
 	rows, active_err := mh.DB.Query("SELECT first_activity_ts, last_activity_ts FROM puppet WHERE first_activity_ts is not NULL")
 	if active_err != nil {
 		mh.Log.Warnln("Failed to scan number of active puppets:", active_err)
@@ -295,13 +297,15 @@ func (mh *Bridge) UpdateActivePuppetCount() {
 		defer rows.Close()
 		for rows.Next() {
 			rows.Scan(&firstActivityTs, &lastActivityTs)
-			if lastActivityTs-firstActivityTs > int64(ONE_DAY_MS*mh.Config.AppService.Limits.MinPuppetActiveDays) {
+			var secondsOfActivity = lastActivityTs - firstActivityTs
+			if secondsOfActivity > minActivityTime {
 				activePuppetCount++
 			}
 		}
 		if mh.Config.AppService.Limits.BlockOnLimitReached {
 			mh.PuppetActivity.isBlocked = mh.Config.AppService.Limits.MaxPuppetLimit < activePuppetCount
 		}
+		mh.Log.Debugfln("Current active puppet count is %d (max %d)", activePuppetCount, mh.Config.AppService.Limits.MaxPuppetLimit)
 		mh.PuppetActivity.currentUserCount = activePuppetCount
 	}
 
@@ -337,6 +341,7 @@ func (bridge *Bridge) Start() {
 		go bridge.Crypto.Start()
 	}
 	go bridge.StartUsers()
+	bridge.UpdateActivePuppetCount()
 	if bridge.Config.Metrics.Enabled {
 		go bridge.Metrics.Start()
 	}
@@ -344,7 +349,6 @@ func (bridge *Bridge) Start() {
 	if bridge.Config.Bridge.ResendBridgeInfo {
 		go bridge.ResendBridgeInfo()
 	}
-	bridge.UpdateActivePuppetCount()
 }
 
 func (bridge *Bridge) ResendBridgeInfo() {

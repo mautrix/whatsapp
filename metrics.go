@@ -76,10 +76,11 @@ func NewMetricsHandler(address string, log log.Logger, db *database.Database, pu
 		Help: "Number of portal rooms on Matrix",
 	}, []string{"type", "encrypted"})
 	return &MetricsHandler{
-		db:      db,
-		server:  &http.Server{Addr: address, Handler: promhttp.Handler()},
-		log:     log,
-		running: false,
+		db:             db,
+		server:         &http.Server{Addr: address, Handler: promhttp.Handler()},
+		log:            log,
+		running:        false,
+		puppetActivity: puppetActivity,
 		matrixEventHandling: promauto.NewHistogramVec(prometheus.HistogramOpts{
 			Name: "matrix_event",
 			Help: "Time spent processing Matrix events",
