@@ -61,9 +61,10 @@ type Config struct {
 		} `yaml:"bot"`
 
 		Limits struct {
-			MaxPuppetLimit      uint `yaml:"max_puppet_limit"`
-			MinPuppetActiveDays uint `yaml:"min_puppet_activity_days"`
-			BlockOnLimitReached bool `yaml:"block_on_limit_reached"`
+			MaxPuppetLimit       uint `yaml:"max_puppet_limit"`
+			MinPuppetActiveDays  uint `yaml:"min_puppet_activity_days"`
+			PuppetInactivityDays uint `yaml:"puppet_inactivity_days"`
+			BlockOnLimitReached  bool `yaml:"block_on_limit_reached"`
 		} `yaml:"limits"`
 
 		ASToken string `yaml:"as_token"`

@@ -283,6 +283,7 @@ func (mh *Bridge) UpdateActivePuppetCount() {
 	mh.Log.Debugfln("Updating active puppet count")
 
 	var minActivityTime = int64(ONE_DAY_S * mh.Config.AppService.Limits.MinPuppetActiveDays)
+	var maxActivityTime = int64(ONE_DAY_S * mh.Config.AppService.Limits.PuppetInactivityDays)
 	var activePuppetCount uint
 	var firstActivityTs, lastActivityTs int64
 
@@ -294,7 +295,8 @@ func (mh *Bridge) UpdateActivePuppetCount() {
 		for rows.Next() {
 			rows.Scan(&firstActivityTs, &lastActivityTs)
 			var secondsOfActivity = lastActivityTs - firstActivityTs
-			if secondsOfActivity > minActivityTime {
+			var isInactive = time.Now().Unix()-lastActivityTs > maxActivityTime
+			if !isInactive && secondsOfActivity > minActivityTime && secondsOfActivity < maxActivityTime {
 				activePuppetCount++
 			}
 		}
