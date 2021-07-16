@@ -102,6 +102,7 @@ func (config *Config) setDefaults() {
 	config.AppService.Database.MaxIdleConns = 2
 	config.AppService.Limits.MaxPuppetLimit = 0
 	config.AppService.Limits.MinPuppetActiveDays = 0
+	config.AppService.Limits.PuppetInactivityDays = 30
 	config.AppService.Limits.BlockOnLimitReached = false
 	config.WhatsApp.OSName = "Mautrix-WhatsApp bridge"
 	config.WhatsApp.BrowserName = "mx-wa"
