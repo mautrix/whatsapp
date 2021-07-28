@@ -2,6 +2,11 @@
 A Matrix-WhatsApp puppeting bridge based on the [Rhymen/go-whatsapp](https://github.com/Rhymen/go-whatsapp)
 implementation of the [sigalor/whatsapp-web-reveng](https://github.com/sigalor/whatsapp-web-reveng) project.
 
+### Element fork
+
+The Element fork includes the following changes:
+- [Track "active" WhatsApp users and implement blocking when reaching the limit](https://github.com/tulir/mautrix-whatsapp/pull/323)
+
 ### Documentation
 All setup and usage instructions are located on
 [docs.mau.fi](https://docs.mau.fi/bridges/go/whatsapp/index.html).
