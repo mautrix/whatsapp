@@ -36,6 +36,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -2039,6 +2040,24 @@ func addCodecToMime(mimeType, codec string) string {
 	return mime.FormatMediaType(mediaType, params)
 }
 
+func parseGeoURI(uri string) (lat, long float64, err error) {
+	if !strings.HasPrefix(uri, "geo:") {
+		err = fmt.Errorf("uri doesn't have geo: prefix")
+		return
+	}
+	// Remove geo: prefix and anything after ;
+	coordinates := strings.Split(strings.TrimPrefix(uri, "geo:"), ";")[0]
+
+	if splitCoordinates := strings.Split(coordinates, ","); len(splitCoordinates) != 2 {
+		err = fmt.Errorf("didn't find exactly two numbers separated by a comma")
+	} else if lat, err = strconv.ParseFloat(splitCoordinates[0], 64); err != nil {
+		err = fmt.Errorf("latitude is not a number: %w", err)
+	} else if long, err = strconv.ParseFloat(splitCoordinates[1], 64); err != nil {
+		err = fmt.Errorf("longitude is not a number: %w", err)
+	}
+	return
+}
+
 func (portal *Portal) convertMatrixMessage(sender *User, evt *event.Event) (*waProto.WebMessageInfo, *User) {
 	content, ok := evt.Content.Parsed.(*event.MessageEventContent)
 	if !ok {
@@ -2190,6 +2209,18 @@ func (portal *Portal) convertMatrixMessage(sender *User, evt *event.Event) (*waP
 			FileSha256:    media.FileSHA256,
 			FileLength:    &media.FileLength,
 		}
+	case event.MsgLocation:
+		lat, long, err := parseGeoURI(content.GeoURI)
+		if err != nil {
+			portal.log.Debugfln("Invalid geo URI on Matrix event %s: %v", evt.ID, err)
+			return nil, sender
+		}
+		info.Message.LocationMessage = &waProto.LocationMessage{
+			DegreesLatitude:  &lat,
+			DegreesLongitude: &long,
+			Comment:          &content.Body,
+			ContextInfo:      ctxInfo,
+		}
 	default:
 		portal.log.Debugfln("Unhandled Matrix event %s: unknown msgtype %s", evt.ID, content.MsgType)
 		return nil, sender
@@ -2234,8 +2265,8 @@ func (portal *Portal) sendDeliveryReceipt(eventID id.EventID) {
 }
 
 func (portal *Portal) HandleMatrixMessage(sender *User, evt *event.Event) {
-	if !portal.HasRelaybot() && (
-		(portal.IsPrivateChat() && sender.JID != portal.Key.Receiver) ||
+	if !portal.HasRelaybot() &&
+		((portal.IsPrivateChat() && sender.JID != portal.Key.Receiver) ||
 			portal.sendMatrixConnectionError(sender, evt.ID)) {
 		return
 	}

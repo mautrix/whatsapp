@@ -3,6 +3,7 @@
   * [x] Message content
     * [x] Plain text
     * [x] Formatted messages
+    * [x] Location messages
     * [x] Media/files
     * [x] Replies
   * [x] Message redactions
