@@ -413,7 +413,7 @@ func (handler *CommandHandler) CommandLogout(ce *CommandEvent) {
 		ce.Reply("Unknown error while logging out: %v", err)
 		return
 	}
-	ce.User.removeFromJIDMap()
+	ce.User.removeFromJIDMap(StateLoggedOut)
 	// TODO this causes a foreign key violation, which should be fixed
 	//ce.User.JID = ""
 	ce.User.SetSession(nil)
@@ -473,7 +473,7 @@ func (handler *CommandHandler) CommandDeleteSession(ce *CommandEvent) {
 		return
 	}
 	//ce.User.JID = ""
-	ce.User.removeFromJIDMap()
+	ce.User.removeFromJIDMap(StateLoggedOut)
 	ce.User.SetSession(nil)
 	ce.User.DeleteConnection()
 	ce.Reply("Session information purged")
@@ -569,7 +569,7 @@ func (handler *CommandHandler) CommandDisconnect(ce *CommandEvent) {
 		return
 	}
 	ce.User.bridge.Metrics.TrackConnectionState(ce.User.JID, false)
-	ce.User.sendBridgeState(BridgeState{Error: WANotConnected})
+	ce.User.sendBridgeState(BridgeState{StateEvent: StateBadCredentials, Error: WANotConnected})
 	ce.Reply("Successfully disconnected. Use the `reconnect` command to reconnect.")
 }
 

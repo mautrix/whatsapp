@@ -337,7 +337,7 @@ func (prov *ProvisioningAPI) Logout(w http.ResponseWriter, r *http.Request) {
 	}
 
 	user.bridge.Metrics.TrackConnectionState(user.JID, false)
-	user.removeFromJIDMap()
+	user.removeFromJIDMap(StateLoggedOut)
 
 	// TODO this causes a foreign key violation, which should be fixed
 	//ce.User.JID = ""
