@@ -75,9 +75,9 @@ type BridgeState struct {
 	Timestamp  int64            `json:"timestamp"`
 	TTL        int              `json:"ttl"`
 
-	ErrorSource string          `json:"error_source,omitempty"`
-	Error       BridgeErrorCode `json:"error,omitempty"`
-	Message     string          `json:"message,omitempty"`
+	Source  string          `json:"source,omitempty"`
+	Error   BridgeErrorCode `json:"error,omitempty"`
+	Message string          `json:"message,omitempty"`
 
 	UserID     id.UserID `json:"user_id,omitempty"`
 	RemoteID   string    `json:"remote_id,omitempty"`
@@ -92,9 +92,9 @@ func (pong BridgeState) fill(user *User) BridgeState {
 	}
 
 	pong.Timestamp = time.Now().Unix()
+	pong.Source = "bridge"
 	if len(pong.Error) > 0 {
 		pong.TTL = 60
-		pong.ErrorSource = "bridge"
 		pong.Message = bridgeHumanErrors[pong.Error]
 	} else {
 		pong.TTL = 240
