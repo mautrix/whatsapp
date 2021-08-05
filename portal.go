@@ -1688,7 +1688,7 @@ func (portal *Portal) HandleMediaMessage(source *User, msg mediaMessage) bool {
 	}
 
 	data, err := msg.download()
-	if err == whatsapp.ErrMediaDownloadFailedWith404 || err == whatsapp.ErrMediaDownloadFailedWith410 {
+	if errors.Is(err, whatsapp.ErrMediaDownloadFailedWith404) || errors.Is(err, whatsapp.ErrMediaDownloadFailedWith410) {
 		portal.log.Warnfln("Failed to download media for %s: %v. Calling LoadMediaInfo and retrying download...", msg.info.Id, err)
 		_, err = source.Conn.LoadMediaInfo(msg.info.RemoteJid, msg.info.Id, msg.info.FromMe)
 		if err != nil {
@@ -1697,9 +1697,11 @@ func (portal *Portal) HandleMediaMessage(source *User, msg mediaMessage) bool {
 		}
 		data, err = msg.download()
 	}
-	if err == whatsapp.ErrNoURLPresent {
+	if errors.Is(err, whatsapp.ErrNoURLPresent) {
 		portal.log.Debugfln("No URL present error for media message %s, ignoring...", msg.info.Id)
 		return true
+	} else if errors.Is(err, whatsapp.ErrInvalidMediaHMAC) || errors.Is(err, whatsapp.ErrFileLengthMismatch) {
+		portal.log.Warnfln("Got error '%v' while downloading media in %s, but official WhatsApp clients don't seem to care, so ignoring that error and bridging file anyway", err, msg.info.Id)
 	} else if err != nil {
 		portal.sendMediaBridgeFailure(source, intent, msg.info, err)
 		return true
