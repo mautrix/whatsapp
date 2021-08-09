@@ -293,7 +293,9 @@ func (puppet *Puppet) SyncContactIfNecessary(source *User) {
 		return
 	}
 
+	source.Conn.Store.ContactsLock.RLock()
 	contact, ok := source.Conn.Store.Contacts[puppet.JID]
+	source.Conn.Store.ContactsLock.RUnlock()
 	if !ok {
 		puppet.log.Warnfln("No contact info found through %s in SyncContactIfNecessary", source.MXID)
 		contact.JID = puppet.JID

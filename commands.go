@@ -413,7 +413,7 @@ func (handler *CommandHandler) CommandLogout(ce *CommandEvent) {
 		ce.Reply("Unknown error while logging out: %v", err)
 		return
 	}
-	ce.User.removeFromJIDMap()
+	ce.User.removeFromJIDMap(StateLoggedOut)
 	// TODO this causes a foreign key violation, which should be fixed
 	//ce.User.JID = ""
 	ce.User.SetSession(nil)
@@ -473,7 +473,7 @@ func (handler *CommandHandler) CommandDeleteSession(ce *CommandEvent) {
 		return
 	}
 	//ce.User.JID = ""
-	ce.User.removeFromJIDMap()
+	ce.User.removeFromJIDMap(StateLoggedOut)
 	ce.User.SetSession(nil)
 	ce.User.DeleteConnection()
 	ce.Reply("Session information purged")
@@ -569,7 +569,7 @@ func (handler *CommandHandler) CommandDisconnect(ce *CommandEvent) {
 		return
 	}
 	ce.User.bridge.Metrics.TrackConnectionState(ce.User.JID, false)
-	ce.User.sendBridgeState(BridgeState{Error: WANotConnected})
+	ce.User.sendBridgeState(BridgeState{StateEvent: StateBadCredentials, Error: WANotConnected})
 	ce.Reply("Successfully disconnected. Use the `reconnect` command to reconnect.")
 }
 
@@ -779,7 +779,9 @@ func (handler *CommandHandler) CommandList(ce *CommandEvent) {
 	if contacts {
 		typeName = "Contacts"
 	}
+	ce.User.Conn.Store.ContactsLock.RLock()
 	result := formatContacts(contacts, ce.User.Conn.Store.Contacts)
+	ce.User.Conn.Store.ContactsLock.RUnlock()
 	if len(result) == 0 {
 		ce.Reply("No %s found", strings.ToLower(typeName))
 		return
@@ -817,7 +819,9 @@ func (handler *CommandHandler) CommandOpen(ce *CommandEvent) {
 		return
 	}
 
+	user.Conn.Store.ContactsLock.RLock()
 	contact, ok := user.Conn.Store.Contacts[jid]
+	user.Conn.Store.ContactsLock.RUnlock()
 	if !ok {
 		ce.Reply("Group JID not found in contacts. Try syncing contacts with `sync` first.")
 		return
@@ -863,7 +867,9 @@ func (handler *CommandHandler) CommandPM(ce *CommandEvent) {
 
 	handler.log.Debugln("Importing", jid, "for", user)
 
+	user.Conn.Store.ContactsLock.RLock()
 	contact, ok := user.Conn.Store.Contacts[jid]
+	user.Conn.Store.ContactsLock.RUnlock()
 	if !ok {
 		if !force {
 			ce.Reply("Phone number not found in contacts. Try syncing contacts with `sync` first. " +

@@ -1,4 +1,4 @@
-FROM golang:1-alpine3.13 AS builder
+FROM golang:1-alpine3.14 AS builder
 
 RUN apk add --no-cache git ca-certificates build-base su-exec olm-dev
 
@@ -6,7 +6,7 @@ COPY . /build
 WORKDIR /build
 RUN go build -o /usr/bin/mautrix-whatsapp
 
-FROM alpine:3.13
+FROM alpine:3.14
 
 ENV UID=1337 \
     GID=1337
