@@ -670,11 +670,35 @@ func (portal *Portal) ensureMXIDInvited(mxid id.UserID) {
 }
 
 func (portal *Portal) ensureUserInvited(user *User) {
-	portal.userMXIDAction(user, portal.ensureMXIDInvited)
+	if user.IsRelaybot {
+		portal.userMXIDAction(user, portal.ensureMXIDInvited)
+		return
+	}
 
+	inviteContent := event.Content{
+		Parsed: &event.MemberEventContent{
+			Membership: event.MembershipInvite,
+			IsDirect: portal.IsPrivateChat(),
+		},
+		Raw: map[string]interface{}{},
+	}
 	customPuppet := portal.bridge.GetPuppetByCustomMXID(user.MXID)
 	if customPuppet != nil && customPuppet.CustomIntent() != nil {
-		_ = customPuppet.CustomIntent().EnsureJoined(portal.MXID)
+		inviteContent.Raw["fi.mau.will_auto_accept"] = true
+	}
+	_, err := portal.MainIntent().SendStateEvent(portal.MXID, event.StateMember, user.MXID.String(), &inviteContent)
+	var httpErr mautrix.HTTPError
+	if err != nil && errors.As(err, &httpErr) && httpErr.RespError != nil && strings.Contains(httpErr.RespError.Err, "is already in the room") {
+		portal.bridge.StateStore.SetMembership(portal.MXID, user.MXID, event.MembershipJoin)
+	} else if err != nil {
+		portal.log.Warnfln("Failed to invite %s: %v", user.MXID, err)
+	}
+
+	if customPuppet != nil && customPuppet.CustomIntent() != nil {
+		err = customPuppet.CustomIntent().EnsureJoined(portal.MXID)
+		if err != nil {
+			portal.log.Warnfln("Failed to auto-join portal as %s: %v", user.MXID, err)
+		}
 	}
 }
 
@@ -1149,7 +1173,7 @@ func (portal *Portal) CreateMatrixRoom(user *User) error {
 		})
 	}
 
-	invite := []id.UserID{user.MXID}
+	var invite []id.UserID
 	if user.IsRelaybot {
 		invite = portal.bridge.Config.Bridge.Relaybot.InviteUsers
 	}
@@ -1186,19 +1210,16 @@ func (portal *Portal) CreateMatrixRoom(user *User) error {
 	portal.bridge.portalsLock.Unlock()
 
 	// We set the memberships beforehand to make sure the encryption key exchange in initial backfill knows the users are here.
-	for _, user := range invite {
-		portal.bridge.StateStore.SetMembership(portal.MXID, user, event.MembershipInvite)
+	for _, userID := range invite {
+		portal.bridge.StateStore.SetMembership(portal.MXID, userID, event.MembershipInvite)
 	}
+
+	portal.ensureUserInvited(user)
 
 	if metadata != nil {
 		portal.SyncParticipants(user, metadata)
 		if metadata.Announce {
 			portal.RestrictMessageSending(metadata.Announce)
-		}
-	} else if !user.IsRelaybot {
-		customPuppet := portal.bridge.GetPuppetByCustomMXID(user.MXID)
-		if customPuppet != nil && customPuppet.CustomIntent() != nil {
-			_ = customPuppet.CustomIntent().EnsureJoined(portal.MXID)
 		}
 	}
 	if broadcastMetadata != nil {
