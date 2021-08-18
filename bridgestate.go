@@ -213,10 +213,11 @@ func (prov *ProvisioningAPI) BridgeStatePing(w http.ResponseWriter, r *http.Requ
 	user := prov.bridge.GetUserByMXID(id.UserID(userID))
 	var resp BridgeState
 	if user.Conn == nil {
-		resp.StateEvent = StateBadCredentials
 		if user.Session == nil {
+			resp.StateEvent = StateUnconfigured
 			resp.Error = WANotLoggedIn
 		} else {
+			resp.StateEvent = StateBadCredentials
 			resp.Error = WANotConnected
 		}
 	} else {
@@ -248,11 +249,16 @@ func (prov *ProvisioningAPI) BridgeStatePing(w http.ResponseWriter, r *http.Requ
 			resp.StateEvent = StateConnecting
 			resp.Error = WAConnecting
 		} else if user.Conn.IsConnected() {
-			resp.StateEvent = StateBadCredentials
+			resp.StateEvent = StateUnconfigured
 			resp.Error = WANotLoggedIn
 		} else {
-			resp.StateEvent = StateBadCredentials
-			resp.Error = WANotConnected
+			if user.Session == nil {
+				resp.StateEvent = StateUnconfigured
+				resp.Error = WANotLoggedIn
+			} else {
+				resp.StateEvent = StateBadCredentials
+				resp.Error = WANotConnected
+			}
 		}
 	}
 	resp = resp.fill(user)
