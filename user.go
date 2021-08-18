@@ -1221,9 +1221,11 @@ func (user *User) HandlePresence(info whatsapp.PresenceEvent) {
 			}
 			_, _ = puppet.IntentFor(portal).UserTyping(puppet.typingIn, false, 0)
 		}
-		puppet.typingIn = portal.MXID
-		puppet.typingAt = time.Now().Unix()
-		_, _ = puppet.IntentFor(portal).UserTyping(portal.MXID, true, 15*1000)
+		if len(portal.MXID) > 0 {
+			puppet.typingIn = portal.MXID
+			puppet.typingAt = time.Now().Unix()
+			_, _ = puppet.IntentFor(portal).UserTyping(portal.MXID, true, 15*1000)
+		}
 	}
 }
 
