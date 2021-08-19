@@ -2116,6 +2116,9 @@ func (portal *Portal) convertMatrixMessage(sender *User, evt *event.Event) (*waP
 		if msg != nil {
 			ctxInfo.StanzaId = &msg.JID
 			ctxInfo.Participant = &msg.Sender
+			// Using blank content here seems to work fine on all official WhatsApp apps.
+			// Getting the content from the phone would be possible, but it's complicated.
+			// https://github.com/mautrix/whatsapp/commit/b3312bc663772aa274cea90ffa773da2217bb5e0
 			ctxInfo.QuotedMessage = fallbackQuoteContent()
 		}
 	}
