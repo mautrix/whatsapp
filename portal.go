@@ -2087,36 +2087,6 @@ func fallbackQuoteContent() *waProto.Message {
 	}
 }
 
-func loadQuoteContent(sender *User, msg *database.Message) *waProto.Message {
-	resp, err := sender.Conn.LoadMessagesBefore(msg.Chat.JID, msg.JID, msg.Sender == sender.JID, 1)
-	if err != nil {
-		return fallbackQuoteContent()
-	}
-	msgList, ok := resp.Content.([]interface{})
-	if !ok || len(msgList) == 0 {
-		return fallbackQuoteContent()
-	}
-	wmi, ok := msgList[0].(*waProto.WebMessageInfo)
-	if !ok {
-		return fallbackQuoteContent()
-	}
-	sender.log.Debugln("Loaded message before %s: %s", msg.JID, wmi.GetKey().GetId())
-	resp, err = sender.Conn.LoadMessagesAfter(msg.Chat.JID, wmi.GetKey().GetId(), wmi.GetKey().GetFromMe(), 1)
-	if err != nil {
-		return fallbackQuoteContent()
-	}
-	msgList, ok = resp.Content.([]interface{})
-	if !ok || len(msgList) == 0 {
-		return fallbackQuoteContent()
-	}
-	wmi, ok = msgList[0].(*waProto.WebMessageInfo)
-	if !ok {
-		return fallbackQuoteContent()
-	}
-	sender.log.Debugln("Loaded message %s", wmi.GetKey().GetId())
-	return wmi.GetMessage()
-}
-
 func (portal *Portal) convertMatrixMessage(sender *User, evt *event.Event) (*waProto.WebMessageInfo, *User) {
 	content, ok := evt.Content.Parsed.(*event.MessageEventContent)
 	if !ok {
@@ -2146,7 +2116,7 @@ func (portal *Portal) convertMatrixMessage(sender *User, evt *event.Event) (*waP
 		if msg != nil {
 			ctxInfo.StanzaId = &msg.JID
 			ctxInfo.Participant = &msg.Sender
-			ctxInfo.QuotedMessage = loadQuoteContent(sender, msg)
+			ctxInfo.QuotedMessage = fallbackQuoteContent()
 		}
 	}
 	relaybotFormatted := false
