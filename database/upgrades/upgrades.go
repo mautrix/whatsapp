@@ -39,7 +39,7 @@ type upgrade struct {
 	fn      upgradeFunc
 }
 
-const NumberOfUpgrades = 21
+const NumberOfUpgrades = 24
 
 var upgrades [NumberOfUpgrades]upgrade
 
@@ -68,6 +68,16 @@ func SetVersion(tx *sql.Tx, version int) error {
 	return err
 }
 
+func execMany(tx *sql.Tx, queries ...string) error {
+	for _, query := range queries {
+		_, err := tx.Exec(query)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func Run(log log.Logger, dialectName string, db *sql.DB) error {
 	var dialect Dialect
 	switch strings.ToLower(dialectName) {
@@ -89,13 +99,14 @@ func Run(log log.Logger, dialectName string, db *sql.DB) error {
 	}
 
 	log.Infofln("Database currently on v%d, latest: v%d", version, NumberOfUpgrades)
-	for i, upgrade := range upgrades[version:] {
-		log.Infofln("Upgrading database to v%d: %s", version+i+1, upgrade.message)
-		tx, err := db.Begin()
+	for i, upgradeItem := range upgrades[version:] {
+		log.Infofln("Upgrading database to v%d: %s", version+i+1, upgradeItem.message)
+		var tx *sql.Tx
+		tx, err = db.Begin()
 		if err != nil {
 			return err
 		}
-		err = upgrade.fn(tx, context{dialect, db, log})
+		err = upgradeItem.fn(tx, context{dialect, db, log})
 		if err != nil {
 			return err
 		}

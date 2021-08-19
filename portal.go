@@ -353,7 +353,6 @@ func (portal *Portal) markHandled(source *User, message *waProto.WebMessageInfo,
 			msg.Sender = message.GetParticipant()
 		}
 	}
-	msg.Content = message.Message
 	msg.Sent = isSent
 	msg.Insert()
 
@@ -2081,6 +2080,43 @@ func parseGeoURI(uri string) (lat, long float64, err error) {
 	return
 }
 
+func fallbackQuoteContent() *waProto.Message {
+	blankString := ""
+	return &waProto.Message{
+		Conversation: &blankString,
+	}
+}
+
+func loadQuoteContent(sender *User, msg *database.Message) *waProto.Message {
+	resp, err := sender.Conn.LoadMessagesBefore(msg.Chat.JID, msg.JID, msg.Sender == sender.JID, 1)
+	if err != nil {
+		return fallbackQuoteContent()
+	}
+	msgList, ok := resp.Content.([]interface{})
+	if !ok || len(msgList) == 0 {
+		return fallbackQuoteContent()
+	}
+	wmi, ok := msgList[0].(*waProto.WebMessageInfo)
+	if !ok {
+		return fallbackQuoteContent()
+	}
+	sender.log.Debugln("Loaded message before %s: %s", msg.JID, wmi.GetKey().GetId())
+	resp, err = sender.Conn.LoadMessagesAfter(msg.Chat.JID, wmi.GetKey().GetId(), wmi.GetKey().GetFromMe(), 1)
+	if err != nil {
+		return fallbackQuoteContent()
+	}
+	msgList, ok = resp.Content.([]interface{})
+	if !ok || len(msgList) == 0 {
+		return fallbackQuoteContent()
+	}
+	wmi, ok = msgList[0].(*waProto.WebMessageInfo)
+	if !ok {
+		return fallbackQuoteContent()
+	}
+	sender.log.Debugln("Loaded message %s", wmi.GetKey().GetId())
+	return wmi.GetMessage()
+}
+
 func (portal *Portal) convertMatrixMessage(sender *User, evt *event.Event) (*waProto.WebMessageInfo, *User) {
 	content, ok := evt.Content.Parsed.(*event.MessageEventContent)
 	if !ok {
@@ -2107,10 +2143,10 @@ func (portal *Portal) convertMatrixMessage(sender *User, evt *event.Event) (*waP
 	if len(replyToID) > 0 {
 		content.RemoveReplyFallback()
 		msg := portal.bridge.DB.Message.GetByMXID(replyToID)
-		if msg != nil && msg.Content != nil {
+		if msg != nil {
 			ctxInfo.StanzaId = &msg.JID
 			ctxInfo.Participant = &msg.Sender
-			ctxInfo.QuotedMessage = msg.Content
+			ctxInfo.QuotedMessage = loadQuoteContent(sender, msg)
 		}
 	}
 	relaybotFormatted := false
