@@ -120,7 +120,7 @@ func (bridge *Bridge) MigrateDatabase() {
 		os.Exit(31)
 	}
 
-	newDB, err := database.New(bridge.Config.AppService.Database.Type, bridge.Config.AppService.Database.URI, bridge.Log)
+	newDB, err := database.New(bridge.Config.AppService.Database.Type, bridge.Config.AppService.Database.URI, log.DefaultLogger)
 	if err != nil {
 		fmt.Println("Failed to open new database:", err)
 		os.Exit(32)

@@ -108,7 +108,7 @@ func Migrate(old *Database, new *Database) {
 	if err != nil {
 		panic(err)
 	}
-	err = migrateTable(old, new, "message", "chat_jid", "chat_receiver", "jid", "mxid", "sender", "content", "timestamp")
+	err = migrateTable(old, new, "message", "chat_jid", "chat_receiver", "jid", "mxid", "sender", "timestamp", "sent")
 	if err != nil {
 		panic(err)
 	}
@@ -116,7 +116,7 @@ func Migrate(old *Database, new *Database) {
 	if err != nil {
 		panic(err)
 	}
-	err = migrateTable(old, new, "mx_user_profile", "room_id", "user_id", "membership")
+	err = migrateTable(old, new, "mx_user_profile", "room_id", "user_id", "membership", "displayname", "avatar_url")
 	if err != nil {
 		panic(err)
 	}
@@ -144,7 +144,7 @@ func Migrate(old *Database, new *Database) {
 	if err != nil {
 		panic(err)
 	}
-	err = migrateTable(old, new, "crypto_megolm_inbound_session", "account_id", "session_id", "sender_key", "signing_key", "room_id", "session", "forwarding_chains")
+	err = migrateTable(old, new, "crypto_megolm_inbound_session", "account_id", "session_id", "sender_key", "signing_key", "room_id", "session", "forwarding_chains", "withheld_code", "withheld_reason")
 	if err != nil {
 		panic(err)
 	}
