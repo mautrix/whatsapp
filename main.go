@@ -109,7 +109,7 @@ func (bridge *Bridge) GenerateRegistration() {
 }
 
 func (bridge *Bridge) MigrateDatabase() {
-	oldDB, err := database.New(flag.Arg(0), flag.Arg(1), bridge.Log)
+	oldDB, err := database.New(flag.Arg(0), flag.Arg(1), log.DefaultLogger)
 	if err != nil {
 		fmt.Println("Failed to open old database:", err)
 		os.Exit(30)
