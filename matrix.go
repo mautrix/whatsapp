@@ -239,6 +239,10 @@ func (mx *MatrixHandler) HandlePuppetInvite(evt *event.Event, inviter *User, pup
 }
 
 func (mx *MatrixHandler) HandleMembership(evt *event.Event) {
+	if evt.Type.Type == "m.room.member"{
+		mx.bridge.StateStore.UpdateMemberName(id.UserID(evt.GetStateKey()), evt.Content.AsMember().Displayname)
+	}
+	
 	if _, isPuppet := mx.bridge.ParsePuppetMXID(evt.Sender); evt.Sender == mx.bridge.Bot.UserID || isPuppet {
 		return
 	}

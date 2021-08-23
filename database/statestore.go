@@ -120,6 +120,16 @@ func (store *SQLStateStore) TryGetMember(roomID id.RoomID, userID id.UserID) (*e
 	return &member, err == nil
 }
 
+func (store *SQLStateStore) UpdateMemberName(userID id.UserID, newUserName string) {
+	row := store.db.QueryRow("UPDATE mx_user_profile set displayname=$1 where user_id=$2;", newUserName, userID)
+	var member event.MemberEventContent
+	err := row.Scan(&member.Membership, &member.Displayname, &member.AvatarURL)
+	if err != nil && err != sql.ErrNoRows {
+		store.log.Warnfln("Failed to update member name %s: %v", userID, err)
+	}
+	store.log.Debugfln("Updating name %s ", newUserName)
+}
+
 func (store *SQLStateStore) FindSharedRooms(userID id.UserID) (rooms []id.RoomID) {
 	rows, err := store.db.Query(`
 			SELECT room_id FROM mx_user_profile
