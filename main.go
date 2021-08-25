@@ -311,6 +311,7 @@ func (bridge *Bridge) Start() {
 	if bridge.Config.Bridge.ResendBridgeInfo {
 		go bridge.ResendBridgeInfo()
 	}
+	bridge.AS.Ready = true
 }
 
 func (bridge *Bridge) ResendBridgeInfo() {
