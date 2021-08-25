@@ -39,6 +39,7 @@ type BridgeStateEvent string
 const (
 	StateStarting            BridgeStateEvent = "STARTING"
 	StateUnconfigured        BridgeStateEvent = "UNCONFIGURED"
+	StateRunning             BridgeStateEvent = "RUNNING"
 	StateConnecting          BridgeStateEvent = "CONNECTING"
 	StateBackfilling         BridgeStateEvent = "BACKFILLING"
 	StateConnected           BridgeStateEvent = "CONNECTED"
@@ -82,6 +83,11 @@ type BridgeState struct {
 	UserID     id.UserID `json:"user_id,omitempty"`
 	RemoteID   string    `json:"remote_id,omitempty"`
 	RemoteName string    `json:"remote_name,omitempty"`
+}
+
+type GlobalBridgeState struct {
+	RemoteStates map[string]BridgeState `json:"remoteState"`
+	BridgeState  BridgeState            `json:"bridgeState"`
 }
 
 func (pong BridgeState) fill(user *User) BridgeState {
@@ -211,14 +217,15 @@ func (prov *ProvisioningAPI) BridgeStatePing(w http.ResponseWriter, r *http.Requ
 	}
 	userID := r.URL.Query().Get("user_id")
 	user := prov.bridge.GetUserByMXID(id.UserID(userID))
-	var resp BridgeState
+	var global BridgeState
+	global.StateEvent = StateRunning
+	var remote BridgeState
 	if user.Conn == nil {
 		if user.Session == nil {
-			resp.StateEvent = StateUnconfigured
-			resp.Error = WANotLoggedIn
+			global.StateEvent = StateUnconfigured
 		} else {
-			resp.StateEvent = StateBadCredentials
-			resp.Error = WANotConnected
+			remote.StateEvent = StateBadCredentials
+			remote.Error = WANotConnected
 		}
 	} else {
 		if user.Conn.IsConnected() && user.Conn.IsLoggedIn() {
@@ -231,38 +238,45 @@ func (prov *ProvisioningAPI) BridgeStatePing(w http.ResponseWriter, r *http.Requ
 				return
 			}
 			user.log.Debugfln("Ping %d response: %v", pingID, err)
-			resp.StateEvent = StateTransientDisconnect
+			remote.StateEvent = StateTransientDisconnect
 			if err == whatsapp.ErrPingFalse {
 				user.log.Debugln("Forwarding ping false error from provisioning API to HandleError")
 				go user.HandleError(err)
-				resp.Error = WAPingFalse
+				remote.Error = WAPingFalse
 			} else if errors.Is(err, whatsapp.ErrConnectionTimeout) {
-				resp.Error = WATimeout
+				remote.Error = WATimeout
 			} else if errors.Is(err, whatsapp.ErrWebsocketKeepaliveFailed) {
-				resp.Error = WAServerTimeout
+				remote.Error = WAServerTimeout
 			} else if err != nil {
-				resp.Error = WAPingError
+				remote.Error = WAPingError
 			} else {
-				resp.StateEvent = StateConnected
+				remote.StateEvent = StateConnected
 			}
 		} else if user.Conn.IsLoginInProgress() {
-			resp.StateEvent = StateConnecting
-			resp.Error = WAConnecting
+			remote.StateEvent = StateConnecting
+			remote.Error = WAConnecting
 		} else if user.Conn.IsConnected() {
-			resp.StateEvent = StateUnconfigured
-			resp.Error = WANotLoggedIn
+			global.StateEvent = StateUnconfigured
 		} else {
 			if user.Session == nil {
-				resp.StateEvent = StateUnconfigured
-				resp.Error = WANotLoggedIn
+				global.StateEvent = StateUnconfigured
 			} else {
-				resp.StateEvent = StateBadCredentials
-				resp.Error = WANotConnected
+				remote.StateEvent = StateBadCredentials
+				remote.Error = WANotConnected
 			}
 		}
 	}
-	resp = resp.fill(user)
+	global = global.fill(nil)
+	resp := GlobalBridgeState{BridgeState: global}
+	if len(remote.StateEvent) > 0 {
+		remote = remote.fill(user)
+		resp.RemoteStates = map[string]BridgeState{
+			remote.RemoteID: remote,
+		}
+	}
 	user.log.Debugfln("Responding bridge state in bridge status endpoint: %+v", resp)
 	jsonResponse(w, http.StatusOK, &resp)
-	user.prevBridgeStatus = &resp
+	if len(resp.RemoteStates) > 0 {
+		user.prevBridgeStatus = &remote
+	}
 }
