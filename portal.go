@@ -1889,6 +1889,49 @@ func (portal *Portal) downloadThumbnail(content *event.MessageEventContent, id i
 	return buf.Bytes()
 }
 
+func (portal *Portal) convertWebPtoPng(webp []byte) ([]byte, error) {
+	dir, err := ioutil.TempDir("", "webp-convert-*")
+	if err != nil {
+		return nil, fmt.Errorf("failed to make temp dir: %w", err)
+	}
+	defer os.RemoveAll(dir)
+
+	inputFile, err := os.OpenFile(filepath.Join(dir, "input.webp"), os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
+	if err != nil {
+		return nil, fmt.Errorf("failed open input file: %w", err)
+	}
+	_, err = inputFile.Write(webp)
+	if err != nil {
+		_ = inputFile.Close()
+		return nil, fmt.Errorf("failed to write gif to input file: %w", err)
+	}
+	_ = inputFile.Close()
+
+	outputFileName := filepath.Join(dir, "output.png")
+	cmd := exec.Command("dwebp", inputFile.Name(), "-o", outputFileName)
+	vcLog := portal.log.Sub("WebPconverter").Writer(log.LevelWarn)
+	cmd.Stdout = vcLog
+	cmd.Stderr = vcLog
+
+	err = cmd.Run()
+	if err != nil {
+		return nil, fmt.Errorf("failed to run dwebp: %w", err)
+	}
+	outputFile, err := os.OpenFile(filepath.Join(dir, "output.png"), os.O_RDONLY, 0)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open output file: %w", err)
+	}
+	defer func() {
+		_ = outputFile.Close()
+		_ = os.Remove(outputFile.Name())
+	}()
+	png, err := ioutil.ReadAll(outputFile)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read png from output file: %w", err)
+	}
+	return png, nil
+}
+
 func (portal *Portal) convertGifToVideo(gif []byte) ([]byte, error) {
 	dir, err := ioutil.TempDir("", "gif-convert-*")
 	if err != nil {
@@ -1974,7 +2017,14 @@ func (portal *Portal) preprocessMatrixMedia(sender *User, relaybotFormatted bool
 		}
 		content.Info.MimeType = "video/mp4"
 	}
-
+	if mediaType == whatsapp.MediaImage && content.GetInfo().MimeType == "image/webp" {
+		data, err = portal.convertWebPtoPng(data)
+		if err != nil {
+			portal.log.Errorfln("Failed to convert WebP to png in %s: %v", eventID, err)
+			return nil
+		}
+		content.Info.MimeType = "image/png"
+	}
 	url, mediaKey, fileEncSHA256, fileSHA256, fileLength, err := sender.Conn.Upload(bytes.NewReader(data), mediaType)
 	if err != nil {
 		portal.log.Errorfln("Failed to upload media in %s: %v", eventID, err)
