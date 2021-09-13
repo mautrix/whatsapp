@@ -902,7 +902,7 @@ func (handler *CommandHandler) CommandPM(ce *CommandEvent) {
 	ce.Reply("Created portal room and invited you to it.")
 }
 
-const cmdLoginMatrixHelp = `login-matrix <_access token_> - Replace your WhatsApp account's Matrix puppet with your real Matrix account.'`
+const cmdLoginMatrixHelp = `login-matrix <_access token_> - Replace your WhatsApp account's Matrix puppet with your real Matrix account.`
 
 func (handler *CommandHandler) CommandLoginMatrix(ce *CommandEvent) {
 	if len(ce.Args) == 0 {
