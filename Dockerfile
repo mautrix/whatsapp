@@ -11,7 +11,7 @@ FROM alpine:3.14
 ENV UID=1337 \
     GID=1337
 
-RUN apk add --no-cache ffmpeg su-exec ca-certificates olm bash jq yq curl libwebp libwebp-tools
+RUN apk add --no-cache ffmpeg su-exec ca-certificates olm bash jq yq curl
 
 COPY --from=builder /usr/bin/mautrix-whatsapp /usr/bin/mautrix-whatsapp
 COPY --from=builder /build/example-config.yaml /opt/mautrix-whatsapp/example-config.yaml
