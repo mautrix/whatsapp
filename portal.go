@@ -27,6 +27,7 @@ import (
 	"image/gif"
 	"image/jpeg"
 	"image/png"
+	"golang.org/x/image/webp"
 	"io/ioutil"
 	"math"
 	"math/rand"
@@ -1889,47 +1890,20 @@ func (portal *Portal) downloadThumbnail(content *event.MessageEventContent, id i
 	return buf.Bytes()
 }
 
-func (portal *Portal) convertWebPtoPng(webp []byte) ([]byte, error) {
-	dir, err := ioutil.TempDir("", "webp-convert-*")
-	if err != nil {
-		return nil, fmt.Errorf("failed to make temp dir: %w", err)
+func (portal *Portal) convertWebPtoPng(webp_image []byte) ([]byte, error) {
+	webp_decoded, err := webp.Decode(bytes.NewReader(webp_image))
+	if err != nil {	
+		return nil, fmt.Errorf("failed to decode webp image: %w", err)
 	}
-	defer os.RemoveAll(dir)
 
-	inputFile, err := os.OpenFile(filepath.Join(dir, "input.webp"), os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
-	if err != nil {
-		return nil, fmt.Errorf("failed open input file: %w", err)
+	var png_buffer bytes.Buffer; 
+	if err := png.Encode(&png_buffer, webp_decoded); err != nil {
+		return nil, fmt.Errorf("failed to encode png image: %w", err)
 	}
-	_, err = inputFile.Write(webp)
-	if err != nil {
-		_ = inputFile.Close()
-		return nil, fmt.Errorf("failed to write gif to input file: %w", err)
-	}
-	_ = inputFile.Close()
 
-	outputFileName := filepath.Join(dir, "output.png")
-	cmd := exec.Command("dwebp", inputFile.Name(), "-o", outputFileName)
-	vcLog := portal.log.Sub("WebPconverter").Writer(log.LevelWarn)
-	cmd.Stdout = vcLog
-	cmd.Stderr = vcLog
-
-	err = cmd.Run()
-	if err != nil {
-		return nil, fmt.Errorf("failed to run dwebp: %w", err)
-	}
-	outputFile, err := os.OpenFile(filepath.Join(dir, "output.png"), os.O_RDONLY, 0)
-	if err != nil {
-		return nil, fmt.Errorf("failed to open output file: %w", err)
-	}
-	defer func() {
-		_ = outputFile.Close()
-		_ = os.Remove(outputFile.Name())
-	}()
-	png, err := ioutil.ReadAll(outputFile)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read png from output file: %w", err)
-	}
-	return png, nil
+	var png_file = png_buffer.Bytes()
+	portal.log.Debugf("Converted png file of size %f", len(png_file))
+	return png_file, nil
 }
 
 func (portal *Portal) convertGifToVideo(gif []byte) ([]byte, error) {
