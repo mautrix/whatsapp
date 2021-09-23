@@ -29,6 +29,7 @@ import (
 	"time"
 
 	"github.com/Rhymen/go-whatsapp"
+
 	log "maunium.net/go/maulogger/v2"
 
 	"maunium.net/go/mautrix/id"
@@ -220,14 +221,7 @@ func (prov *ProvisioningAPI) BridgeStatePing(w http.ResponseWriter, r *http.Requ
 	var global BridgeState
 	global.StateEvent = StateRunning
 	var remote BridgeState
-	if user.Conn == nil {
-		if user.Session == nil {
-			global.StateEvent = StateUnconfigured
-		} else {
-			remote.StateEvent = StateBadCredentials
-			remote.Error = WANotConnected
-		}
-	} else {
+	if user.Conn != nil {
 		if user.Conn.IsConnected() && user.Conn.IsLoggedIn() {
 			pingID := atomic.AddUint32(&bridgeStatePingID, 1)
 			user.log.Debugfln("Pinging WhatsApp mobile due to bridge status /ping API request (ID %d)", pingID)
@@ -255,24 +249,22 @@ func (prov *ProvisioningAPI) BridgeStatePing(w http.ResponseWriter, r *http.Requ
 		} else if user.Conn.IsLoginInProgress() {
 			remote.StateEvent = StateConnecting
 			remote.Error = WAConnecting
-		} else if user.Conn.IsConnected() {
-			global.StateEvent = StateUnconfigured
-		} else {
-			if user.Session == nil {
-				global.StateEvent = StateUnconfigured
-			} else {
-				remote.StateEvent = StateBadCredentials
-				remote.Error = WANotConnected
-			}
-		}
-	}
+		} else if !user.Conn.IsConnected() && user.Session != nil {
+			remote.StateEvent = StateBadCredentials
+			remote.Error = WANotConnected
+		} // else: unconfigured
+	} else if user.Session != nil {
+		remote.StateEvent = StateBadCredentials
+		remote.Error = WANotConnected
+	} // else: unconfigured
 	global = global.fill(nil)
-	resp := GlobalBridgeState{BridgeState: global}
+	resp := GlobalBridgeState{
+		BridgeState:  global,
+		RemoteStates: map[string]BridgeState{},
+	}
 	if len(remote.StateEvent) > 0 {
 		remote = remote.fill(user)
-		resp.RemoteStates = map[string]BridgeState{
-			remote.RemoteID: remote,
-		}
+		resp.RemoteStates[remote.RemoteID] = remote
 	}
 	user.log.Debugfln("Responding bridge state in bridge status endpoint: %+v", resp)
 	jsonResponse(w, http.StatusOK, &resp)
