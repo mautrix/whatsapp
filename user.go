@@ -415,6 +415,8 @@ func (user *User) Login(ce *CommandEvent) {
 			reply.Body = "You have a login in progress already."
 		} else if err == whatsapp.ErrLoginTimedOut {
 			reply.Body = "QR code scan timed out. Please try again."
+		} else if errors.Is(err, whatsapp.ErrMultiDeviceNotSupported) {
+			reply.Body = "WhatsApp multi-device is not currently supported. Please disable it and try again."
 		} else {
 			user.log.Warnln("Failed to log in:", err)
 			reply.Body = fmt.Sprintf("Unknown error while logging in: %v", err)
@@ -976,6 +978,10 @@ func (user *User) HandleError(err error) {
 		user.log.Errorfln("WhatsApp error: %v", err)
 	}
 	if closed, ok := err.(*whatsapp.ErrConnectionClosed); ok {
+		if user.Session == nil {
+			user.log.Debugln("Websocket disconnected, but no session stored, not trying to reconnect")
+			return
+		}
 		user.bridge.Metrics.TrackDisconnection(user.MXID)
 		if closed.Code == 1000 && user.cleanDisconnection {
 			user.cleanDisconnection = false
@@ -1054,14 +1060,18 @@ func (user *User) tryReconnect(msg string) {
 			if err != nil {
 				user.log.Debugln("Error while disconnecting for connection reset:", err)
 			}
-		} else if errors.Is(err, whatsapp.ErrUnpaired) {
-			user.log.Errorln("Got init 401 (unpaired) error when trying to reconnect, not retrying")
+		} else if errors.Is(err, whatsapp.ErrUnpaired) || errors.Is(err, whatsapp.ErrInvalidSession) {
+			user.log.Errorfln("Got init %s error when trying to reconnect, not retrying", err)
 			user.removeFromJIDMap(StateBadCredentials)
 			//user.JID = ""
 			user.SetSession(nil)
 			user.DeleteConnection()
-			user.sendMarkdownBridgeAlert("\u26a0 Failed to reconnect to WhatsApp: unpaired from phone. " +
-				"To re-pair your phone, log in again.")
+			errMsg := "unpaired from phone"
+			if errors.Is(err, whatsapp.ErrInvalidSession) {
+				errMsg = "invalid session"
+			}
+			user.sendMarkdownBridgeAlert("\u26a0 Failed to reconnect to WhatsApp: %s. " +
+				"To re-pair your phone, log in again.", errMsg)
 			return
 		} else if errors.Is(err, whatsapp.ErrAlreadyLoggedIn) {
 			user.log.Warnln("Reconnection said we're already logged in, not trying anymore")
