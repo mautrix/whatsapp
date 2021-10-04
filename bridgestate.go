@@ -246,7 +246,7 @@ func (prov *ProvisioningAPI) BridgeStatePing(w http.ResponseWriter, r *http.Requ
 			} else {
 				remote.StateEvent = StateConnected
 			}
-		} else if user.Conn.IsLoginInProgress() {
+		} else if user.Conn.IsLoginInProgress() && user.Session != nil {
 			remote.StateEvent = StateConnecting
 			remote.Error = WAConnecting
 		} else if !user.Conn.IsConnected() && user.Session != nil {
