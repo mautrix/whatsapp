@@ -1402,7 +1402,7 @@ func (portal *Portal) HandleTextMessage(source *User, message whatsapp.TextMessa
 		portal.finishHandling(source, message.Info.Source, resp.EventID)
 	}
 	sender := portal.bridge.GetPuppetByJID(message.Info.SenderJid)
-	if message.Info.Timestamp+MaximumMsgLagActivity < uint64(time.Now().Unix()) {
+	if message.Info.Timestamp+MaximumMsgLagActivity > uint64(time.Now().Unix()) {
 		sender.UpdateActivityTs(message.Info.Timestamp)
 		portal.bridge.UpdateActivePuppetCount()
 	} else {
