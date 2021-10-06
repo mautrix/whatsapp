@@ -1405,6 +1405,8 @@ func (portal *Portal) HandleTextMessage(source *User, message whatsapp.TextMessa
 	if message.Info.Timestamp+MaximumMsgLagActivity < uint64(time.Now().Unix()) {
 		sender.UpdateActivityTs(message.Info.Timestamp)
 		portal.bridge.UpdateActivePuppetCount()
+	} else {
+		portal.log.Debugfln("Did not update acitivty for %s, ts %d was too stale", message.Info.SenderJid, message.Info.Timestamp)
 	}
 	return true
 }
