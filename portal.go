@@ -63,6 +63,10 @@ const BroadcastTopic = "WhatsApp broadcast list"
 const UnnamedBroadcastName = "Unnamed broadcast list"
 const PrivateChatTopic = "WhatsApp private chat"
 
+// The delay between the current time and msg time before we consider the message too stale to be
+// part of a users activity
+const MaximumMsgLagActivity = 5 * 60
+
 var ErrStatusBroadcastDisabled = errors.New("status bridging is disabled")
 
 func (bridge *Bridge) GetPortalByMXID(mxid id.RoomID) *Portal {
@@ -1398,8 +1402,10 @@ func (portal *Portal) HandleTextMessage(source *User, message whatsapp.TextMessa
 		portal.finishHandling(source, message.Info.Source, resp.EventID)
 	}
 	sender := portal.bridge.GetPuppetByJID(message.Info.SenderJid)
-	sender.UpdateActivityTs(message.Info.Timestamp)
-	portal.bridge.UpdateActivePuppetCount()
+	if message.Info.Timestamp+MaximumMsgLagActivity < uint64(time.Now().Unix()) {
+		sender.UpdateActivityTs(message.Info.Timestamp)
+		portal.bridge.UpdateActivePuppetCount()
+	}
 	return true
 }
 
