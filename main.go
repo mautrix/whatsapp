@@ -46,9 +46,9 @@ const ONE_DAY_S = 24 * 60 * 60
 var (
 	// These are static
 	Name = "mautrix-whatsapp"
-	URL  = "https://github.com/tulir/mautrix-whatsapp"
+	URL  = "https://github.com/mautrix/whatsapp"
 	// This is changed when making a release
-	Version = "0.1.7"
+	Version = "0.1.8"
 	// This is filled by init()
 	WAVersion     = ""
 	VersionString = ""
@@ -111,7 +111,7 @@ func (bridge *Bridge) GenerateRegistration() {
 }
 
 func (bridge *Bridge) MigrateDatabase() {
-	oldDB, err := database.New(flag.Arg(0), flag.Arg(1), bridge.Log)
+	oldDB, err := database.New(flag.Arg(0), flag.Arg(1), log.DefaultLogger)
 	if err != nil {
 		fmt.Println("Failed to open old database:", err)
 		os.Exit(30)
@@ -122,7 +122,7 @@ func (bridge *Bridge) MigrateDatabase() {
 		os.Exit(31)
 	}
 
-	newDB, err := database.New(bridge.Config.AppService.Database.Type, bridge.Config.AppService.Database.URI, bridge.Log)
+	newDB, err := database.New(bridge.Config.AppService.Database.Type, bridge.Config.AppService.Database.URI, log.DefaultLogger)
 	if err != nil {
 		fmt.Println("Failed to open new database:", err)
 		os.Exit(32)
@@ -319,12 +319,13 @@ func (bridge *Bridge) Start() {
 	bridge.Log.Debugln("Checking connection to homeserver")
 	bridge.ensureConnection()
 	if bridge.Crypto != nil {
-		err := bridge.Crypto.Init()
+		err = bridge.Crypto.Init()
 		if err != nil {
 			bridge.Log.Fatalln("Error initializing end-to-bridge encryption:", err)
 			os.Exit(19)
 		}
 	}
+	bridge.sendGlobalBridgeState(BridgeState{StateEvent: StateStarting}.fill(nil))
 	if bridge.Provisioning != nil {
 		bridge.Log.Debugln("Initializing provisioning API")
 		bridge.Provisioning.Init()
@@ -347,6 +348,7 @@ func (bridge *Bridge) Start() {
 	if bridge.Config.Bridge.ResendBridgeInfo {
 		go bridge.ResendBridgeInfo()
 	}
+	bridge.AS.Ready = true
 }
 
 func (bridge *Bridge) ResendBridgeInfo() {
@@ -407,8 +409,15 @@ func (bridge *Bridge) UpdateBotProfile() {
 
 func (bridge *Bridge) StartUsers() {
 	bridge.Log.Debugln("Starting users")
+	foundAnySessions := false
 	for _, user := range bridge.GetAllUsers() {
+		if user.Session != nil {
+			foundAnySessions = true
+		}
 		go user.Connect(false)
+	}
+	if !foundAnySessions {
+		bridge.sendGlobalBridgeState(BridgeState{StateEvent: StateUnconfigured}.fill(nil))
 	}
 	bridge.Log.Debugln("Starting custom puppets")
 	for _, loopuppet := range bridge.GetAllPuppetsWithCustomMXID() {

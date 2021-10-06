@@ -17,14 +17,11 @@
 package database
 
 import (
-	"bytes"
 	"database/sql"
-	"encoding/json"
 	"strings"
 	"time"
 
 	"github.com/Rhymen/go-whatsapp"
-	waProto "github.com/Rhymen/go-whatsapp/binary/proto"
 
 	log "maunium.net/go/maulogger/v2"
 
@@ -44,7 +41,7 @@ func (mq *MessageQuery) New() *Message {
 }
 
 func (mq *MessageQuery) GetAll(chat PortalKey) (messages []*Message) {
-	rows, err := mq.db.Query("SELECT chat_jid, chat_receiver, jid, mxid, sender, timestamp, sent, content FROM message WHERE chat_jid=$1 AND chat_receiver=$2", chat.JID, chat.Receiver)
+	rows, err := mq.db.Query("SELECT chat_jid, chat_receiver, jid, mxid, sender, timestamp, sent FROM message WHERE chat_jid=$1 AND chat_receiver=$2", chat.JID, chat.Receiver)
 	if err != nil || rows == nil {
 		return nil
 	}
@@ -56,12 +53,12 @@ func (mq *MessageQuery) GetAll(chat PortalKey) (messages []*Message) {
 }
 
 func (mq *MessageQuery) GetByJID(chat PortalKey, jid whatsapp.MessageID) *Message {
-	return mq.get("SELECT chat_jid, chat_receiver, jid, mxid, sender, timestamp, sent, content "+
+	return mq.get("SELECT chat_jid, chat_receiver, jid, mxid, sender, timestamp, sent "+
 		"FROM message WHERE chat_jid=$1 AND chat_receiver=$2 AND jid=$3", chat.JID, chat.Receiver, jid)
 }
 
 func (mq *MessageQuery) GetByMXID(mxid id.EventID) *Message {
-	return mq.get("SELECT chat_jid, chat_receiver, jid, mxid, sender, timestamp, sent, content "+
+	return mq.get("SELECT chat_jid, chat_receiver, jid, mxid, sender, timestamp, sent "+
 		"FROM message WHERE mxid=$1", mxid)
 }
 
@@ -70,7 +67,7 @@ func (mq *MessageQuery) GetLastInChat(chat PortalKey) *Message {
 }
 
 func (mq *MessageQuery) GetLastInChatBefore(chat PortalKey, maxTimestamp int64) *Message {
-	msg := mq.get("SELECT chat_jid, chat_receiver, jid, mxid, sender, timestamp, sent, content "+
+	msg := mq.get("SELECT chat_jid, chat_receiver, jid, mxid, sender, timestamp, sent "+
 		"FROM message WHERE chat_jid=$1 AND chat_receiver=$2 AND timestamp<=$3 AND sent=true ORDER BY timestamp DESC LIMIT 1",
 		chat.JID, chat.Receiver, maxTimestamp)
 	if msg == nil || msg.Timestamp == 0 {
@@ -98,7 +95,6 @@ type Message struct {
 	Sender    whatsapp.JID
 	Timestamp int64
 	Sent      bool
-	Content   *waProto.Message
 }
 
 func (msg *Message) IsFakeMXID() bool {
@@ -106,8 +102,7 @@ func (msg *Message) IsFakeMXID() bool {
 }
 
 func (msg *Message) Scan(row Scannable) *Message {
-	var content []byte
-	err := row.Scan(&msg.Chat.JID, &msg.Chat.Receiver, &msg.JID, &msg.MXID, &msg.Sender, &msg.Timestamp, &msg.Sent, &content)
+	err := row.Scan(&msg.Chat.JID, &msg.Chat.Receiver, &msg.JID, &msg.MXID, &msg.Sender, &msg.Timestamp, &msg.Sent)
 	if err != nil {
 		if err != sql.ErrNoRows {
 			msg.log.Errorln("Database scan failed:", err)
@@ -115,36 +110,14 @@ func (msg *Message) Scan(row Scannable) *Message {
 		return nil
 	}
 
-	msg.decodeBinaryContent(content)
-
 	return msg
-}
-
-func (msg *Message) decodeBinaryContent(content []byte) {
-	msg.Content = &waProto.Message{}
-	reader := bytes.NewReader(content)
-	dec := json.NewDecoder(reader)
-	err := dec.Decode(msg.Content)
-	if err != nil {
-		msg.log.Warnln("Failed to decode message content:", err)
-	}
-}
-
-func (msg *Message) encodeBinaryContent() []byte {
-	var buf bytes.Buffer
-	enc := json.NewEncoder(&buf)
-	err := enc.Encode(msg.Content)
-	if err != nil {
-		msg.log.Warnln("Failed to encode message content:", err)
-	}
-	return buf.Bytes()
 }
 
 func (msg *Message) Insert() {
 	_, err := msg.db.Exec(`INSERT INTO message
-			(chat_jid, chat_receiver, jid, mxid, sender, timestamp, sent, content)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-		msg.Chat.JID, msg.Chat.Receiver, msg.JID, msg.MXID, msg.Sender, msg.Timestamp, msg.Sent, msg.encodeBinaryContent())
+			(chat_jid, chat_receiver, jid, mxid, sender, timestamp, sent)
+			VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+		msg.Chat.JID, msg.Chat.Receiver, msg.JID, msg.MXID, msg.Sender, msg.Timestamp, msg.Sent)
 	if err != nil {
 		msg.log.Warnfln("Failed to insert %s@%s: %v", msg.Chat, msg.JID, err)
 	}

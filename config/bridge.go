@@ -178,7 +178,7 @@ func (bc BridgeConfig) FormatDisplayname(contact whatsapp.Contact) (string, int8
 	bc.displaynameTemplate.Execute(&buf, contact)
 	var quality int8
 	switch {
-	case len(contact.Notify) > 0:
+	case len(contact.Notify) > 0 || len(contact.VName) > 0:
 		quality = 3
 	case len(contact.Name) > 0 || len(contact.Short) > 0:
 		quality = 2

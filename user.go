@@ -114,7 +114,7 @@ func (user *User) addToJIDMap() {
 	user.bridge.usersLock.Unlock()
 }
 
-func (user *User) removeFromJIDMap() {
+func (user *User) removeFromJIDMap(state BridgeStateEvent) {
 	user.bridge.usersLock.Lock()
 	jidUser, ok := user.bridge.usersByJID[user.JID]
 	if ok && user == jidUser {
@@ -122,7 +122,7 @@ func (user *User) removeFromJIDMap() {
 	}
 	user.bridge.usersLock.Unlock()
 	user.bridge.Metrics.TrackLoginState(user.JID, false)
-	user.sendBridgeState(BridgeState{Error: WANotLoggedIn})
+	user.sendBridgeState(BridgeState{StateEvent: state, Error: WANotLoggedIn})
 }
 
 func (bridge *Bridge) GetAllUsers() []*User {
@@ -257,7 +257,7 @@ func (user *User) Connect(evenIfNoSession bool) bool {
 	}
 	user.log.Debugln("Connecting to WhatsApp")
 	if user.Session != nil {
-		user.sendBridgeState(BridgeState{Error: WAConnecting})
+		user.sendBridgeState(BridgeState{StateEvent: StateConnecting, Error: WAConnecting})
 	}
 	timeout := time.Duration(user.bridge.Config.Bridge.ConnectionTimeout)
 	if timeout == 0 {
@@ -289,7 +289,7 @@ func (user *User) DeleteConnection() {
 	user.Conn.RemoveHandlers()
 	user.Conn = nil
 	user.bridge.Metrics.TrackConnectionState(user.JID, false)
-	user.sendBridgeState(BridgeState{Error: WANotConnected})
+	user.sendBridgeState(BridgeState{StateEvent: StateBadCredentials, Error: WANotConnected})
 	user.connLock.Unlock()
 }
 
@@ -306,13 +306,13 @@ func (user *User) RestoreSession() bool {
 			if errors.Is(err, whatsapp.ErrUnpaired) {
 				user.sendMarkdownBridgeAlert("\u26a0 Failed to connect to WhatsApp: unpaired from phone. " +
 					"To re-pair your phone, log in again.")
-				user.removeFromJIDMap()
+				user.removeFromJIDMap(StateBadCredentials)
 				//user.JID = ""
 				user.SetSession(nil)
 				user.DeleteConnection()
 				return false
 			} else {
-				user.sendBridgeState(BridgeState{Error: WANotConnected})
+				user.sendBridgeState(BridgeState{StateEvent: StateBadCredentials, Error: WANotConnected})
 				user.sendMarkdownBridgeAlert("\u26a0 Failed to connect to WhatsApp. Make sure WhatsApp " +
 					"on your phone is reachable and use `reconnect` to try connecting again.")
 			}
@@ -415,6 +415,8 @@ func (user *User) Login(ce *CommandEvent) {
 			reply.Body = "You have a login in progress already."
 		} else if err == whatsapp.ErrLoginTimedOut {
 			reply.Body = "QR code scan timed out. Please try again."
+		} else if errors.Is(err, whatsapp.ErrMultiDeviceNotSupported) {
+			reply.Body = "WhatsApp multi-device is not currently supported. Please disable it and try again."
 		} else {
 			user.log.Warnln("Failed to log in:", err)
 			reply.Body = fmt.Sprintf("Unknown error while logging in: %v", err)
@@ -462,7 +464,7 @@ func (cl ChatList) Swap(i, j int) {
 }
 
 func (user *User) PostLogin() {
-	user.sendBridgeState(BridgeState{OK: true})
+	user.sendBridgeState(BridgeState{StateEvent: StateBackfilling})
 	user.bridge.Metrics.TrackConnectionState(user.JID, true)
 	user.bridge.Metrics.TrackLoginState(user.JID, true)
 	user.bridge.Metrics.TrackBufferLength(user.MXID, len(user.messageOutput))
@@ -539,7 +541,7 @@ func (user *User) postConnPing() bool {
 	if disconnectErr != nil {
 		user.log.Warnln("Error while disconnecting after failed post-connection ping:", disconnectErr)
 	}
-	user.sendBridgeState(BridgeState{Error: WANotConnected})
+	user.sendBridgeState(BridgeState{StateEvent: StateBadCredentials, Error: WANotConnected})
 	user.bridge.Metrics.TrackDisconnection(user.MXID)
 	go func() {
 		time.Sleep(1 * time.Second)
@@ -578,6 +580,7 @@ func (user *User) intPostLogin() {
 	case <-time.After(time.Duration(user.bridge.Config.Bridge.PortalSyncWait) * time.Second):
 		user.log.Warnln("Timed out waiting for portal sync to complete! Unlocking processing of incoming messages.")
 	}
+	user.sendBridgeState(BridgeState{StateEvent: StateConnected})
 }
 
 type NormalMessage interface {
@@ -975,11 +978,15 @@ func (user *User) HandleError(err error) {
 		user.log.Errorfln("WhatsApp error: %v", err)
 	}
 	if closed, ok := err.(*whatsapp.ErrConnectionClosed); ok {
+		if user.Session == nil {
+			user.log.Debugln("Websocket disconnected, but no session stored, not trying to reconnect")
+			return
+		}
 		user.bridge.Metrics.TrackDisconnection(user.MXID)
 		if closed.Code == 1000 && user.cleanDisconnection {
 			user.cleanDisconnection = false
 			if !user.bridge.Config.Bridge.AggressiveReconnect {
-				user.sendBridgeState(BridgeState{Error: WANotConnected})
+				user.sendBridgeState(BridgeState{StateEvent: StateBadCredentials, Error: WANotConnected})
 				user.bridge.Metrics.TrackConnectionState(user.JID, false)
 				user.log.Infoln("Clean disconnection by server")
 				return
@@ -1008,11 +1015,15 @@ func (user *User) HandleError(err error) {
 	// Otherwise unknown error, probably mostly harmless
 }
 
+var reconnectionID int64
+
 func (user *User) tryReconnect(msg string) {
+	localReconID := atomic.AddInt64(&reconnectionID, 1)
+	rcLog := user.log.Sub(fmt.Sprintf("Reconnector-%d", localReconID))
 	user.bridge.Metrics.TrackConnectionState(user.JID, false)
 	if user.ConnectionErrors > user.bridge.Config.Bridge.MaxConnectionAttempts {
 		user.sendMarkdownBridgeAlert("%s. Use the `reconnect` command to reconnect.", msg)
-		user.sendBridgeState(BridgeState{Error: WANotConnected})
+		user.sendBridgeState(BridgeState{StateEvent: StateBadCredentials, Error: WANotConnected})
 		return
 	}
 	if user.bridge.Config.Bridge.ReportConnectionRetry {
@@ -1031,43 +1042,51 @@ func (user *User) tryReconnect(msg string) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	user.cancelReconnect = cancel
-	for user.ConnectionErrors <= user.bridge.Config.Bridge.MaxConnectionAttempts {
+	for attemptNo := 1; user.ConnectionErrors <= user.bridge.Config.Bridge.MaxConnectionAttempts; attemptNo++ {
 		select {
 		case <-ctx.Done():
-			user.log.Debugln("tryReconnect context cancelled, aborting reconnection attempts")
+			rcLog.Debugln("tryReconnect context cancelled, aborting reconnection attempts")
 			return
 		default:
 		}
-		user.sendBridgeState(BridgeState{Error: WAConnecting})
+		user.sendBridgeState(BridgeState{StateEvent: StateConnecting, Error: WAConnecting})
+		rcLog.Debugfln("Starting reconnection attempt #%d", attemptNo)
 		err := user.Conn.Restore(true, ctx)
 		if err == nil {
 			user.ConnectionErrors = 0
 			if user.bridge.Config.Bridge.ReportConnectionRetry {
 				user.sendBridgeNotice("Reconnected successfully")
 			}
+			rcLog.Debugln("Reconnection successful, running PostLogin and exiting loop")
 			user.PostLogin()
 			return
 		} else if errors.Is(err, whatsapp.ErrBadRequest) {
-			user.log.Warnln("Got init 400 error when trying to reconnect, resetting connection...")
+			rcLog.Warnln("Got init 400 error when trying to reconnect, resetting connection...")
 			err = user.Conn.Disconnect()
 			if err != nil {
-				user.log.Debugln("Error while disconnecting for connection reset:", err)
+				rcLog.Debugln("Error while disconnecting for connection reset:", err)
 			}
-		} else if errors.Is(err, whatsapp.ErrUnpaired) {
-			user.log.Errorln("Got init 401 (unpaired) error when trying to reconnect, not retrying")
-			user.removeFromJIDMap()
+		} else if errors.Is(err, whatsapp.ErrUnpaired) || errors.Is(err, whatsapp.ErrInvalidSession) {
+			rcLog.Errorfln("Got init %s error when trying to reconnect, not retrying", err)
+			user.removeFromJIDMap(StateBadCredentials)
 			//user.JID = ""
 			user.SetSession(nil)
 			user.DeleteConnection()
-			user.sendMarkdownBridgeAlert("\u26a0 Failed to reconnect to WhatsApp: unpaired from phone. " +
-				"To re-pair your phone, log in again.")
-			user.sendBridgeState(BridgeState{Error: WANotLoggedIn})
+			errMsg := "unpaired from phone"
+			if errors.Is(err, whatsapp.ErrInvalidSession) {
+				errMsg = "invalid session"
+			}
+			user.sendMarkdownBridgeAlert("\u26a0 Failed to reconnect to WhatsApp: %s. " +
+				"To re-pair your phone, log in again.", errMsg)
 			return
 		} else if errors.Is(err, whatsapp.ErrAlreadyLoggedIn) {
-			user.log.Warnln("Reconnection said we're already logged in, not trying anymore")
+			rcLog.Warnln("Reconnection said we're already logged in, not trying anymore")
+			return
+		} else if errors.Is(err, whatsapp.ErrLoginInProgress) {
+			rcLog.Warnln("Reconnection said another reconnection is in progress, hoping there's another thread trying to reconnect and not retrying here")
 			return
 		} else {
-			user.log.Errorln("Error while trying to reconnect after disconnection:", err)
+			rcLog.Errorln("Error while trying to reconnect after disconnection:", err)
 		}
 		tries++
 		user.ConnectionErrors++
@@ -1081,8 +1100,9 @@ func (user *User) tryReconnect(msg string) {
 			time.Sleep(delay * time.Second)
 		}
 	}
+	rcLog.Debugln("Giving up trying to reconnect")
 
-	user.sendBridgeState(BridgeState{Error: WANotConnected})
+	user.sendBridgeState(BridgeState{StateEvent: StateBadCredentials, Error: WANotConnected})
 	if user.bridge.Config.Bridge.ReportConnectionRetry {
 		user.sendMarkdownBridgeAlert("%d reconnection attempts failed. Use the `reconnect` command to try to reconnect manually.", tries)
 	} else {
@@ -1221,9 +1241,11 @@ func (user *User) HandlePresence(info whatsapp.PresenceEvent) {
 			}
 			_, _ = puppet.IntentFor(portal).UserTyping(puppet.typingIn, false, 0)
 		}
-		puppet.typingIn = portal.MXID
-		puppet.typingAt = time.Now().Unix()
-		_, _ = puppet.IntentFor(portal).UserTyping(portal.MXID, true, 15*1000)
+		if len(portal.MXID) > 0 {
+			puppet.typingIn = portal.MXID
+			puppet.typingAt = time.Now().Unix()
+			_, _ = puppet.IntentFor(portal).UserTyping(portal.MXID, true, 15*1000)
+		}
 	}
 }
 

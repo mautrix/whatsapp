@@ -12,7 +12,7 @@ stages:
   - mkdir -p .cache
   - export GOPATH="$CI_PROJECT_DIR/.cache"
   - export GOCACHE="$CI_PROJECT_DIR/.cache/build"
-  - export GO_LDFLAGS="-linkmode external -extldflags -static -X main.Tag=$CI_COMMIT_TAG -X main.Commit=$CI_COMMIT_SHA -X 'main.BuildTime=`date '+%b %_d %Y, %H:%M:%S'`'"
+  - export GO_LDFLAGS="-s -w -linkmode external -extldflags -static -X main.Tag=$CI_COMMIT_TAG -X main.Commit=$CI_COMMIT_SHA -X 'main.BuildTime=`date '+%b %_d %Y, %H:%M:%S'`'"
   script:
   - go build -ldflags "$GO_LDFLAGS" -o mautrix-whatsapp
   artifacts:
@@ -55,10 +55,28 @@ build docker amd64:
     DOCKER_ARCH: amd64
   after_script:
   - |
-    if [ "$CI_COMMIT_BRANCH" = "master" ]; then
-      apk add --update curl
+    if [[ "$CI_COMMIT_BRANCH" == "master" ]]; then
+      apk add --update curl jq
       rm -rf /var/cache/apk/*
-      curl "$NOVA_ADMIN_API_URL" -H "Content-Type: application/json" -d '{"password":"'"$NOVA_ADMIN_NIGHTLY_PASS"'","bridge":"'$NOVA_BRIDGE_TYPE'","image":"'$CI_REGISTRY_IMAGE':'$CI_COMMIT_SHA'-amd64"}'
+
+      jq -n '
+         {
+           password:  env.BEEPER_DEV_ADMIN_NIGHTLY_PASS,
+           bridge:    env.BEEPER_BRIDGE_TYPE,
+           image:     "\(env.CI_REGISTRY_IMAGE):\(env.CI_COMMIT_SHA)-amd64",
+           channel:   "STABLE"
+         }
+        ' | curl "$BEEPER_DEV_ADMIN_API_URL" -H "Content-Type: application/json" -d @-
+
+      jq -n '
+         {
+           password:    env.BEEPER_PROD_ADMIN_NIGHTLY_PASS,
+           bridge:      env.BEEPER_BRIDGE_TYPE,
+           image:       "\(env.CI_REGISTRY_IMAGE):\(env.CI_COMMIT_SHA)-amd64",
+           channel:     "INTERNAL",
+           deployNext:  true
+         }
+         ' | curl "$BEEPER_PROD_ADMIN_API_URL" -H "Content-Type: application/json" -d @-
     fi
 
 build docker arm64:
