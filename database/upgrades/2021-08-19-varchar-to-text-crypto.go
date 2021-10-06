@@ -7,7 +7,7 @@ import (
 )
 
 func init() {
-	upgrades[23] = upgrade{"Replace VARCHAR(255) with TEXT in the crypto database", func(tx *sql.Tx, ctx context) error {
+	upgrades[24] = upgrade{"Replace VARCHAR(255) with TEXT in the crypto database", func(tx *sql.Tx, ctx context) error {
 		return sql_store_upgrade.Upgrades[4](tx, ctx.dialect.String())
 	}}
 }

@@ -5,7 +5,7 @@ import (
 )
 
 func init() {
-	upgrades[21] = upgrade{"Remove message content from local database", func(tx *sql.Tx, ctx context) error {
+	upgrades[22] = upgrade{"Remove message content from local database", func(tx *sql.Tx, ctx context) error {
 		if ctx.dialect == SQLite {
 			_, err := tx.Exec("ALTER TABLE message RENAME TO old_message")
 			if err != nil {

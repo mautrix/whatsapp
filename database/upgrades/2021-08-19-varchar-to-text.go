@@ -5,7 +5,7 @@ import (
 )
 
 func init() {
-	upgrades[22] = upgrade{"Replace VARCHAR(255) with TEXT in the database", func(tx *sql.Tx, ctx context) error {
+	upgrades[23] = upgrade{"Replace VARCHAR(255) with TEXT in the database", func(tx *sql.Tx, ctx context) error {
 		if ctx.dialect == SQLite {
 			// SQLite doesn't enforce varchar sizes anyway
 			return nil
