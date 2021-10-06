@@ -414,6 +414,8 @@ func (prov *ProvisioningAPI) Login(w http.ResponseWriter, r *http.Request) {
 		} else if errors.Is(err, whatsapp.ErrInvalidWebsocket) {
 			msg = "WhatsApp connection error. Please try again."
 			// TODO might need to make sure it reconnects?
+		} else if errors.Is(err, whatsapp.ErrMultiDeviceNotSupported) {
+			msg = "WhatsApp multi-device is not currently supported. Please disable it and try again."
 		} else {
 			msg = fmt.Sprintf("Unknown error while logging in: %v", err)
 		}

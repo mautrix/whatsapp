@@ -415,6 +415,8 @@ func (user *User) Login(ce *CommandEvent) {
 			reply.Body = "You have a login in progress already."
 		} else if err == whatsapp.ErrLoginTimedOut {
 			reply.Body = "QR code scan timed out. Please try again."
+		} else if errors.Is(err, whatsapp.ErrMultiDeviceNotSupported) {
+			reply.Body = "WhatsApp multi-device is not currently supported. Please disable it and try again."
 		} else {
 			user.log.Warnln("Failed to log in:", err)
 			reply.Body = fmt.Sprintf("Unknown error while logging in: %v", err)
@@ -976,6 +978,10 @@ func (user *User) HandleError(err error) {
 		user.log.Errorfln("WhatsApp error: %v", err)
 	}
 	if closed, ok := err.(*whatsapp.ErrConnectionClosed); ok {
+		if user.Session == nil {
+			user.log.Debugln("Websocket disconnected, but no session stored, not trying to reconnect")
+			return
+		}
 		user.bridge.Metrics.TrackDisconnection(user.MXID)
 		if closed.Code == 1000 && user.cleanDisconnection {
 			user.cleanDisconnection = false
@@ -1009,7 +1015,11 @@ func (user *User) HandleError(err error) {
 	// Otherwise unknown error, probably mostly harmless
 }
 
+var reconnectionID int64
+
 func (user *User) tryReconnect(msg string) {
+	localReconID := atomic.AddInt64(&reconnectionID, 1)
+	rcLog := user.log.Sub(fmt.Sprintf("Reconnector-%d", localReconID))
 	user.bridge.Metrics.TrackConnectionState(user.JID, false)
 	if user.ConnectionErrors > user.bridge.Config.Bridge.MaxConnectionAttempts {
 		user.sendMarkdownBridgeAlert("%s. Use the `reconnect` command to reconnect.", msg)
@@ -1032,42 +1042,51 @@ func (user *User) tryReconnect(msg string) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	user.cancelReconnect = cancel
-	for user.ConnectionErrors <= user.bridge.Config.Bridge.MaxConnectionAttempts {
+	for attemptNo := 1; user.ConnectionErrors <= user.bridge.Config.Bridge.MaxConnectionAttempts; attemptNo++ {
 		select {
 		case <-ctx.Done():
-			user.log.Debugln("tryReconnect context cancelled, aborting reconnection attempts")
+			rcLog.Debugln("tryReconnect context cancelled, aborting reconnection attempts")
 			return
 		default:
 		}
 		user.sendBridgeState(BridgeState{StateEvent: StateConnecting, Error: WAConnecting})
+		rcLog.Debugfln("Starting reconnection attempt #%d", attemptNo)
 		err := user.Conn.Restore(true, ctx)
 		if err == nil {
 			user.ConnectionErrors = 0
 			if user.bridge.Config.Bridge.ReportConnectionRetry {
 				user.sendBridgeNotice("Reconnected successfully")
 			}
+			rcLog.Debugln("Reconnection successful, running PostLogin and exiting loop")
 			user.PostLogin()
 			return
 		} else if errors.Is(err, whatsapp.ErrBadRequest) {
-			user.log.Warnln("Got init 400 error when trying to reconnect, resetting connection...")
+			rcLog.Warnln("Got init 400 error when trying to reconnect, resetting connection...")
 			err = user.Conn.Disconnect()
 			if err != nil {
-				user.log.Debugln("Error while disconnecting for connection reset:", err)
+				rcLog.Debugln("Error while disconnecting for connection reset:", err)
 			}
-		} else if errors.Is(err, whatsapp.ErrUnpaired) {
-			user.log.Errorln("Got init 401 (unpaired) error when trying to reconnect, not retrying")
+		} else if errors.Is(err, whatsapp.ErrUnpaired) || errors.Is(err, whatsapp.ErrInvalidSession) {
+			rcLog.Errorfln("Got init %s error when trying to reconnect, not retrying", err)
 			user.removeFromJIDMap(StateBadCredentials)
 			//user.JID = ""
 			user.SetSession(nil)
 			user.DeleteConnection()
-			user.sendMarkdownBridgeAlert("\u26a0 Failed to reconnect to WhatsApp: unpaired from phone. " +
-				"To re-pair your phone, log in again.")
+			errMsg := "unpaired from phone"
+			if errors.Is(err, whatsapp.ErrInvalidSession) {
+				errMsg = "invalid session"
+			}
+			user.sendMarkdownBridgeAlert("\u26a0 Failed to reconnect to WhatsApp: %s. " +
+				"To re-pair your phone, log in again.", errMsg)
 			return
 		} else if errors.Is(err, whatsapp.ErrAlreadyLoggedIn) {
-			user.log.Warnln("Reconnection said we're already logged in, not trying anymore")
+			rcLog.Warnln("Reconnection said we're already logged in, not trying anymore")
+			return
+		} else if errors.Is(err, whatsapp.ErrLoginInProgress) {
+			rcLog.Warnln("Reconnection said another reconnection is in progress, hoping there's another thread trying to reconnect and not retrying here")
 			return
 		} else {
-			user.log.Errorln("Error while trying to reconnect after disconnection:", err)
+			rcLog.Errorln("Error while trying to reconnect after disconnection:", err)
 		}
 		tries++
 		user.ConnectionErrors++
@@ -1081,6 +1100,7 @@ func (user *User) tryReconnect(msg string) {
 			time.Sleep(delay * time.Second)
 		}
 	}
+	rcLog.Debugln("Giving up trying to reconnect")
 
 	user.sendBridgeState(BridgeState{StateEvent: StateBadCredentials, Error: WANotConnected})
 	if user.bridge.Config.Bridge.ReportConnectionRetry {
