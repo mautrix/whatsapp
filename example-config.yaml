@@ -209,11 +209,9 @@ bridge:
     # The prefix for commands. Only required in non-management rooms.
     command_prefix: "!wa"
 
-    # End-to-bridge encryption support options. This requires login_shared_secret to be configured
-    # in order to get a device for the bridge bot.
+    # End-to-bridge encryption support options.
     #
-    # Additionally, https://github.com/matrix-org/synapse/pull/5758 is required if using a normal
-    # application service.
+    # See https://docs.mau.fi/bridges/general/end-to-bridge-encryption.html for more info.
     encryption:
         # Allow encryption, work in group chat rooms with e2ee enabled
         allow: false
