@@ -1422,8 +1422,19 @@ func (portal *Portal) HandleTextMessage(source *User, message whatsapp.TextMessa
 	} else {
 		portal.finishHandling(source, message.Info.Source, resp.EventID)
 	}
-	sender := portal.bridge.GetPuppetByJID(message.Info.SenderJid)
-	if message.Info.Timestamp+MaximumMsgLagActivity > uint64(time.Now().Unix()) {
+
+	var sender *Puppet
+	if message.Info.FromMe {
+		// Ignore tracking activity for our own users
+		sender = nil
+	} else if len(message.Info.SenderJid) != 0 {
+		sender = portal.bridge.GetPuppetByJID(message.Info.SenderJid)
+		// As seen in https://github.com/vector-im/mautrix-whatsapp/blob/210b1caf655420ae31174ac3fc6eab2ab182749e/portal.go#L271-L282
+	} else if len(message.Info.Source.GetParticipant()) != 0 {
+		sender = portal.bridge.GetPuppetByJID(message.Info.Source.GetParticipant())
+	}
+
+	if sender != nil && message.Info.Timestamp+MaximumMsgLagActivity > uint64(time.Now().Unix()) {
 		sender.UpdateActivityTs(message.Info.Timestamp)
 		portal.bridge.UpdateActivePuppetCount()
 	} else {
