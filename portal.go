@@ -197,8 +197,6 @@ type Portal struct {
 	hasRelaybot *bool
 }
 
-const MaxMessageAgeToCreatePortal = 5 * 60 // 5 minutes
-
 func (portal *Portal) syncDoublePuppetDetailsAfterCreate(source *User) {
 	doublePuppet := portal.bridge.GetPuppetByCustomMXID(source.MXID)
 	if doublePuppet == nil {
@@ -220,10 +218,7 @@ func (portal *Portal) syncDoublePuppetDetailsAfterCreate(source *User) {
 func (portal *Portal) handleMessageLoop() {
 	for msg := range portal.messages {
 		if len(portal.MXID) == 0 {
-			if msg.timestamp+MaxMessageAgeToCreatePortal < uint64(time.Now().Unix()) {
-				portal.log.Debugln("Not creating portal room for incoming message: message is too old")
-				continue
-			} else if !portal.shouldCreateRoom(msg) {
+			if !portal.shouldCreateRoom(msg) {
 				portal.log.Debugln("Not creating portal room for incoming message: message is not a chat message")
 				continue
 			}
