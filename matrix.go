@@ -107,6 +107,8 @@ func (mx *MatrixHandler) HandleBotInvite(evt *event.Event) {
 		return
 	}
 
+	_, _ = intent.SendNotice(evt.RoomID, mx.bridge.Config.Bridge.ManagementRoomText.Welcome.Plain)
+
 	if !user.Whitelisted {
 		_, _ = intent.SendNotice(evt.RoomID, "You are not whitelisted to use this bridge.\n"+
 			"If you're the owner of this bridge, see the bridge.permissions section in your config file.")
@@ -136,8 +138,21 @@ func (mx *MatrixHandler) HandleBotInvite(evt *event.Event) {
 
 	if !hasPuppets && (len(user.ManagementRoom) == 0 || evt.Content.AsMember().IsDirect) {
 		user.SetManagementRoom(evt.RoomID)
-		_, _ = intent.SendNotice(user.ManagementRoom, "This room has been registered as your bridge management/status room. Send `help` to get a list of commands.")
+		_, _ = intent.SendNotice(user.ManagementRoom, "This room has been registered as your bridge management/status room.")
 		mx.log.Debugln(evt.RoomID, "registered as a management room with", evt.Sender)
+	}
+
+	if evt.RoomID == user.ManagementRoom {
+		if user.HasSession() {
+			_, _ = intent.SendNotice(evt.RoomID, mx.bridge.Config.Bridge.ManagementRoomText.WelcomeConnected.Plain)
+		} else {
+			_, _ = intent.SendNotice(evt.RoomID, mx.bridge.Config.Bridge.ManagementRoomText.WelcomeUnconnected.Plain)
+		}
+
+		additionalHelp := mx.bridge.Config.Bridge.ManagementRoomText.AdditionalHelp.Plain
+		if len(additionalHelp) > 0 {
+			_, _ = intent.SendNotice(evt.RoomID, additionalHelp)
+		}
 	}
 }
 
