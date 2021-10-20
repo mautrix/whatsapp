@@ -86,15 +86,19 @@ type BridgeConfig struct {
 	ManagementRoomText struct {
 		Welcome struct {
 			Plain string `yaml:"plain"`
+			Html  string `yaml:"html"`
 		} `yaml:"welcome"`
 		WelcomeConnected struct {
 			Plain string `yaml:"plain"`
+			Html  string `yaml:"html"`
 		} `yaml:"welcome_connected"`
 		WelcomeUnconnected struct {
 			Plain string `yaml:"plain"`
+			Html  string `yaml:"html"`
 		} `yaml:"welcome_unconnected"`
 		AdditionalHelp struct {
 			Plain string `yaml:"plain"`
+			Html  string `yaml:"html"`
 		} `yaml:"additional_help"`
 	} `yaml:"management_room_text"`
 
@@ -154,7 +158,9 @@ func (bc *BridgeConfig) setDefaults() {
 
 	bc.ManagementRoomText.Welcome.Plain = "Hello, I'm a WhatsApp bridge bot."
 	bc.ManagementRoomText.WelcomeConnected.Plain = "Use `help` for help"
+	bc.ManagementRoomText.WelcomeConnected.Html = "Use <code>help</code> for help"
 	bc.ManagementRoomText.WelcomeUnconnected.Plain = "Use `help` for help or `login` to log in."
+	bc.ManagementRoomText.WelcomeUnconnected.Html = "Use <code>help</code> for help or <code>login</code> to log in."
 }
 
 type umBridgeConfig BridgeConfig

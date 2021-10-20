@@ -94,6 +94,16 @@ func (mx *MatrixHandler) joinAndCheckMembers(evt *event.Event, intent *appservic
 	return members
 }
 
+func (mx *MatrixHandler) sendNoticeWithHtml(roomID id.RoomID, plain string, html string) (*mautrix.RespSendEvent, error) {
+	intent := mx.as.BotIntent()
+	content := event.MessageEventContent{MsgType: event.MsgNotice}
+	if len(html) > 0 {
+		content.Format = event.FormatHTML
+		content.FormattedBody = html
+	}
+	return intent.SendMessageEvent(roomID, event.EventMessage, content)
+}
+
 func (mx *MatrixHandler) HandleBotInvite(evt *event.Event) {
 	intent := mx.as.BotIntent()
 
@@ -144,14 +154,26 @@ func (mx *MatrixHandler) HandleBotInvite(evt *event.Event) {
 
 	if evt.RoomID == user.ManagementRoom {
 		if user.HasSession() {
-			_, _ = intent.SendNotice(evt.RoomID, mx.bridge.Config.Bridge.ManagementRoomText.WelcomeConnected.Plain)
+			_, _ = mx.sendNoticeWithHtml(
+				evt.RoomID,
+				mx.bridge.Config.Bridge.ManagementRoomText.WelcomeConnected.Plain,
+				mx.bridge.Config.Bridge.ManagementRoomText.WelcomeConnected.Html,
+			)
 		} else {
-			_, _ = intent.SendNotice(evt.RoomID, mx.bridge.Config.Bridge.ManagementRoomText.WelcomeUnconnected.Plain)
+			_, _ = mx.sendNoticeWithHtml(
+				evt.RoomID,
+				mx.bridge.Config.Bridge.ManagementRoomText.WelcomeUnconnected.Plain,
+				mx.bridge.Config.Bridge.ManagementRoomText.WelcomeUnconnected.Html,
+			)
 		}
 
-		additionalHelp := mx.bridge.Config.Bridge.ManagementRoomText.AdditionalHelp.Plain
-		if len(additionalHelp) > 0 {
-			_, _ = intent.SendNotice(evt.RoomID, additionalHelp)
+		additionalHelp := mx.bridge.Config.Bridge.ManagementRoomText.AdditionalHelp
+		if len(additionalHelp.Plain) > 0 {
+			_, _ = mx.sendNoticeWithHtml(
+				evt.RoomID,
+				additionalHelp.Plain,
+				additionalHelp.Html,
+			)
 		}
 	}
 }
