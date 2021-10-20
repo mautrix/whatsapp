@@ -210,17 +210,22 @@ bridge:
     command_prefix: "!wa"
 
     # Messages to be sent to each user upon creating a management room.
+    # The defaults are listed below. If `plain` is not set, the text will
+    # not be used. If `html` is not set, `plain` will be used as HTML text.
     management_room_text:
+        # Sent when joining a room.
         welcome:
             plain: "Hello, I'm a WhatsApp bridge bot."
             # html: ""
+        # Sent when joining a management room and the user is already logged in.
         welcome_connected:
             plain: "Use `help` for help."
             html: "Use <code>help</code> for help."
+        # Sent when joining a management room and the user is not logged in.
         welcome_unconnected:
             plain: "Use `help` for help or `login` to log in."
             html: "Use <code>help</code> for help or <code>login</code> to log in."
-        # Not sent by default
+        # Optional extra text sent when joining a management room.
         # additional_help:
         #    plain: "This would be some additional text in case you need it."
 
