@@ -1,5 +1,5 @@
 // mautrix-whatsapp - A Matrix-WhatsApp puppeting bridge.
-// Copyright (C) 2020 Tulir Asokan
+// Copyright (C) 2021 Tulir Asokan
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as published by
@@ -17,12 +17,11 @@
 package config
 
 import (
-	"bytes"
 	"strconv"
 	"strings"
 	"text/template"
 
-	"github.com/Rhymen/go-whatsapp"
+	"go.mau.fi/whatsmeow/types"
 
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
@@ -31,7 +30,6 @@ import (
 type BridgeConfig struct {
 	UsernameTemplate    string `yaml:"username_template"`
 	DisplaynameTemplate string `yaml:"displayname_template"`
-	CommunityTemplate   string `yaml:"community_template"`
 
 	ConnectionTimeout     int  `yaml:"connection_timeout"`
 	FetchMessageOnTimeout bool `yaml:"fetch_message_on_timeout"`
@@ -100,7 +98,6 @@ type BridgeConfig struct {
 
 	usernameTemplate    *template.Template `yaml:"-"`
 	displaynameTemplate *template.Template `yaml:"-"`
-	communityTemplate   *template.Template `yaml:"-"`
 }
 
 func (bc *BridgeConfig) setDefaults() {
@@ -156,13 +153,6 @@ func (bc *BridgeConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
 		return err
 	}
 
-	if len(bc.CommunityTemplate) > 0 {
-		bc.communityTemplate, err = template.New("community").Parse(bc.CommunityTemplate)
-		if err != nil {
-			return err
-		}
-	}
-
 	return nil
 }
 
@@ -170,44 +160,43 @@ type UsernameTemplateArgs struct {
 	UserID id.UserID
 }
 
-func (bc BridgeConfig) FormatDisplayname(contact whatsapp.Contact) (string, int8) {
-	var buf bytes.Buffer
-	if index := strings.IndexRune(contact.JID, '@'); index > 0 {
-		contact.JID = "+" + contact.JID[:index]
-	}
-	bc.displaynameTemplate.Execute(&buf, contact)
+type legacyContactInfo struct {
+	types.ContactInfo
+	Phone string
+
+	Notify string
+	VName  string
+	Name   string
+	Short  string
+	JID    string
+}
+
+func (bc BridgeConfig) FormatDisplayname(jid types.JID, contact types.ContactInfo) (string, int8) {
+	var buf strings.Builder
+	_ = bc.displaynameTemplate.Execute(&buf, legacyContactInfo{
+		ContactInfo: contact,
+		Notify:      contact.PushName,
+		VName:       contact.BusinessName,
+		Name:        contact.FullName,
+		Short:       contact.FirstName,
+		Phone:       "+" + jid.User,
+		JID:         "+" + jid.User,
+	})
 	var quality int8
 	switch {
-	case len(contact.Notify) > 0 || len(contact.VName) > 0:
+	case len(contact.PushName) > 0 || len(contact.BusinessName) > 0:
 		quality = 3
-	case len(contact.Name) > 0 || len(contact.Short) > 0:
+	case len(contact.FullName) > 0 || len(contact.FirstName) > 0:
 		quality = 2
-	case len(contact.JID) > 0:
-		quality = 1
 	default:
-		quality = 0
+		quality = 1
 	}
 	return buf.String(), quality
 }
 
-func (bc BridgeConfig) FormatUsername(userID whatsapp.JID) string {
-	var buf bytes.Buffer
-	bc.usernameTemplate.Execute(&buf, userID)
-	return buf.String()
-}
-
-type CommunityTemplateArgs struct {
-	Localpart string
-	Server    string
-}
-
-func (bc BridgeConfig) EnableCommunities() bool {
-	return bc.communityTemplate != nil
-}
-
-func (bc BridgeConfig) FormatCommunity(localpart, server string) string {
-	var buf bytes.Buffer
-	bc.communityTemplate.Execute(&buf, CommunityTemplateArgs{localpart, server})
+func (bc BridgeConfig) FormatUsername(username string) string {
+	var buf strings.Builder
+	_ = bc.usernameTemplate.Execute(&buf, username)
 	return buf.String()
 }
 

@@ -201,13 +201,10 @@ func (mx *MatrixHandler) createPrivatePortalFromInvite(roomID id.RoomID, inviter
 	portal.UpdateBridgeInfo()
 	_, _ = intent.SendNotice(roomID, "Private chat portal created")
 
-	err := portal.FillInitialHistory(inviter)
-	if err != nil {
-		portal.log.Errorln("Failed to fill history:", err)
-	}
-
-	inviter.addPortalToCommunity(portal)
-	inviter.addPuppetToCommunity(puppet)
+	//err := portal.FillInitialHistory(inviter)
+	//if err != nil {
+	//	portal.log.Errorln("Failed to fill history:", err)
+	//}
 }
 
 func (mx *MatrixHandler) HandlePuppetInvite(evt *event.Event, inviter *User, puppet *Puppet) {
@@ -259,7 +256,7 @@ func (mx *MatrixHandler) HandleMembership(evt *event.Event) {
 	}
 
 	user := mx.bridge.GetUserByMXID(evt.Sender)
-	if user == nil || !user.Whitelisted || !user.IsConnected() {
+	if user == nil || !user.Whitelisted || !user.IsLoggedIn() {
 		return
 	}
 
@@ -300,7 +297,7 @@ func (mx *MatrixHandler) HandleRoomMetadata(evt *event.Event) {
 	}
 
 	user := mx.bridge.GetUserByMXID(evt.Sender)
-	if user == nil || !user.Whitelisted || !user.IsConnected() {
+	if user == nil || !user.Whitelisted || !user.IsLoggedIn() {
 		return
 	}
 
@@ -439,7 +436,7 @@ func (mx *MatrixHandler) HandleRedaction(evt *event.Event) {
 
 	if !user.HasSession() {
 		return
-	} else if !user.IsConnected() {
+	} else if !user.IsLoggedIn() {
 		msg := format.RenderMarkdown(fmt.Sprintf("[%[1]s](https://matrix.to/#/%[1]s): \u26a0 "+
 			"You are not connected to WhatsApp, so your redaction was not bridged. "+
 			"Use `%[2]s reconnect` to reconnect.", user.MXID, mx.bridge.Config.Bridge.CommandPrefix), true, false)

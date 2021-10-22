@@ -1,5 +1,5 @@
 // mautrix-whatsapp - A Matrix-WhatsApp puppeting bridge.
-// Copyright (C) 2020 Tulir Asokan
+// Copyright (C) 2021 Tulir Asokan
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as published by
@@ -21,11 +21,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Rhymen/go-whatsapp"
-
 	log "maunium.net/go/maulogger/v2"
-
 	"maunium.net/go/mautrix/id"
+
+	"go.mau.fi/whatsmeow/types"
 )
 
 type MessageQuery struct {
@@ -52,7 +51,7 @@ func (mq *MessageQuery) GetAll(chat PortalKey) (messages []*Message) {
 	return
 }
 
-func (mq *MessageQuery) GetByJID(chat PortalKey, jid whatsapp.MessageID) *Message {
+func (mq *MessageQuery) GetByJID(chat PortalKey, jid types.MessageID) *Message {
 	return mq.get("SELECT chat_jid, chat_receiver, jid, mxid, sender, timestamp, sent "+
 		"FROM message WHERE chat_jid=$1 AND chat_receiver=$2 AND jid=$3", chat.JID, chat.Receiver, jid)
 }
@@ -90,9 +89,9 @@ type Message struct {
 	log log.Logger
 
 	Chat      PortalKey
-	JID       whatsapp.MessageID
+	JID       types.MessageID
 	MXID      id.EventID
-	Sender    whatsapp.JID
+	Sender    types.JID
 	Timestamp int64
 	Sent      bool
 }

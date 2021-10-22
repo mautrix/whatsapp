@@ -1,5 +1,5 @@
 // mautrix-whatsapp - A Matrix-WhatsApp puppeting bridge.
-// Copyright (C) 2020 Tulir Asokan
+// Copyright (C) 2021 Tulir Asokan
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as published by
@@ -18,42 +18,40 @@ package database
 
 import (
 	"database/sql"
-	"strings"
 
 	log "maunium.net/go/maulogger/v2"
-
-	"github.com/Rhymen/go-whatsapp"
-
 	"maunium.net/go/mautrix/id"
+
+	"go.mau.fi/whatsmeow/types"
 )
 
 type PortalKey struct {
-	JID      whatsapp.JID
-	Receiver whatsapp.JID
+	JID      types.JID
+	Receiver types.JID
 }
 
-func GroupPortalKey(jid whatsapp.JID) PortalKey {
+func GroupPortalKey(jid types.JID) PortalKey {
 	return PortalKey{
-		JID:      jid,
-		Receiver: jid,
+		JID:      jid.ToNonAD(),
+		Receiver: jid.ToNonAD(),
 	}
 }
 
-func NewPortalKey(jid, receiver whatsapp.JID) PortalKey {
-	if strings.HasSuffix(jid, whatsapp.GroupSuffix) {
+func NewPortalKey(jid, receiver types.JID) PortalKey {
+	if jid.Server == types.GroupServer {
 		receiver = jid
 	}
 	return PortalKey{
-		JID:      jid,
-		Receiver: receiver,
+		JID:      jid.ToNonAD(),
+		Receiver: receiver.ToNonAD(),
 	}
 }
 
 func (key PortalKey) String() string {
 	if key.Receiver == key.JID {
-		return key.JID
+		return key.JID.String()
 	}
-	return key.JID + "-" + key.Receiver
+	return key.JID.String() + "-" + key.Receiver.String()
 }
 
 type PortalQuery struct {
@@ -80,12 +78,12 @@ func (pq *PortalQuery) GetByMXID(mxid id.RoomID) *Portal {
 	return pq.get("SELECT * FROM portal WHERE mxid=$1", mxid)
 }
 
-func (pq *PortalQuery) GetAllByJID(jid whatsapp.JID) []*Portal {
+func (pq *PortalQuery) GetAllByJID(jid types.JID) []*Portal {
 	return pq.getAll("SELECT * FROM portal WHERE jid=$1", jid)
 }
 
-func (pq *PortalQuery) FindPrivateChats(receiver whatsapp.JID) []*Portal {
-	return pq.getAll("SELECT * FROM portal WHERE receiver=$1 AND jid LIKE '%@s.whatsapp.net'", receiver)
+func (pq *PortalQuery) FindPrivateChats(receiver types.JID) []*Portal {
+	return pq.getAll("SELECT * FROM portal WHERE receiver='$1@s.whatsapp.net' AND jid LIKE '%@s.whatsapp.net'", receiver)
 }
 
 func (pq *PortalQuery) getAll(query string, args ...interface{}) (portals []*Portal) {
@@ -170,25 +168,25 @@ func (portal *Portal) Delete() {
 	}
 }
 
-func (portal *Portal) GetUserIDs() []id.UserID {
-	rows, err := portal.db.Query(`SELECT "user".mxid FROM "user", user_portal
-		WHERE "user".jid=user_portal.user_jid
-			AND user_portal.portal_jid=$1
-			AND user_portal.portal_receiver=$2`,
-		portal.Key.JID, portal.Key.Receiver)
-	if err != nil {
-		portal.log.Debugln("Failed to get portal user ids:", err)
-		return nil
-	}
-	var userIDs []id.UserID
-	for rows.Next() {
-		var userID id.UserID
-		err = rows.Scan(&userID)
-		if err != nil {
-			portal.log.Warnln("Failed to scan row:", err)
-			continue
-		}
-		userIDs = append(userIDs, userID)
-	}
-	return userIDs
-}
+//func (portal *Portal) GetUserIDs() []id.UserID {
+//	rows, err := portal.db.Query(`SELECT "user".mxid FROM "user", user_portal
+//		WHERE "user".jid=user_portal.user_jid
+//			AND user_portal.portal_jid=$1
+//			AND user_portal.portal_receiver=$2`,
+//		portal.Key.JID, portal.Key.Receiver)
+//	if err != nil {
+//		portal.log.Debugln("Failed to get portal user ids:", err)
+//		return nil
+//	}
+//	var userIDs []id.UserID
+//	for rows.Next() {
+//		var userID id.UserID
+//		err = rows.Scan(&userID)
+//		if err != nil {
+//			portal.log.Warnln("Failed to scan row:", err)
+//			continue
+//		}
+//		userIDs = append(userIDs, userID)
+//	}
+//	return userIDs
+//}
