@@ -94,13 +94,10 @@ func (mx *MatrixHandler) joinAndCheckMembers(evt *event.Event, intent *appservic
 	return members
 }
 
-func (mx *MatrixHandler) sendNoticeWithHtml(roomID id.RoomID, plain string, html string) (*mautrix.RespSendEvent, error) {
+func (mx *MatrixHandler) sendNoticeWithMarkdown(roomID id.RoomID, message string) (*mautrix.RespSendEvent, error) {
 	intent := mx.as.BotIntent()
-	content := event.MessageEventContent{MsgType: event.MsgNotice}
-	if len(html) > 0 {
-		content.Format = event.FormatHTML
-		content.FormattedBody = html
-	}
+	content := format.RenderMarkdown(message, true, false)
+	content.MsgType = event.MsgNotice
 	return intent.SendMessageEvent(roomID, event.EventMessage, content)
 }
 
@@ -117,7 +114,7 @@ func (mx *MatrixHandler) HandleBotInvite(evt *event.Event) {
 		return
 	}
 
-	_, _ = intent.SendNotice(evt.RoomID, mx.bridge.Config.Bridge.ManagementRoomText.Welcome.Plain)
+	_, _ = mx.sendNoticeWithMarkdown(evt.RoomID, mx.bridge.Config.Bridge.ManagementRoomText.Welcome)
 
 	if !user.Whitelisted {
 		_, _ = intent.SendNotice(evt.RoomID, "You are not whitelisted to use this bridge.\n"+
@@ -154,26 +151,14 @@ func (mx *MatrixHandler) HandleBotInvite(evt *event.Event) {
 
 	if evt.RoomID == user.ManagementRoom {
 		if user.HasSession() {
-			_, _ = mx.sendNoticeWithHtml(
-				evt.RoomID,
-				mx.bridge.Config.Bridge.ManagementRoomText.WelcomeConnected.Plain,
-				mx.bridge.Config.Bridge.ManagementRoomText.WelcomeConnected.Html,
-			)
+			_, _ = mx.sendNoticeWithMarkdown(evt.RoomID, mx.bridge.Config.Bridge.ManagementRoomText.WelcomeConnected)
 		} else {
-			_, _ = mx.sendNoticeWithHtml(
-				evt.RoomID,
-				mx.bridge.Config.Bridge.ManagementRoomText.WelcomeUnconnected.Plain,
-				mx.bridge.Config.Bridge.ManagementRoomText.WelcomeUnconnected.Html,
-			)
+			_, _ = mx.sendNoticeWithMarkdown(evt.RoomID, mx.bridge.Config.Bridge.ManagementRoomText.WelcomeUnconnected)
 		}
 
 		additionalHelp := mx.bridge.Config.Bridge.ManagementRoomText.AdditionalHelp
-		if len(additionalHelp.Plain) > 0 {
-			_, _ = mx.sendNoticeWithHtml(
-				evt.RoomID,
-				additionalHelp.Plain,
-				additionalHelp.Html,
-			)
+		if len(additionalHelp) > 0 {
+			_, _ = mx.sendNoticeWithMarkdown(evt.RoomID, additionalHelp)
 		}
 	}
 }
