@@ -213,11 +213,11 @@ bridge:
     # Markdown is supported. The defaults are listed below.
     management_room_text:
         # Sent when joining a room.
-        welcome: "Hello, I'm a Signal bridge bot."
+        welcome: "Hello, I'm a WhatsApp bridge bot."
         # Sent when joining a management room and the user is already logged in.
         welcome_connected: "Use `help` for help"
         # Sent when joining a management room and the user is not logged in.
-        welcome_unconnected: "Use `help` for help or `register` to log in."
+        welcome_unconnected: "Use `help` for help or `login` to log in."
         # Optional extra text sent when joining a management room.
         # additional_help: "This would be some additional text in case you need it."
 
