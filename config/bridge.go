@@ -145,7 +145,7 @@ func (bc *BridgeConfig) setDefaults() {
 	bc.EnableStatusBroadcast = true
 
 	bc.ManagementRoomText.Welcome = "Hello, I'm a WhatsApp bridge bot."
-	bc.ManagementRoomText.WelcomeConnected = "Use `help` for help"
+	bc.ManagementRoomText.WelcomeConnected = "Use `help` for help."
 	bc.ManagementRoomText.WelcomeUnconnected = "Use `help` for help or `login` to log in."
 }
 
