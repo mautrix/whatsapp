@@ -27,6 +27,7 @@ appservice:
         # The database URI.
         #   SQLite: File name is enough. https://github.com/mattn/go-sqlite3#connection-string
         #   Postgres: Connection string. For example, postgres://user:password@host/database?sslmode=disable
+        #             To connect via Unix socket, use something like postgres:///dbname?host=/var/run/postgresql
         uri: mautrix-whatsapp.db
         # Maximum number of connections. Mostly relevant for Postgres.
         max_open_conns: 20
@@ -81,12 +82,6 @@ bridge:
     # {{.FirstName}} - first name from contact list
     displayname_template: "{{if .PushName}}{{.PushName}}{{else if .BusinessName}}{{.BusinessName}}{{else}}{{.JID}}{{end}} (WA)"
 
-    # WhatsApp connection timeout in seconds.
-    connection_timeout: 20
-    # If WhatsApp doesn't respond within connection_timeout, should the bridge try to fetch the message
-    # to see if it was actually bridged? Use this if you have problems with sends timing out but actually
-    # succeeding.
-    fetch_message_on_timeout: false
     # Whether or not the bridge should send a read receipt from the bridge bot when a message has been
     # sent to WhatsApp. If fetch_message_on_timeout is enabled, a successful post-timeout fetch will
     # trigger a read receipt too.
@@ -99,15 +94,6 @@ bridge:
     # Whether or not the bridge should send a notice to the user's management room when it retries connecting.
     # If false, it will only report when it stops retrying.
     report_connection_retry: true
-    # Whether or not the bridge should reconnect even if WhatsApp says another web client connected.
-    aggressive_reconnect: false
-    # Maximum number of seconds to wait for chats to be sent at startup.
-    # If this is too low and you have lots of chats, it could cause backfilling to fail.
-    chat_list_wait: 30
-    # Maximum number of seconds to wait to sync portals before force unlocking message processing.
-    # If this is too low and you have lots of chats, it could cause backfilling to fail.
-    portal_sync_wait: 600
-    user_message_buffer: 1024
     portal_message_buffer: 128
 
     # Whether or not to send call start/end notices to Matrix.

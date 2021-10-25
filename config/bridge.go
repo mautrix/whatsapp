@@ -31,16 +31,10 @@ type BridgeConfig struct {
 	UsernameTemplate    string `yaml:"username_template"`
 	DisplaynameTemplate string `yaml:"displayname_template"`
 
-	ConnectionTimeout     int  `yaml:"connection_timeout"`
-	FetchMessageOnTimeout bool `yaml:"fetch_message_on_timeout"`
 	DeliveryReceipts      bool `yaml:"delivery_receipts"`
 	MaxConnectionAttempts int  `yaml:"max_connection_attempts"`
 	ConnectionRetryDelay  int  `yaml:"connection_retry_delay"`
 	ReportConnectionRetry bool `yaml:"report_connection_retry"`
-	AggressiveReconnect   bool `yaml:"aggressive_reconnect"`
-	ChatListWait          int  `yaml:"chat_list_wait"`
-	PortalSyncWait        int  `yaml:"portal_sync_wait"`
-	UserMessageBuffer     int  `yaml:"user_message_buffer"`
 	PortalMessageBuffer   int  `yaml:"portal_message_buffer"`
 
 	CallNotices struct {
@@ -101,15 +95,10 @@ type BridgeConfig struct {
 }
 
 func (bc *BridgeConfig) setDefaults() {
-	bc.ConnectionTimeout = 20
-	bc.FetchMessageOnTimeout = false
 	bc.DeliveryReceipts = false
 	bc.MaxConnectionAttempts = 3
 	bc.ConnectionRetryDelay = -1
 	bc.ReportConnectionRetry = true
-	bc.ChatListWait = 30
-	bc.PortalSyncWait = 600
-	bc.UserMessageBuffer = 1024
 	bc.PortalMessageBuffer = 128
 
 	bc.CallNotices.Start = true
