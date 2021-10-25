@@ -287,13 +287,6 @@ func (user *User) IsLoggedIn() bool {
 	return user.Client != nil && user.Client.IsConnected() && user.Client.IsLoggedIn
 }
 
-func (user *User) PostLogin() {
-	user.sendBridgeState(BridgeState{StateEvent: StateConnected})
-	user.bridge.Metrics.TrackConnectionState(user.JID, true)
-	user.bridge.Metrics.TrackLoginState(user.JID, true)
-	go user.tryAutomaticDoublePuppeting()
-}
-
 func (user *User) tryAutomaticDoublePuppeting() {
 	if !user.bridge.Config.CanDoublePuppet(user.MXID) {
 		return
@@ -351,6 +344,7 @@ func (user *User) HandleEvent(event interface{}) {
 				user.log.Warnln("Failed to send initial presence:", err)
 			}
 		}()
+		go user.tryAutomaticDoublePuppeting()
 	case *events.PairSuccess:
 		user.JID = v.ID
 		user.addToJIDMap()

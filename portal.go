@@ -1770,7 +1770,7 @@ func (portal *Portal) HandleMediaMessage(source *User, info *types.MessageInfo, 
 		return true
 	}
 
-	if len(msgWithThumbnail.GetCaption()) > 0 {
+	if msgWithThumbnail != nil && len(msgWithThumbnail.GetCaption()) > 0 {
 		captionContent := &event.MessageEventContent{
 			Body:    msgWithThumbnail.GetCaption(),
 			MsgType: event.MsgNotice,
