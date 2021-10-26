@@ -400,7 +400,7 @@ func (handler *CommandHandler) CommandLogin(ce *CommandEvent) {
 
 	select {
 	case success := <-loginChan:
-		ce.Reply("Successfully logged in as +%s", success.ID.User)
+		ce.Reply("Successfully logged in as +%s (device #%d)", success.ID.User, success.ID.Device)
 		cancel()
 	case <-ctx.Done():
 		ce.Reply("Login timed out")
@@ -434,6 +434,7 @@ func (user *User) loginQrChannel(ctx context.Context, ce *CommandEvent, qrChan <
 		select {
 		case <-time.After(qrEvt.Timeout):
 			if len(qrEvt.Codes) == 0 {
+				_, _ = bot.RedactEvent(ce.RoomID, qrEventID)
 				cancel()
 				return
 			}
@@ -461,6 +462,7 @@ func (user *User) loginQrChannel(ctx context.Context, ce *CommandEvent, qrChan <
 				user.log.Errorln("Failed to send edited QR code to user:", err)
 			}
 		case <-ctx.Done():
+			_, _ = bot.RedactEvent(ce.RoomID, qrEventID)
 			return
 		}
 	}

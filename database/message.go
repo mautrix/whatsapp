@@ -22,6 +22,7 @@ import (
 	"time"
 
 	log "maunium.net/go/maulogger/v2"
+
 	"maunium.net/go/mautrix/id"
 
 	"go.mau.fi/whatsmeow/types"
@@ -62,18 +63,24 @@ func (mq *MessageQuery) GetByMXID(mxid id.EventID) *Message {
 }
 
 func (mq *MessageQuery) GetLastInChat(chat PortalKey) *Message {
-	return mq.GetLastInChatBefore(chat, time.Now().Unix()+60)
+	return mq.GetLastInChatBefore(chat, time.Now().Add(60 * time.Second))
 }
 
-func (mq *MessageQuery) GetLastInChatBefore(chat PortalKey, maxTimestamp int64) *Message {
+func (mq *MessageQuery) GetLastInChatBefore(chat PortalKey, maxTimestamp time.Time) *Message {
 	msg := mq.get("SELECT chat_jid, chat_receiver, jid, mxid, sender, timestamp, sent "+
 		"FROM message WHERE chat_jid=$1 AND chat_receiver=$2 AND timestamp<=$3 AND sent=true ORDER BY timestamp DESC LIMIT 1",
-		chat.JID, chat.Receiver, maxTimestamp)
-	if msg == nil || msg.Timestamp == 0 {
+		chat.JID, chat.Receiver, maxTimestamp.Unix())
+	if msg == nil || msg.Timestamp.IsZero() {
 		// Old db, we don't know what the last message is.
 		return nil
 	}
 	return msg
+}
+
+func (mq *MessageQuery) GetFirstInChat(chat PortalKey) *Message {
+	return mq.get("SELECT chat_jid, chat_receiver, jid, mxid, sender, timestamp, sent "+
+		"FROM message WHERE chat_jid=$1 AND chat_receiver=$2 AND sent=true ORDER BY timestamp ASC LIMIT 1",
+		chat.JID, chat.Receiver)
 }
 
 func (mq *MessageQuery) get(query string, args ...interface{}) *Message {
@@ -92,7 +99,7 @@ type Message struct {
 	JID       types.MessageID
 	MXID      id.EventID
 	Sender    types.JID
-	Timestamp int64
+	Timestamp time.Time
 	Sent      bool
 }
 
@@ -101,14 +108,17 @@ func (msg *Message) IsFakeMXID() bool {
 }
 
 func (msg *Message) Scan(row Scannable) *Message {
-	err := row.Scan(&msg.Chat.JID, &msg.Chat.Receiver, &msg.JID, &msg.MXID, &msg.Sender, &msg.Timestamp, &msg.Sent)
+	var ts int64
+	err := row.Scan(&msg.Chat.JID, &msg.Chat.Receiver, &msg.JID, &msg.MXID, &msg.Sender, &ts, &msg.Sent)
 	if err != nil {
 		if err != sql.ErrNoRows {
 			msg.log.Errorln("Database scan failed:", err)
 		}
 		return nil
 	}
-
+	if ts != 0 {
+		msg.Timestamp = time.Unix(ts, 0)
+	}
 	return msg
 }
 
@@ -116,7 +126,7 @@ func (msg *Message) Insert() {
 	_, err := msg.db.Exec(`INSERT INTO message
 			(chat_jid, chat_receiver, jid, mxid, sender, timestamp, sent)
 			VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-		msg.Chat.JID, msg.Chat.Receiver, msg.JID, msg.MXID, msg.Sender, msg.Timestamp, msg.Sent)
+		msg.Chat.JID, msg.Chat.Receiver, msg.JID, msg.MXID, msg.Sender, msg.Timestamp.Unix(), msg.Sent)
 	if err != nil {
 		msg.log.Warnfln("Failed to insert %s@%s: %v", msg.Chat, msg.JID, err)
 	}

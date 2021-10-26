@@ -26,6 +26,8 @@ import (
 
 	log "maunium.net/go/maulogger/v2"
 
+	"go.mau.fi/whatsmeow/appstate"
+	waProto "go.mau.fi/whatsmeow/binary/proto"
 	"maunium.net/go/mautrix/appservice"
 	"maunium.net/go/mautrix/pushrules"
 
@@ -62,6 +64,8 @@ type User struct {
 
 	qrListener    chan<- *events.QR
 	loginListener chan<- *events.PairSuccess
+
+	historySyncs chan *events.HistorySync
 
 	prevBridgeStatus *BridgeState
 }
@@ -176,11 +180,21 @@ func (bridge *Bridge) NewUser(dbUser *database.User) *User {
 		bridge: bridge,
 		log:    bridge.Log.Sub("User").Sub(string(dbUser.MXID)),
 
+		historySyncs: make(chan *events.HistorySync, 32),
+
 		IsRelaybot: false,
 	}
 	user.RelaybotWhitelisted = user.bridge.Config.Bridge.Permissions.IsRelaybotWhitelisted(user.MXID)
 	user.Whitelisted = user.bridge.Config.Bridge.Permissions.IsWhitelisted(user.MXID)
 	user.Admin = user.bridge.Config.Bridge.Permissions.IsAdmin(user.MXID)
+	go func() {
+		for evt := range user.historySyncs {
+			if evt == nil {
+				return
+			}
+			user.handleHistorySync(evt.Data)
+		}
+	}()
 	return user
 }
 
@@ -328,6 +342,28 @@ func (user *User) sendMarkdownBridgeAlert(formatString string, args ...interface
 	}
 }
 
+func (user *User) handleHistorySync(evt *waProto.HistorySync) {
+	if evt.GetSyncType() != waProto.HistorySync_RECENT && evt.GetSyncType() != waProto.HistorySync_FULL {
+		return
+	}
+	user.log.Infofln("Handling history sync with type %s, chunk order %d, progress %d%%", evt.GetSyncType(), evt.GetChunkOrder(), evt.GetProgress())
+	for _, conv := range evt.GetConversations() {
+		jid, err := types.ParseJID(conv.GetId())
+		if err != nil {
+			user.log.Warnfln("Failed to parse chat JID '%s' in history sync: %v", conv.GetId(), err)
+			continue
+		}
+
+		portal := user.GetPortalByJID(jid)
+		err = portal.CreateMatrixRoom(user)
+		if err != nil {
+			user.log.Warnfln("Failed to create room for %s during backfill: %v", portal.Key.JID, err)
+			continue
+		}
+		portal.backfill(user, conv.GetMessages())
+	}
+}
+
 func (user *User) HandleEvent(event interface{}) {
 	switch v := event.(type) {
 	case *events.LoggedOut:
@@ -345,6 +381,20 @@ func (user *User) HandleEvent(event interface{}) {
 			}
 		}()
 		go user.tryAutomaticDoublePuppeting()
+	case *events.AppStateSyncComplete:
+		if len(user.Client.Store.PushName) > 0 && v.Name == appstate.WAPatchCriticalBlock {
+			err := user.Client.SendPresence(types.PresenceUnavailable)
+			if err != nil {
+				user.log.Warnln("Failed to send presence after app state sync:", err)
+			}
+		}
+	case *events.PushNameSetting:
+		// Send presence available when connecting and when the pushname is changed.
+		// This makes sure that outgoing messages always have the right pushname.
+		err := user.Client.SendPresence(types.PresenceUnavailable)
+		if err != nil {
+			user.log.Warnln("Failed to send presence after push name update:", err)
+		}
 	case *events.PairSuccess:
 		user.JID = v.ID
 		user.addToJIDMap()
@@ -382,6 +432,8 @@ func (user *User) HandleEvent(event interface{}) {
 	case *events.Message:
 		portal := user.GetPortalByJID(v.Info.Chat)
 		portal.messages <- PortalMessage{v, user}
+	case *events.HistorySync:
+		user.historySyncs <- v
 	case *events.Mute:
 		portal := user.bridge.GetPortalByJID(user.PortalKey(v.JID))
 		if portal != nil {

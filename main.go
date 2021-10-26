@@ -433,6 +433,7 @@ func (bridge *Bridge) Stop() {
 		}
 		bridge.Log.Debugln("Disconnecting", user.MXID)
 		user.Client.Disconnect()
+		close(user.historySyncs)
 	}
 }
 

@@ -58,16 +58,16 @@ type BridgeConfig struct {
 	DefaultBridgePresence bool   `yaml:"default_bridge_presence"`
 	LoginSharedSecret     string `yaml:"login_shared_secret"`
 
-	InviteOwnPuppetForBackfilling bool   `yaml:"invite_own_puppet_for_backfilling"`
-	PrivateChatPortalMeta         bool   `yaml:"private_chat_portal_meta"`
-	BridgeNotices                 bool   `yaml:"bridge_notices"`
-	ResendBridgeInfo              bool   `yaml:"resend_bridge_info"`
-	MuteBridging                  bool   `yaml:"mute_bridging"`
-	ArchiveTag                    string `yaml:"archive_tag"`
-	PinnedTag                     string `yaml:"pinned_tag"`
-	TagOnlyOnCreate               bool   `yaml:"tag_only_on_create"`
-	MarkReadOnlyOnCreate          bool   `yaml:"mark_read_only_on_create"`
-	EnableStatusBroadcast         bool   `yaml:"enable_status_broadcast"`
+	DoublePuppetBackfill  bool   `yaml:"double_puppet_backfill"`
+	PrivateChatPortalMeta bool   `yaml:"private_chat_portal_meta"`
+	BridgeNotices         bool   `yaml:"bridge_notices"`
+	ResendBridgeInfo      bool   `yaml:"resend_bridge_info"`
+	MuteBridging          bool   `yaml:"mute_bridging"`
+	ArchiveTag            string `yaml:"archive_tag"`
+	PinnedTag             string `yaml:"pinned_tag"`
+	TagOnlyOnCreate       bool   `yaml:"tag_only_on_create"`
+	MarkReadOnlyOnCreate  bool   `yaml:"mark_read_only_on_create"`
+	EnableStatusBroadcast bool   `yaml:"enable_status_broadcast"`
 
 	WhatsappThumbnail bool `yaml:"whatsapp_thumbnail"`
 
@@ -118,7 +118,7 @@ func (bc *BridgeConfig) setDefaults() {
 	bc.DefaultBridgeReceipts = true
 	bc.LoginSharedSecret = ""
 
-	bc.InviteOwnPuppetForBackfilling = true
+	bc.DoublePuppetBackfill = false
 	bc.PrivateChatPortalMeta = false
 	bc.BridgeNotices = true
 	bc.EnableStatusBroadcast = true

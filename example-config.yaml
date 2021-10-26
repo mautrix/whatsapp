@@ -147,11 +147,9 @@ bridge:
     # manually.
     login_shared_secret: null
 
-    # Whether or not to invite own WhatsApp user's Matrix puppet into private
-    # chat portals when backfilling if needed.
-    # This always uses the default puppet instead of custom puppets due to
-    # rate limits and timestamp massaging.
-    invite_own_puppet_for_backfilling: true
+    # Whether to use custom puppet for backfilling.
+    # In order to use this, the custom puppets must be in the appservice's user ID namespace.
+    double_puppet_backfill: false
     # Whether or not to explicitly set the avatar and room name for private
     # chat portal rooms. This can be useful if the previous field works fine,
     # but causes room avatar/name bugs.
