@@ -712,18 +712,23 @@ func (handler *CommandHandler) CommandDeletePortal(ce *CommandEvent) {
 	ce.Portal.Cleanup(false)
 }
 
-const cmdDeleteAllPortalsHelp = `delete-all-portals - Delete all your portals that aren't used by any other user.'`
+const cmdDeleteAllPortalsHelp = `delete-all-portals - Delete all your portals that aren't used by any other user.`
 
 func (handler *CommandHandler) CommandDeleteAllPortals(ce *CommandEvent) {
-	portals := ce.User.GetPortals()
-	portalsToDelete := make([]*Portal, 0, len(portals))
 	// TODO reimplement
+	//portals := ce.User.GetPortals()
+	//portalsToDelete := make([]*Portal, 0, len(portals))
 	//for _, portal := range portals {
 	//	users := portal.GetUserIDs()
 	//	if len(users) == 1 && users[0] == ce.User.MXID {
 	//		portalsToDelete = append(portalsToDelete, portal)
 	//	}
 	//}
+	if !ce.User.Admin {
+		return
+	}
+	portalsToDelete := handler.bridge.GetAllPortals()
+
 	leave := func(portal *Portal) {
 		if len(portal.MXID) > 0 {
 			_, _ = portal.MainIntent().KickUser(portal.MXID, &mautrix.ReqKickUser{
