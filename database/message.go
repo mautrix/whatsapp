@@ -123,10 +123,15 @@ func (msg *Message) Scan(row Scannable) *Message {
 }
 
 func (msg *Message) Insert() {
+	var sender interface{} = msg.Sender
+	// Slightly hacky hack to allow inserting empty senders (used for post-backfill dummy events)
+	if msg.Sender.IsEmpty() {
+		sender = ""
+	}
 	_, err := msg.db.Exec(`INSERT INTO message
 			(chat_jid, chat_receiver, jid, mxid, sender, timestamp, sent)
 			VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-		msg.Chat.JID, msg.Chat.Receiver, msg.JID, msg.MXID, msg.Sender, msg.Timestamp.Unix(), msg.Sent)
+		msg.Chat.JID, msg.Chat.Receiver, msg.JID, msg.MXID, sender, msg.Timestamp.Unix(), msg.Sent)
 	if err != nil {
 		msg.log.Warnfln("Failed to insert %s@%s: %v", msg.Chat, msg.JID, err)
 	}
