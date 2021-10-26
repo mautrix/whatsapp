@@ -15,4 +15,4 @@ require (
 	maunium.net/go/mautrix v0.9.27
 )
 
-replace github.com/Rhymen/go-whatsapp => github.com/tulir/go-whatsapp v0.5.12
+replace github.com/Rhymen/go-whatsapp => github.com/vector-im/go-whatsapp v0.5.13-0.20211026112753-c997771d23df
