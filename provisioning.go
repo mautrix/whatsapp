@@ -21,12 +21,15 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net"
 	"net/http"
 	"strings"
 	"time"
 
 	"github.com/gorilla/websocket"
+
+	"go.mau.fi/whatsmeow"
 
 	log "maunium.net/go/maulogger/v2"
 
@@ -47,11 +50,13 @@ func (prov *ProvisioningAPI) Init() {
 	r.HandleFunc("/login", prov.Login).Methods(http.MethodGet)
 	r.HandleFunc("/logout", prov.Logout).Methods(http.MethodPost)
 	r.HandleFunc("/delete_session", prov.DeleteSession).Methods(http.MethodPost)
-	r.HandleFunc("/delete_connection", prov.DeleteConnection).Methods(http.MethodPost)
 	r.HandleFunc("/disconnect", prov.Disconnect).Methods(http.MethodPost)
 	r.HandleFunc("/reconnect", prov.Reconnect).Methods(http.MethodPost)
 	prov.bridge.AS.Router.HandleFunc("/_matrix/app/com.beeper.asmux/ping", prov.BridgeStatePing).Methods(http.MethodPost)
 	prov.bridge.AS.Router.HandleFunc("/_matrix/app/com.beeper.bridge_state", prov.BridgeStatePing).Methods(http.MethodPost)
+
+	// Deprecated, just use /disconnect
+	r.HandleFunc("/delete_connection", prov.Disconnect).Methods(http.MethodPost)
 }
 
 type responseWrap struct {
@@ -131,19 +136,6 @@ func (prov *ProvisioningAPI) DeleteSession(w http.ResponseWriter, r *http.Reques
 	jsonResponse(w, http.StatusOK, Response{true, "Session information purged"})
 }
 
-func (prov *ProvisioningAPI) DeleteConnection(w http.ResponseWriter, r *http.Request) {
-	user := r.Context().Value("user").(*User)
-	if user.Client == nil {
-		jsonResponse(w, http.StatusNotFound, Error{
-			Error:   "You don't have a WhatsApp connection.",
-			ErrCode: "not connected",
-		})
-		return
-	}
-	user.DeleteConnection()
-	jsonResponse(w, http.StatusOK, Response{true, "Disconnected from WhatsApp and connection deleted"})
-}
-
 func (prov *ProvisioningAPI) Disconnect(w http.ResponseWriter, r *http.Request) {
 	user := r.Context().Value("user").(*User)
 	if user.Client == nil {
@@ -166,75 +158,14 @@ func (prov *ProvisioningAPI) Reconnect(w http.ResponseWriter, r *http.Request) {
 				ErrCode: "no session",
 			})
 		} else {
-			user.Connect(false)
-			jsonResponse(w, http.StatusOK, Response{true, "Created connection to WhatsApp."})
+			user.Connect()
+			jsonResponse(w, http.StatusAccepted, Response{true, "Created connection to WhatsApp."})
 		}
-		return
+	} else {
+		user.DeleteConnection()
+		user.Connect()
+		jsonResponse(w, http.StatusAccepted, Response{true, "Restarted connection to WhatsApp"})
 	}
-
-	// TODO reimplement
-	//user.log.Debugln("Received /reconnect request, disconnecting")
-	//wasConnected := true
-	//err := user.Conn.Disconnect()
-	//if err == whatsapp.ErrNotConnected {
-	//	wasConnected = false
-	//} else if err != nil {
-	//	user.log.Warnln("Error while disconnecting:", err)
-	//}
-	//
-	//user.log.Debugln("Restoring session for /reconnect")
-	//err = user.Conn.Restore(true, r.Context())
-	//user.log.Debugfln("Restore session for /reconnect responded with %v", err)
-	//if err == whatsapp.ErrInvalidSession {
-	//	if user.Session != nil {
-	//		user.log.Debugln("Got invalid session error when reconnecting, but user has session. Retrying using RestoreWithSession()...")
-	//		user.Conn.SetSession(*user.Session)
-	//		err = user.Conn.Restore(true, r.Context())
-	//	} else {
-	//		jsonResponse(w, http.StatusForbidden, Error{
-	//			Error:   "You're not logged in",
-	//			ErrCode: "not logged in",
-	//		})
-	//		return
-	//	}
-	//}
-	//if err == whatsapp.ErrLoginInProgress {
-	//	jsonResponse(w, http.StatusConflict, Error{
-	//		Error:   "A login or reconnection is already in progress.",
-	//		ErrCode: "login in progress",
-	//	})
-	//	return
-	//} else if err == whatsapp.ErrAlreadyLoggedIn {
-	//	jsonResponse(w, http.StatusConflict, Error{
-	//		Error:   "You were already connected.",
-	//		ErrCode: err.Error(),
-	//	})
-	//	return
-	//}
-	//if err != nil {
-	//	user.log.Warnln("Error while reconnecting:", err)
-	//	jsonResponse(w, http.StatusInternalServerError, Error{
-	//		Error:   fmt.Sprintf("Unknown error while reconnecting: %v", err),
-	//		ErrCode: err.Error(),
-	//	})
-	//	user.log.Debugln("Disconnecting due to failed session restore in reconnect command...")
-	//	err = user.Conn.Disconnect()
-	//	if err != nil {
-	//		user.log.Errorln("Failed to disconnect after failed session restore in reconnect command:", err)
-	//	}
-	//	return
-	//}
-	//user.ConnectionErrors = 0
-	//user.PostLogin()
-	//
-	//var msg string
-	//if wasConnected {
-	//	msg = "Reconnected successfully."
-	//} else {
-	//	msg = "Connected successfully."
-	//}
-	//
-	//jsonResponse(w, http.StatusOK, Response{true, msg})
 }
 
 func (prov *ProvisioningAPI) Ping(w http.ResponseWriter, r *http.Request) {
@@ -289,18 +220,17 @@ func (prov *ProvisioningAPI) Logout(w http.ResponseWriter, r *http.Request) {
 			})
 		}
 	} else {
-		// TODO reimplement
-		//err := user.Client.Logout()
-		//if err != nil {
-		//	user.log.Warnln("Error while logging out:", err)
-		//	if !force {
-		//		jsonResponse(w, http.StatusInternalServerError, Error{
-		//			Error:   fmt.Sprintf("Unknown error while logging out: %v", err),
-		//			ErrCode: err.Error(),
-		//		})
-		//		return
-		//	}
-		//}
+		err := user.Client.Logout()
+		if err != nil {
+			user.log.Warnln("Error while logging out:", err)
+			if !force {
+				jsonResponse(w, http.StatusInternalServerError, Error{
+					Error:   fmt.Sprintf("Unknown error while logging out: %v", err),
+					ErrCode: err.Error(),
+				})
+				return
+			}
+		}
 		user.DeleteConnection()
 	}
 
@@ -318,88 +248,82 @@ var upgrader = websocket.Upgrader{
 }
 
 func (prov *ProvisioningAPI) Login(w http.ResponseWriter, r *http.Request) {
+	userID := r.URL.Query().Get("user_id")
+	user := prov.bridge.GetUserByMXID(id.UserID(userID))
 
-	// TODO reimplement
-	//userID := r.URL.Query().Get("user_id")
-	//user := prov.bridge.GetUserByMXID(id.UserID(userID))
-	//
-	//c, err := upgrader.Upgrade(w, r, nil)
-	//if err != nil {
-	//	prov.log.Errorln("Failed to upgrade connection to websocket:", err)
-	//	return
-	//}
-	//defer c.Close()
-	//if !user.Connect(true) {
-	//	user.log.Debugln("Connect() returned false, assuming error was logged elsewhere and canceling login.")
-	//	_ = c.WriteJSON(Error{
-	//		Error:   "Failed to connect to WhatsApp",
-	//		ErrCode: "connection error",
-	//	})
-	//	return
-	//}
-	//
-	//qrChan := make(chan string, 3)
-	//go func() {
-	//	for code := range qrChan {
-	//		if code == "stop" {
-	//			return
-	//		}
-	//		_ = c.WriteJSON(map[string]interface{}{
-	//			"code": code,
-	//		})
-	//	}
-	//}()
-	//
-	//go func() {
-	//	// Read everything so SetCloseHandler() works
-	//	for {
-	//		_, _, err = c.ReadMessage()
-	//		if err != nil {
-	//			break
-	//		}
-	//	}
-	//}()
-	//ctx, cancel := context.WithCancel(context.Background())
-	//c.SetCloseHandler(func(code int, text string) error {
-	//	user.log.Debugfln("Login websocket closed (%d), cancelling login", code)
-	//	cancel()
-	//	return nil
-	//})
-	//
-	//user.log.Debugln("Starting login via provisioning API")
-	//session, jid, err := user.Conn.Login(qrChan, ctx)
-	//qrChan <- "stop"
-	//if err != nil {
-	//	var msg string
-	//	if errors.Is(err, whatsapp.ErrAlreadyLoggedIn) {
-	//		msg = "You're already logged in"
-	//	} else if errors.Is(err, whatsapp.ErrLoginInProgress) {
-	//		msg = "You have a login in progress already."
-	//	} else if errors.Is(err, whatsapp.ErrLoginTimedOut) {
-	//		msg = "QR code scan timed out. Please try again."
-	//	} else if errors.Is(err, whatsapp.ErrInvalidWebsocket) {
-	//		msg = "WhatsApp connection error. Please try again."
-	//		// TODO might need to make sure it reconnects?
-	//	} else if errors.Is(err, whatsapp.ErrMultiDeviceNotSupported) {
-	//		msg = "WhatsApp multi-device is not currently supported. Please disable it and try again."
-	//	} else {
-	//		msg = fmt.Sprintf("Unknown error while logging in: %v", err)
-	//	}
-	//	user.log.Warnln("Failed to log in:", err)
-	//	_ = c.WriteJSON(Error{
-	//		Error:   msg,
-	//		ErrCode: err.Error(),
-	//	})
-	//	return
-	//}
-	//user.log.Debugln("Successful login as", jid, "via provisioning API")
-	//user.ConnectionErrors = 0
-	//user.JID = strings.Replace(jid, whatsapp.OldUserSuffix, whatsapp.NewUserSuffix, 1)
-	//user.addToJIDMap()
-	//user.SetSession(&session)
-	//_ = c.WriteJSON(map[string]interface{}{
-	//	"success": true,
-	//	"jid":     user.JID,
-	//})
-	//user.PostLogin()
+	c, err := upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		prov.log.Errorln("Failed to upgrade connection to websocket:", err)
+		return
+	}
+	defer func() {
+		err := c.Close()
+		if err != nil {
+			user.log.Debugln("Error closing websocket:", err)
+		}
+	}()
+
+	go func() {
+		// Read everything so SetCloseHandler() works
+		for {
+			_, _, err = c.ReadMessage()
+			if err != nil {
+				break
+			}
+		}
+	}()
+	ctx, cancel := context.WithCancel(context.Background())
+	c.SetCloseHandler(func(code int, text string) error {
+		user.log.Debugfln("Login websocket closed (%d), cancelling login", code)
+		cancel()
+		return nil
+	})
+
+	qrChan, err := user.Login(ctx)
+	if err != nil {
+		user.log.Errorf("Failed to log in from provisioning API:", err)
+		if errors.Is(err, ErrAlreadyLoggedIn) {
+			go user.Connect()
+			_ = c.WriteJSON(Error{
+				Error:   "You're already logged into WhatsApp",
+				ErrCode: "already logged in",
+			})
+		} else {
+			_ = c.WriteJSON(Error{
+				Error:   "Failed to connect to WhatsApp",
+				ErrCode: "connection error",
+			})
+		}
+	}
+	user.log.Debugln("Started login via provisioning API")
+
+	for {
+		select {
+		case evt := <-qrChan:
+			switch evt {
+			case whatsmeow.QRChannelSuccess:
+				jid := user.Client.Store.ID
+				user.log.Debugln("Successful login as", jid, "via provisioning API")
+				_ = c.WriteJSON(map[string]interface{}{
+					"success": true,
+					"jid":     jid,
+					"phone":   fmt.Sprintf("+%s", jid.User),
+				})
+			case whatsmeow.QRChannelTimeout:
+				user.log.Debugln("Login via provisioning API timed out")
+				_ = c.WriteJSON(Error{
+					Error:   "QR code scan timed out. Please try again.",
+					ErrCode: "login timed out",
+				})
+			default:
+				_ = c.WriteJSON(map[string]interface{}{
+					"code": string(evt),
+				})
+				continue
+			}
+			return
+		case <-ctx.Done():
+			return
+		}
+	}
 }

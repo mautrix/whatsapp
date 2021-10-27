@@ -188,7 +188,7 @@ func (prov *ProvisioningAPI) BridgeStatePing(w http.ResponseWriter, r *http.Requ
 	var global BridgeState
 	global.StateEvent = StateRunning
 	var remote BridgeState
-	if user.Client != nil && user.Client.IsConnected() {
+	if user.IsConnected() {
 		if user.Client.IsLoggedIn {
 			remote.StateEvent = StateConnected
 		} else if user.Session != nil {

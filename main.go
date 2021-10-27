@@ -365,7 +365,7 @@ func (bridge *Bridge) LoadRelaybot() {
 	}
 	bridge.Relaybot.ManagementRoom = bridge.Config.Bridge.Relaybot.ManagementRoom
 	bridge.Relaybot.IsRelaybot = true
-	bridge.Relaybot.Connect(false)
+	bridge.Relaybot.Connect()
 }
 
 func (bridge *Bridge) UpdateBotProfile() {
@@ -403,7 +403,7 @@ func (bridge *Bridge) StartUsers() {
 		if !user.JID.IsEmpty() {
 			foundAnySessions = true
 		}
-		go user.Connect(false)
+		go user.Connect()
 	}
 	if !foundAnySessions {
 		bridge.sendGlobalBridgeState(BridgeState{StateEvent: StateUnconfigured}.fill(nil))

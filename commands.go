@@ -22,14 +22,13 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/skip2/go-qrcode"
 
-	"go.mau.fi/whatsmeow/types"
-	"go.mau.fi/whatsmeow/types/events"
-
 	"maunium.net/go/maulogger/v2"
+
+	"go.mau.fi/whatsmeow"
+	"go.mau.fi/whatsmeow/types"
 
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/appservice"
@@ -377,95 +376,63 @@ func (handler *CommandHandler) CommandSetPowerLevel(ce *CommandEvent) {
 	}
 }
 
-const cmdLoginHelp = `login - Authenticate this Bridge as WhatsApp Web Client`
+const cmdLoginHelp = `login - Link the bridge to your WhatsApp account as a web client`
 
 // CommandLogin handles login command
 func (handler *CommandHandler) CommandLogin(ce *CommandEvent) {
 	if ce.User.Session != nil {
-		ce.Reply("You're already logged in")
-		return
-	}
-	qrChan := make(chan *events.QR, 1)
-	loginChan := make(chan *events.PairSuccess, 1)
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	go ce.User.loginQrChannel(ctx, ce, qrChan, cancel)
-
-	ce.User.qrListener = qrChan
-	ce.User.loginListener = loginChan
-	if !ce.User.Connect(true) {
-		ce.User.log.Debugln("Connect() returned false, assuming error was logged elsewhere and canceling login.")
+		if ce.User.IsConnected() {
+			ce.Reply("You're already logged in")
+		} else {
+			ce.Reply("You're already logged in. Perhaps you wanted to `reconnect`?")
+		}
 		return
 	}
 
-	select {
-	case success := <-loginChan:
-		ce.Reply("Successfully logged in as +%s (device #%d)", success.ID.User, success.ID.Device)
-		cancel()
-	case <-ctx.Done():
-		ce.Reply("Login timed out")
-	}
-}
-
-func (user *User) loginQrChannel(ctx context.Context, ce *CommandEvent, qrChan <-chan *events.QR, cancel func()) {
-	var qrEvt *events.QR
-	select {
-	case qrEvt = <-qrChan:
-	case <-ctx.Done():
-		return
-	}
-
-	bot := user.bridge.AS.BotClient()
-
-	code := qrEvt.Codes[0]
-	qrEvt.Codes = qrEvt.Codes[1:]
-	url, ok := user.uploadQR(ce, code)
-	if !ok {
-		return
-	}
-	sendResp, err := bot.SendImage(ce.RoomID, code, url)
+	qrChan, err := ce.User.Login(context.Background())
 	if err != nil {
-		user.log.Errorln("Failed to send QR code to user:", err)
+		ce.User.log.Errorf("Failed to log in:", err)
+		ce.Reply("Failed to log in: %v", err)
 		return
 	}
-	qrEventID := sendResp.EventID
 
-	for {
-		select {
-		case <-time.After(qrEvt.Timeout):
-			if len(qrEvt.Codes) == 0 {
-				_, _ = bot.RedactEvent(ce.RoomID, qrEventID)
-				cancel()
-				return
-			}
-			code, qrEvt.Codes = qrEvt.Codes[0], qrEvt.Codes[1:]
-
-			url, ok = user.uploadQR(ce, code)
-			if !ok {
-				continue
-			}
-			_, err = bot.SendMessageEvent(ce.RoomID, event.EventMessage, &event.MessageEventContent{
-				MsgType: event.MsgImage,
-				Body:    code,
-				URL:     url.CUString(),
-				NewContent: &event.MessageEventContent{
-					MsgType: event.MsgImage,
-					Body:    code,
-					URL:     url.CUString(),
-				},
-				RelatesTo: &event.RelatesTo{
-					Type:    event.RelReplace,
-					EventID: qrEventID,
-				},
-			})
-			if err != nil {
-				user.log.Errorln("Failed to send edited QR code to user:", err)
-			}
-		case <-ctx.Done():
-			_, _ = bot.RedactEvent(ce.RoomID, qrEventID)
-			return
+	var qrEventID id.EventID
+	for item := range qrChan {
+		switch item {
+		case whatsmeow.QRChannelSuccess:
+			jid := ce.User.Client.Store.ID
+			ce.Reply("Successfully logged in as +%s (device #%d)", jid.User, jid.Device)
+		case whatsmeow.QRChannelTimeout:
+			ce.Reply("QR code timed out. Please restart the login.")
+		case whatsmeow.QRChannelErrUnexpectedEvent:
+			ce.Reply("Failed to log in: unexpected connection event from server")
+		default:
+			qrEventID = ce.User.sendQR(ce, string(item), qrEventID)
 		}
 	}
+	_, _ = ce.Bot.RedactEvent(ce.RoomID, qrEventID)
+}
+
+func (user *User) sendQR(ce *CommandEvent, code string, prevEvent id.EventID) id.EventID {
+	url, ok := user.uploadQR(ce, code)
+	if !ok {
+		return prevEvent
+	}
+	content := event.MessageEventContent{
+		MsgType: event.MsgImage,
+		Body:    code,
+		URL:     url.CUString(),
+	}
+	if len(prevEvent) != 0 {
+		content.SetEdit(prevEvent)
+	}
+	resp, err := ce.Bot.SendMessageEvent(ce.RoomID, event.EventMessage, &content)
+	if err != nil {
+		user.log.Errorln("Failed to send edited QR code to user:", err)
+	} else if len(prevEvent) == 0 {
+		prevEvent = resp.EventID
+	}
+	return prevEvent
 }
 
 func (user *User) uploadQR(ce *CommandEvent, code string) (id.ContentURI, bool) {
@@ -487,7 +454,7 @@ func (user *User) uploadQR(ce *CommandEvent, code string) (id.ContentURI, bool) 
 	return resp.ContentURI, true
 }
 
-const cmdLogoutHelp = `logout - Logout from WhatsApp`
+const cmdLogoutHelp = `logout - Unlink the bridge from your WhatsApp account`
 
 // CommandLogout handles !logout command
 func (handler *CommandHandler) CommandLogout(ce *CommandEvent) {
@@ -505,13 +472,12 @@ func (handler *CommandHandler) CommandLogout(ce *CommandEvent) {
 			ce.User.log.Warnln("Failed to logout-matrix while logging out of WhatsApp:", err)
 		}
 	}
-	// TODO reimplement
-	//err := ce.User.Client.Logout()
-	//if err != nil {
-	//	ce.User.log.Warnln("Error while logging out:", err)
-	//	ce.Reply("Unknown error while logging out: %v", err)
-	//	return
-	//}
+	err := ce.User.Client.Logout()
+	if err != nil {
+		ce.User.log.Warnln("Error while logging out:", err)
+		ce.Reply("Unknown error while logging out: %v", err)
+		return
+	}
 	ce.User.removeFromJIDMap(StateLoggedOut)
 	ce.User.DeleteConnection()
 	ce.User.DeleteSession()

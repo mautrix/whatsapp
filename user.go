@@ -17,6 +17,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -61,9 +62,6 @@ type User struct {
 
 	mgmtCreateLock sync.Mutex
 	connLock       sync.Mutex
-
-	qrListener    chan<- *events.QR
-	loginListener chan<- *events.PairSuccess
 
 	historySyncs chan *events.HistorySync
 
@@ -141,7 +139,7 @@ func (bridge *Bridge) loadDBUser(dbUser *database.User, mxid *id.UserID) *User {
 		var err error
 		user.Session, err = bridge.WAContainer.GetDevice(user.JID)
 		if err != nil {
-			user.log.Errorfln("Failed to scan user's whatsapp session: %v", err)
+			user.log.Errorfln("Failed to load user's whatsapp session: %v", err)
 		} else if user.Session == nil {
 			user.log.Warnfln("Didn't find session data for %s, treating user as logged out", user.JID)
 			user.JID = types.EmptyJID
@@ -238,25 +236,41 @@ func (w *waLogger) Warnf(msg string, args ...interface{})  { w.l.Warnfln(msg, ar
 func (w *waLogger) Errorf(msg string, args ...interface{}) { w.l.Errorfln(msg, args...) }
 func (w *waLogger) Sub(module string) waLog.Logger         { return &waLogger{l: w.l.Sub(module)} }
 
-func (user *User) Connect(evenIfNoSession bool) bool {
+var ErrAlreadyLoggedIn = errors.New("already logged in")
+
+func (user *User) Login(ctx context.Context) (<-chan whatsmeow.QRChannelItem, error) {
+	user.connLock.Lock()
+	defer user.connLock.Unlock()
+	if user.Session != nil {
+		return nil, ErrAlreadyLoggedIn
+	} else if user.Client != nil {
+		user.unlockedDeleteConnection()
+	}
+	newSession := user.bridge.WAContainer.NewDevice()
+	newSession.Log = &waLogger{user.log.Sub("Session")}
+	user.Client = whatsmeow.NewClient(newSession, &waLogger{user.log.Sub("Client")})
+	qrChan, err := user.Client.GetQRChannel(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get QR channel: %w", err)
+	}
+	err = user.Client.Connect()
+	if err != nil {
+		return nil, fmt.Errorf("failed to connect to WhatsApp: %w", err)
+	}
+	return qrChan, nil
+}
+
+func (user *User) Connect() bool {
 	user.connLock.Lock()
 	defer user.connLock.Unlock()
 	if user.Client != nil {
 		return user.Client.IsConnected()
-	} else if !evenIfNoSession && user.Session == nil {
+	} else if user.Session == nil {
 		return false
 	}
 	user.log.Debugln("Connecting to WhatsApp")
-	if user.Session != nil {
-		user.sendBridgeState(BridgeState{StateEvent: StateConnecting, Error: WAConnecting})
-	}
-	if user.Session == nil {
-		newSession := user.bridge.WAContainer.NewDevice()
-		newSession.Log = &waLogger{user.log.Sub("Session")}
-		user.Client = whatsmeow.NewClient(newSession, &waLogger{user.log.Sub("Client")})
-	} else {
-		user.Client = whatsmeow.NewClient(user.Session, &waLogger{user.log.Sub("Client")})
-	}
+	user.sendBridgeState(BridgeState{StateEvent: StateConnecting, Error: WAConnecting})
+	user.Client = whatsmeow.NewClient(user.Session, &waLogger{user.log.Sub("Client")})
 	user.Client.AddEventHandler(user.HandleEvent)
 	err := user.Client.Connect()
 	if err != nil {
@@ -266,9 +280,7 @@ func (user *User) Connect(evenIfNoSession bool) bool {
 	return true
 }
 
-func (user *User) DeleteConnection() {
-	user.connLock.Lock()
-	defer user.connLock.Unlock()
+func (user *User) unlockedDeleteConnection() {
 	if user.Client == nil {
 		return
 	}
@@ -276,6 +288,12 @@ func (user *User) DeleteConnection() {
 	user.Client.RemoveEventHandlers()
 	user.Client = nil
 	user.bridge.Metrics.TrackConnectionState(user.JID, false)
+}
+
+func (user *User) DeleteConnection() {
+	user.connLock.Lock()
+	defer user.connLock.Unlock()
+	user.unlockedDeleteConnection()
 	user.sendBridgeState(BridgeState{StateEvent: StateBadCredentials, Error: WANotConnected})
 }
 
@@ -297,8 +315,12 @@ func (user *User) DeleteSession() {
 	}
 }
 
+func (user *User) IsConnected() bool {
+	return user.Client != nil && user.Client.IsConnected()
+}
+
 func (user *User) IsLoggedIn() bool {
-	return user.Client != nil && user.Client.IsConnected() && user.Client.IsLoggedIn
+	return user.IsConnected() && user.Client.IsLoggedIn
 }
 
 func (user *User) tryAutomaticDoublePuppeting() {
@@ -400,23 +422,6 @@ func (user *User) HandleEvent(event interface{}) {
 		user.addToJIDMap()
 		user.Update()
 		user.Session = user.Client.Store
-		if user.loginListener != nil {
-			select {
-			case user.loginListener <- v:
-				return
-			default:
-			}
-		}
-		user.log.Warnln("Got pair success event, but nothing waiting for it")
-	case *events.QR:
-		if user.qrListener != nil {
-			select {
-			case user.qrListener <- v:
-				return
-			default:
-			}
-		}
-		user.log.Warnln("Got QR code event, but nothing waiting for it")
 	case *events.ConnectFailure, *events.StreamError:
 		go user.sendBridgeState(BridgeState{StateEvent: StateUnknownError})
 		user.bridge.Metrics.TrackConnectionState(user.JID, false)
