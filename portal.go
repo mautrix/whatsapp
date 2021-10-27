@@ -42,6 +42,8 @@ import (
 	"golang.org/x/image/webp"
 	"google.golang.org/protobuf/proto"
 
+	"maunium.net/go/mautrix/format"
+
 	"go.mau.fi/whatsmeow"
 	waProto "go.mau.fi/whatsmeow/binary/proto"
 	"go.mau.fi/whatsmeow/types"
@@ -160,8 +162,14 @@ func (bridge *Bridge) NewPortal(dbPortal *database.Portal) *Portal {
 const recentlyHandledLength = 100
 
 type PortalMessage struct {
-	evt    *events.Message
-	source *User
+	evt           *events.Message
+	undecryptable *events.UndecryptableMessage
+	source        *User
+}
+
+type recentlyHandledWrapper struct {
+	id  types.MessageID
+	err bool
 }
 
 type Portal struct {
@@ -174,7 +182,7 @@ type Portal struct {
 	encryptLock    sync.Mutex
 	backfillLock   sync.Mutex
 
-	recentlyHandled      [recentlyHandledLength]types.MessageID
+	recentlyHandled      [recentlyHandledLength]recentlyHandledWrapper
 	recentlyHandledLock  sync.Mutex
 	recentlyHandledIndex uint8
 
@@ -184,8 +192,6 @@ type Portal struct {
 
 	hasRelaybot *bool
 }
-
-const MaxMessageAgeToCreatePortal = 5 * 60 // 5 minutes
 
 func (portal *Portal) syncDoublePuppetDetailsAfterCreate(source *User) {
 	doublePuppet := portal.bridge.GetPuppetByCustomMXID(source.MXID)
@@ -210,13 +216,20 @@ func (portal *Portal) handleMessageLoop() {
 			}
 			portal.syncDoublePuppetDetailsAfterCreate(msg.source)
 		}
-		//portal.backfillLock.Lock()
-		portal.handleMessage(msg.source, msg.evt)
-		//portal.backfillLock.Unlock()
+		if msg.evt != nil {
+			portal.handleMessage(msg.source, msg.evt)
+		} else if msg.undecryptable != nil {
+			portal.handleUndecryptableMessage(msg.source, msg.undecryptable)
+		} else {
+			portal.log.Warnln("Unexpected PortalMessage with no message: %+v", msg)
+		}
 	}
 }
 
 func (portal *Portal) shouldCreateRoom(msg PortalMessage) bool {
+	if msg.undecryptable != nil {
+		return true
+	}
 	waMsg := msg.evt.Message
 	supportedMessages := []interface{}{
 		waMsg.Conversation,
@@ -295,6 +308,30 @@ func (portal *Portal) convertMessage(intent *appservice.IntentAPI, source *User,
 	}
 }
 
+const UndecryptableMessage = "Decrypting message from WhatsApp failed, waiting for sender to re-send... " +
+	"([learn more](https://faq.whatsapp.com/general/security-and-privacy/seeing-waiting-for-this-message-this-may-take-a-while))"
+
+func (portal *Portal) handleUndecryptableMessage(source *User, evt *events.UndecryptableMessage) {
+	if len(portal.MXID) == 0 {
+		portal.log.Warnln("handleUndecryptableMessage called even though portal.MXID is empty")
+		return
+	} else if portal.isRecentlyHandled(evt.Info.ID, true) {
+		portal.log.Debugfln("Not handling %s (undecryptable): message was recently handled", evt.Info.ID)
+		return
+	} else if existingMsg := portal.bridge.DB.Message.GetByJID(portal.Key, evt.Info.ID); existingMsg != nil {
+		portal.log.Debugfln("Not handling %s (undecryptable): message is duplicate", evt.Info.ID)
+		return
+	}
+	intent := portal.getMessageIntent(source, &evt.Info)
+	content := format.RenderMarkdown(UndecryptableMessage, true, false)
+	content.MsgType = event.MsgNotice
+	resp, err := portal.sendMessage(intent, event.EventMessage, &content, evt.Info.Timestamp.UnixMilli())
+	if err != nil {
+		portal.log.Errorln("Failed to send decryption error of %s to Matrix: %v", evt.Info.ID, err)
+	}
+	portal.finishHandling(nil, &evt.Info, resp.EventID, true)
+}
+
 func (portal *Portal) handleMessage(source *User, evt *events.Message) {
 	if len(portal.MXID) == 0 {
 		portal.log.Warnln("handleMessage called even though portal.MXID is empty")
@@ -304,24 +341,35 @@ func (portal *Portal) handleMessage(source *User, evt *events.Message) {
 	msgType := portal.getMessageType(evt.Message)
 	if msgType == "ignore" {
 		return
-	} else if portal.isRecentlyHandled(msgID) {
+	} else if portal.isRecentlyHandled(msgID, false) {
 		portal.log.Debugfln("Not handling %s (%s): message was recently handled", msgID, msgType)
 		return
-	} else if portal.isDuplicate(msgID) {
-		portal.log.Debugfln("Not handling %s (%s): message is duplicate", msgID, msgType)
-		return
 	}
+	existingMsg := portal.bridge.DB.Message.GetByJID(portal.Key, msgID)
+	if existingMsg != nil {
+		if existingMsg.DecryptionError {
+			portal.log.Debugfln("Got decryptable version of previously undecryptable message %s (%s)", msgID, msgType)
+		} else {
+			portal.log.Debugfln("Not handling %s (%s): message is duplicate", msgID, msgType)
+			return
+		}
+	}
+
 	intent := portal.getMessageIntent(source, &evt.Info)
 	converted := portal.convertMessage(intent, source, &evt.Info, evt.Message)
 	if converted != nil {
 		var eventID id.EventID
+		if existingMsg != nil {
+			converted.Content.SetEdit(existingMsg.MXID)
+		}
 		resp, err := portal.sendMessage(converted.Intent, converted.Type, converted.Content, evt.Info.Timestamp.UnixMilli())
 		if err != nil {
 			portal.log.Errorln("Failed to send %s to Matrix: %v", msgID, err)
 		} else {
 			eventID = resp.EventID
 		}
-		if converted.Caption != nil {
+		// TODO figure out how to handle captions with undecryptable messages turning decryptable
+		if converted.Caption != nil && existingMsg == nil {
 			resp, err = portal.sendMessage(converted.Intent, converted.Type, converted.Content, evt.Info.Timestamp.UnixMilli())
 			if err != nil {
 				portal.log.Errorln("Failed to send caption of %s to Matrix: %v", msgID, err)
@@ -330,31 +378,36 @@ func (portal *Portal) handleMessage(source *User, evt *events.Message) {
 			}
 		}
 		if len(eventID) != 0 {
-			portal.finishHandling(&evt.Info, resp.EventID)
+			portal.finishHandling(existingMsg, &evt.Info, resp.EventID, false)
 		}
 	} else if msgType == "revoke" {
 		portal.HandleMessageRevoke(source, evt.Message.GetProtocolMessage().GetKey())
+		if existingMsg != nil {
+			_, _ = portal.MainIntent().RedactEvent(portal.MXID, existingMsg.MXID, mautrix.ReqRedact{
+				Reason: "The undecryptable message was actually the deletion of another message",
+			})
+			existingMsg.UpdateMXID("net.maunium.whatsapp.fake::" + existingMsg.MXID, false)
+		}
 	} else {
 		portal.log.Warnln("Unhandled message:", evt.Info, evt.Message)
+		if existingMsg != nil {
+			_, _ = portal.MainIntent().RedactEvent(portal.MXID, existingMsg.MXID, mautrix.ReqRedact{
+				Reason: "The undecryptable message contained an unsupported message type",
+			})
+			existingMsg.UpdateMXID("net.maunium.whatsapp.fake::" + existingMsg.MXID, false)
+		}
 		return
 	}
 	portal.bridge.Metrics.TrackWhatsAppMessage(evt.Info.Timestamp, strings.Split(msgType, " ")[0])
 }
 
-func (portal *Portal) isRecentlyHandled(id types.MessageID) bool {
+func (portal *Portal) isRecentlyHandled(id types.MessageID, decryptionError bool) bool {
 	start := portal.recentlyHandledIndex
+	lookingForMsg := recentlyHandledWrapper{id, decryptionError}
 	for i := start; i != start; i = (i - 1) % recentlyHandledLength {
-		if portal.recentlyHandled[i] == id {
+		if portal.recentlyHandled[i] == lookingForMsg {
 			return true
 		}
-	}
-	return false
-}
-
-func (portal *Portal) isDuplicate(id types.MessageID) bool {
-	msg := portal.bridge.DB.Message.GetByJID(portal.Key, id)
-	if msg != nil {
-		return true
 	}
 	return false
 }
@@ -363,22 +416,27 @@ func init() {
 	gob.Register(&waProto.Message{})
 }
 
-func (portal *Portal) markHandled(info *types.MessageInfo, mxid id.EventID, isSent, recent bool) *database.Message {
-	msg := portal.bridge.DB.Message.New()
-	msg.Chat = portal.Key
-	msg.JID = info.ID
-	msg.MXID = mxid
-	msg.Timestamp = info.Timestamp
-	msg.Sender = info.Sender
-	msg.Sent = isSent
-	msg.Insert()
+func (portal *Portal) markHandled(msg *database.Message, info *types.MessageInfo, mxid id.EventID, isSent, recent, decryptionError bool) *database.Message {
+	if msg == nil {
+		msg = portal.bridge.DB.Message.New()
+		msg.Chat = portal.Key
+		msg.JID = info.ID
+		msg.MXID = mxid
+		msg.Timestamp = info.Timestamp
+		msg.Sender = info.Sender
+		msg.Sent = isSent
+		msg.DecryptionError = decryptionError
+		msg.Insert()
+	} else {
+		msg.UpdateMXID(mxid, decryptionError)
+	}
 
 	if recent {
 		portal.recentlyHandledLock.Lock()
 		index := portal.recentlyHandledIndex
 		portal.recentlyHandledIndex = (portal.recentlyHandledIndex + 1) % recentlyHandledLength
 		portal.recentlyHandledLock.Unlock()
-		portal.recentlyHandled[index] = msg.JID
+		portal.recentlyHandled[index] = recentlyHandledWrapper{msg.JID, decryptionError}
 	}
 	return msg
 }
@@ -406,10 +464,14 @@ func (portal *Portal) getMessageIntent(user *User, info *types.MessageInfo) *app
 	return puppet.IntentFor(portal)
 }
 
-func (portal *Portal) finishHandling(message *types.MessageInfo, mxid id.EventID) {
-	portal.markHandled(message, mxid, true, true)
+func (portal *Portal) finishHandling(existing *database.Message, message *types.MessageInfo, mxid id.EventID, decryptionError bool) {
+	portal.markHandled(existing, message, mxid, true, true, decryptionError)
 	portal.sendDeliveryReceipt(mxid)
-	portal.log.Debugln("Handled message", message.ID, "->", mxid)
+	if !decryptionError {
+		portal.log.Debugln("Handled message", message.ID, "->", mxid)
+	} else {
+		portal.log.Debugln("Handled message", message.ID, "->", mxid, "(undecryptable message error notice)")
+	}
 }
 
 func (portal *Portal) kickExtraUsers(participantMap map[types.JID]bool) {
@@ -896,13 +958,13 @@ func (portal *Portal) finishBatch(eventIDs []id.EventID, infos []*types.MessageI
 			} else if info, ok := infoMap[types.MessageID(msgID)]; !ok {
 				portal.log.Warnfln("Didn't find info of message %s (event %s) to register it in the database", msgID, eventID)
 			} else {
-				portal.markHandled(info, eventID, true, false)
+				portal.markHandled(nil, info, eventID, true, false, false)
 			}
 		}
 	} else {
 		for i := 0; i < len(infos); i++ {
 			if infos[i] != nil {
-				portal.markHandled(infos[i], eventIDs[i], true, false)
+				portal.markHandled(nil, infos[i], eventIDs[i], true, false, false)
 			}
 		}
 		portal.log.Infofln("Successfully sent %d events", len(eventIDs))
@@ -2358,7 +2420,7 @@ func (portal *Portal) HandleMatrixMessage(sender *User, evt *event.Event) {
 		return
 	}
 	info := portal.generateMessageInfo(sender)
-	dbMsg := portal.markHandled(info, evt.ID, false, true)
+	dbMsg := portal.markHandled(nil, info, evt.ID, false, true, false)
 	portal.log.Debugln("Sending event", evt.ID, "to WhatsApp", info.ID)
 	err := sender.Client.SendMessage(portal.Key.JID, info.ID, msg)
 	if err != nil {

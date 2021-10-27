@@ -436,7 +436,10 @@ func (user *User) HandleEvent(event interface{}) {
 		go user.handleReceipt(v)
 	case *events.Message:
 		portal := user.GetPortalByJID(v.Info.Chat)
-		portal.messages <- PortalMessage{v, user}
+		portal.messages <- PortalMessage{evt: v, source: user}
+	case *events.UndecryptableMessage:
+		portal := user.GetPortalByJID(v.Info.Chat)
+		portal.messages <- PortalMessage{undecryptable: v, source: user}
 	case *events.HistorySync:
 		user.historySyncs <- v
 	case *events.Mute:
@@ -458,6 +461,8 @@ func (user *User) HandleEvent(event interface{}) {
 		if portal != nil {
 			go user.updateChatTag(nil, portal, user.bridge.Config.Bridge.PinnedTag, v.Action.GetPinned())
 		}
+	case *events.AppState:
+		// Ignore
 	default:
 		user.log.Debugfln("Unknown type of event in HandleEvent: %T", v)
 	}
