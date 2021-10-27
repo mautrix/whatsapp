@@ -114,8 +114,6 @@ func (mx *MatrixHandler) HandleBotInvite(evt *event.Event) {
 		return
 	}
 
-	_, _ = mx.sendNoticeWithMarkdown(evt.RoomID, mx.bridge.Config.Bridge.ManagementRoomText.Welcome)
-
 	if !user.Whitelisted {
 		_, _ = intent.SendNotice(evt.RoomID, "You are not whitelisted to use this bridge.\n"+
 			"If you're the owner of this bridge, see the bridge.permissions section in your config file.")
@@ -142,6 +140,8 @@ func (mx *MatrixHandler) HandleBotInvite(evt *event.Event) {
 		_, _ = intent.LeaveRoom(evt.RoomID)
 		return
 	}
+
+	_, _ = mx.sendNoticeWithMarkdown(evt.RoomID, mx.bridge.Config.Bridge.ManagementRoomText.Welcome)
 
 	if !hasPuppets && (len(user.ManagementRoom) == 0 || evt.Content.AsMember().IsDirect) {
 		user.SetManagementRoom(evt.RoomID)
