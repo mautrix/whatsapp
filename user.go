@@ -434,6 +434,8 @@ func (user *User) HandleEvent(event interface{}) {
 		go user.syncPuppet(v.JID)
 	case *events.Receipt:
 		go user.handleReceipt(v)
+	case *events.ChatPresence:
+		go user.handleChatPresence(v)
 	case *events.Message:
 		portal := user.GetPortalByJID(v.Info.Chat)
 		portal.messages <- PortalMessage{evt: v, source: user}
@@ -729,6 +731,30 @@ func (user *User) syncPuppet(jid types.JID) {
 //		}
 //	}
 //}
+
+const WATypingTimeout = 15 * time.Second
+
+func (user *User) handleChatPresence(presence *events.ChatPresence) {
+	puppet := user.bridge.GetPuppetByJID(presence.Sender)
+	portal := user.GetPortalByJID(presence.Chat)
+	if puppet == nil || portal == nil || len(portal.MXID) == 0 {
+		return
+	}
+	if presence.State == types.ChatPresenceComposing {
+		if puppet.typingIn != "" && puppet.typingAt.Add(WATypingTimeout).Before(time.Now()) {
+			if puppet.typingIn == portal.MXID {
+				return
+			}
+			_, _ = puppet.IntentFor(portal).UserTyping(puppet.typingIn, false, 0)
+		}
+		_, _ = puppet.IntentFor(portal).UserTyping(portal.MXID, true, WATypingTimeout.Milliseconds())
+		puppet.typingIn = portal.MXID
+		puppet.typingAt = time.Now()
+	} else {
+		_, _ = puppet.IntentFor(portal).UserTyping(portal.MXID, false, 0)
+		puppet.typingIn = ""
+	}
+}
 
 func (user *User) handleReceipt(receipt *events.Receipt) {
 	if receipt.Type != events.ReceiptTypeRead {

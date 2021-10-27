@@ -1,5 +1,5 @@
 // mautrix-whatsapp - A Matrix-WhatsApp puppeting bridge.
-// Copyright (C) 2020 Tulir Asokan
+// Copyright (C) 2021 Tulir Asokan
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as published by
@@ -221,12 +221,11 @@ func (puppet *Puppet) handleReceiptEvent(portal *Portal, event *event.Event) {
 			puppet.customUser.log.Debugfln("Ignoring double puppeted read receipt %+v", event.Content.Raw)
 			// Ignore double puppeted read receipts.
 		} else if message := puppet.bridge.DB.Message.GetByMXID(eventID); message != nil {
-			// TODO reimplement
-			//puppet.customUser.log.Debugfln("Marking %s/%s in %s/%s as read", message.JID, message.MXID, portal.Key.JID, portal.MXID)
-			//_, err := puppet.customUser.Client.Read(portal.Key.JID, message.JID)
-			//if err != nil {
-			//	puppet.customUser.log.Warnln("Error marking read:", err)
-			//}
+			puppet.customUser.log.Debugfln("Marking %s/%s in %s/%s as read", message.JID, message.MXID, portal.Key.JID, portal.MXID)
+			err := puppet.customUser.Client.MarkRead([]types.MessageID{message.JID}, time.UnixMilli(receipt.Timestamp), portal.Key.JID, message.Sender)
+			if err != nil {
+				puppet.customUser.log.Warnln("Error marking read:", err)
+			}
 		}
 	}
 }

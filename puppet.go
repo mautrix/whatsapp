@@ -23,6 +23,7 @@ import (
 	"net/http"
 	"regexp"
 	"sync"
+	"time"
 
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/types"
@@ -154,7 +155,7 @@ type Puppet struct {
 	log    log.Logger
 
 	typingIn id.RoomID
-	typingAt int64
+	typingAt time.Time
 
 	MXID id.UserID
 
