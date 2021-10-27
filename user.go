@@ -569,62 +569,6 @@ func (user *User) syncChatDoublePuppetDetails(doublePuppet *Puppet, portal *Port
 	}
 }
 
-//func (user *User) syncPortal(chat Chat) {
-//	// Don't sync unless chat meta sync is enabled or portal doesn't exist
-//	if user.bridge.Config.Bridge.ChatMetaSync || len(chat.Portal.MXID) == 0 {
-//		failedToCreate := chat.Portal.Sync(user, chat.Contact)
-//		if failedToCreate {
-//			return
-//		}
-//	}
-//	err := chat.Portal.BackfillHistory(user, chat.LastMessageTime)
-//	if err != nil {
-//		chat.Portal.log.Errorln("Error backfilling history:", err)
-//	}
-//}
-//
-//func (user *User) syncPortals(chatMap map[string]whatsapp.Chat, createAll bool) {
-//	// TODO use contexts instead of checking if user.Conn is the same?
-//	connAtStart := user.Conn
-//
-//	chats := user.collectChatList(chatMap)
-//
-//	limit := user.bridge.Config.Bridge.InitialChatSync
-//	if limit < 0 {
-//		limit = len(chats)
-//	}
-//	if user.Conn != connAtStart {
-//		user.log.Debugln("Connection seems to have changed before sync, cancelling")
-//		return
-//	}
-//	now := time.Now().Unix()
-//	user.log.Infoln("Syncing portals")
-//	doublePuppet := user.bridge.GetPuppetByCustomMXID(user.MXID)
-//	for i, chat := range chats {
-//		if chat.LastMessageTime+user.bridge.Config.Bridge.SyncChatMaxAge < now {
-//			break
-//		}
-//		create := (chat.LastMessageTime >= user.LastConnection && user.LastConnection > 0) || i < limit
-//		if len(chat.Portal.MXID) > 0 || create || createAll {
-//			user.log.Debugfln("Syncing chat %+v", chat.Chat.Source)
-//			justCreated := len(chat.Portal.MXID) == 0
-//			user.syncPortal(chat)
-//			user.syncChatDoublePuppetDetails(doublePuppet, chat, justCreated)
-//		}
-//	}
-//	if user.Conn != connAtStart {
-//		user.log.Debugln("Connection seems to have changed during sync, cancelling")
-//		return
-//	}
-//	user.UpdateDirectChats(nil)
-//
-//	user.log.Infoln("Finished syncing portals")
-//	select {
-//	case user.syncPortalsDone <- struct{}{}:
-//	default:
-//	}
-//}
-
 func (user *User) getDirectChats() map[id.UserID][]id.RoomID {
 	res := make(map[id.UserID][]id.RoomID)
 	privateChats := user.bridge.DB.Portal.FindPrivateChats(user.JID.ToNonAD())
@@ -701,36 +645,6 @@ func (user *User) GetPortalByJID(jid types.JID) *Portal {
 func (user *User) syncPuppet(jid types.JID) {
 	user.bridge.GetPuppetByJID(jid).SyncContact(user, false)
 }
-
-//func (user *User) HandlePresence(info whatsapp.PresenceEvent) {
-//	puppet := user.bridge.GetPuppetByJID(info.SenderJID)
-//	switch info.Status {
-//	case whatsapp.PresenceUnavailable:
-//		_ = puppet.DefaultIntent().SetPresence("offline")
-//	case whatsapp.PresenceAvailable:
-//		if len(puppet.typingIn) > 0 && puppet.typingAt+15 > time.Now().Unix() {
-//			portal := user.bridge.GetPortalByMXID(puppet.typingIn)
-//			_, _ = puppet.IntentFor(portal).UserTyping(puppet.typingIn, false, 0)
-//			puppet.typingIn = ""
-//			puppet.typingAt = 0
-//		} else {
-//			_ = puppet.DefaultIntent().SetPresence("online")
-//		}
-//	case whatsapp.PresenceComposing:
-//		portal := user.GetPortalByJID(info.JID)
-//		if len(puppet.typingIn) > 0 && puppet.typingAt+15 > time.Now().Unix() {
-//			if puppet.typingIn == portal.MXID {
-//				return
-//			}
-//			_, _ = puppet.IntentFor(portal).UserTyping(puppet.typingIn, false, 0)
-//		}
-//		if len(portal.MXID) > 0 {
-//			puppet.typingIn = portal.MXID
-//			puppet.typingAt = time.Now().Unix()
-//			_, _ = puppet.IntentFor(portal).UserTyping(portal.MXID, true, 15*1000)
-//		}
-//	}
-//}
 
 const WATypingTimeout = 15 * time.Second
 

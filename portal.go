@@ -987,6 +987,8 @@ func (portal *Portal) backfill(source *User, messages []*waProto.HistorySyncMsg)
 
 	historyBatch.StateEventsAtStart = make([]*event.Event, 1)
 	newBatch.StateEventsAtStart = make([]*event.Event, 1)
+
+	// TODO remove the dummy state events after https://github.com/matrix-org/synapse/pull/11188
 	emptyStr := ""
 	dummyStateEvent := event.Event{
 		Type:      BackfillDummyStateEvent,
@@ -997,8 +999,8 @@ func (portal *Portal) backfill(source *User, messages []*waProto.HistorySyncMsg)
 	}
 	historyBatch.StateEventsAtStart[0] = &dummyStateEvent
 	newBatch.StateEventsAtStart[0] = &dummyStateEvent
-	addedMembers := make(map[id.UserID]*event.MemberEventContent)
 
+	addedMembers := make(map[id.UserID]*event.MemberEventContent)
 	addMember := func(puppet *Puppet) {
 		if _, alreadyAdded := addedMembers[puppet.MXID]; alreadyAdded {
 			return
@@ -1096,7 +1098,7 @@ func (portal *Portal) backfill(source *User, messages []*waProto.HistorySyncMsg)
 		}
 	}
 
-	if len(historyBatch.Events) > 0 {
+	if len(historyBatch.Events) > 0 && len(historyBatch.PrevEventID) > 0 {
 		portal.log.Infofln("Sending %d historical messages...", len(historyBatch.Events))
 		historyResp, err := portal.MainIntent().BatchSend(portal.MXID, &historyBatch)
 		if err != nil {
@@ -1112,7 +1114,7 @@ func (portal *Portal) backfill(source *User, messages []*waProto.HistorySyncMsg)
 		}
 	}
 
-	if len(newBatch.Events) > 0 {
+	if len(newBatch.Events) > 0 && len(newBatch.PrevEventID) > 0 {
 		portal.log.Debugln("Sending a dummy event to avoid forward extremity errors with forward backfill")
 		_, err := portal.MainIntent().SendMessageEvent(portal.MXID, ForwardBackfillDummyEvent, struct{}{})
 		if err != nil {
