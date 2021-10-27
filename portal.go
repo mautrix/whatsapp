@@ -386,7 +386,7 @@ func (portal *Portal) handleMessage(source *User, evt *events.Message) {
 			portal.finishHandling(existingMsg, &evt.Info, resp.EventID, false)
 		}
 	} else if msgType == "revoke" {
-		portal.HandleMessageRevoke(source, evt.Message.GetProtocolMessage().GetKey())
+		portal.HandleMessageRevoke(source, &evt.Info, evt.Message.GetProtocolMessage().GetKey())
 		if existingMsg != nil {
 			_, _ = portal.MainIntent().RedactEvent(portal.MXID, existingMsg.MXID, mautrix.ReqRedact{
 				Reason: "The undecryptable message was actually the deletion of another message",
@@ -1437,31 +1437,20 @@ func (portal *Portal) SetReply(content *event.MessageEventContent, replyToID typ
 	return
 }
 
-func (portal *Portal) HandleMessageRevoke(user *User, key *waProto.MessageKey) bool {
+func (portal *Portal) HandleMessageRevoke(user *User, info *types.MessageInfo, key *waProto.MessageKey) bool {
 	msg := portal.bridge.DB.Message.GetByJID(portal.Key, key.GetId())
 	if msg == nil || msg.IsFakeMXID() {
 		return false
 	}
-	var intent *appservice.IntentAPI
-	if key.GetFromMe() {
-		if portal.IsPrivateChat() {
-			intent = portal.bridge.GetPuppetByJID(user.JID).CustomIntent()
-		} else {
-			intent = portal.bridge.GetPuppetByJID(user.JID).IntentFor(portal)
-		}
-	} else if len(key.GetParticipant()) > 0 {
-		jid, err := types.ParseJID(key.GetParticipant())
-		if err != nil {
-			return false
-		}
-		intent = portal.bridge.GetPuppetByJID(jid).IntentFor(portal)
-	}
-	if intent == nil {
-		intent = portal.MainIntent()
-	}
+	intent := portal.bridge.GetPuppetByJID(info.Sender).IntentFor(portal)
 	_, err := intent.RedactEvent(portal.MXID, msg.MXID)
 	if err != nil {
-		portal.log.Errorln("Failed to redact %s: %v", msg.JID, err)
+		if errors.Is(err, mautrix.MForbidden) {
+			_, err = portal.MainIntent().RedactEvent(portal.MXID, msg.MXID)
+			if err != nil {
+				portal.log.Errorln("Failed to redact %s: %v", msg.JID, err)
+			}
+		}
 	} else {
 		msg.Delete()
 	}
