@@ -308,8 +308,14 @@ func (portal *Portal) convertMessage(intent *appservice.IntentAPI, source *User,
 	}
 }
 
-const UndecryptableMessage = "Decrypting message from WhatsApp failed, waiting for sender to re-send... " +
+const UndecryptableMessageNotice = "Decrypting message from WhatsApp failed, waiting for sender to re-send... " +
 	"([learn more](https://faq.whatsapp.com/general/security-and-privacy/seeing-waiting-for-this-message-this-may-take-a-while))"
+var undecryptableMessageContent event.MessageEventContent
+
+func init() {
+	undecryptableMessageContent = format.RenderMarkdown(UndecryptableMessageNotice, true, false)
+	undecryptableMessageContent.MsgType = event.MsgNotice
+}
 
 func (portal *Portal) handleUndecryptableMessage(source *User, evt *events.UndecryptableMessage) {
 	if len(portal.MXID) == 0 {
@@ -323,8 +329,7 @@ func (portal *Portal) handleUndecryptableMessage(source *User, evt *events.Undec
 		return
 	}
 	intent := portal.getMessageIntent(source, &evt.Info)
-	content := format.RenderMarkdown(UndecryptableMessage, true, false)
-	content.MsgType = event.MsgNotice
+	content := undecryptableMessageContent
 	resp, err := portal.sendMessage(intent, event.EventMessage, &content, evt.Info.Timestamp.UnixMilli())
 	if err != nil {
 		portal.log.Errorln("Failed to send decryption error of %s to Matrix: %v", evt.Info.ID, err)
