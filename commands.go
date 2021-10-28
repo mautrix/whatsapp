@@ -232,6 +232,7 @@ func (handler *CommandHandler) CommandInviteLink(ce *CommandEvent) {
 		return
 	}
 
+	ce.Reply("Not yet implemented")
 	// TODO reimplement
 	//link, err := ce.User.Conn.GroupInviteLink(ce.Portal.Key.JID)
 	//if err != nil {
@@ -253,6 +254,7 @@ func (handler *CommandHandler) CommandJoin(ce *CommandEvent) {
 		return
 	}
 
+	ce.Reply("Not yet implemented")
 	// TODO reimplement
 	//jid, err := ce.User.Conn.GroupAcceptInviteCode(ce.Args[0][len(inviteLinkPrefix):])
 	//if err != nil {
@@ -315,6 +317,7 @@ func (handler *CommandHandler) CommandCreate(ce *CommandEvent) {
 		}
 	}
 
+	ce.Reply("Not yet implemented")
 	// TODO reimplement
 	//resp, err := ce.User.Conn.CreateGroup(roomNameEvent.Name, participants)
 	//if err != nil {
@@ -512,21 +515,21 @@ func (handler *CommandHandler) CommandToggle(ce *CommandEvent) {
 		return
 	}
 	if ce.Args[0] == "presence" || ce.Args[0] == "all" {
-		//customPuppet.EnablePresence = !customPuppet.EnablePresence
-		//var newPresence whatsapp.Presence
-		//if customPuppet.EnablePresence {
-		//	newPresence = whatsapp.PresenceAvailable
-		//	ce.Reply("Enabled presence bridging")
-		//} else {
-		//	newPresence = whatsapp.PresenceUnavailable
-		//	ce.Reply("Disabled presence bridging")
-		//}
-		//if ce.User.IsConnected() {
-		//	_, err := ce.User.Conn.Presence("", newPresence)
-		//	if err != nil {
-		//		ce.User.log.Warnln("Failed to set presence:", err)
-		//	}
-		//}
+		customPuppet.EnablePresence = !customPuppet.EnablePresence
+		var newPresence types.Presence
+		if customPuppet.EnablePresence {
+			newPresence = types.PresenceAvailable
+			ce.Reply("Enabled presence bridging")
+		} else {
+			newPresence = types.PresenceUnavailable
+			ce.Reply("Disabled presence bridging")
+		}
+		if ce.User.IsLoggedIn() {
+			err := ce.User.Client.SendPresence(newPresence)
+			if err != nil {
+				ce.User.log.Warnln("Failed to set presence:", err)
+			}
+		}
 	}
 	if ce.Args[0] == "receipts" || ce.Args[0] == "all" {
 		customPuppet.EnableReceipts = !customPuppet.EnableReceipts
@@ -555,6 +558,7 @@ func (handler *CommandHandler) CommandDeleteSession(ce *CommandEvent) {
 const cmdReconnectHelp = `reconnect - Reconnect to WhatsApp`
 
 func (handler *CommandHandler) CommandReconnect(ce *CommandEvent) {
+	ce.Reply("Not yet implemented")
 	// TODO reimplement
 	//if ce.User.Client == nil {
 	//	if ce.User.Session == nil {
@@ -802,6 +806,7 @@ func (handler *CommandHandler) CommandList(ce *CommandEvent) {
 			ce.Reply("Warning: a high number of items per page may fail to send a reply")
 		}
 	}
+	ce.Reply("Not yet implemented")
 	// TODO reimplement
 	//contacts := mode[0] == 'c'
 	//typeName := "Groups"
@@ -839,6 +844,7 @@ func (handler *CommandHandler) CommandOpen(ce *CommandEvent) {
 		ce.Reply("**Usage:** `open <group JID>`")
 		return
 	}
+	ce.Reply("Not yet implemented")
 
 	// TODO reimplement
 	//user := ce.User
