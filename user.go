@@ -376,13 +376,31 @@ func (user *User) handleHistorySync(evt *waProto.HistorySync) {
 			continue
 		}
 
-		portal := user.GetPortalByJID(jid)
-		err = portal.CreateMatrixRoom(user)
-		if err != nil {
-			user.log.Warnfln("Failed to create room for %s during backfill: %v", portal.Key.JID, err)
-			continue
+		muteEnd := time.Unix(int64(conv.GetMuteEndTime()), 0)
+		if muteEnd.After(time.Now()) {
+			_ = user.Client.Store.ChatSettings.PutMutedUntil(jid, muteEnd)
 		}
-		portal.backfill(user, conv.GetMessages())
+		if conv.GetArchived() {
+			_ = user.Client.Store.ChatSettings.PutArchived(jid, true)
+		}
+		if conv.GetPinned() > 0 {
+			_ = user.Client.Store.ChatSettings.PutPinned(jid, true)
+		}
+
+		portal := user.GetPortalByJID(jid)
+		if user.bridge.Config.Bridge.HistorySync.CreatePortals {
+			err = portal.CreateMatrixRoom(user)
+			if err != nil {
+				user.log.Warnfln("Failed to create room for %s during backfill: %v", portal.Key.JID, err)
+				continue
+			}
+		}
+		if len(portal.MXID) > 0 && user.bridge.Config.Bridge.HistorySync.Backfill {
+			portal.backfill(user, conv.GetMessages())
+			if !conv.GetMarkedAsUnread() && conv.GetUnreadCount() == 0 {
+				user.markSelfReadFull(portal)
+			}
+		}
 	}
 }
 
@@ -432,6 +450,10 @@ func (user *User) HandleEvent(event interface{}) {
 		go user.syncPuppet(v.JID)
 	case *events.PushName:
 		go user.syncPuppet(v.JID)
+	case *events.GroupInfo:
+		go user.handleGroupUpdate(v)
+	case *events.Picture:
+		go user.handlePictureUpdate(v)
 	case *events.Receipt:
 		go user.handleReceipt(v)
 	case *events.ChatPresence:
@@ -540,29 +562,21 @@ type CustomReadReceipt struct {
 	DoublePuppet bool  `json:"net.maunium.whatsapp.puppet,omitempty"`
 }
 
-func (user *User) syncChatDoublePuppetDetails(doublePuppet *Puppet, portal *Portal, justCreated bool) {
+func (user *User) syncChatDoublePuppetDetails(portal *Portal, justCreated bool) {
+	doublePuppet := portal.bridge.GetPuppetByCustomMXID(user.MXID)
+	if doublePuppet == nil {
+		return
+	}
 	if doublePuppet == nil || doublePuppet.CustomIntent() == nil || len(portal.MXID) == 0 {
 		return
 	}
-	intent := doublePuppet.CustomIntent()
-	// FIXME this might not be possible to do anymore
-	//if chat.UnreadCount == 0 && (justCreated || !user.bridge.Config.Bridge.MarkReadOnlyOnCreate) {
-	//	lastMessage := user.bridge.DB.Message.GetLastInChatBefore(chat.Portal.Key, chat.ReceivedAt.Unix())
-	//	if lastMessage != nil {
-	//		err := intent.MarkReadWithContent(chat.Portal.MXID, lastMessage.MXID, &CustomReadReceipt{DoublePuppet: true})
-	//		if err != nil {
-	//			user.log.Warnfln("Failed to mark %s in %s as read after backfill: %v", lastMessage.MXID, chat.Portal.MXID, err)
-	//		}
-	//	}
-	//} else if chat.UnreadCount == -1 {
-	//	user.log.Debugfln("Invalid unread count (missing field?) in chat info %+v", chat.Source)
-	//}
 	if justCreated || !user.bridge.Config.Bridge.TagOnlyOnCreate {
 		chat, err := user.Client.Store.ChatSettings.GetChatSettings(portal.Key.JID)
 		if err != nil {
 			user.log.Warnfln("Failed to get settings of %s: %v", portal.Key.JID, err)
 			return
 		}
+		intent := doublePuppet.CustomIntent()
 		user.updateChatMute(intent, portal, chat.MutedUntil)
 		user.updateChatTag(intent, portal, user.bridge.Config.Bridge.ArchiveTag, chat.Archived)
 		user.updateChatTag(intent, portal, user.bridge.Config.Bridge.PinnedTag, chat.Pinned)
@@ -709,12 +723,8 @@ func (user *User) markOtherRead(portal *Portal, intent *appservice.IntentAPI, me
 }
 
 func (user *User) markSelfRead(portal *Portal, messageID types.MessageID) {
-	puppet := user.bridge.GetPuppetByJID(user.JID)
-	if puppet == nil {
-		return
-	}
-	intent := puppet.CustomIntent()
-	if intent == nil {
+	puppet := user.bridge.GetPuppetByCustomMXID(user.MXID)
+	if puppet == nil || puppet.CustomIntent() == nil {
 		return
 	}
 	var message *database.Message
@@ -731,106 +741,69 @@ func (user *User) markSelfRead(portal *Portal, messageID types.MessageID) {
 		}
 		user.log.Debugfln("User read message %s/%s in %s/%s in WhatsApp mobile", message.JID, message.MXID, portal.Key.JID, portal.MXID)
 	}
-	err := intent.MarkReadWithContent(portal.MXID, message.MXID, &CustomReadReceipt{DoublePuppet: true})
+	err := puppet.CustomIntent().MarkReadWithContent(portal.MXID, message.MXID, &CustomReadReceipt{DoublePuppet: true})
 	if err != nil {
 		user.log.Warnfln("Failed to bridge own read receipt in %s: %v", portal.Key.JID, err)
 	}
 }
 
-//func (user *User) HandleCommand(cmd whatsapp.JSONCommand) {
-//	switch cmd.Type {
-//	case whatsapp.CommandPicture:
-//		if strings.HasSuffix(cmd.JID, whatsapp.NewUserSuffix) {
-//			puppet := user.bridge.GetPuppetByJID(cmd.JID)
-//			go puppet.UpdateAvatar(user, cmd.ProfilePicInfo)
-//		} else if user.bridge.Config.Bridge.ChatMetaSync {
-//			portal := user.GetPortalByJID(cmd.JID)
-//			go portal.UpdateAvatar(user, cmd.ProfilePicInfo, true)
-//		}
-//	case whatsapp.CommandDisconnect:
-//		if cmd.Kind == "replaced" {
-//			user.cleanDisconnection = true
-//			go user.sendMarkdownBridgeAlert("\u26a0 Your WhatsApp connection was closed by the server because you opened another WhatsApp Web client.\n\n" +
-//				"Use the `reconnect` command to disconnect the other client and resume bridging.")
-//		} else {
-//			user.log.Warnln("Unknown kind of disconnect:", string(cmd.Raw))
-//			go user.sendMarkdownBridgeAlert("\u26a0 Your WhatsApp connection was closed by the server (reason code: %s).\n\n"+
-//				"Use the `reconnect` command to reconnect.", cmd.Kind)
-//		}
-//	}
-//}
+func (user *User) markSelfReadFull(portal *Portal) {
+	puppet := user.bridge.GetPuppetByCustomMXID(user.MXID)
+	if puppet == nil || puppet.CustomIntent() == nil {
+		return
+	}
+	lastMessage := user.bridge.DB.Message.GetLastInChat(portal.Key)
+	if lastMessage == nil {
+		return
+	}
+	err := puppet.CustomIntent().MarkReadWithContent(portal.MXID, lastMessage.MXID, &CustomReadReceipt{DoublePuppet: true})
+	if err != nil {
+		user.log.Warnfln("Failed to mark %s in %s as read after backfill: %v", lastMessage.MXID, portal.MXID, err)
+	}
+}
 
-//func (user *User) HandleChatUpdate(cmd whatsapp.ChatUpdate) {
-//	if cmd.Command != whatsapp.ChatUpdateCommandAction {
-//		return
-//	}
-//
-//	portal := user.GetPortalByJID(cmd.JID)
-//	if len(portal.MXID) == 0 {
-//		if cmd.Data.Action == whatsapp.ChatActionIntroduce || cmd.Data.Action == whatsapp.ChatActionCreate {
-//			go func() {
-//				err := portal.CreateMatrixRoom(user)
-//				if err != nil {
-//					user.log.Errorln("Failed to create portal room after receiving join event:", err)
-//				}
-//			}()
-//		}
-//		return
-//	}
-//
-//	// These don't come down the message history :(
-//	switch cmd.Data.Action {
-//	case whatsapp.ChatActionAddTopic:
-//		go portal.UpdateTopic(cmd.Data.AddTopic.Topic, cmd.Data.SenderJID, nil, true)
-//	case whatsapp.ChatActionRemoveTopic:
-//		go portal.UpdateTopic("", cmd.Data.SenderJID, nil, true)
-//	case whatsapp.ChatActionRemove:
-//		// We ignore leaving groups in the message history to avoid accidentally leaving rejoined groups,
-//		// but if we get a real-time command that says we left, it should be safe to bridge it.
-//		if !user.bridge.Config.Bridge.ChatMetaSync {
-//			for _, jid := range cmd.Data.UserChange.JIDs {
-//				if jid == user.JID {
-//					go portal.HandleWhatsAppKick(nil, cmd.Data.SenderJID, cmd.Data.UserChange.JIDs)
-//					break
-//				}
-//			}
-//		}
-//	}
-//
-//	if !user.bridge.Config.Bridge.ChatMetaSync {
-//		// Ignore chat update commands, we're relying on the message history.
-//		return
-//	}
-//
-//	switch cmd.Data.Action {
-//	case whatsapp.ChatActionNameChange:
-//		go portal.UpdateName(cmd.Data.NameChange.Name, cmd.Data.SenderJID, nil, true)
-//	case whatsapp.ChatActionPromote:
-//		go portal.ChangeAdminStatus(cmd.Data.UserChange.JIDs, true)
-//	case whatsapp.ChatActionDemote:
-//		go portal.ChangeAdminStatus(cmd.Data.UserChange.JIDs, false)
-//	case whatsapp.ChatActionAnnounce:
-//		go portal.RestrictMessageSending(cmd.Data.Announce)
-//	case whatsapp.ChatActionRestrict:
-//		go portal.RestrictMetadataChanges(cmd.Data.Restrict)
-//	case whatsapp.ChatActionRemove:
-//		go portal.HandleWhatsAppKick(nil, cmd.Data.SenderJID, cmd.Data.UserChange.JIDs)
-//	case whatsapp.ChatActionAdd:
-//		go portal.HandleWhatsAppInvite(user, cmd.Data.SenderJID, nil, cmd.Data.UserChange.JIDs)
-//	case whatsapp.ChatActionIntroduce:
-//		if cmd.Data.SenderJID != "unknown" {
-//			go portal.Sync(user, whatsapp.Contact{JID: portal.Key.JID})
-//		}
-//	}
-//}
-//
-//func (user *User) HandleJSONMessage(evt whatsapp.RawJSONMessage) {
-//	if !json.Valid(evt.RawMessage) {
-//		return
-//	}
-//	user.log.Debugfln("JSON message with tag %s: %s", evt.Tag, evt.RawMessage)
-//	user.updateLastConnectionIfNecessary()
-//}
+func (user *User) handleGroupUpdate(evt *events.GroupInfo) {
+	portal := user.GetPortalByJID(evt.JID)
+	if portal == nil || len(portal.MXID) == 0 {
+		// TODO create portal when added to group
+		user.log.Debugfln("Ignoring group info update in chat with no portal: %+v", evt)
+		return
+	}
+	switch {
+	case evt.Announce != nil:
+		portal.RestrictMessageSending(evt.Announce.IsAnnounce)
+	case evt.Locked != nil:
+		portal.RestrictMetadataChanges(evt.Locked.IsLocked)
+	case evt.Name != nil:
+		portal.UpdateName(evt.Name.Name, evt.Name.NameSetBy, true)
+	case evt.Topic != nil:
+		portal.UpdateTopic(evt.Topic.Topic, evt.Topic.TopicSetBy, true)
+	case evt.Leave != nil:
+		if evt.Sender != nil && !evt.Sender.IsEmpty() {
+			portal.HandleWhatsAppKick(user, *evt.Sender, evt.Leave)
+		}
+	case evt.Join != nil:
+		portal.HandleWhatsAppInvite(user, evt.Sender, evt.Join)
+	case evt.Promote != nil:
+		portal.ChangeAdminStatus(evt.Promote, true)
+	case evt.Demote != nil:
+		portal.ChangeAdminStatus(evt.Demote, false)
+	}
+}
+
+func (user *User) handlePictureUpdate(evt *events.Picture) {
+	if evt.JID.Server == types.DefaultUserServer {
+		puppet := user.bridge.GetPuppetByJID(evt.JID)
+		if puppet.Avatar != evt.PictureID {
+			puppet.UpdateAvatar(user)
+		}
+	} else {
+		portal := user.GetPortalByJID(evt.JID)
+		if portal != nil && portal.Avatar != evt.PictureID {
+			portal.UpdateAvatar(user, evt.Author, true)
+		}
+	}
+}
 
 func (user *User) NeedsRelaybot(portal *Portal) bool {
 	return !user.HasSession() // || !user.IsInPortal(portal.Key)

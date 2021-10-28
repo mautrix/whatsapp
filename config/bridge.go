@@ -42,15 +42,13 @@ type BridgeConfig struct {
 		End   bool `yaml:"end"`
 	} `yaml:"call_notices"`
 
-	InitialChatSync      int   `yaml:"initial_chat_sync_count"`
-	InitialHistoryFill   int   `yaml:"initial_history_fill_count"`
-	HistoryDisableNotifs bool  `yaml:"initial_history_disable_notifications"`
-	RecoverChatSync      int   `yaml:"recovery_chat_sync_count"`
-	RecoverHistory       bool  `yaml:"recovery_history_backfill"`
-	ChatMetaSync         bool  `yaml:"chat_meta_sync"`
-	UserAvatarSync       bool  `yaml:"user_avatar_sync"`
-	BridgeMatrixLeave    bool  `yaml:"bridge_matrix_leave"`
-	SyncChatMaxAge       int64 `yaml:"sync_max_chat_age"`
+	HistorySync struct {
+		CreatePortals        bool `yaml:"create_portals"`
+		Backfill             bool `yaml:"backfill"`
+		DoublePuppetBackfill bool `yaml:"double_puppet_backfill"`
+	}
+	UserAvatarSync    bool `yaml:"user_avatar_sync"`
+	BridgeMatrixLeave bool `yaml:"bridge_matrix_leave"`
 
 	SyncWithCustomPuppets bool   `yaml:"sync_with_custom_puppets"`
 	SyncDirectChatList    bool   `yaml:"sync_direct_chat_list"`
@@ -58,7 +56,6 @@ type BridgeConfig struct {
 	DefaultBridgePresence bool   `yaml:"default_bridge_presence"`
 	LoginSharedSecret     string `yaml:"login_shared_secret"`
 
-	DoublePuppetBackfill  bool   `yaml:"double_puppet_backfill"`
 	PrivateChatPortalMeta bool   `yaml:"private_chat_portal_meta"`
 	BridgeNotices         bool   `yaml:"bridge_notices"`
 	ResendBridgeInfo      bool   `yaml:"resend_bridge_info"`
@@ -95,7 +92,6 @@ type BridgeConfig struct {
 }
 
 func (bc *BridgeConfig) setDefaults() {
-	bc.DeliveryReceipts = false
 	bc.MaxConnectionAttempts = 3
 	bc.ConnectionRetryDelay = -1
 	bc.ReportConnectionRetry = true
@@ -104,22 +100,14 @@ func (bc *BridgeConfig) setDefaults() {
 	bc.CallNotices.Start = true
 	bc.CallNotices.End = true
 
-	bc.InitialChatSync = 10
-	bc.InitialHistoryFill = 20
-	bc.RecoverChatSync = -1
-	bc.RecoverHistory = true
-	bc.ChatMetaSync = true
+	bc.HistorySync.CreatePortals = true
 	bc.UserAvatarSync = true
 	bc.BridgeMatrixLeave = true
-	bc.SyncChatMaxAge = 259200
 
 	bc.SyncWithCustomPuppets = true
 	bc.DefaultBridgePresence = true
 	bc.DefaultBridgeReceipts = true
-	bc.LoginSharedSecret = ""
 
-	bc.DoublePuppetBackfill = false
-	bc.PrivateChatPortalMeta = false
 	bc.BridgeNotices = true
 	bc.EnableStatusBroadcast = true
 }

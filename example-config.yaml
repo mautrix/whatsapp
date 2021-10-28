@@ -101,32 +101,20 @@ bridge:
         start: true
         end: true
 
-    # Number of chats to sync for new users.
-    initial_chat_sync_count: 10
-    # Number of old messages to fill when creating new portal rooms.
-    initial_history_fill_count: 20
-    # Whether or not notifications should be turned off while filling initial history.
-    # Only applicable when using double puppeting.
-    initial_history_disable_notifications: false
-    # Maximum number of chats to sync when recovering from downtime.
-    # Set to -1 to sync all new chats during downtime.
-    recovery_chat_sync_limit: -1
-    # Whether or not to sync history when recovering from downtime.
-    recovery_history_backfill: true
-    # Whether or not portal info should be fetched from the server when syncing,
-    # instead of relying on finding any changes in the message history.
-    # If you get 599 errors often, you should try disabling this.
-    chat_meta_sync: true
+    history_sync:
+        # Whether to create portals from history sync payloads from WhatsApp.
+        create_portals: true
+        # Whether to enable backfilling history sync payloads from WhatsApp using batch sending
+        # This requires a server with MSC2716 support, which is currently an experimental feature in synapse.
+        # It can be enabled by setting experimental_features -> enable_msc2716 to true in homeserver.yaml.
+        backfill: false
+        # Whether to use custom puppet for backfilling.
+        # In order to use this, the custom puppets must be in the appservice's user ID namespace.
+        double_puppet_backfill: false
     # Whether or not puppet avatars should be fetched from the server even if an avatar is already set.
-    # If you get 599 errors often, you should try disabling this.
     user_avatar_sync: true
     # Whether or not Matrix users leaving groups should be bridged to WhatsApp
     bridge_matrix_leave: true
-    # Maximum number of seconds since last message in chat to skip
-    # syncing the chat in any case. This setting will take priority
-    # over both recovery_chat_sync_limit and initial_chat_sync_count.
-    # Default is 3 days = 259200 seconds
-    sync_max_chat_age: 259200
 
     # Whether or not to sync with custom puppets to receive EDUs that
     # are not normally sent to appservices.
@@ -147,18 +135,12 @@ bridge:
     # manually.
     login_shared_secret: null
 
-    # Whether to use custom puppet for backfilling.
-    # In order to use this, the custom puppets must be in the appservice's user ID namespace.
-    double_puppet_backfill: false
-    # Whether or not to explicitly set the avatar and room name for private
-    # chat portal rooms. This can be useful if the previous field works fine,
-    # but causes room avatar/name bugs.
+    # Whether to explicitly set the avatar and room name for private chat portal rooms.
     private_chat_portal_meta: false
-    # Whether or not Matrix m.notice-type messages should be bridged.
+    # Whether Matrix m.notice-type messages should be bridged.
     bridge_notices: true
     # Set this to true to tell the bridge to re-send m.bridge events to all rooms on the next run.
-    # This field will automatically be changed back to false after it,
-    # except if the config file is not writable.
+    # This field will automatically be changed back to false after it, except if the config file is not writable.
     resend_bridge_info: false
     # When using double puppeting, should muted chats be muted in Matrix?
     mute_bridging: false

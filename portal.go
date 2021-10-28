@@ -193,14 +193,6 @@ type Portal struct {
 	hasRelaybot *bool
 }
 
-func (portal *Portal) syncDoublePuppetDetailsAfterCreate(source *User) {
-	doublePuppet := portal.bridge.GetPuppetByCustomMXID(source.MXID)
-	if doublePuppet == nil {
-		return
-	}
-	source.syncChatDoublePuppetDetails(doublePuppet, portal, true)
-}
-
 func (portal *Portal) handleMessageLoop() {
 	for msg := range portal.messages {
 		if len(portal.MXID) == 0 {
@@ -214,7 +206,6 @@ func (portal *Portal) handleMessageLoop() {
 				portal.log.Errorln("Failed to create portal room:", err)
 				continue
 			}
-			portal.syncDoublePuppetDetailsAfterCreate(msg.source)
 		}
 		if msg.evt != nil {
 			portal.handleMessage(msg.source, msg.evt)
@@ -310,6 +301,7 @@ func (portal *Portal) convertMessage(intent *appservice.IntentAPI, source *User,
 
 const UndecryptableMessageNotice = "Decrypting message from WhatsApp failed, waiting for sender to re-send... " +
 	"([learn more](https://faq.whatsapp.com/general/security-and-privacy/seeing-waiting-for-this-message-this-may-take-a-while))"
+
 var undecryptableMessageContent event.MessageEventContent
 
 func init() {
@@ -391,7 +383,7 @@ func (portal *Portal) handleMessage(source *User, evt *events.Message) {
 			_, _ = portal.MainIntent().RedactEvent(portal.MXID, existingMsg.MXID, mautrix.ReqRedact{
 				Reason: "The undecryptable message was actually the deletion of another message",
 			})
-			existingMsg.UpdateMXID("net.maunium.whatsapp.fake::" + existingMsg.MXID, false)
+			existingMsg.UpdateMXID("net.maunium.whatsapp.fake::"+existingMsg.MXID, false)
 		}
 	} else {
 		portal.log.Warnln("Unhandled message:", evt.Info, evt.Message)
@@ -399,7 +391,7 @@ func (portal *Portal) handleMessage(source *User, evt *events.Message) {
 			_, _ = portal.MainIntent().RedactEvent(portal.MXID, existingMsg.MXID, mautrix.ReqRedact{
 				Reason: "The undecryptable message contained an unsupported message type",
 			})
-			existingMsg.UpdateMXID("net.maunium.whatsapp.fake::" + existingMsg.MXID, false)
+			existingMsg.UpdateMXID("net.maunium.whatsapp.fake::"+existingMsg.MXID, false)
 		}
 		return
 	}
@@ -557,7 +549,7 @@ func (portal *Portal) SyncParticipants(source *User, metadata *types.GroupInfo) 
 	portal.kickExtraUsers(participantMap)
 }
 
-func (portal *Portal) UpdateAvatar(user *User, updateInfo bool) bool {
+func (portal *Portal) UpdateAvatar(user *User, setBy types.JID, updateInfo bool) bool {
 	avatar, err := user.Client.GetProfilePictureInfo(portal.Key.JID, false)
 	if err != nil {
 		if !errors.Is(err, whatsmeow.ErrProfilePictureUnauthorized) {
@@ -585,7 +577,14 @@ func (portal *Portal) UpdateAvatar(user *User, updateInfo bool) bool {
 	}
 
 	if len(portal.MXID) > 0 {
-		_, err := portal.MainIntent().SetRoomAvatar(portal.MXID, portal.AvatarURL)
+		intent := portal.MainIntent()
+		if !setBy.IsEmpty() {
+			intent = portal.bridge.GetPuppetByJID(setBy).IntentFor(portal)
+		}
+		_, err = intent.SetRoomAvatar(portal.MXID, portal.AvatarURL)
+		if errors.Is(err, mautrix.MForbidden) && intent != portal.MainIntent() {
+			_, err = portal.MainIntent().SetRoomAvatar(portal.MXID, portal.AvatarURL)
+		}
 		if err != nil {
 			portal.log.Warnln("Failed to set room topic:", err)
 			return false
@@ -598,20 +597,22 @@ func (portal *Portal) UpdateAvatar(user *User, updateInfo bool) bool {
 	return true
 }
 
-func (portal *Portal) UpdateName(name string, setBy types.JID, intent *appservice.IntentAPI, updateInfo bool) bool {
+func (portal *Portal) UpdateName(name string, setBy types.JID, updateInfo bool) bool {
 	if name == "" && portal.IsBroadcastList() {
 		name = UnnamedBroadcastName
 	}
 	if portal.Name != name {
 		portal.log.Debugfln("Updating name %s -> %s", portal.Name, name)
 		portal.Name = name
-		if intent == nil {
-			intent = portal.MainIntent()
-			if !setBy.IsEmpty() {
-				intent = portal.bridge.GetPuppetByJID(setBy).IntentFor(portal)
-			}
+
+		intent := portal.MainIntent()
+		if !setBy.IsEmpty() {
+			intent = portal.bridge.GetPuppetByJID(setBy).IntentFor(portal)
 		}
 		_, err := intent.SetRoomName(portal.MXID, name)
+		if errors.Is(err, mautrix.MForbidden) && intent != portal.MainIntent() {
+			_, err = portal.MainIntent().SetRoomName(portal.MXID, name)
+		}
 		if err == nil {
 			if updateInfo {
 				portal.UpdateBridgeInfo()
@@ -625,17 +626,19 @@ func (portal *Portal) UpdateName(name string, setBy types.JID, intent *appservic
 	return false
 }
 
-func (portal *Portal) UpdateTopic(topic string, setBy types.JID, intent *appservice.IntentAPI, updateInfo bool) bool {
+func (portal *Portal) UpdateTopic(topic string, setBy types.JID, updateInfo bool) bool {
 	if portal.Topic != topic {
 		portal.log.Debugfln("Updating topic %s -> %s", portal.Topic, topic)
 		portal.Topic = topic
-		if intent == nil {
-			intent = portal.MainIntent()
-			if !setBy.IsEmpty() {
-				intent = portal.bridge.GetPuppetByJID(setBy).IntentFor(portal)
-			}
+
+		intent := portal.MainIntent()
+		if !setBy.IsEmpty() {
+			intent = portal.bridge.GetPuppetByJID(setBy).IntentFor(portal)
 		}
 		_, err := intent.SetRoomTopic(portal.MXID, topic)
+		if errors.Is(err, mautrix.MForbidden) && intent != portal.MainIntent() {
+			_, err = portal.MainIntent().SetRoomTopic(portal.MXID, topic)
+		}
 		if err == nil {
 			if updateInfo {
 				portal.UpdateBridgeInfo()
@@ -654,8 +657,8 @@ func (portal *Portal) UpdateMetadata(user *User) bool {
 		return false
 	} else if portal.IsStatusBroadcastList() {
 		update := false
-		update = portal.UpdateName(StatusBroadcastName, types.EmptyJID, nil, false) || update
-		update = portal.UpdateTopic(StatusBroadcastTopic, types.EmptyJID, nil, false) || update
+		update = portal.UpdateName(StatusBroadcastName, types.EmptyJID, false) || update
+		update = portal.UpdateTopic(StatusBroadcastTopic, types.EmptyJID, false) || update
 		return update
 	} else if portal.IsBroadcastList() {
 		update := false
@@ -680,8 +683,8 @@ func (portal *Portal) UpdateMetadata(user *User) bool {
 
 	portal.SyncParticipants(user, metadata)
 	update := false
-	update = portal.UpdateName(metadata.Name, metadata.NameSetBy, nil, false) || update
-	update = portal.UpdateTopic(metadata.Topic, metadata.TopicSetBy, nil, false) || update
+	update = portal.UpdateName(metadata.Name, metadata.NameSetBy, false) || update
+	update = portal.UpdateTopic(metadata.Topic, metadata.TopicSetBy, false) || update
 
 	portal.RestrictMessageSending(metadata.IsAnnounce)
 	portal.RestrictMetadataChanges(metadata.IsLocked)
@@ -764,7 +767,7 @@ func (portal *Portal) Sync(user *User) bool {
 	update := false
 	update = portal.UpdateMetadata(user) || update
 	if !portal.IsPrivateChat() && !portal.IsBroadcastList() && portal.Avatar == "" {
-		update = portal.UpdateAvatar(user, false) || update
+		update = portal.UpdateAvatar(user, types.EmptyJID, false) || update
 	}
 	if update {
 		portal.Update()
@@ -798,35 +801,35 @@ func (portal *Portal) GetBasePowerLevels() *event.PowerLevelsEventContent {
 	}
 }
 
-//func (portal *Portal) ChangeAdminStatus(jids []string, setAdmin bool) id.EventID {
-//	levels, err := portal.MainIntent().PowerLevels(portal.MXID)
-//	if err != nil {
-//		levels = portal.GetBasePowerLevels()
-//	}
-//	newLevel := 0
-//	if setAdmin {
-//		newLevel = 50
-//	}
-//	changed := false
-//	for _, jid := range jids {
-//		puppet := portal.bridge.GetPuppetByJID(jid)
-//		changed = levels.EnsureUserLevel(puppet.MXID, newLevel) || changed
-//
-//		user := portal.bridge.GetUserByJID(jid)
-//		if user != nil {
-//			changed = levels.EnsureUserLevel(user.MXID, newLevel) || changed
-//		}
-//	}
-//	if changed {
-//		resp, err := portal.MainIntent().SetPowerLevels(portal.MXID, levels)
-//		if err != nil {
-//			portal.log.Errorln("Failed to change power levels:", err)
-//		} else {
-//			return resp.EventID
-//		}
-//	}
-//	return ""
-//}
+func (portal *Portal) ChangeAdminStatus(jids []types.JID, setAdmin bool) id.EventID {
+	levels, err := portal.MainIntent().PowerLevels(portal.MXID)
+	if err != nil {
+		levels = portal.GetBasePowerLevels()
+	}
+	newLevel := 0
+	if setAdmin {
+		newLevel = 50
+	}
+	changed := false
+	for _, jid := range jids {
+		puppet := portal.bridge.GetPuppetByJID(jid)
+		changed = levels.EnsureUserLevel(puppet.MXID, newLevel) || changed
+
+		user := portal.bridge.GetUserByJID(jid)
+		if user != nil {
+			changed = levels.EnsureUserLevel(user.MXID, newLevel) || changed
+		}
+	}
+	if changed {
+		resp, err := portal.MainIntent().SetPowerLevels(portal.MXID, levels)
+		if err != nil {
+			portal.log.Errorln("Failed to change power levels:", err)
+		} else {
+			return resp.EventID
+		}
+	}
+	return ""
+}
 
 func (portal *Portal) RestrictMessageSending(restrict bool) id.EventID {
 	levels, err := portal.MainIntent().PowerLevels(portal.MXID)
@@ -1079,7 +1082,7 @@ func (portal *Portal) backfill(source *User, messages []*waProto.HistorySyncMsg)
 			intent = puppet.DefaultIntent()
 		} else {
 			intent = puppet.IntentFor(portal)
-			if intent.IsCustomPuppet && !portal.bridge.Config.Bridge.DoublePuppetBackfill {
+			if intent.IsCustomPuppet && !portal.bridge.Config.Bridge.HistorySync.DoublePuppetBackfill {
 				intent = puppet.DefaultIntent()
 				addMember(puppet)
 			}
@@ -1266,7 +1269,7 @@ func (portal *Portal) CreateMatrixRoom(user *User) error {
 			portal.Name = metadata.Name
 			portal.Topic = metadata.Topic
 		}
-		portal.UpdateAvatar(user, false)
+		portal.UpdateAvatar(user, types.EmptyJID, false)
 	}
 
 	bridgeInfoStateKey, bridgeInfo := portal.getBridgeInfo()
@@ -1337,6 +1340,7 @@ func (portal *Portal) CreateMatrixRoom(user *User) error {
 	}
 
 	portal.ensureUserInvited(user)
+	user.syncChatDoublePuppetDetails(portal, true)
 
 	if metadata != nil {
 		portal.SyncParticipants(user, metadata)
@@ -1678,95 +1682,104 @@ func (portal *Portal) convertContactMessage(intent *appservice.IntentAPI, msg *w
 	return &ConvertedMessage{Intent: intent, Type: event.EventMessage, Content: content}
 }
 
-// FIXME
-//func (portal *Portal) tryKickUser(userID id.UserID, intent *appservice.IntentAPI) error {
-//	_, err := intent.KickUser(portal.MXID, &mautrix.ReqKickUser{UserID: userID})
-//	if err != nil {
-//		httpErr, ok := err.(mautrix.HTTPError)
-//		if ok && httpErr.RespError != nil && httpErr.RespError.ErrCode == "M_FORBIDDEN" {
-//			_, err = portal.MainIntent().KickUser(portal.MXID, &mautrix.ReqKickUser{UserID: userID})
-//		}
-//	}
-//	return err
-//}
-//
-//func (portal *Portal) removeUser(isSameUser bool, kicker *appservice.IntentAPI, target id.UserID, targetIntent *appservice.IntentAPI) {
-//	if !isSameUser || targetIntent == nil {
-//		err := portal.tryKickUser(target, kicker)
-//		if err != nil {
-//			portal.log.Warnfln("Failed to kick %s from %s: %v", target, portal.MXID, err)
-//			if targetIntent != nil {
-//				_, _ = targetIntent.LeaveRoom(portal.MXID)
-//			}
-//		}
-//	} else {
-//		_, err := targetIntent.LeaveRoom(portal.MXID)
-//		if err != nil {
-//			portal.log.Warnfln("Failed to leave portal as %s: %v", target, err)
-//			_, _ = portal.MainIntent().KickUser(portal.MXID, &mautrix.ReqKickUser{UserID: target})
-//		}
-//	}
-//}
-//
-//func (portal *Portal) HandleWhatsAppKick(source *User, senderJID string, jids []string) {
-//	sender := portal.bridge.GetPuppetByJID(senderJID)
-//	senderIntent := sender.IntentFor(portal)
-//	for _, jid := range jids {
-//		if source != nil && source.JID == jid {
-//			portal.log.Debugln("Ignoring self-kick by", source.MXID)
-//			continue
-//		}
-//		puppet := portal.bridge.GetPuppetByJID(jid)
-//		portal.removeUser(puppet.JID == sender.JID, senderIntent, puppet.MXID, puppet.DefaultIntent())
-//
-//		if !portal.IsBroadcastList() {
-//			user := portal.bridge.GetUserByJID(jid)
-//			if user != nil {
-//				var customIntent *appservice.IntentAPI
-//				if puppet.CustomMXID == user.MXID {
-//					customIntent = puppet.CustomIntent()
-//				}
-//				portal.removeUser(puppet.JID == sender.JID, senderIntent, user.MXID, customIntent)
-//			}
-//		}
-//	}
-//}
-//
-//func (portal *Portal) HandleWhatsAppInvite(source *User, senderJID string, intent *appservice.IntentAPI, jids []string) (evtID id.EventID) {
-//	if intent == nil {
-//		intent = portal.MainIntent()
-//		if senderJID != "unknown" {
-//			sender := portal.bridge.GetPuppetByJID(senderJID)
-//			intent = sender.IntentFor(portal)
-//		}
-//	}
-//	for _, jid := range jids {
-//		puppet := portal.bridge.GetPuppetByJID(jid)
-//		puppet.SyncContact(source, true)
-//		content := event.Content{
-//			Parsed: event.MemberEventContent{
-//				Membership:  "invite",
-//				Displayname: puppet.Displayname,
-//				AvatarURL:   puppet.AvatarURL.CUString(),
-//			},
-//			Raw: map[string]interface{}{
-//				"net.maunium.whatsapp.puppet": true,
-//			},
-//		}
-//		resp, err := intent.SendStateEvent(portal.MXID, event.StateMember, puppet.MXID.String(), &content)
-//		if err != nil {
-//			portal.log.Warnfln("Failed to invite %s as %s: %v", puppet.MXID, intent.UserID, err)
-//			_ = portal.MainIntent().EnsureInvited(portal.MXID, puppet.MXID)
-//		} else {
-//			evtID = resp.EventID
-//		}
-//		err = puppet.DefaultIntent().EnsureJoined(portal.MXID)
-//		if err != nil {
-//			portal.log.Errorfln("Failed to ensure %s is joined: %v", puppet.MXID, err)
-//		}
-//	}
-//	return
-//}
+func (portal *Portal) tryKickUser(userID id.UserID, intent *appservice.IntentAPI) error {
+	_, err := intent.KickUser(portal.MXID, &mautrix.ReqKickUser{UserID: userID})
+	if err != nil {
+		httpErr, ok := err.(mautrix.HTTPError)
+		if ok && httpErr.RespError != nil && httpErr.RespError.ErrCode == "M_FORBIDDEN" {
+			_, err = portal.MainIntent().KickUser(portal.MXID, &mautrix.ReqKickUser{UserID: userID})
+		}
+	}
+	return err
+}
+
+func (portal *Portal) removeUser(isSameUser bool, kicker *appservice.IntentAPI, target id.UserID, targetIntent *appservice.IntentAPI) {
+	if !isSameUser || targetIntent == nil {
+		err := portal.tryKickUser(target, kicker)
+		if err != nil {
+			portal.log.Warnfln("Failed to kick %s from %s: %v", target, portal.MXID, err)
+			if targetIntent != nil {
+				_, _ = portal.leaveWithPuppetMeta(targetIntent)
+			}
+		}
+	} else {
+		_, err := portal.leaveWithPuppetMeta(targetIntent)
+		if err != nil {
+			portal.log.Warnfln("Failed to leave portal as %s: %v", target, err)
+			_, _ = portal.MainIntent().KickUser(portal.MXID, &mautrix.ReqKickUser{UserID: target})
+		}
+	}
+}
+
+func (portal *Portal) HandleWhatsAppKick(source *User, senderJID types.JID, jids []types.JID) {
+	sender := portal.bridge.GetPuppetByJID(senderJID)
+	senderIntent := sender.IntentFor(portal)
+	for _, jid := range jids {
+		if source != nil && source.JID.User == jid.User {
+			portal.log.Debugln("Ignoring self-kick by", source.MXID)
+			continue
+		}
+		puppet := portal.bridge.GetPuppetByJID(jid)
+		portal.removeUser(puppet.JID == sender.JID, senderIntent, puppet.MXID, puppet.DefaultIntent())
+
+		if !portal.IsBroadcastList() {
+			user := portal.bridge.GetUserByJID(jid)
+			if user != nil {
+				var customIntent *appservice.IntentAPI
+				if puppet.CustomMXID == user.MXID {
+					customIntent = puppet.CustomIntent()
+				}
+				portal.removeUser(puppet.JID == sender.JID, senderIntent, user.MXID, customIntent)
+			}
+		}
+	}
+}
+
+func (portal *Portal) leaveWithPuppetMeta(intent *appservice.IntentAPI) (*mautrix.RespSendEvent, error) {
+	content := event.Content{
+		Parsed: event.MemberEventContent{
+			Membership: event.MembershipLeave,
+		},
+		Raw: map[string]interface{}{
+			"net.maunium.whatsapp.puppet": true,
+		},
+	}
+	return intent.SendStateEvent(portal.MXID, event.StateMember, intent.UserID.String(), &content)
+}
+
+func (portal *Portal) HandleWhatsAppInvite(source *User, senderJID *types.JID, jids []types.JID) (evtID id.EventID) {
+	intent := portal.MainIntent()
+	if senderJID != nil && !senderJID.IsEmpty() {
+		sender := portal.bridge.GetPuppetByJID(*senderJID)
+		intent = sender.IntentFor(portal)
+	}
+	for _, jid := range jids {
+		puppet := portal.bridge.GetPuppetByJID(jid)
+		puppet.SyncContact(source, true)
+		content := event.Content{
+			Parsed: event.MemberEventContent{
+				Membership:  "invite",
+				Displayname: puppet.Displayname,
+				AvatarURL:   puppet.AvatarURL.CUString(),
+			},
+			Raw: map[string]interface{}{
+				"net.maunium.whatsapp.puppet": true,
+			},
+		}
+		resp, err := intent.SendStateEvent(portal.MXID, event.StateMember, puppet.MXID.String(), &content)
+		if err != nil {
+			portal.log.Warnfln("Failed to invite %s as %s: %v", puppet.MXID, intent.UserID, err)
+			_ = portal.MainIntent().EnsureInvited(portal.MXID, puppet.MXID)
+		} else {
+			evtID = resp.EventID
+		}
+		err = puppet.DefaultIntent().EnsureJoined(portal.MXID)
+		if err != nil {
+			portal.log.Errorfln("Failed to ensure %s is joined: %v", puppet.MXID, err)
+		}
+	}
+	return
+}
 
 func (portal *Portal) makeMediaBridgeFailureMessage(intent *appservice.IntentAPI, info *types.MessageInfo, bridgeErr error, captionContent *event.MessageEventContent) *ConvertedMessage {
 	portal.log.Errorfln("Failed to bridge media for %s: %v", info.ID, bridgeErr)
