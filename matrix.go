@@ -121,23 +121,9 @@ func (mx *MatrixHandler) HandleBotInvite(evt *event.Event) {
 		return
 	}
 
-	hasPuppets := false
-	for mxid, _ := range members.Joined {
-		if mxid == intent.UserID || mxid == evt.Sender {
-			continue
-		} else if _, ok := mx.bridge.ParsePuppetMXID(mxid); ok {
-			hasPuppets = true
-			continue
-		}
-		mx.log.Debugln("Leaving multi-user room", evt.RoomID, "after accepting invite from", evt.Sender)
-		_, _ = intent.SendNotice(evt.RoomID, "This bridge is user-specific, please don't invite me into rooms with other users.")
-		_, _ = intent.LeaveRoom(evt.RoomID)
-		return
-	}
-
 	_, _ = mx.sendNoticeWithMarkdown(evt.RoomID, mx.bridge.Config.Bridge.ManagementRoomText.Welcome)
 
-	if !hasPuppets && (len(user.ManagementRoom) == 0 || evt.Content.AsMember().IsDirect) {
+	if len(members.Joined) == 2 && (len(user.ManagementRoom) == 0 || evt.Content.AsMember().IsDirect) {
 		user.SetManagementRoom(evt.RoomID)
 		_, _ = intent.SendNotice(user.ManagementRoom, "This room has been registered as your bridge management/status room.")
 		mx.log.Debugln(evt.RoomID, "registered as a management room with", evt.Sender)
