@@ -121,11 +121,13 @@ type Portal struct {
 
 	FirstEventID id.EventID
 	NextBatchID  id.BatchID
+
+	RelayUserID id.UserID
 }
 
 func (portal *Portal) Scan(row Scannable) *Portal {
-	var mxid, avatarURL, firstEventID, nextBatchID sql.NullString
-	err := row.Scan(&portal.Key.JID, &portal.Key.Receiver, &mxid, &portal.Name, &portal.Topic, &portal.Avatar, &avatarURL, &portal.Encrypted, &firstEventID, &nextBatchID)
+	var mxid, avatarURL, firstEventID, nextBatchID, relayUserID sql.NullString
+	err := row.Scan(&portal.Key.JID, &portal.Key.Receiver, &mxid, &portal.Name, &portal.Topic, &portal.Avatar, &avatarURL, &portal.Encrypted, &firstEventID, &nextBatchID, &relayUserID)
 	if err != nil {
 		if err != sql.ErrNoRows {
 			portal.log.Errorln("Database scan failed:", err)
@@ -136,6 +138,7 @@ func (portal *Portal) Scan(row Scannable) *Portal {
 	portal.AvatarURL, _ = id.ParseContentURI(avatarURL.String)
 	portal.FirstEventID = id.EventID(firstEventID.String)
 	portal.NextBatchID = id.BatchID(nextBatchID.String)
+	portal.RelayUserID = id.UserID(relayUserID.String)
 	return portal
 }
 
@@ -146,17 +149,24 @@ func (portal *Portal) mxidPtr() *id.RoomID {
 	return nil
 }
 
+func (portal *Portal) relayUserPtr() *id.UserID {
+	if len(portal.RelayUserID) > 0 {
+		return &portal.RelayUserID
+	}
+	return nil
+}
+
 func (portal *Portal) Insert() {
-	_, err := portal.db.Exec("INSERT INTO portal (jid, receiver, mxid, name, topic, avatar, avatar_url, encrypted, first_event_id, next_batch_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)",
-		portal.Key.JID, portal.Key.Receiver, portal.mxidPtr(), portal.Name, portal.Topic, portal.Avatar, portal.AvatarURL.String(), portal.Encrypted, portal.FirstEventID.String(), portal.NextBatchID.String())
+	_, err := portal.db.Exec("INSERT INTO portal (jid, receiver, mxid, name, topic, avatar, avatar_url, encrypted, first_event_id, next_batch_id, relay_user_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)",
+		portal.Key.JID, portal.Key.Receiver, portal.mxidPtr(), portal.Name, portal.Topic, portal.Avatar, portal.AvatarURL.String(), portal.Encrypted, portal.FirstEventID.String(), portal.NextBatchID.String(), portal.relayUserPtr())
 	if err != nil {
 		portal.log.Warnfln("Failed to insert %s: %v", portal.Key, err)
 	}
 }
 
 func (portal *Portal) Update() {
-	_, err := portal.db.Exec("UPDATE portal SET mxid=$1, name=$2, topic=$3, avatar=$4, avatar_url=$5, encrypted=$6, first_event_id=$7, next_batch_id=$8 WHERE jid=$9 AND receiver=$10",
-		portal.mxidPtr(), portal.Name, portal.Topic, portal.Avatar, portal.AvatarURL.String(), portal.Encrypted, portal.FirstEventID.String(), portal.NextBatchID.String(), portal.Key.JID, portal.Key.Receiver)
+	_, err := portal.db.Exec("UPDATE portal SET mxid=$3, name=$4, topic=$5, avatar=$6, avatar_url=$7, encrypted=$8, first_event_id=$9, next_batch_id=$10, relay_user_id=$11 WHERE jid=$1 AND receiver=$2",
+		portal.Key.JID, portal.Key.Receiver, portal.mxidPtr(), portal.Name, portal.Topic, portal.Avatar, portal.AvatarURL.String(), portal.Encrypted, portal.FirstEventID.String(), portal.NextBatchID.String(), portal.relayUserPtr())
 	if err != nil {
 		portal.log.Warnfln("Failed to update %s: %v", portal.Key, err)
 	}

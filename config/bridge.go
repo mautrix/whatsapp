@@ -85,7 +85,7 @@ type BridgeConfig struct {
 
 	Permissions PermissionConfig `yaml:"permissions"`
 
-	Relaybot RelaybotConfig `yaml:"relaybot"`
+	Relay RelaybotConfig `yaml:"relay"`
 
 	usernameTemplate    *template.Template `yaml:"-"`
 	displaynameTemplate *template.Template `yaml:"-"`
@@ -110,6 +110,8 @@ func (bc *BridgeConfig) setDefaults() {
 
 	bc.BridgeNotices = true
 	bc.EnableStatusBroadcast = true
+
+	bc.Relay.AdminOnly = true
 }
 
 type umBridgeConfig BridgeConfig
@@ -271,10 +273,8 @@ func (pc PermissionConfig) GetPermissionLevel(userID id.UserID) PermissionLevel 
 }
 
 type RelaybotConfig struct {
-	Enabled        bool        `yaml:"enabled"`
-	ManagementRoom id.RoomID   `yaml:"management"`
-	InviteUsers    []id.UserID `yaml:"invites"`
-
+	Enabled          bool                         `yaml:"enabled"`
+	AdminOnly        bool                         `yaml:"admin_only"`
 	MessageFormats   map[event.MessageType]string `yaml:"message_formats"`
 	messageTemplates *template.Template           `yaml:"-"`
 }

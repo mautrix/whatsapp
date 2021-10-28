@@ -58,8 +58,6 @@ type User struct {
 	Whitelisted         bool
 	RelaybotWhitelisted bool
 
-	IsRelaybot bool
-
 	mgmtCreateLock sync.Mutex
 	connLock       sync.Mutex
 
@@ -179,8 +177,6 @@ func (bridge *Bridge) NewUser(dbUser *database.User) *User {
 		log:    bridge.Log.Sub("User").Sub(string(dbUser.MXID)),
 
 		historySyncs: make(chan *events.HistorySync, 32),
-
-		IsRelaybot: false,
 	}
 	user.RelaybotWhitelisted = user.bridge.Config.Bridge.Permissions.IsRelaybotWhitelisted(user.MXID)
 	user.Whitelisted = user.bridge.Config.Bridge.Permissions.IsWhitelisted(user.MXID)

@@ -93,17 +93,11 @@ func (handler *CommandHandler) Handle(roomID id.RoomID, user *User, message stri
 		Args:    args[1:],
 	}
 	handler.log.Debugfln("%s sent '%s' in %s", user.MXID, message, roomID)
-	if roomID == handler.bridge.Config.Bridge.Relaybot.ManagementRoom {
-		handler.CommandRelaybot(ce)
-	} else {
-		handler.CommandMux(ce)
-	}
+	handler.CommandMux(ce)
 }
 
 func (handler *CommandHandler) CommandMux(ce *CommandEvent) {
 	switch ce.Command {
-	case "relaybot":
-		handler.CommandRelaybot(ce)
 	case "login":
 		handler.CommandLogin(ce)
 	case "logout-matrix":
@@ -134,7 +128,7 @@ func (handler *CommandHandler) CommandMux(ce *CommandEvent) {
 		handler.CommandLogout(ce)
 	case "toggle":
 		handler.CommandToggle(ce)
-	case "login-matrix", "sync", "list", "open", "pm", "invite-link", "join", "create":
+	case "set-relay", "unset-relay", "login-matrix", "sync", "list", "open", "pm", "invite-link", "join", "create":
 		if !ce.User.HasSession() {
 			ce.Reply("You are not logged in. Use the `login` command to log into WhatsApp.")
 			return
@@ -144,6 +138,10 @@ func (handler *CommandHandler) CommandMux(ce *CommandEvent) {
 		}
 
 		switch ce.Command {
+		case "set-relay":
+			handler.CommandSetRelay(ce)
+		case "unset-relay":
+			handler.CommandUnsetRelay(ce)
 		case "login-matrix":
 			handler.CommandLoginMatrix(ce)
 		case "list":
@@ -175,22 +173,35 @@ func (handler *CommandHandler) CommandDiscardMegolmSession(ce *CommandEvent) {
 	}
 }
 
-func (handler *CommandHandler) CommandRelaybot(ce *CommandEvent) {
-	if handler.bridge.Relaybot == nil {
-		ce.Reply("The relaybot is disabled")
-	} else if !ce.User.Admin {
-		ce.Reply("Only admins can manage the relaybot")
+const cmdSetRelayHelp = `set-relay - Relay messages in this room through your WhatsApp account.`
+
+func (handler *CommandHandler) CommandSetRelay(ce *CommandEvent) {
+	if !handler.bridge.Config.Bridge.Relay.Enabled {
+		ce.Reply("Relay mode is not enabled on this instance of the bridge")
+	} else if ce.Portal == nil {
+		ce.Reply("This is not a portal room")
+	} else if handler.bridge.Config.Bridge.Relay.AdminOnly && !ce.User.Admin {
+		ce.Reply("Only admins are allowed to enable relay mode on this instance of the bridge")
 	} else {
-		if ce.Command == "relaybot" {
-			if len(ce.Args) == 0 {
-				ce.Reply("**Usage:** `relaybot <command>`")
-				return
-			}
-			ce.Command = strings.ToLower(ce.Args[0])
-			ce.Args = ce.Args[1:]
-		}
-		ce.User = handler.bridge.Relaybot
-		handler.CommandMux(ce)
+		ce.Portal.RelayUserID = ce.User.MXID
+		ce.Portal.Update()
+		ce.Reply("Messages from non-logged-in users in this room will now be bridged through your WhatsApp account")
+	}
+}
+
+const cmdUnsetRelayHelp = `set-relay - Stop relaying messages in this room.`
+
+func (handler *CommandHandler) CommandUnsetRelay(ce *CommandEvent) {
+	if !handler.bridge.Config.Bridge.Relay.Enabled {
+		ce.Reply("Relay mode is not enabled on this instance of the bridge")
+	} else if ce.Portal == nil {
+		ce.Reply("This is not a portal room")
+	} else if handler.bridge.Config.Bridge.Relay.AdminOnly && !ce.User.Admin {
+		ce.Reply("Only admins are allowed to enable relay mode on this instance of the bridge")
+	} else {
+		ce.Portal.RelayUserID = ""
+		ce.Portal.Update()
+		ce.Reply("Messages from non-logged-in users will no longer be bridged in this room")
 	}
 }
 
@@ -627,7 +638,7 @@ const cmdHelpHelp = `help - Prints this help`
 // CommandHelp handles help command
 func (handler *CommandHandler) CommandHelp(ce *CommandEvent) {
 	cmdPrefix := ""
-	if ce.User.ManagementRoom != ce.RoomID || ce.User.IsRelaybot {
+	if ce.User.ManagementRoom != ce.RoomID {
 		cmdPrefix = handler.bridge.Config.Bridge.CommandPrefix + " "
 	}
 
@@ -640,6 +651,8 @@ func (handler *CommandHandler) CommandHelp(ce *CommandEvent) {
 		cmdPrefix + cmdReconnectHelp,
 		cmdPrefix + cmdDisconnectHelp,
 		cmdPrefix + cmdPingHelp,
+		cmdPrefix + cmdSetRelayHelp,
+		cmdPrefix + cmdUnsetRelayHelp,
 		cmdPrefix + cmdLoginMatrixHelp,
 		cmdPrefix + cmdLogoutMatrixHelp,
 		cmdPrefix + cmdToggleHelp,
@@ -871,14 +884,9 @@ func (handler *CommandHandler) CommandPM(ce *CommandEvent) {
 	puppet.SyncContact(user, true)
 	portal := user.GetPortalByJID(puppet.JID)
 	if len(portal.MXID) > 0 {
-		if !user.IsRelaybot {
-			_, err = portal.MainIntent().Client.InviteUser(portal.MXID, &mautrix.ReqInviteUser{UserID: user.MXID})
-			if httpErr, ok := err.(mautrix.HTTPError); ok && httpErr.RespError != nil && strings.Contains(httpErr.RespError.Err, "is already in the room") {
-				err = nil
-			}
-		}
-		if err != nil {
-			portal.log.Warnfln("Failed to invite %s to portal: %v. Creating new portal", user.MXID, err)
+		ok := portal.ensureUserInvited(user)
+		if !ok {
+			portal.log.Warnfln("ensureUserInvited(%s) returned false, creating new portal", user.MXID)
 			portal.MXID = ""
 		} else {
 			ce.Reply("You already have a private chat portal with that user at [%s](https://matrix.to/#/%s)", puppet.Displayname, portal.MXID)

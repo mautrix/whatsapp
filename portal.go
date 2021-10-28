@@ -190,7 +190,7 @@ type Portal struct {
 
 	messages chan PortalMessage
 
-	hasRelaybot *bool
+	relayUser *User
 }
 
 func (portal *Portal) handleMessageLoop() {
@@ -519,14 +519,17 @@ func (portal *Portal) SyncParticipants(source *User, metadata *types.GroupInfo) 
 	participantMap := make(map[types.JID]bool)
 	for _, participant := range metadata.Participants {
 		participantMap[participant.JID] = true
-		user := portal.bridge.GetUserByJID(participant.JID)
-		portal.userMXIDAction(user, portal.ensureMXIDInvited)
-
 		puppet := portal.bridge.GetPuppetByJID(participant.JID)
 		puppet.SyncContact(source, true)
-		err = puppet.IntentFor(portal).EnsureJoined(portal.MXID)
-		if err != nil {
-			portal.log.Warnfln("Failed to make puppet of %s join %s: %v", participant.JID, portal.MXID, err)
+		user := portal.bridge.GetUserByJID(participant.JID)
+		if user != nil {
+			portal.ensureUserInvited(user)
+		}
+		if user == nil || !puppet.IntentFor(portal).IsCustomPuppet {
+			err = puppet.IntentFor(portal).EnsureJoined(portal.MXID)
+			if err != nil {
+				portal.log.Warnfln("Failed to make puppet of %s join %s: %v", participant.JID, portal.MXID, err)
+			}
 		}
 
 		expectedLevel := 0
@@ -692,20 +695,6 @@ func (portal *Portal) UpdateMetadata(user *User) bool {
 	return update
 }
 
-func (portal *Portal) userMXIDAction(user *User, fn func(mxid id.UserID)) {
-	if user == nil {
-		return
-	}
-
-	if user == portal.bridge.Relaybot {
-		for _, mxid := range portal.bridge.Config.Bridge.Relaybot.InviteUsers {
-			fn(mxid)
-		}
-	} else {
-		fn(user.MXID)
-	}
-}
-
 func (portal *Portal) ensureMXIDInvited(mxid id.UserID) {
 	err := portal.MainIntent().EnsureInvited(portal.MXID, mxid)
 	if err != nil {
@@ -713,12 +702,7 @@ func (portal *Portal) ensureMXIDInvited(mxid id.UserID) {
 	}
 }
 
-func (portal *Portal) ensureUserInvited(user *User) {
-	if user.IsRelaybot {
-		portal.userMXIDAction(user, portal.ensureMXIDInvited)
-		return
-	}
-
+func (portal *Portal) ensureUserInvited(user *User) (ok bool) {
 	inviteContent := event.Content{
 		Parsed: &event.MemberEventContent{
 			Membership: event.MembershipInvite,
@@ -734,25 +718,27 @@ func (portal *Portal) ensureUserInvited(user *User) {
 	var httpErr mautrix.HTTPError
 	if err != nil && errors.As(err, &httpErr) && httpErr.RespError != nil && strings.Contains(httpErr.RespError.Err, "is already in the room") {
 		portal.bridge.StateStore.SetMembership(portal.MXID, user.MXID, event.MembershipJoin)
+		ok = true
 	} else if err != nil {
 		portal.log.Warnfln("Failed to invite %s: %v", user.MXID, err)
+	} else {
+		ok = true
 	}
 
 	if customPuppet != nil && customPuppet.CustomIntent() != nil {
 		err = customPuppet.CustomIntent().EnsureJoined(portal.MXID)
 		if err != nil {
 			portal.log.Warnfln("Failed to auto-join portal as %s: %v", user.MXID, err)
+			ok = false
+		} else {
+			ok = true
 		}
 	}
+	return
 }
 
 func (portal *Portal) Sync(user *User) bool {
 	portal.log.Infoln("Syncing portal for", user.MXID)
-
-	if user.IsRelaybot {
-		yes := true
-		portal.hasRelaybot = &yes
-	}
 
 	if len(portal.MXID) == 0 {
 		err := portal.CreateMatrixRoom(user)
@@ -1299,9 +1285,6 @@ func (portal *Portal) CreateMatrixRoom(user *User) error {
 	}
 
 	var invite []id.UserID
-	if user.IsRelaybot {
-		invite = portal.bridge.Config.Bridge.Relaybot.InviteUsers
-	}
 
 	if portal.bridge.Config.Bridge.Encryption.Default {
 		initialState = append(initialState, &event.Event{
@@ -1354,7 +1337,7 @@ func (portal *Portal) CreateMatrixRoom(user *User) error {
 	//if broadcastMetadata != nil {
 	//	portal.SyncBroadcastRecipients(user, broadcastMetadata)
 	//}
-	if portal.IsPrivateChat() && !user.IsRelaybot {
+	if portal.IsPrivateChat() {
 		puppet := user.bridge.GetPuppetByJID(portal.Key.JID)
 
 		if portal.bridge.Config.Bridge.Encryption.Default {
@@ -1397,15 +1380,16 @@ func (portal *Portal) IsStatusBroadcastList() bool {
 }
 
 func (portal *Portal) HasRelaybot() bool {
-	if portal.bridge.Relaybot == nil {
-		return false
-	} else if portal.hasRelaybot == nil {
-		// FIXME
-		//val := portal.bridge.Relaybot.IsInPortal(portal.Key)
-		val := true
-		portal.hasRelaybot = &val
+	return portal.bridge.Config.Bridge.Relay.Enabled && len(portal.RelayUserID) > 0
+}
+
+func (portal *Portal) GetRelayUser() *User {
+	if !portal.HasRelaybot() {
+		return nil
+	} else if portal.relayUser == nil {
+		portal.relayUser = portal.bridge.GetUserByMXID(portal.RelayUserID)
 	}
-	return *portal.hasRelaybot
+	return portal.relayUser
 }
 
 func (portal *Portal) MainIntent() *appservice.IntentAPI {
@@ -1426,8 +1410,8 @@ func (portal *Portal) SetReply(content *event.MessageEventContent, replyToID typ
 			portal.log.Warnln("Failed to get reply target:", err)
 			return
 		}
+		_ = evt.Content.ParseRaw(evt.Type)
 		if evt.Type == event.EventEncrypted {
-			_ = evt.Content.ParseRaw(evt.Type)
 			decryptedEvt, err := portal.bridge.Crypto.Decrypt(evt)
 			if err != nil {
 				portal.log.Warnln("Failed to decrypt reply target:", err)
@@ -1435,7 +1419,6 @@ func (portal *Portal) SetReply(content *event.MessageEventContent, replyToID typ
 				evt = decryptedEvt
 			}
 		}
-		_ = evt.Content.ParseRaw(evt.Type)
 		content.SetReply(evt)
 	}
 	return
@@ -2176,7 +2159,7 @@ func (portal *Portal) addRelaybotFormat(sender *User, content *event.MessageEven
 		content.FormattedBody = strings.Replace(html.EscapeString(content.Body), "\n", "<br/>", -1)
 		content.Format = event.FormatHTML
 	}
-	data, err := portal.bridge.Config.Bridge.Relaybot.FormatMessage(content, sender.MXID, member)
+	data, err := portal.bridge.Config.Bridge.Relay.FormatMessage(content, sender.MXID, member)
 	if err != nil {
 		portal.log.Errorln("Failed to apply relaybot format:", err)
 	}
@@ -2243,18 +2226,13 @@ func (portal *Portal) convertMatrixMessage(sender *User, evt *event.Event) (*waP
 		}
 	}
 	relaybotFormatted := false
-	if sender.NeedsRelaybot(portal) {
+	if !sender.HasSession() {
 		if !portal.HasRelaybot() {
-			if sender.HasSession() {
-				portal.log.Debugln("Database says", sender.MXID, "not in chat and no relaybot, but trying to send anyway")
-			} else {
-				portal.log.Debugln("Ignoring message from", sender.MXID, "in chat with no relaybot")
-				return nil, sender
-			}
-		} else {
-			relaybotFormatted = portal.addRelaybotFormat(sender, content)
-			sender = portal.bridge.Relaybot
+			portal.log.Debugln("Ignoring message from", sender.MXID, "in chat with no relaybot")
+			return nil, sender
 		}
+		relaybotFormatted = portal.addRelaybotFormat(sender, content)
+		sender = portal.GetRelayUser()
 	}
 	if evt.Type == event.EventSticker {
 		content.MsgType = event.MsgImage

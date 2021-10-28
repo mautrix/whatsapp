@@ -114,12 +114,6 @@ func (mx *MatrixHandler) HandleBotInvite(evt *event.Event) {
 		return
 	}
 
-	if evt.RoomID == mx.bridge.Config.Bridge.Relaybot.ManagementRoom {
-		_, _ = intent.SendNotice(evt.RoomID, "This is the relaybot management room. Send `!wa help` to get a list of commands.")
-		mx.log.Debugln("Joined relaybot management room", evt.RoomID, "after invite from", evt.Sender)
-		return
-	}
-
 	hasPuppets := false
 	for mxid, _ := range members.Joined {
 		if mxid == intent.UserID || mxid == evt.Sender {

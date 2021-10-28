@@ -47,19 +47,27 @@ import (
 	"maunium.net/go/mautrix-whatsapp/database/upgrades"
 )
 
+// The name and repo URL of the bridge.
 var (
-	// These are static
 	Name = "mautrix-whatsapp"
 	URL  = "https://github.com/mautrix/whatsapp"
-	// This is changed when making a release
-	Version = "0.1.8"
-	// This is filled by init()
-	WAVersion     = ""
-	VersionString = ""
-	// These are filled at build time with the -X linker flag
+)
+
+// Information to find out exactly which commit the bridge was built from.
+// These are filled at build time with the -X linker flag.
+var (
 	Tag       = "unknown"
 	Commit    = "unknown"
 	BuildTime = "unknown"
+)
+
+var (
+	// Version is the version number of the bridge. Changed manually when making a release.
+	Version = "0.1.8"
+	// WAVersion is the version number exposed to WhatsApp. Filled in init()
+	WAVersion = ""
+	// VersionString is the bridge version, plus commit information. Filled in init() using the build-time values.
+	VersionString = ""
 )
 
 func init() {
@@ -151,7 +159,6 @@ type Bridge struct {
 	Provisioning   *ProvisioningAPI
 	Bot            *appservice.IntentAPI
 	Formatter      *Formatter
-	Relaybot       *User
 	Crypto         Crypto
 	Metrics        *MetricsHandler
 	WAContainer    *sqlstore.Container
@@ -320,7 +327,6 @@ func (bridge *Bridge) Start() {
 		bridge.Log.Debugln("Initializing provisioning API")
 		bridge.Provisioning.Init()
 	}
-	bridge.LoadRelaybot()
 	bridge.Log.Debugln("Starting application service HTTP server")
 	go bridge.AS.Start()
 	bridge.Log.Debugln("Starting event processor")
@@ -351,21 +357,6 @@ func (bridge *Bridge) ResendBridgeInfo() {
 		portal.UpdateBridgeInfo()
 	}
 	bridge.Log.Infoln("Finished re-sending bridge info state events")
-}
-
-func (bridge *Bridge) LoadRelaybot() {
-	if !bridge.Config.Bridge.Relaybot.Enabled {
-		return
-	}
-	bridge.Relaybot = bridge.GetUserByMXID("relaybot")
-	if bridge.Relaybot.HasSession() {
-		bridge.Log.Debugln("Relaybot is enabled")
-	} else {
-		bridge.Log.Debugln("Relaybot is enabled, but not logged in")
-	}
-	bridge.Relaybot.ManagementRoom = bridge.Config.Bridge.Relaybot.ManagementRoom
-	bridge.Relaybot.IsRelaybot = true
-	bridge.Relaybot.Connect()
 }
 
 func (bridge *Bridge) UpdateBotProfile() {
