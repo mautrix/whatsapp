@@ -83,6 +83,13 @@ type BridgeConfig struct {
 
 	CommandPrefix string `yaml:"command_prefix"`
 
+	ManagementRoomText struct {
+		Welcome            string `yaml:"welcome"`
+		WelcomeConnected   string `yaml:"welcome_connected"`
+		WelcomeUnconnected string `yaml:"welcome_unconnected"`
+		AdditionalHelp     string `yaml:"additional_help"`
+	} `yaml:"management_room_text"`
+
 	Encryption struct {
 		Allow   bool `yaml:"allow"`
 		Default bool `yaml:"default"`
@@ -136,6 +143,10 @@ func (bc *BridgeConfig) setDefaults() {
 	bc.PrivateChatPortalMeta = false
 	bc.BridgeNotices = true
 	bc.EnableStatusBroadcast = true
+
+	bc.ManagementRoomText.Welcome = "Hello, I'm a WhatsApp bridge bot."
+	bc.ManagementRoomText.WelcomeConnected = "Use `help` for help."
+	bc.ManagementRoomText.WelcomeUnconnected = "Use `help` for help or `login` to log in."
 }
 
 type umBridgeConfig BridgeConfig

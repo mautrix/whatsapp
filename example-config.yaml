@@ -209,6 +209,18 @@ bridge:
     # The prefix for commands. Only required in non-management rooms.
     command_prefix: "!wa"
 
+    # Messages sent upon joining a management room.
+    # Markdown is supported. The defaults are listed below.
+    management_room_text:
+        # Sent when joining a room.
+        welcome: "Hello, I'm a WhatsApp bridge bot."
+        # Sent when joining a management room and the user is already logged in.
+        welcome_connected: "Use `help` for help."
+        # Sent when joining a management room and the user is not logged in.
+        welcome_unconnected: "Use `help` for help or `login` to log in."
+        # Optional extra text sent when joining a management room.
+        # additional_help: "This would be some additional text in case you need it."
+
     # End-to-bridge encryption support options.
     #
     # See https://docs.mau.fi/bridges/general/end-to-bridge-encryption.html for more info.
