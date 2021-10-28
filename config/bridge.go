@@ -193,10 +193,10 @@ type PermissionConfig map[string]PermissionLevel
 type PermissionLevel int
 
 const (
-	PermissionLevelDefault  PermissionLevel = 0
-	PermissionLevelRelaybot PermissionLevel = 5
-	PermissionLevelUser     PermissionLevel = 10
-	PermissionLevelAdmin    PermissionLevel = 100
+	PermissionLevelDefault PermissionLevel = 0
+	PermissionLevelRelay   PermissionLevel = 5
+	PermissionLevelUser    PermissionLevel = 10
+	PermissionLevelAdmin   PermissionLevel = 100
 )
 
 func (pc *PermissionConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
@@ -211,8 +211,8 @@ func (pc *PermissionConfig) UnmarshalYAML(unmarshal func(interface{}) error) err
 	}
 	for key, value := range rawPC {
 		switch strings.ToLower(value) {
-		case "relaybot":
-			(*pc)[key] = PermissionLevelRelaybot
+		case "relaybot", "relay":
+			(*pc)[key] = PermissionLevelRelay
 		case "user":
 			(*pc)[key] = PermissionLevelUser
 		case "admin":
@@ -236,8 +236,8 @@ func (pc *PermissionConfig) MarshalYAML() (interface{}, error) {
 	rawPC := make(map[string]string)
 	for key, value := range *pc {
 		switch value {
-		case PermissionLevelRelaybot:
-			rawPC[key] = "relaybot"
+		case PermissionLevelRelay:
+			rawPC[key] = "relay"
 		case PermissionLevelUser:
 			rawPC[key] = "user"
 		case PermissionLevelAdmin:
@@ -249,8 +249,8 @@ func (pc *PermissionConfig) MarshalYAML() (interface{}, error) {
 	return rawPC, nil
 }
 
-func (pc PermissionConfig) IsRelaybotWhitelisted(userID id.UserID) bool {
-	return pc.GetPermissionLevel(userID) >= PermissionLevelRelaybot
+func (pc PermissionConfig) IsRelayWhitelisted(userID id.UserID) bool {
+	return pc.GetPermissionLevel(userID) >= PermissionLevelRelay
 }
 
 func (pc PermissionConfig) IsWhitelisted(userID id.UserID) bool {

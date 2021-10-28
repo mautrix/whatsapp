@@ -204,7 +204,7 @@ bridge:
 
     # Permissions for using the bridge.
     # Permitted values:
-    # relaybot - Talk through the relaybot (if enabled), no access otherwise
+    #    relay - Talk through the relaybot (if enabled), no access otherwise
     #     user - Access to use the bridge to chat with a WhatsApp account.
     #    admin - User level and some additional administration tools
     # Permitted keys:
@@ -212,7 +212,7 @@ bridge:
     #   domain - All users on that homeserver
     #     mxid - Specific user
     permissions:
-        "*": relaybot
+        "*": relay
         "example.com": user
         "@admin:example.com": admin
 

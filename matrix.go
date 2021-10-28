@@ -320,7 +320,7 @@ func (mx *MatrixHandler) shouldIgnoreEvent(evt *event.Event) bool {
 		return true
 	}
 	user := mx.bridge.GetUserByMXID(evt.Sender)
-	if !user.RelaybotWhitelisted {
+	if !user.RelayWhitelisted {
 		return true
 	}
 	return false

@@ -185,11 +185,11 @@ func (prov *ProvisioningAPI) Ping(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	resp := map[string]interface{}{
-		"mxid":                 user.MXID,
-		"admin":                user.Admin,
-		"whitelisted":          user.Whitelisted,
-		"relaybot_whitelisted": user.RelaybotWhitelisted,
-		"whatsapp":             wa,
+		"mxid":              user.MXID,
+		"admin":             user.Admin,
+		"whitelisted":       user.Whitelisted,
+		"relay_whitelisted": user.RelayWhitelisted,
+		"whatsapp":          wa,
 	}
 	jsonResponse(w, http.StatusOK, resp)
 }
