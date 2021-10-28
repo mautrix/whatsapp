@@ -315,6 +315,17 @@ func (prov *ProvisioningAPI) Login(w http.ResponseWriter, r *http.Request) {
 					Error:   "QR code scan timed out. Please try again.",
 					ErrCode: "login timed out",
 				})
+			case whatsmeow.QRChannelErrUnexpectedEvent:
+				user.log.Debugln("Login via provisioning API failed due to unexpected event")
+				_ = c.WriteJSON(Error{
+					Error:   "Got unexpected event while waiting for QRs, perhaps you're already logged in?",
+					ErrCode: "unexpected event",
+				})
+			case whatsmeow.QRChannelScannedWithoutMultidevice:
+				_ = c.WriteJSON(Error{
+					Error:   "Please enable the WhatsApp multidevice beta and scan the QR code again.",
+					ErrCode: "multidevice not enabled",
+				})
 			default:
 				_ = c.WriteJSON(map[string]interface{}{
 					"code": string(evt),

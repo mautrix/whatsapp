@@ -420,6 +420,8 @@ func (handler *CommandHandler) CommandLogin(ce *CommandEvent) {
 			ce.Reply("QR code timed out. Please restart the login.")
 		case whatsmeow.QRChannelErrUnexpectedEvent:
 			ce.Reply("Failed to log in: unexpected connection event from server")
+		case whatsmeow.QRChannelScannedWithoutMultidevice:
+			ce.Reply("Please enable the WhatsApp multidevice beta and scan the QR code again.")
 		default:
 			qrEventID = ce.User.sendQR(ce, string(item), qrEventID)
 		}
