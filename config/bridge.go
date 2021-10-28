@@ -32,9 +32,6 @@ type BridgeConfig struct {
 	DisplaynameTemplate string `yaml:"displayname_template"`
 
 	DeliveryReceipts      bool `yaml:"delivery_receipts"`
-	MaxConnectionAttempts int  `yaml:"max_connection_attempts"`
-	ConnectionRetryDelay  int  `yaml:"connection_retry_delay"`
-	ReportConnectionRetry bool `yaml:"report_connection_retry"`
 	PortalMessageBuffer   int  `yaml:"portal_message_buffer"`
 
 	CallNotices struct {
@@ -99,9 +96,6 @@ type BridgeConfig struct {
 }
 
 func (bc *BridgeConfig) setDefaults() {
-	bc.MaxConnectionAttempts = 3
-	bc.ConnectionRetryDelay = -1
-	bc.ReportConnectionRetry = true
 	bc.PortalMessageBuffer = 128
 
 	bc.CallNotices.Start = true

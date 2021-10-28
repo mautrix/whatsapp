@@ -64,9 +64,10 @@ metrics:
 whatsapp:
     # Device name that's shown in the "WhatsApp Web" section in the mobile app.
     os_name: Mautrix-WhatsApp bridge
-    # Browser name that determines the logo shown in the mobile app. If the name is unrecognized, a generic icon is shown.
-    # Use the name of an actual browser (Chrome, Firefox, Safari, IE, Edge, Opera) if you want a specific icon.
-    browser_name: mx-wa
+    # Browser name that determines the logo shown in the mobile app.
+    # Must be "unknown" for a generic icon or a valid browser name if you want a specific icon.
+    # List of valid browser names: https://github.com/tulir/whatsmeow/blob/2a72655ef600a7fd7a2e98d53ec6da029759c4b8/binary/proto/def.proto#L1582-L1594
+    browser_name: unknown
 
 # Bridge config
 bridge:
@@ -86,14 +87,7 @@ bridge:
     # sent to WhatsApp. If fetch_message_on_timeout is enabled, a successful post-timeout fetch will
     # trigger a read receipt too.
     delivery_receipts: false
-    # Maximum number of times to retry connecting on connection error.
-    max_connection_attempts: 3
-    # Number of seconds to wait between connection attempts.
-    # Negative numbers are exponential backoff: -connection_retry_delay + 1 + 2^attempts
-    connection_retry_delay: -1
-    # Whether or not the bridge should send a notice to the user's management room when it retries connecting.
-    # If false, it will only report when it stops retrying.
-    report_connection_retry: true
+
     portal_message_buffer: 128
 
     # Whether or not to send call start/end notices to Matrix.
