@@ -46,7 +46,7 @@ var (
 	Name = "mautrix-whatsapp"
 	URL  = "https://github.com/mautrix/whatsapp"
 	// This is changed when making a release
-	Version = "0.1.8"
+	Version = "0.1.9"
 	// This is filled by init()
 	WAVersion = ""
 	VersionString = ""
