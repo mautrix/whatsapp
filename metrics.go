@@ -20,6 +20,7 @@ import (
 	"context"
 	"net/http"
 	"runtime/debug"
+	"sync"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -58,10 +59,12 @@ type MetricsHandler struct {
 	unencryptedGroupCount   prometheus.Gauge
 	unencryptedPrivateCount prometheus.Gauge
 
-	connected      prometheus.Gauge
-	connectedState map[string]bool
-	loggedIn       prometheus.Gauge
-	loggedInState  map[string]bool
+	connected          prometheus.Gauge
+	connectedState     map[string]bool
+	connectedStateLock sync.Mutex
+	loggedIn           prometheus.Gauge
+	loggedInState      map[string]bool
+	loggedInStateLock  sync.Mutex
 }
 
 func NewMetricsHandler(address string, log log.Logger, db *database.Database) *MetricsHandler {
@@ -168,6 +171,8 @@ func (mh *MetricsHandler) TrackLoginState(jid types.JID, loggedIn bool) {
 	if !mh.running {
 		return
 	}
+	mh.loggedInStateLock.Lock()
+	defer mh.loggedInStateLock.Unlock()
 	currentVal, ok := mh.loggedInState[jid.User]
 	if !ok || currentVal != loggedIn {
 		mh.loggedInState[jid.User] = loggedIn
@@ -183,6 +188,8 @@ func (mh *MetricsHandler) TrackConnectionState(jid types.JID, connected bool) {
 	if !mh.running {
 		return
 	}
+	mh.connectedStateLock.Lock()
+	defer mh.connectedStateLock.Unlock()
 	currentVal, ok := mh.connectedState[jid.User]
 	if !ok || currentVal != connected {
 		mh.connectedState[jid.User] = connected
