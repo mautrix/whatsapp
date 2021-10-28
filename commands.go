@@ -668,6 +668,25 @@ func (handler *CommandHandler) CommandHelp(ce *CommandEvent) {
 	}, "\n* "))
 }
 
+func canDeletePortal(portal *Portal, userID id.UserID) bool {
+	members, err := portal.MainIntent().JoinedMembers(portal.MXID)
+	if err != nil {
+		portal.log.Errorfln("Failed to get joined members to check if portal can be deleted by %s: %v", userID, err)
+		return false
+	}
+	for otherUser := range members.Joined {
+		_, isPuppet := portal.bridge.ParsePuppetMXID(otherUser)
+		if isPuppet || otherUser == portal.bridge.Bot.UserID || otherUser == userID {
+			continue
+		}
+		user := portal.bridge.GetUserByMXID(otherUser)
+		if user != nil && user.Session != nil {
+			return false
+		}
+	}
+	return true
+}
+
 const cmdDeletePortalHelp = `delete-portal - Delete the current portal. If the portal is used by other people, this is limited to bridge admins.`
 
 func (handler *CommandHandler) CommandDeletePortal(ce *CommandEvent) {
@@ -676,13 +695,8 @@ func (handler *CommandHandler) CommandDeletePortal(ce *CommandEvent) {
 		return
 	}
 
-	if !ce.User.Admin {
-		// TODO reimplement
-		//users := ce.Portal.GetUserIDs()
-		//if len(users) > 1 || (len(users) == 1 && users[0] != ce.User.MXID) {
-		//	ce.Reply("Only bridge admins can delete portals with other Matrix users")
-		//	return
-		//}
+	if !ce.User.Admin && !canDeletePortal(ce.Portal, ce.User.MXID) {
+		ce.Reply("Only bridge admins can delete portals with other Matrix users")
 		return
 	}
 
@@ -691,22 +705,22 @@ func (handler *CommandHandler) CommandDeletePortal(ce *CommandEvent) {
 	ce.Portal.Cleanup(false)
 }
 
-const cmdDeleteAllPortalsHelp = `delete-all-portals - Delete all your portals that aren't used by any other user.`
+const cmdDeleteAllPortalsHelp = `delete-all-portals - Delete all portals.`
 
 func (handler *CommandHandler) CommandDeleteAllPortals(ce *CommandEvent) {
-	// TODO reimplement
-	//portals := ce.User.GetPortals()
-	//portalsToDelete := make([]*Portal, 0, len(portals))
-	//for _, portal := range portals {
-	//	users := portal.GetUserIDs()
-	//	if len(users) == 1 && users[0] == ce.User.MXID {
-	//		portalsToDelete = append(portalsToDelete, portal)
-	//	}
-	//}
-	if !ce.User.Admin {
-		return
+	portals := handler.bridge.GetAllPortals()
+	var portalsToDelete []*Portal
+
+	if ce.User.Admin {
+		portals = portalsToDelete
+	} else {
+		portalsToDelete = portals[:0]
+		for _, portal := range portals {
+			if canDeletePortal(portal, ce.User.MXID) {
+				portalsToDelete = append(portalsToDelete, portal)
+			}
+		}
 	}
-	portalsToDelete := handler.bridge.GetAllPortals()
 
 	leave := func(portal *Portal) {
 		if len(portal.MXID) > 0 {
@@ -726,13 +740,12 @@ func (handler *CommandHandler) CommandDeleteAllPortals(ce *CommandEvent) {
 			}
 		}
 	}
-	ce.Reply("Found %d portals with no other users, deleting...", len(portalsToDelete))
+	ce.Reply("Found %d portals, deleting...", len(portalsToDelete))
 	for _, portal := range portalsToDelete {
 		portal.Delete()
 		leave(portal)
 	}
-	ce.Reply("Finished deleting portal info. Now cleaning up rooms in background. " +
-		"You may already continue using the bridge. Use `sync` to recreate portals.")
+	ce.Reply("Finished deleting portal info. Now cleaning up rooms in background.")
 
 	go func() {
 		for _, portal := range portalsToDelete {

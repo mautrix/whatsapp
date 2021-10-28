@@ -152,24 +152,6 @@ func (bridge *Bridge) loadDBUser(dbUser *database.User, mxid *id.UserID) *User {
 	return user
 }
 
-func (user *User) GetPortals() []*Portal {
-	// FIXME
-	//keys := user.User.GetPortalKeys()
-	//portals := make([]*Portal, len(keys))
-	//
-	//user.bridge.portalsLock.Lock()
-	//for i, key := range keys {
-	//	portal, ok := user.bridge.portalsByJID[key]
-	//	if !ok {
-	//		portal = user.bridge.loadDBPortal(user.bridge.DB.Portal.GetByJID(key), &key)
-	//	}
-	//	portals[i] = portal
-	//}
-	//user.bridge.portalsLock.Unlock()
-	//return portals
-	return nil
-}
-
 func (bridge *Bridge) NewUser(dbUser *database.User) *User {
 	user := &User{
 		User:   dbUser,

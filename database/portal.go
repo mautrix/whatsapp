@@ -178,26 +178,3 @@ func (portal *Portal) Delete() {
 		portal.log.Warnfln("Failed to delete %s: %v", portal.Key, err)
 	}
 }
-
-//func (portal *Portal) GetUserIDs() []id.UserID {
-//	rows, err := portal.db.Query(`SELECT "user".mxid FROM "user", user_portal
-//		WHERE "user".jid=user_portal.user_jid
-//			AND user_portal.portal_jid=$1
-//			AND user_portal.portal_receiver=$2`,
-//		portal.Key.JID, portal.Key.Receiver)
-//	if err != nil {
-//		portal.log.Debugln("Failed to get portal user ids:", err)
-//		return nil
-//	}
-//	var userIDs []id.UserID
-//	for rows.Next() {
-//		var userID id.UserID
-//		err = rows.Scan(&userID)
-//		if err != nil {
-//			portal.log.Warnln("Failed to scan row:", err)
-//			continue
-//		}
-//		userIDs = append(userIDs, userID)
-//	}
-//	return userIDs
-//}
