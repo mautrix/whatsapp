@@ -626,6 +626,7 @@ func (handler *CommandHandler) CommandDisconnect(ce *CommandEvent) {
 	}
 	ce.User.DeleteConnection()
 	ce.Reply("Successfully disconnected. Use the `reconnect` command to reconnect.")
+	ce.User.sendBridgeState(BridgeState{StateEvent: StateBadCredentials, Error: WANotConnected})
 }
 
 const cmdPingHelp = `ping - Check your connection to WhatsApp.`

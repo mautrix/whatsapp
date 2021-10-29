@@ -273,7 +273,6 @@ func (user *User) DeleteConnection() {
 	user.connLock.Lock()
 	defer user.connLock.Unlock()
 	user.unlockedDeleteConnection()
-	user.sendBridgeState(BridgeState{StateEvent: StateBadCredentials, Error: WANotConnected})
 }
 
 func (user *User) HasSession() bool {

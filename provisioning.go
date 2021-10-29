@@ -134,6 +134,7 @@ func (prov *ProvisioningAPI) DeleteSession(w http.ResponseWriter, r *http.Reques
 	user.DeleteConnection()
 	user.DeleteSession()
 	jsonResponse(w, http.StatusOK, Response{true, "Session information purged"})
+	user.removeFromJIDMap(StateLoggedOut)
 }
 
 func (prov *ProvisioningAPI) Disconnect(w http.ResponseWriter, r *http.Request) {
@@ -147,6 +148,7 @@ func (prov *ProvisioningAPI) Disconnect(w http.ResponseWriter, r *http.Request) 
 	}
 	user.DeleteConnection()
 	jsonResponse(w, http.StatusOK, Response{true, "Disconnected from WhatsApp"})
+	user.sendBridgeState(BridgeState{StateEvent: StateBadCredentials, Error: WANotConnected})
 }
 
 func (prov *ProvisioningAPI) Reconnect(w http.ResponseWriter, r *http.Request) {
@@ -163,6 +165,7 @@ func (prov *ProvisioningAPI) Reconnect(w http.ResponseWriter, r *http.Request) {
 		}
 	} else {
 		user.DeleteConnection()
+		user.sendBridgeState(BridgeState{StateEvent: StateTransientDisconnect, Error: WANotConnected})
 		user.Connect()
 		jsonResponse(w, http.StatusAccepted, Response{true, "Restarted connection to WhatsApp"})
 	}
@@ -230,6 +233,8 @@ func (prov *ProvisioningAPI) Logout(w http.ResponseWriter, r *http.Request) {
 				})
 				return
 			}
+		} else {
+			user.Session = nil
 		}
 		user.DeleteConnection()
 	}
