@@ -43,7 +43,7 @@ type BridgeConfig struct {
 		CreatePortals        bool `yaml:"create_portals"`
 		Backfill             bool `yaml:"backfill"`
 		DoublePuppetBackfill bool `yaml:"double_puppet_backfill"`
-	}
+	} `yaml:"history_sync"`
 	UserAvatarSync    bool `yaml:"user_avatar_sync"`
 	BridgeMatrixLeave bool `yaml:"bridge_matrix_leave"`
 
