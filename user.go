@@ -366,14 +366,20 @@ func (user *User) handleHistorySync(evt *waProto.HistorySync) {
 		}
 
 		portal := user.GetPortalByJID(jid)
-		if user.bridge.Config.Bridge.HistorySync.CreatePortals {
+		if user.bridge.Config.Bridge.HistorySync.CreatePortals && len(portal.MXID) == 0 {
+			user.log.Debugln("Creating portal for", portal.Key.JID, "as part of history sync handling")
 			err = portal.CreateMatrixRoom(user)
 			if err != nil {
 				user.log.Warnfln("Failed to create room for %s during backfill: %v", portal.Key.JID, err)
 				continue
 			}
 		}
-		if len(portal.MXID) > 0 && user.bridge.Config.Bridge.HistorySync.Backfill {
+		if len(portal.MXID) == 0 {
+			user.log.Debugln("No room created, not bridging history sync payload for", portal.Key.JID)
+		} else if !user.bridge.Config.Bridge.HistorySync.Backfill {
+			user.log.Debugln("Backfill is disabled, not bridging history sync payload for", portal.Key.JID)
+		} else {
+			user.log.Debugln("Bridging history sync payload for", portal.Key.JID)
 			portal.backfill(user, conv.GetMessages())
 			if !conv.GetMarkedAsUnread() && conv.GetUnreadCount() == 0 {
 				user.markSelfReadFull(portal)
