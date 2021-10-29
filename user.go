@@ -227,6 +227,7 @@ func (user *User) Login(ctx context.Context) (<-chan whatsmeow.QRChannelItem, er
 	newSession := user.bridge.WAContainer.NewDevice()
 	newSession.Log = &waLogger{user.log.Sub("Session")}
 	user.Client = whatsmeow.NewClient(newSession, &waLogger{user.log.Sub("Client")})
+	user.Client.AddEventHandler(user.HandleEvent)
 	qrChan, err := user.Client.GetQRChannel(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get QR channel: %w", err)
@@ -385,7 +386,7 @@ func (user *User) handleHistorySync(evt *waProto.HistorySync) {
 func (user *User) HandleEvent(event interface{}) {
 	switch v := event.(type) {
 	case *events.LoggedOut:
-		go user.handleLoggedOut()
+		go user.handleLoggedOut(v.OnConnect)
 		user.bridge.Metrics.TrackConnectionState(user.JID, false)
 		user.bridge.Metrics.TrackLoginState(user.JID, false)
 	case *events.Connected:
@@ -414,10 +415,10 @@ func (user *User) HandleEvent(event interface{}) {
 			user.log.Warnln("Failed to send presence after push name update:", err)
 		}
 	case *events.PairSuccess:
+		user.Session = user.Client.Store
 		user.JID = v.ID
 		user.addToJIDMap()
 		user.Update()
-		user.Session = user.Client.Store
 	case *events.ConnectFailure, *events.StreamError:
 		go user.sendBridgeState(BridgeState{StateEvent: StateUnknownError})
 		user.bridge.Metrics.TrackConnectionState(user.JID, false)
@@ -445,7 +446,7 @@ func (user *User) HandleEvent(event interface{}) {
 	case *events.HistorySync:
 		user.historySyncs <- v
 	case *events.Mute:
-		portal := user.bridge.GetPortalByJID(user.PortalKey(v.JID))
+		portal := user.GetPortalByJID(v.JID)
 		if portal != nil {
 			var mutedUntil time.Time
 			if v.Action.GetMuted() {
@@ -454,12 +455,12 @@ func (user *User) HandleEvent(event interface{}) {
 			go user.updateChatMute(nil, portal, mutedUntil)
 		}
 	case *events.Archive:
-		portal := user.bridge.GetPortalByJID(user.PortalKey(v.JID))
+		portal := user.GetPortalByJID(v.JID)
 		if portal != nil {
 			go user.updateChatTag(nil, portal, user.bridge.Config.Bridge.ArchiveTag, v.Action.GetArchived())
 		}
 	case *events.Pin:
-		portal := user.bridge.GetPortalByJID(user.PortalKey(v.JID))
+		portal := user.GetPortalByJID(v.JID)
 		if portal != nil {
 			go user.updateChatTag(nil, portal, user.bridge.Config.Bridge.PinnedTag, v.Action.GetPinned())
 		}
@@ -619,19 +620,19 @@ func (user *User) UpdateDirectChats(chats map[id.UserID][]id.RoomID) {
 	}
 }
 
-func (user *User) handleLoggedOut() {
+func (user *User) handleLoggedOut(onConnect bool) {
 	user.JID = types.EmptyJID
 	user.Update()
-	user.sendMarkdownBridgeAlert("Connecting to WhatsApp failed as the device was logged out. Please link the bridge to your phone again.")
+	if onConnect {
+		user.sendMarkdownBridgeAlert("Connecting to WhatsApp failed as the device was logged out. Please link the bridge to your phone again.")
+	} else {
+		user.sendMarkdownBridgeAlert("You were logged out from another device. Please link the bridge to your phone again.")
+	}
 	user.sendBridgeState(BridgeState{StateEvent: StateBadCredentials, Error: WANotLoggedIn})
 }
 
-func (user *User) PortalKey(jid types.JID) database.PortalKey {
-	return database.NewPortalKey(jid, user.JID)
-}
-
 func (user *User) GetPortalByJID(jid types.JID) *Portal {
-	return user.bridge.GetPortalByJID(user.PortalKey(jid))
+	return user.bridge.GetPortalByJID(database.NewPortalKey(jid, user.JID))
 }
 
 func (user *User) syncPuppet(jid types.JID) {
@@ -781,8 +782,4 @@ func (user *User) handlePictureUpdate(evt *events.Picture) {
 			portal.UpdateAvatar(user, evt.Author, true)
 		}
 	}
-}
-
-func (user *User) NeedsRelaybot(portal *Portal) bool {
-	return !user.HasSession() // || !user.IsInPortal(portal.Key)
 }

@@ -1357,13 +1357,6 @@ func (portal *Portal) CreateMatrixRoom(user *User) error {
 		portal.FirstEventID = firstEventResp.EventID
 		portal.Update()
 	}
-
-	//user.CreateUserPortal(database.PortalKeyWithMeta{PortalKey: portal.Key, InCommunity: inCommunity})
-
-	//err = portal.FillInitialHistory(user)
-	//if err != nil {
-	//	portal.log.Errorln("Failed to fill history:", err)
-	//}
 	return nil
 }
 

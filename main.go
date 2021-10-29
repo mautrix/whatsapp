@@ -322,7 +322,6 @@ func (bridge *Bridge) Start() {
 			os.Exit(19)
 		}
 	}
-	bridge.sendGlobalBridgeState(BridgeState{StateEvent: StateStarting}.fill(nil))
 	if bridge.Provisioning != nil {
 		bridge.Log.Debugln("Initializing provisioning API")
 		bridge.Provisioning.Init()

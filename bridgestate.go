@@ -33,7 +33,6 @@ import (
 type BridgeStateEvent string
 
 const (
-	StateStarting            BridgeStateEvent = "STARTING"
 	StateUnconfigured        BridgeStateEvent = "UNCONFIGURED"
 	StateRunning             BridgeStateEvent = "RUNNING"
 	StateConnecting          BridgeStateEvent = "CONNECTING"
@@ -51,20 +50,14 @@ const (
 	WANotLoggedIn   BridgeErrorCode = "wa-logged-out"
 	WANotConnected  BridgeErrorCode = "wa-not-connected"
 	WAConnecting    BridgeErrorCode = "wa-connecting"
-	WATimeout       BridgeErrorCode = "wa-timeout"
 	WAServerTimeout BridgeErrorCode = "wa-server-timeout"
-	WAPingFalse     BridgeErrorCode = "wa-ping-false"
-	WAPingError     BridgeErrorCode = "wa-ping-error"
 )
 
 var bridgeHumanErrors = map[BridgeErrorCode]string{
 	WANotLoggedIn:   "You're not logged into WhatsApp",
 	WANotConnected:  "You're not connected to WhatsApp",
 	WAConnecting:    "Trying to reconnect to WhatsApp. Please make sure WhatsApp is running on your phone and connected to the internet.",
-	WATimeout:       "WhatsApp on your phone is not responding. Please make sure it is running and connected to the internet.",
 	WAServerTimeout: "The WhatsApp web servers are not responding. The bridge will try to reconnect.",
-	WAPingFalse:     "WhatsApp returned an error, reconnecting. Please make sure WhatsApp is running on your phone and connected to the internet.",
-	WAPingError:     "WhatsApp returned an unknown error",
 }
 
 type BridgeState struct {
@@ -89,7 +82,7 @@ type GlobalBridgeState struct {
 func (pong BridgeState) fill(user *User) BridgeState {
 	if user != nil {
 		pong.UserID = user.MXID
-		pong.RemoteID = user.JID.String()
+		pong.RemoteID = fmt.Sprintf("%s_a%d_d%d", user.JID.User, user.JID.Agent, user.JID.Device)
 		pong.RemoteName = fmt.Sprintf("+%s", user.JID.User)
 	}
 
