@@ -494,6 +494,7 @@ func (handler *CommandHandler) CommandLogout(ce *CommandEvent) {
 		ce.Reply("Unknown error while logging out: %v", err)
 		return
 	}
+	ce.User.Session = nil
 	ce.User.removeFromJIDMap(StateLoggedOut)
 	ce.User.DeleteConnection()
 	ce.User.DeleteSession()
