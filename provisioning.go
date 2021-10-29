@@ -326,6 +326,7 @@ func (prov *ProvisioningAPI) Login(w http.ResponseWriter, r *http.Request) {
 					Error:   "Please enable the WhatsApp multidevice beta and scan the QR code again.",
 					ErrCode: "multidevice not enabled",
 				})
+				continue
 			default:
 				_ = c.WriteJSON(map[string]interface{}{
 					"code": string(evt),
