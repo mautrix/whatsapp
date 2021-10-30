@@ -3,8 +3,6 @@ package upgrades
 import (
 	"database/sql"
 	"strings"
-
-	"maunium.net/go/mautrix/event"
 )
 
 func init() {
@@ -23,12 +21,6 @@ func init() {
 	registrationsTable := `CREATE TABLE mx_registrations (
 		user_id VARCHAR(255) PRIMARY KEY
 	)`
-
-	type TempStateStore struct {
-		Registrations map[string]bool                           `json:"registrations"`
-		Members       map[string]map[string]event.Membership    `json:"memberships"`
-		PowerLevels   map[string]*event.PowerLevelsEventContent `json:"power_levels"`
-	}
 
 	upgrades[9] = upgrade{"Move state store to main DB", func(tx *sql.Tx, ctx context) error {
 		if ctx.dialect == Postgres {

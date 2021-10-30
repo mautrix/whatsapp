@@ -48,7 +48,7 @@ func init() {
 			}
 
 			// No need to copy auth data, users need to relogin anyway
-			_, err = tx.Exec(`INSERT INTO "user" (mxid, management_room, last_connection) SELECT mxid, management_room, last_connection FROM old_user`)
+			_, err = tx.Exec(`INSERT INTO "user" (mxid, management_room) SELECT mxid, management_room FROM old_user`)
 			if err != nil {
 				return err
 			}
