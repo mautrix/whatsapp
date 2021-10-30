@@ -367,7 +367,7 @@ func (portal *Portal) handleMessage(source *User, evt *events.Message) {
 		}
 		// TODO figure out how to handle captions with undecryptable messages turning decryptable
 		if converted.Caption != nil && existingMsg == nil {
-			resp, err = portal.sendMessage(converted.Intent, converted.Type, converted.Content, evt.Info.Timestamp.UnixMilli())
+			resp, err = portal.sendMessage(converted.Intent, converted.Type, converted.Caption, evt.Info.Timestamp.UnixMilli())
 			if err != nil {
 				portal.log.Errorln("Failed to send caption of %s to Matrix: %v", msgID, err)
 			} else {
