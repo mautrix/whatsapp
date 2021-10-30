@@ -213,7 +213,7 @@ bridge:
         "@admin:example.com": admin
 
     relay:
-        # Whether relay mode should be allowed. If allowed, `!signal set-relay` can be used to turn any
+        # Whether relay mode should be allowed. If allowed, `!wa set-relay` can be used to turn any
         # authenticated user into a relaybot for that chat.
         enabled: false
         # Should only admins be allowed to set themselves as relay users?

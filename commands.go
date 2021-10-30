@@ -189,7 +189,7 @@ func (handler *CommandHandler) CommandSetRelay(ce *CommandEvent) {
 	}
 }
 
-const cmdUnsetRelayHelp = `set-relay - Stop relaying messages in this room.`
+const cmdUnsetRelayHelp = `unset-relay - Stop relaying messages in this room.`
 
 func (handler *CommandHandler) CommandUnsetRelay(ce *CommandEvent) {
 	if !handler.bridge.Config.Bridge.Relay.Enabled {
