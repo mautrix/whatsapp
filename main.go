@@ -1,5 +1,5 @@
 // mautrix-whatsapp - A Matrix-WhatsApp puppeting bridge.
-// Copyright (C) 2020 Tulir Asokan
+// Copyright (C) 2021 Tulir Asokan
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as published by
@@ -21,12 +21,18 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
 	"time"
 
-	"github.com/Rhymen/go-whatsapp"
+	"google.golang.org/protobuf/proto"
+
+	waProto "go.mau.fi/whatsmeow/binary/proto"
+	"go.mau.fi/whatsmeow/store"
+	"go.mau.fi/whatsmeow/store/sqlstore"
+	"go.mau.fi/whatsmeow/types"
 
 	flag "maunium.net/go/mauflag"
 	log "maunium.net/go/maulogger/v2"
@@ -41,19 +47,27 @@ import (
 	"maunium.net/go/mautrix-whatsapp/database/upgrades"
 )
 
+// The name and repo URL of the bridge.
 var (
-	// These are static
 	Name = "mautrix-whatsapp"
 	URL  = "https://github.com/mautrix/whatsapp"
-	// This is changed when making a release
-	Version = "0.1.9"
-	// This is filled by init()
-	WAVersion = ""
-	VersionString = ""
-	// These are filled at build time with the -X linker flag
+)
+
+// Information to find out exactly which commit the bridge was built from.
+// These are filled at build time with the -X linker flag.
+var (
 	Tag       = "unknown"
 	Commit    = "unknown"
 	BuildTime = "unknown"
+)
+
+var (
+	// Version is the version number of the bridge. Changed manually when making a release.
+	Version = "0.2.0+dev"
+	// WAVersion is the version number exposed to WhatsApp. Filled in init()
+	WAVersion = ""
+	// VersionString is the bridge version, plus commit information. Filled in init() using the build-time values.
+	VersionString = ""
 )
 
 func init() {
@@ -145,19 +159,19 @@ type Bridge struct {
 	Provisioning   *ProvisioningAPI
 	Bot            *appservice.IntentAPI
 	Formatter      *Formatter
-	Relaybot       *User
 	Crypto         Crypto
 	Metrics        *MetricsHandler
+	WAContainer    *sqlstore.Container
 
 	usersByMXID         map[id.UserID]*User
-	usersByJID          map[whatsapp.JID]*User
+	usersByUsername     map[string]*User
 	usersLock           sync.Mutex
 	managementRooms     map[id.RoomID]*User
 	managementRoomsLock sync.Mutex
 	portalsByMXID       map[id.RoomID]*Portal
 	portalsByJID        map[database.PortalKey]*Portal
 	portalsLock         sync.Mutex
-	puppets             map[whatsapp.JID]*Puppet
+	puppets             map[types.JID]*Puppet
 	puppetsByCustomMXID map[id.UserID]*Puppet
 	puppetsLock         sync.Mutex
 }
@@ -176,11 +190,11 @@ type Crypto interface {
 func NewBridge() *Bridge {
 	bridge := &Bridge{
 		usersByMXID:         make(map[id.UserID]*User),
-		usersByJID:          make(map[whatsapp.JID]*User),
+		usersByUsername:     make(map[string]*User),
 		managementRooms:     make(map[id.RoomID]*User),
 		portalsByMXID:       make(map[id.RoomID]*Portal),
 		portalsByJID:        make(map[database.PortalKey]*Portal),
-		puppets:             make(map[whatsapp.JID]*Puppet),
+		puppets:             make(map[types.JID]*Puppet),
 		puppetsByCustomMXID: make(map[id.UserID]*Puppet),
 	}
 
@@ -259,6 +273,8 @@ func (bridge *Bridge) Init() {
 	bridge.DB.SetMaxOpenConns(bridge.Config.AppService.Database.MaxOpenConns)
 	bridge.DB.SetMaxIdleConns(bridge.Config.AppService.Database.MaxIdleConns)
 
+	bridge.WAContainer = sqlstore.NewWithDB(bridge.DB.DB, bridge.Config.AppService.Database.Type, nil)
+
 	ss := bridge.Config.AppService.Provisioning.SharedSecret
 	if len(ss) > 0 && ss != "disable" {
 		bridge.Provisioning = &ProvisioningAPI{bridge: bridge}
@@ -271,6 +287,23 @@ func (bridge *Bridge) Init() {
 	bridge.Formatter = NewFormatter(bridge)
 	bridge.Crypto = NewCryptoHelper(bridge)
 	bridge.Metrics = NewMetricsHandler(bridge.Config.Metrics.Listen, bridge.Log.Sub("Metrics"), bridge.DB)
+
+	store.BaseClientPayload.UserAgent.OsVersion = proto.String(WAVersion)
+	store.BaseClientPayload.UserAgent.OsBuildNumber = proto.String(WAVersion)
+	store.CompanionProps.Os = proto.String(bridge.Config.WhatsApp.OSName)
+	versionParts := strings.Split(WAVersion, ".")
+	if len(versionParts) > 2 {
+		primary, _ := strconv.Atoi(versionParts[0])
+		secondary, _ := strconv.Atoi(versionParts[1])
+		tertiary, _ := strconv.Atoi(versionParts[2])
+		store.CompanionProps.Version.Primary = proto.Uint32(uint32(primary))
+		store.CompanionProps.Version.Secondary = proto.Uint32(uint32(secondary))
+		store.CompanionProps.Version.Tertiary = proto.Uint32(uint32(tertiary))
+	}
+	platformID, ok := waProto.CompanionProps_CompanionPropsPlatformType_value[strings.ToUpper(bridge.Config.WhatsApp.BrowserName)]
+	if ok {
+		store.CompanionProps.PlatformType = waProto.CompanionProps_CompanionPropsPlatformType(platformID).Enum()
+	}
 }
 
 func (bridge *Bridge) Start() {
@@ -289,12 +322,10 @@ func (bridge *Bridge) Start() {
 			os.Exit(19)
 		}
 	}
-	bridge.sendGlobalBridgeState(BridgeState{StateEvent: StateStarting}.fill(nil))
 	if bridge.Provisioning != nil {
 		bridge.Log.Debugln("Initializing provisioning API")
 		bridge.Provisioning.Init()
 	}
-	bridge.LoadRelaybot()
 	bridge.Log.Debugln("Starting application service HTTP server")
 	go bridge.AS.Start()
 	bridge.Log.Debugln("Starting event processor")
@@ -325,21 +356,6 @@ func (bridge *Bridge) ResendBridgeInfo() {
 		portal.UpdateBridgeInfo()
 	}
 	bridge.Log.Infoln("Finished re-sending bridge info state events")
-}
-
-func (bridge *Bridge) LoadRelaybot() {
-	if !bridge.Config.Bridge.Relaybot.Enabled {
-		return
-	}
-	bridge.Relaybot = bridge.GetUserByMXID("relaybot")
-	if bridge.Relaybot.HasSession() {
-		bridge.Log.Debugln("Relaybot is enabled")
-	} else {
-		bridge.Log.Debugln("Relaybot is enabled, but not logged in")
-	}
-	bridge.Relaybot.ManagementRoom = bridge.Config.Bridge.Relaybot.ManagementRoom
-	bridge.Relaybot.IsRelaybot = true
-	bridge.Relaybot.Connect(false)
 }
 
 func (bridge *Bridge) UpdateBotProfile() {
@@ -374,10 +390,10 @@ func (bridge *Bridge) StartUsers() {
 	bridge.Log.Debugln("Starting users")
 	foundAnySessions := false
 	for _, user := range bridge.GetAllUsers() {
-		if user.Session != nil {
+		if !user.JID.IsEmpty() {
 			foundAnySessions = true
 		}
-		go user.Connect(false)
+		go user.Connect()
 	}
 	if !foundAnySessions {
 		bridge.sendGlobalBridgeState(BridgeState{StateEvent: StateUnconfigured}.fill(nil))
@@ -401,15 +417,13 @@ func (bridge *Bridge) Stop() {
 	bridge.AS.Stop()
 	bridge.Metrics.Stop()
 	bridge.EventProcessor.Stop()
-	for _, user := range bridge.usersByJID {
-		if user.Conn == nil {
+	for _, user := range bridge.usersByUsername {
+		if user.Client == nil {
 			continue
 		}
 		bridge.Log.Debugln("Disconnecting", user.MXID)
-		err := user.Conn.Disconnect()
-		if err != nil {
-			bridge.Log.Errorfln("Error while disconnecting %s: %v", user.MXID, err)
-		}
+		user.Client.Disconnect()
+		close(user.historySyncs)
 	}
 }
 

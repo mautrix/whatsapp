@@ -12,14 +12,14 @@
   * [x] Read receipts
   * [ ] Power level
   * [ ] Membership actions
-    * [x] Invite
+    * [ ] Invite
     * [ ] Join
-    * [x] Leave
-    * [x] Kick
+    * [ ] Leave
+    * [ ] Kick
   * [ ] Room metadata changes
-    * [x] Name
-    * [ ] Avatar<sup>[1]</sup>
-    * [x] Topic
+    * [ ] Name
+    * [ ] Avatar
+    * [ ] Topic
   * [ ] Initial room metadata
 * WhatsApp → Matrix
   * [x] Message content
@@ -32,10 +32,10 @@
   * [ ] Chat types
     * [x] Private chat
     * [x] Group chat
-    * [ ] Broadcast list<sup>[2]</sup>
+    * [ ] Broadcast list
   * [x] Message deletions
   * [x] Avatars
-  * [x] Presence
+  * [ ] Presence
   * [x] Typing notifications
   * [x] Read receipts
   * [x] Admin/superadmin status
@@ -49,8 +49,8 @@
     * [x] Avatar
     * [x] Description
   * [x] Initial group metadata
-  * [ ] User metadata changes
-    * [ ] Display name<sup>[3]</sup>
+  * [x] User metadata changes
+    * [x] Display name
     * [x] Avatar
   * [x] Initial user metadata
     * [x] Display name
@@ -63,7 +63,3 @@
   * [x] Private chat creation by inviting Matrix puppet of WhatsApp user to new room
   * [x] Option to use own Matrix account for messages sent from WhatsApp mobile/other web clients
   * [x] Shared group chat portals
-
-<sup>[1]</sup> May involve reverse-engineering the WhatsApp Web API and/or editing go-whatsapp  
-<sup>[2]</sup> May already work  
-<sup>[3]</sup> May not be possible  

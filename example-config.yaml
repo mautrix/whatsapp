@@ -27,6 +27,7 @@ appservice:
         # The database URI.
         #   SQLite: File name is enough. https://github.com/mattn/go-sqlite3#connection-string
         #   Postgres: Connection string. For example, postgres://user:password@host/database?sslmode=disable
+        #             To connect via Unix socket, use something like postgres:///dbname?host=/var/run/postgresql
         uri: mautrix-whatsapp.db
         # Maximum number of connections. Mostly relevant for Postgres.
         max_open_conns: 20
@@ -63,9 +64,10 @@ metrics:
 whatsapp:
     # Device name that's shown in the "WhatsApp Web" section in the mobile app.
     os_name: Mautrix-WhatsApp bridge
-    # Browser name that determines the logo shown in the mobile app. If the name is unrecognized, a generic icon is shown.
-    # Use the name of an actual browser (Chrome, Firefox, Safari, IE, Edge, Opera) if you want a specific icon.
-    browser_name: mx-wa
+    # Browser name that determines the logo shown in the mobile app.
+    # Must be "unknown" for a generic icon or a valid browser name if you want a specific icon.
+    # List of valid browser names: https://github.com/tulir/whatsmeow/blob/2a72655ef600a7fd7a2e98d53ec6da029759c4b8/binary/proto/def.proto#L1582-L1594
+    browser_name: unknown
 
 # Bridge config
 bridge:
@@ -73,49 +75,19 @@ bridge:
     # {{.}} is replaced with the phone number of the WhatsApp user.
     username_template: whatsapp_{{.}}
     # Displayname template for WhatsApp users.
-    # {{.Notify}} - nickname set by the WhatsApp user
-    # {{.VName}} - validated WhatsApp business name
-    # {{.JID}}    - phone number (international format)
+    # {{.PushName}}     - nickname set by the WhatsApp user
+    # {{.BusinessName}} - validated WhatsApp business name
+    # {{.Phone}}        - phone number (international format)
     # The following variables are also available, but will cause problems on multi-user instances:
-    # {{.Name}}   - display name from contact list
-    # {{.Short}}  - short display name from contact list
-    displayname_template: "{{if .Notify}}{{.Notify}}{{else if .VName}}{{.VName}}{{else}}{{.JID}}{{end}} (WA)"
-    # Localpart template for per-user room grouping community IDs.
-    # On startup, the bridge will try to create these communities, add all of the specific user's
-    # portals to the community, and invite the Matrix user to it.
-    # (Note that, by default, non-admins might not have your homeserver's permission to create
-    #  communities.)
-    # {{.Localpart}} is the MXID localpart and {{.Server}} is the MXID server part of the user.
-    # whatsapp_{{.Localpart}}={{.Server}} is a good value that should work for any user.
-    community_template: null
+    # {{.FullName}}  - full name from contact list
+    # {{.FirstName}} - first name from contact list
+    displayname_template: "{{if .PushName}}{{.PushName}}{{else if .BusinessName}}{{.BusinessName}}{{else}}{{.JID}}{{end}} (WA)"
 
-    # WhatsApp connection timeout in seconds.
-    connection_timeout: 20
-    # If WhatsApp doesn't respond within connection_timeout, should the bridge try to fetch the message
-    # to see if it was actually bridged? Use this if you have problems with sends timing out but actually
-    # succeeding.
-    fetch_message_on_timeout: false
     # Whether or not the bridge should send a read receipt from the bridge bot when a message has been
     # sent to WhatsApp. If fetch_message_on_timeout is enabled, a successful post-timeout fetch will
     # trigger a read receipt too.
     delivery_receipts: false
-    # Maximum number of times to retry connecting on connection error.
-    max_connection_attempts: 3
-    # Number of seconds to wait between connection attempts.
-    # Negative numbers are exponential backoff: -connection_retry_delay + 1 + 2^attempts
-    connection_retry_delay: -1
-    # Whether or not the bridge should send a notice to the user's management room when it retries connecting.
-    # If false, it will only report when it stops retrying.
-    report_connection_retry: true
-    # Whether or not the bridge should reconnect even if WhatsApp says another web client connected.
-    aggressive_reconnect: false
-    # Maximum number of seconds to wait for chats to be sent at startup.
-    # If this is too low and you have lots of chats, it could cause backfilling to fail.
-    chat_list_wait: 30
-    # Maximum number of seconds to wait to sync portals before force unlocking message processing.
-    # If this is too low and you have lots of chats, it could cause backfilling to fail.
-    portal_sync_wait: 600
-    user_message_buffer: 1024
+
     portal_message_buffer: 128
 
     # Whether or not to send call start/end notices to Matrix.
@@ -123,32 +95,20 @@ bridge:
         start: true
         end: true
 
-    # Number of chats to sync for new users.
-    initial_chat_sync_count: 10
-    # Number of old messages to fill when creating new portal rooms.
-    initial_history_fill_count: 20
-    # Whether or not notifications should be turned off while filling initial history.
-    # Only applicable when using double puppeting.
-    initial_history_disable_notifications: false
-    # Maximum number of chats to sync when recovering from downtime.
-    # Set to -1 to sync all new chats during downtime.
-    recovery_chat_sync_limit: -1
-    # Whether or not to sync history when recovering from downtime.
-    recovery_history_backfill: true
-    # Whether or not portal info should be fetched from the server when syncing,
-    # instead of relying on finding any changes in the message history.
-    # If you get 599 errors often, you should try disabling this.
-    chat_meta_sync: true
+    history_sync:
+        # Whether to create portals from history sync payloads from WhatsApp.
+        create_portals: true
+        # Whether to enable backfilling history sync payloads from WhatsApp using batch sending
+        # This requires a server with MSC2716 support, which is currently an experimental feature in synapse.
+        # It can be enabled by setting experimental_features -> enable_msc2716 to true in homeserver.yaml.
+        backfill: false
+        # Whether to use custom puppet for backfilling.
+        # In order to use this, the custom puppets must be in the appservice's user ID namespace.
+        double_puppet_backfill: false
     # Whether or not puppet avatars should be fetched from the server even if an avatar is already set.
-    # If you get 599 errors often, you should try disabling this.
     user_avatar_sync: true
     # Whether or not Matrix users leaving groups should be bridged to WhatsApp
     bridge_matrix_leave: true
-    # Maximum number of seconds since last message in chat to skip
-    # syncing the chat in any case. This setting will take priority
-    # over both recovery_chat_sync_limit and initial_chat_sync_count.
-    # Default is 3 days = 259200 seconds
-    sync_max_chat_age: 259200
 
     # Whether or not to sync with custom puppets to receive EDUs that
     # are not normally sent to appservices.
@@ -169,20 +129,12 @@ bridge:
     # manually.
     login_shared_secret: null
 
-    # Whether or not to invite own WhatsApp user's Matrix puppet into private
-    # chat portals when backfilling if needed.
-    # This always uses the default puppet instead of custom puppets due to
-    # rate limits and timestamp massaging.
-    invite_own_puppet_for_backfilling: true
-    # Whether or not to explicitly set the avatar and room name for private
-    # chat portal rooms. This can be useful if the previous field works fine,
-    # but causes room avatar/name bugs.
+    # Whether to explicitly set the avatar and room name for private chat portal rooms.
     private_chat_portal_meta: false
-    # Whether or not Matrix m.notice-type messages should be bridged.
+    # Whether Matrix m.notice-type messages should be bridged.
     bridge_notices: true
     # Set this to true to tell the bridge to re-send m.bridge events to all rooms on the next run.
-    # This field will automatically be changed back to false after it,
-    # except if the config file is not writable.
+    # This field will automatically be changed back to false after it, except if the config file is not writable.
     resend_bridge_info: false
     # When using double puppeting, should muted chats be muted in Matrix?
     mute_bridging: false
@@ -246,7 +198,7 @@ bridge:
 
     # Permissions for using the bridge.
     # Permitted values:
-    # relaybot - Talk through the relaybot (if enabled), no access otherwise
+    #    relay - Talk through the relaybot (if enabled), no access otherwise
     #     user - Access to use the bridge to chat with a WhatsApp account.
     #    admin - User level and some additional administration tools
     # Permitted keys:
@@ -254,19 +206,16 @@ bridge:
     #   domain - All users on that homeserver
     #     mxid - Specific user
     permissions:
-        "*": relaybot
+        "*": relay
         "example.com": user
         "@admin:example.com": admin
 
-    relaybot:
-        # Whether or not relaybot support is enabled.
+    relay:
+        # Whether relay mode should be allowed. If allowed, `!signal set-relay` can be used to turn any
+        # authenticated user into a relaybot for that chat.
         enabled: false
-        # The management room for the bot. This is where all status notifications are posted and
-        # in this room, you can use `!wa <command>` instead of `!wa relaybot <command>`. Omitting
-        # the command prefix completely like in user management rooms is not possible.
-        management: "!foo:example.com"
-        # List of users to invite to all created rooms that include the relaybot.
-        invites: []
+        # Should only admins be allowed to set themselves as relay users?
+        admin_only: true
         # The formats to use when sending messages to WhatsApp via the relaybot.
         message_formats:
             m.text: "<b>{{ .Sender.Displayname }}</b>: {{ .Message }}"

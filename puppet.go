@@ -1,5 +1,5 @@
 // mautrix-whatsapp - A Matrix-WhatsApp puppeting bridge.
-// Copyright (C) 2020 Tulir Asokan
+// Copyright (C) 2021 Tulir Asokan
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as published by
@@ -17,15 +17,19 @@
 package main
 
 import (
+	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"regexp"
-	"strings"
 	"sync"
+	"time"
 
-	"github.com/Rhymen/go-whatsapp"
+	"go.mau.fi/whatsmeow"
+	"go.mau.fi/whatsmeow/types"
 
 	log "maunium.net/go/maulogger/v2"
+
 	"maunium.net/go/mautrix/appservice"
 	"maunium.net/go/mautrix/id"
 
@@ -34,19 +38,18 @@ import (
 
 var userIDRegex *regexp.Regexp
 
-func (bridge *Bridge) ParsePuppetMXID(mxid id.UserID) (whatsapp.JID, bool) {
+func (bridge *Bridge) ParsePuppetMXID(mxid id.UserID) (jid types.JID, ok bool) {
 	if userIDRegex == nil {
 		userIDRegex = regexp.MustCompile(fmt.Sprintf("^@%s:%s$",
 			bridge.Config.Bridge.FormatUsername("([0-9]+)"),
 			bridge.Config.Homeserver.Domain))
 	}
 	match := userIDRegex.FindStringSubmatch(string(mxid))
-	if match == nil || len(match) != 2 {
-		return "", false
+	if len(match) == 2 {
+		jid = types.NewJID(match[1], types.DefaultUserServer)
+		ok = true
 	}
-
-	jid := whatsapp.JID(match[1] + whatsapp.NewUserSuffix)
-	return jid, true
+	return
 }
 
 func (bridge *Bridge) GetPuppetByMXID(mxid id.UserID) *Puppet {
@@ -58,7 +61,13 @@ func (bridge *Bridge) GetPuppetByMXID(mxid id.UserID) *Puppet {
 	return bridge.GetPuppetByJID(jid)
 }
 
-func (bridge *Bridge) GetPuppetByJID(jid whatsapp.JID) *Puppet {
+func (bridge *Bridge) GetPuppetByJID(jid types.JID) *Puppet {
+	jid = jid.ToNonAD()
+	if jid.Server == types.LegacyUserServer {
+		jid.Server = types.DefaultUserServer
+	} else if jid.Server != types.DefaultUserServer {
+		return nil
+	}
 	bridge.puppetsLock.Lock()
 	defer bridge.puppetsLock.Unlock()
 	puppet, ok := bridge.puppets[jid]
@@ -123,12 +132,9 @@ func (bridge *Bridge) dbPuppetsToPuppets(dbPuppets []*database.Puppet) []*Puppet
 	return output
 }
 
-func (bridge *Bridge) FormatPuppetMXID(jid whatsapp.JID) id.UserID {
+func (bridge *Bridge) FormatPuppetMXID(jid types.JID) id.UserID {
 	return id.NewUserID(
-		bridge.Config.Bridge.FormatUsername(
-			strings.Replace(
-				jid,
-				whatsapp.NewUserSuffix, "", 1)),
+		bridge.Config.Bridge.FormatUsername(jid.User),
 		bridge.Config.Homeserver.Domain)
 }
 
@@ -149,7 +155,7 @@ type Puppet struct {
 	log    log.Logger
 
 	typingIn id.RoomID
-	typingAt int64
+	typingAt time.Time
 
 	MXID id.UserID
 
@@ -160,14 +166,8 @@ type Puppet struct {
 	syncLock sync.Mutex
 }
 
-func (puppet *Puppet) PhoneNumber() string {
-	return strings.Replace(puppet.JID, whatsapp.NewUserSuffix, "", 1)
-}
-
 func (puppet *Puppet) IntentFor(portal *Portal) *appservice.IntentAPI {
-	if (!portal.IsPrivateChat() && puppet.customIntent == nil) ||
-		(portal.backfilling && portal.bridge.Config.Bridge.InviteOwnPuppetForBackfilling) ||
-		portal.Key.JID == puppet.JID {
+	if (!portal.IsPrivateChat() && puppet.customIntent == nil) || portal.Key.JID == puppet.JID {
 		return puppet.DefaultIntent()
 	}
 	return puppet.customIntent
@@ -181,63 +181,64 @@ func (puppet *Puppet) DefaultIntent() *appservice.IntentAPI {
 	return puppet.bridge.AS.Intent(puppet.MXID)
 }
 
-func (puppet *Puppet) UpdateAvatar(source *User, avatar *whatsapp.ProfilePicInfo) bool {
-	if avatar == nil {
-		var err error
-		avatar, err = source.Conn.GetProfilePicThumb(puppet.JID)
-		if err != nil {
-			puppet.log.Warnln("Failed to get avatar:", err)
-			return false
-		}
-	}
-
-	if avatar.Status == 404 {
-		avatar.Tag = "remove"
-		avatar.Status = 0
-	} else if avatar.Status == 401 && puppet.Avatar != "unauthorized" {
-		puppet.Avatar = "unauthorized"
-		return true
-	}
-	if avatar.Status != 0 || avatar.Tag == puppet.Avatar {
-		return false
-	}
-
-	if avatar.Tag == "remove" || len(avatar.URL) == 0 {
-		err := puppet.DefaultIntent().SetAvatarURL(id.ContentURI{})
-		if err != nil {
-			puppet.log.Warnln("Failed to remove avatar:", err)
-		}
-		puppet.AvatarURL = id.ContentURI{}
-		puppet.Avatar = avatar.Tag
-		go puppet.updatePortalAvatar()
-		return true
-	}
-
-	data, err := avatar.DownloadBytes()
+func reuploadAvatar(intent *appservice.IntentAPI, url string) (id.ContentURI, error) {
+	getResp, err := http.DefaultClient.Get(url)
 	if err != nil {
-		puppet.log.Warnln("Failed to download avatar:", err)
-		return false
+		return id.ContentURI{}, fmt.Errorf("failed to download avatar: %w", err)
+	}
+	data, err := io.ReadAll(getResp.Body)
+	_ = getResp.Body.Close()
+	if err != nil {
+		return id.ContentURI{}, fmt.Errorf("failed to read avatar bytes: %w", err)
 	}
 
 	mime := http.DetectContentType(data)
-	resp, err := puppet.DefaultIntent().UploadBytes(data, mime)
+	resp, err := intent.UploadBytes(data, mime)
 	if err != nil {
-		puppet.log.Warnln("Failed to upload avatar:", err)
+		return id.ContentURI{}, fmt.Errorf("failed to upload avatar to Matrix: %w", err)
+	}
+	return resp.ContentURI, nil
+}
+
+func (puppet *Puppet) UpdateAvatar(source *User) bool {
+	avatar, err := source.Client.GetProfilePictureInfo(puppet.JID, false)
+	if err != nil {
+		if !errors.Is(err, whatsmeow.ErrProfilePictureUnauthorized) {
+			puppet.log.Warnln("Failed to get avatar URL:", err)
+		}
 		return false
+	} else if avatar == nil {
+		if puppet.Avatar == "remove" {
+			return false
+		}
+		puppet.AvatarURL = id.ContentURI{}
+		avatar = &types.ProfilePictureInfo{ID: "remove"}
+	} else if avatar.ID == puppet.Avatar {
+		return false
+	} else if len(avatar.URL) == 0 {
+		puppet.log.Warnln("Didn't get URL in response to avatar query")
+		return false
+	} else {
+		url, err := reuploadAvatar(puppet.DefaultIntent(), avatar.URL)
+		if err != nil {
+			puppet.log.Warnln("Failed to reupload avatar:", err)
+			return false
+		}
+
+		puppet.AvatarURL = url
 	}
 
-	puppet.AvatarURL = resp.ContentURI
 	err = puppet.DefaultIntent().SetAvatarURL(puppet.AvatarURL)
 	if err != nil {
 		puppet.log.Warnln("Failed to set avatar:", err)
 	}
-	puppet.Avatar = avatar.Tag
+	puppet.Avatar = avatar.ID
 	go puppet.updatePortalAvatar()
 	return true
 }
 
-func (puppet *Puppet) UpdateName(source *User, contact whatsapp.Contact) bool {
-	newName, quality := puppet.bridge.Config.Bridge.FormatDisplayname(contact)
+func (puppet *Puppet) UpdateName(source *User, contact types.ContactInfo) bool {
+	newName, quality := puppet.bridge.Config.Bridge.FormatDisplayname(puppet.JID, contact)
 	if puppet.Displayname != newName && quality >= puppet.NameQuality {
 		err := puppet.DefaultIntent().SetDisplayName(newName)
 		if err == nil {
@@ -288,25 +289,21 @@ func (puppet *Puppet) updatePortalName() {
 	})
 }
 
-func (puppet *Puppet) SyncContactIfNecessary(source *User) {
-	if len(puppet.Displayname) > 0 {
+func (puppet *Puppet) SyncContact(source *User, onlyIfNoName bool) {
+	if onlyIfNoName && len(puppet.Displayname) > 0 {
 		return
 	}
 
-	source.Conn.Store.ContactsLock.RLock()
-	contact, ok := source.Conn.Store.Contacts[puppet.JID]
-	source.Conn.Store.ContactsLock.RUnlock()
-	if !ok {
-		puppet.log.Warnfln("No contact info found through %s in SyncContactIfNecessary", source.MXID)
-		contact.JID = puppet.JID
-		// Sync anyway to set a phone number name
-	} else {
-		puppet.log.Debugfln("Syncing contact info through %s / %s because puppet has no displayname", source.MXID, source.JID)
+	contact, err := source.Client.Store.Contacts.GetContact(puppet.JID)
+	if err != nil {
+		puppet.log.Warnfln("Failed to get contact info through %s in SyncContact: %v", source.MXID)
+	} else if !contact.Found {
+		puppet.log.Warnfln("No contact info found through %s in SyncContact", source.MXID)
 	}
 	puppet.Sync(source, contact)
 }
 
-func (puppet *Puppet) Sync(source *User, contact whatsapp.Contact) {
+func (puppet *Puppet) Sync(source *User, contact types.ContactInfo) {
 	puppet.syncLock.Lock()
 	defer puppet.syncLock.Unlock()
 	err := puppet.DefaultIntent().EnsureRegistered()
@@ -314,15 +311,14 @@ func (puppet *Puppet) Sync(source *User, contact whatsapp.Contact) {
 		puppet.log.Errorln("Failed to ensure registered:", err)
 	}
 
-	if contact.JID == source.JID {
-		contact.Notify = source.pushName
+	if puppet.JID.User == source.JID.User {
+		contact.PushName = source.Client.Store.PushName
 	}
 
 	update := false
 	update = puppet.UpdateName(source, contact) || update
-	// TODO figure out how to update avatars after being offline
 	if len(puppet.Avatar) == 0 || puppet.bridge.Config.Bridge.UserAvatarSync {
-		update = puppet.UpdateAvatar(source, nil) || update
+		update = puppet.UpdateAvatar(source) || update
 	}
 	if update {
 		puppet.Update()

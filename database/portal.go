@@ -1,5 +1,5 @@
 // mautrix-whatsapp - A Matrix-WhatsApp puppeting bridge.
-// Copyright (C) 2020 Tulir Asokan
+// Copyright (C) 2021 Tulir Asokan
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as published by
@@ -18,42 +18,40 @@ package database
 
 import (
 	"database/sql"
-	"strings"
 
 	log "maunium.net/go/maulogger/v2"
 
-	"github.com/Rhymen/go-whatsapp"
-
 	"maunium.net/go/mautrix/id"
+
+	"go.mau.fi/whatsmeow/types"
 )
 
 type PortalKey struct {
-	JID      whatsapp.JID
-	Receiver whatsapp.JID
+	JID      types.JID
+	Receiver types.JID
 }
 
-func GroupPortalKey(jid whatsapp.JID) PortalKey {
-	return PortalKey{
-		JID:      jid,
-		Receiver: jid,
-	}
+func GroupPortalKey(jid types.JID) PortalKey {
+	return NewPortalKey(jid, jid)
 }
 
-func NewPortalKey(jid, receiver whatsapp.JID) PortalKey {
-	if strings.HasSuffix(jid, whatsapp.GroupSuffix) {
+func NewPortalKey(jid, receiver types.JID) PortalKey {
+	if jid.Server == types.GroupServer {
 		receiver = jid
+	} else if jid.Server == types.LegacyUserServer {
+		jid.Server = types.DefaultUserServer
 	}
 	return PortalKey{
-		JID:      jid,
-		Receiver: receiver,
+		JID:      jid.ToNonAD(),
+		Receiver: receiver.ToNonAD(),
 	}
 }
 
 func (key PortalKey) String() string {
 	if key.Receiver == key.JID {
-		return key.JID
+		return key.JID.String()
 	}
-	return key.JID + "-" + key.Receiver
+	return key.JID.String() + "-" + key.Receiver.String()
 }
 
 type PortalQuery struct {
@@ -80,12 +78,12 @@ func (pq *PortalQuery) GetByMXID(mxid id.RoomID) *Portal {
 	return pq.get("SELECT * FROM portal WHERE mxid=$1", mxid)
 }
 
-func (pq *PortalQuery) GetAllByJID(jid whatsapp.JID) []*Portal {
-	return pq.getAll("SELECT * FROM portal WHERE jid=$1", jid)
+func (pq *PortalQuery) GetAllByJID(jid types.JID) []*Portal {
+	return pq.getAll("SELECT * FROM portal WHERE jid=$1", jid.ToNonAD())
 }
 
-func (pq *PortalQuery) FindPrivateChats(receiver whatsapp.JID) []*Portal {
-	return pq.getAll("SELECT * FROM portal WHERE receiver=$1 AND jid LIKE '%@s.whatsapp.net'", receiver)
+func (pq *PortalQuery) FindPrivateChats(receiver types.JID) []*Portal {
+	return pq.getAll("SELECT * FROM portal WHERE receiver=$1 AND jid LIKE '%@s.whatsapp.net'", receiver.ToNonAD())
 }
 
 func (pq *PortalQuery) getAll(query string, args ...interface{}) (portals []*Portal) {
@@ -120,11 +118,16 @@ type Portal struct {
 	Avatar    string
 	AvatarURL id.ContentURI
 	Encrypted bool
+
+	FirstEventID id.EventID
+	NextBatchID  id.BatchID
+
+	RelayUserID id.UserID
 }
 
 func (portal *Portal) Scan(row Scannable) *Portal {
-	var mxid, avatarURL sql.NullString
-	err := row.Scan(&portal.Key.JID, &portal.Key.Receiver, &mxid, &portal.Name, &portal.Topic, &portal.Avatar, &avatarURL, &portal.Encrypted)
+	var mxid, avatarURL, firstEventID, nextBatchID, relayUserID sql.NullString
+	err := row.Scan(&portal.Key.JID, &portal.Key.Receiver, &mxid, &portal.Name, &portal.Topic, &portal.Avatar, &avatarURL, &portal.Encrypted, &firstEventID, &nextBatchID, &relayUserID)
 	if err != nil {
 		if err != sql.ErrNoRows {
 			portal.log.Errorln("Database scan failed:", err)
@@ -133,6 +136,9 @@ func (portal *Portal) Scan(row Scannable) *Portal {
 	}
 	portal.MXID = id.RoomID(mxid.String)
 	portal.AvatarURL, _ = id.ParseContentURI(avatarURL.String)
+	portal.FirstEventID = id.EventID(firstEventID.String)
+	portal.NextBatchID = id.BatchID(nextBatchID.String)
+	portal.RelayUserID = id.UserID(relayUserID.String)
 	return portal
 }
 
@@ -143,21 +149,24 @@ func (portal *Portal) mxidPtr() *id.RoomID {
 	return nil
 }
 
+func (portal *Portal) relayUserPtr() *id.UserID {
+	if len(portal.RelayUserID) > 0 {
+		return &portal.RelayUserID
+	}
+	return nil
+}
+
 func (portal *Portal) Insert() {
-	_, err := portal.db.Exec("INSERT INTO portal (jid, receiver, mxid, name, topic, avatar, avatar_url, encrypted) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
-		portal.Key.JID, portal.Key.Receiver, portal.mxidPtr(), portal.Name, portal.Topic, portal.Avatar, portal.AvatarURL.String(), portal.Encrypted)
+	_, err := portal.db.Exec("INSERT INTO portal (jid, receiver, mxid, name, topic, avatar, avatar_url, encrypted, first_event_id, next_batch_id, relay_user_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)",
+		portal.Key.JID, portal.Key.Receiver, portal.mxidPtr(), portal.Name, portal.Topic, portal.Avatar, portal.AvatarURL.String(), portal.Encrypted, portal.FirstEventID.String(), portal.NextBatchID.String(), portal.relayUserPtr())
 	if err != nil {
 		portal.log.Warnfln("Failed to insert %s: %v", portal.Key, err)
 	}
 }
 
 func (portal *Portal) Update() {
-	var mxid *id.RoomID
-	if len(portal.MXID) > 0 {
-		mxid = &portal.MXID
-	}
-	_, err := portal.db.Exec("UPDATE portal SET mxid=$1, name=$2, topic=$3, avatar=$4, avatar_url=$5, encrypted=$6 WHERE jid=$7 AND receiver=$8",
-		mxid, portal.Name, portal.Topic, portal.Avatar, portal.AvatarURL.String(), portal.Encrypted, portal.Key.JID, portal.Key.Receiver)
+	_, err := portal.db.Exec("UPDATE portal SET mxid=$3, name=$4, topic=$5, avatar=$6, avatar_url=$7, encrypted=$8, first_event_id=$9, next_batch_id=$10, relay_user_id=$11 WHERE jid=$1 AND receiver=$2",
+		portal.Key.JID, portal.Key.Receiver, portal.mxidPtr(), portal.Name, portal.Topic, portal.Avatar, portal.AvatarURL.String(), portal.Encrypted, portal.FirstEventID.String(), portal.NextBatchID.String(), portal.relayUserPtr())
 	if err != nil {
 		portal.log.Warnfln("Failed to update %s: %v", portal.Key, err)
 	}
@@ -168,27 +177,4 @@ func (portal *Portal) Delete() {
 	if err != nil {
 		portal.log.Warnfln("Failed to delete %s: %v", portal.Key, err)
 	}
-}
-
-func (portal *Portal) GetUserIDs() []id.UserID {
-	rows, err := portal.db.Query(`SELECT "user".mxid FROM "user", user_portal
-		WHERE "user".jid=user_portal.user_jid
-			AND user_portal.portal_jid=$1
-			AND user_portal.portal_receiver=$2`,
-		portal.Key.JID, portal.Key.Receiver)
-	if err != nil {
-		portal.log.Debugln("Failed to get portal user ids:", err)
-		return nil
-	}
-	var userIDs []id.UserID
-	for rows.Next() {
-		var userID id.UserID
-		err = rows.Scan(&userID)
-		if err != nil {
-			portal.log.Warnln("Failed to scan row:", err)
-			continue
-		}
-		userIDs = append(userIDs, userID)
-	}
-	return userIDs
 }

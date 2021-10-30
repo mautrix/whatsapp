@@ -19,13 +19,18 @@ package database
 import (
 	"database/sql"
 
-	_ "github.com/lib/pq"
+	"github.com/lib/pq"
 	_ "github.com/mattn/go-sqlite3"
 
 	log "maunium.net/go/maulogger/v2"
 
+	"go.mau.fi/whatsmeow/store/sqlstore"
 	"maunium.net/go/mautrix-whatsapp/database/upgrades"
 )
+
+func init() {
+	sqlstore.PostgresArrayWrapper = pq.Array
+}
 
 type Database struct {
 	*sql.DB

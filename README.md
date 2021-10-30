@@ -1,11 +1,10 @@
 # mautrix-whatsapp
-A Matrix-WhatsApp puppeting bridge based on the [Rhymen/go-whatsapp](https://github.com/Rhymen/go-whatsapp)
-implementation of the [sigalor/whatsapp-web-reveng](https://github.com/sigalor/whatsapp-web-reveng) project.
+A Matrix-WhatsApp puppeting bridge based on [whatsmeow](https://github.com/tulir/whatsmeow).
 
 ### Documentation
-All setup and usage instructions are located on
-[docs.mau.fi](https://docs.mau.fi/bridges/go/whatsapp/index.html).
-Some quick links:
+All setup and usage instructions are located on [docs.mau.fi]. Some quick links:
+
+[docs.mau.fi]: https://docs.mau.fi/bridges/go/whatsapp/index.html
 
 * [Bridge setup](https://docs.mau.fi/bridges/go/whatsapp/setup/index.html)
   (or [with Docker](https://docs.mau.fi/bridges/go/whatsapp/setup/docker.html))

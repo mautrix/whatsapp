@@ -1,5 +1,5 @@
 // mautrix-whatsapp - A Matrix-WhatsApp puppeting bridge.
-// Copyright (C) 2020 Tulir Asokan
+// Copyright (C) 2021 Tulir Asokan
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as published by
@@ -28,7 +28,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	log "maunium.net/go/maulogger/v2"
 
-	"github.com/Rhymen/go-whatsapp"
+	"go.mau.fi/whatsmeow/types"
 
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
@@ -59,16 +59,12 @@ type MetricsHandler struct {
 	unencryptedGroupCount   prometheus.Gauge
 	unencryptedPrivateCount prometheus.Gauge
 
-	connected           prometheus.Gauge
-	connectedState      map[whatsapp.JID]bool
-	connectedStateLock  sync.Mutex
-	loggedIn            prometheus.Gauge
-	loggedInState       map[whatsapp.JID]bool
-	loggedInStateLock   sync.Mutex
-	syncLocked          prometheus.Gauge
-	syncLockedState     map[whatsapp.JID]bool
-	syncLockedStateLock sync.Mutex
-	bufferLength    *prometheus.GaugeVec
+	connected          prometheus.Gauge
+	connectedState     map[string]bool
+	connectedStateLock sync.Mutex
+	loggedIn           prometheus.Gauge
+	loggedInState      map[string]bool
+	loggedInStateLock  sync.Mutex
 }
 
 func NewMetricsHandler(address string, log log.Logger, db *database.Database) *MetricsHandler {
@@ -125,21 +121,12 @@ func NewMetricsHandler(address string, log log.Logger, db *database.Database) *M
 			Name: "bridge_logged_in",
 			Help: "Users logged into the bridge",
 		}),
-		loggedInState: make(map[whatsapp.JID]bool),
+		loggedInState: make(map[string]bool),
 		connected: promauto.NewGauge(prometheus.GaugeOpts{
 			Name: "bridge_connected",
 			Help: "Bridge users connected to WhatsApp",
 		}),
-		connectedState: make(map[whatsapp.JID]bool),
-		syncLocked: promauto.NewGauge(prometheus.GaugeOpts{
-			Name: "bridge_sync_locked",
-			Help: "Bridge users locked in post-login sync",
-		}),
-		syncLockedState: make(map[whatsapp.JID]bool),
-		bufferLength: promauto.NewGaugeVec(prometheus.GaugeOpts{
-			Name: "bridge_buffer_size",
-			Help: "Number of messages in buffer",
-		}, []string{"user_id"}),
+		connectedState: make(map[string]bool),
 	}
 }
 
@@ -158,7 +145,7 @@ func (mh *MetricsHandler) TrackMatrixEvent(eventType event.Type) func() {
 	}
 }
 
-func (mh *MetricsHandler) TrackWhatsAppMessage(timestamp uint64, messageType string) func() {
+func (mh *MetricsHandler) TrackWhatsAppMessage(timestamp time.Time, messageType string) func() {
 	if !mh.running {
 		return noop
 	}
@@ -169,7 +156,7 @@ func (mh *MetricsHandler) TrackWhatsAppMessage(timestamp uint64, messageType str
 		mh.whatsappMessageHandling.
 			With(prometheus.Labels{"message_type": messageType}).
 			Observe(duration.Seconds())
-		mh.whatsappMessageAge.Observe(time.Now().Sub(time.Unix(int64(timestamp), 0)).Seconds())
+		mh.whatsappMessageAge.Observe(time.Now().Sub(timestamp).Seconds())
 	}
 }
 
@@ -180,15 +167,15 @@ func (mh *MetricsHandler) TrackDisconnection(userID id.UserID) {
 	mh.disconnections.With(prometheus.Labels{"user_id": string(userID)}).Inc()
 }
 
-func (mh *MetricsHandler) TrackLoginState(jid whatsapp.JID, loggedIn bool) {
+func (mh *MetricsHandler) TrackLoginState(jid types.JID, loggedIn bool) {
 	if !mh.running {
 		return
 	}
 	mh.loggedInStateLock.Lock()
 	defer mh.loggedInStateLock.Unlock()
-	currentVal, ok := mh.loggedInState[jid]
+	currentVal, ok := mh.loggedInState[jid.User]
 	if !ok || currentVal != loggedIn {
-		mh.loggedInState[jid] = loggedIn
+		mh.loggedInState[jid.User] = loggedIn
 		if loggedIn {
 			mh.loggedIn.Inc()
 		} else {
@@ -197,46 +184,21 @@ func (mh *MetricsHandler) TrackLoginState(jid whatsapp.JID, loggedIn bool) {
 	}
 }
 
-func (mh *MetricsHandler) TrackConnectionState(jid whatsapp.JID, connected bool) {
+func (mh *MetricsHandler) TrackConnectionState(jid types.JID, connected bool) {
 	if !mh.running {
 		return
 	}
-
 	mh.connectedStateLock.Lock()
 	defer mh.connectedStateLock.Unlock()
-	currentVal, ok := mh.connectedState[jid]
+	currentVal, ok := mh.connectedState[jid.User]
 	if !ok || currentVal != connected {
-		mh.connectedState[jid] = connected
+		mh.connectedState[jid.User] = connected
 		if connected {
 			mh.connected.Inc()
 		} else {
 			mh.connected.Dec()
 		}
 	}
-}
-
-func (mh *MetricsHandler) TrackSyncLock(jid whatsapp.JID, locked bool) {
-	if !mh.running {
-		return
-	}
-	mh.syncLockedStateLock.Lock()
-	defer mh.syncLockedStateLock.Unlock()
-	currentVal, ok := mh.syncLockedState[jid]
-	if !ok || currentVal != locked {
-		mh.syncLockedState[jid] = locked
-		if locked {
-			mh.syncLocked.Inc()
-		} else {
-			mh.syncLocked.Dec()
-		}
-	}
-}
-
-func (mh *MetricsHandler) TrackBufferLength(id id.UserID, length int) {
-	if !mh.running {
-		return
-	}
-	mh.bufferLength.With(prometheus.Labels{"user_id": string(id)}).Set(float64(length))
 }
 
 func (mh *MetricsHandler) updateStats() {

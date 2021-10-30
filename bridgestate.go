@@ -20,15 +20,10 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io/ioutil"
 	"net/http"
-	"strings"
-	"sync/atomic"
 	"time"
-
-	"github.com/Rhymen/go-whatsapp"
 
 	log "maunium.net/go/maulogger/v2"
 
@@ -38,7 +33,6 @@ import (
 type BridgeStateEvent string
 
 const (
-	StateStarting            BridgeStateEvent = "STARTING"
 	StateUnconfigured        BridgeStateEvent = "UNCONFIGURED"
 	StateRunning             BridgeStateEvent = "RUNNING"
 	StateConnecting          BridgeStateEvent = "CONNECTING"
@@ -56,20 +50,14 @@ const (
 	WANotLoggedIn   BridgeErrorCode = "wa-logged-out"
 	WANotConnected  BridgeErrorCode = "wa-not-connected"
 	WAConnecting    BridgeErrorCode = "wa-connecting"
-	WATimeout       BridgeErrorCode = "wa-timeout"
 	WAServerTimeout BridgeErrorCode = "wa-server-timeout"
-	WAPingFalse     BridgeErrorCode = "wa-ping-false"
-	WAPingError     BridgeErrorCode = "wa-ping-error"
 )
 
 var bridgeHumanErrors = map[BridgeErrorCode]string{
 	WANotLoggedIn:   "You're not logged into WhatsApp",
 	WANotConnected:  "You're not connected to WhatsApp",
 	WAConnecting:    "Trying to reconnect to WhatsApp. Please make sure WhatsApp is running on your phone and connected to the internet.",
-	WATimeout:       "WhatsApp on your phone is not responding. Please make sure it is running and connected to the internet.",
 	WAServerTimeout: "The WhatsApp web servers are not responding. The bridge will try to reconnect.",
-	WAPingFalse:     "WhatsApp returned an error, reconnecting. Please make sure WhatsApp is running on your phone and connected to the internet.",
-	WAPingError:     "WhatsApp returned an unknown error",
 }
 
 type BridgeState struct {
@@ -94,8 +82,8 @@ type GlobalBridgeState struct {
 func (pong BridgeState) fill(user *User) BridgeState {
 	if user != nil {
 		pong.UserID = user.MXID
-		pong.RemoteID = strings.TrimSuffix(user.JID, whatsapp.NewUserSuffix)
-		pong.RemoteName = fmt.Sprintf("+%s", pong.RemoteID)
+		pong.RemoteID = fmt.Sprintf("%s_a%d_d%d", user.JID.User, user.JID.Agent, user.JID.Device)
+		pong.RemoteName = fmt.Sprintf("+%s", user.JID.User)
 	}
 
 	pong.Timestamp = time.Now().Unix()
@@ -114,32 +102,6 @@ func (pong *BridgeState) shouldDeduplicate(newPong *BridgeState) bool {
 		return false
 	}
 	return pong.Timestamp+int64(pong.TTL/5) > time.Now().Unix()
-}
-
-func (user *User) setupAdminTestHooks() {
-	if len(user.bridge.Config.Homeserver.StatusEndpoint) == 0 {
-		return
-	}
-	user.Conn.AdminTestHook = func(err error) {
-		if errors.Is(err, whatsapp.ErrConnectionTimeout) {
-			user.sendBridgeState(BridgeState{StateEvent: StateTransientDisconnect, Error: WATimeout})
-		} else if errors.Is(err, whatsapp.ErrWebsocketKeepaliveFailed) {
-			user.sendBridgeState(BridgeState{StateEvent: StateTransientDisconnect, Error: WAServerTimeout})
-		} else if errors.Is(err, whatsapp.ErrPingFalse) {
-			user.sendBridgeState(BridgeState{StateEvent: StateTransientDisconnect, Error: WAPingFalse})
-		} else if err == nil {
-			user.sendBridgeState(BridgeState{StateEvent: StateConnected})
-		} else {
-			user.sendBridgeState(BridgeState{StateEvent: StateTransientDisconnect, Error: WAPingError})
-		}
-	}
-	user.Conn.CountTimeoutHook = func(wsKeepaliveErrorCount int) {
-		if wsKeepaliveErrorCount > 0 {
-			user.sendBridgeState(BridgeState{StateEvent: StateTransientDisconnect, Error: WAServerTimeout})
-		} else {
-			user.sendBridgeState(BridgeState{StateEvent: StateTransientDisconnect, Error: WATimeout})
-		}
-	}
 }
 
 func (bridge *Bridge) createBridgeStateRequest(ctx context.Context, state *BridgeState) (req *http.Request, err error) {
@@ -210,8 +172,6 @@ func (user *User) sendBridgeState(state BridgeState) {
 	}
 }
 
-var bridgeStatePingID uint32 = 0
-
 func (prov *ProvisioningAPI) BridgeStatePing(w http.ResponseWriter, r *http.Request) {
 	if !prov.bridge.AS.CheckServerToken(w, r) {
 		return
@@ -221,37 +181,12 @@ func (prov *ProvisioningAPI) BridgeStatePing(w http.ResponseWriter, r *http.Requ
 	var global BridgeState
 	global.StateEvent = StateRunning
 	var remote BridgeState
-	if user.Conn != nil {
-		if user.Conn.IsConnected() && user.Conn.IsLoggedIn() {
-			pingID := atomic.AddUint32(&bridgeStatePingID, 1)
-			user.log.Debugfln("Pinging WhatsApp mobile due to bridge status /ping API request (ID %d)", pingID)
-			err := user.Conn.AdminTestWithSuppress(true)
-			if errors.Is(r.Context().Err(), context.Canceled) {
-				user.log.Warnfln("Ping request %d was canceled before we responded (response was %v)", pingID, err)
-				user.prevBridgeStatus = nil
-				return
-			}
-			user.log.Debugfln("Ping %d response: %v", pingID, err)
-			remote.StateEvent = StateTransientDisconnect
-			if err == whatsapp.ErrPingFalse {
-				user.log.Debugln("Forwarding ping false error from provisioning API to HandleError")
-				go user.HandleError(err)
-				remote.Error = WAPingFalse
-			} else if errors.Is(err, whatsapp.ErrConnectionTimeout) {
-				remote.Error = WATimeout
-			} else if errors.Is(err, whatsapp.ErrWebsocketKeepaliveFailed) {
-				remote.Error = WAServerTimeout
-			} else if err != nil {
-				remote.Error = WAPingError
-			} else {
-				remote.StateEvent = StateConnected
-			}
-		} else if user.Conn.IsLoginInProgress() && user.Session != nil {
+	if user.IsConnected() {
+		if user.Client.IsLoggedIn {
+			remote.StateEvent = StateConnected
+		} else if user.Session != nil {
 			remote.StateEvent = StateConnecting
 			remote.Error = WAConnecting
-		} else if !user.Conn.IsConnected() && user.Session != nil {
-			remote.StateEvent = StateBadCredentials
-			remote.Error = WANotConnected
 		} // else: unconfigured
 	} else if user.Session != nil {
 		remote.StateEvent = StateBadCredentials
