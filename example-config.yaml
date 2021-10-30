@@ -98,6 +98,8 @@ bridge:
     history_sync:
         # Whether to create portals from history sync payloads from WhatsApp.
         create_portals: true
+        # Maximum age of chats in seconds to create portals for. Set to 0 to create portals for all chats in sync payload.
+        max_age: 604800
         # Whether to enable backfilling history sync payloads from WhatsApp using batch sending
         # This requires a server with MSC2716 support, which is currently an experimental feature in synapse.
         # It can be enabled by setting experimental_features -> enable_msc2716 to true in homeserver.yaml.

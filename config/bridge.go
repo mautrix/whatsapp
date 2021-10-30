@@ -31,8 +31,8 @@ type BridgeConfig struct {
 	UsernameTemplate    string `yaml:"username_template"`
 	DisplaynameTemplate string `yaml:"displayname_template"`
 
-	DeliveryReceipts      bool `yaml:"delivery_receipts"`
-	PortalMessageBuffer   int  `yaml:"portal_message_buffer"`
+	DeliveryReceipts    bool `yaml:"delivery_receipts"`
+	PortalMessageBuffer int  `yaml:"portal_message_buffer"`
 
 	CallNotices struct {
 		Start bool `yaml:"start"`
@@ -40,9 +40,10 @@ type BridgeConfig struct {
 	} `yaml:"call_notices"`
 
 	HistorySync struct {
-		CreatePortals        bool `yaml:"create_portals"`
-		Backfill             bool `yaml:"backfill"`
-		DoublePuppetBackfill bool `yaml:"double_puppet_backfill"`
+		CreatePortals        bool  `yaml:"create_portals"`
+		MaxAge               int64 `yaml:"max_age"`
+		Backfill             bool  `yaml:"backfill"`
+		DoublePuppetBackfill bool  `yaml:"double_puppet_backfill"`
 	} `yaml:"history_sync"`
 	UserAvatarSync    bool `yaml:"user_avatar_sync"`
 	BridgeMatrixLeave bool `yaml:"bridge_matrix_leave"`
@@ -102,6 +103,7 @@ func (bc *BridgeConfig) setDefaults() {
 	bc.CallNotices.End = true
 
 	bc.HistorySync.CreatePortals = true
+	bc.HistorySync.MaxAge = 604800
 	bc.UserAvatarSync = true
 	bc.BridgeMatrixLeave = true
 

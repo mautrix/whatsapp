@@ -347,6 +347,9 @@ func (user *User) handleHistorySync(evt *waProto.HistorySync) {
 		return
 	}
 	user.log.Infofln("Handling history sync with type %s, chunk order %d, progress %d%%", evt.GetSyncType(), evt.GetChunkOrder(), evt.GetProgress())
+	maxAge := user.bridge.Config.Bridge.HistorySync.MaxAge
+	minLastMsgToCreate := time.Now().Add(-time.Duration(maxAge) * time.Second)
+	createRooms := user.bridge.Config.Bridge.HistorySync.CreatePortals
 	for _, conv := range evt.GetConversations() {
 		jid, err := types.ParseJID(conv.GetId())
 		if err != nil {
@@ -365,8 +368,13 @@ func (user *User) handleHistorySync(evt *waProto.HistorySync) {
 			_ = user.Client.Store.ChatSettings.PutPinned(jid, true)
 		}
 
+		lastMsg := time.Unix(int64(conv.GetConversationTimestamp()), 0)
 		portal := user.GetPortalByJID(jid)
-		if user.bridge.Config.Bridge.HistorySync.CreatePortals && len(portal.MXID) == 0 {
+		if createRooms && len(portal.MXID) == 0 {
+			if maxAge > 0 && !lastMsg.After(minLastMsgToCreate) {
+				user.log.Debugfln("Not creating portal for %s: last message older than limit (%s)", portal.Key.JID, lastMsg)
+				continue
+			}
 			user.log.Debugln("Creating portal for", portal.Key.JID, "as part of history sync handling")
 			err = portal.CreateMatrixRoom(user)
 			if err != nil {

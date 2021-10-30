@@ -720,7 +720,7 @@ func (handler *CommandHandler) CommandDeleteAllPortals(ce *CommandEvent) {
 	var portalsToDelete []*Portal
 
 	if ce.User.Admin {
-		portals = portalsToDelete
+		portalsToDelete = portals
 	} else {
 		portalsToDelete = portals[:0]
 		for _, portal := range portals {
