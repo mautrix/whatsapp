@@ -81,6 +81,12 @@ func init() {
 			if err != nil {
 				return err
 			}
+
+			// Clear all usernames, the users need to relogin anyway.
+			_, err = tx.Exec(`UPDATE "user" SET username=null`)
+			if err != nil {
+				return err
+			}
 		}
 		return nil
 	}}
