@@ -161,6 +161,10 @@ bridge:
     # The prefix for commands. Only required in non-management rooms.
     command_prefix: "!wa"
 
+    # Whether or not created rooms should have federation enabled.
+    # If false, created portal rooms will never be federated.
+    federate_rooms: false
+
     # Messages sent upon joining a management room.
     # Markdown is supported. The defaults are listed below.
     management_room_text:

@@ -31,8 +31,8 @@ type BridgeConfig struct {
 	UsernameTemplate    string `yaml:"username_template"`
 	DisplaynameTemplate string `yaml:"displayname_template"`
 
-	DeliveryReceipts      bool `yaml:"delivery_receipts"`
-	PortalMessageBuffer   int  `yaml:"portal_message_buffer"`
+	DeliveryReceipts    bool `yaml:"delivery_receipts"`
+	PortalMessageBuffer int  `yaml:"portal_message_buffer"`
 
 	CallNotices struct {
 		Start bool `yaml:"start"`
@@ -66,6 +66,8 @@ type BridgeConfig struct {
 	WhatsappThumbnail bool `yaml:"whatsapp_thumbnail"`
 
 	AllowUserInvite bool `yaml:"allow_user_invite"`
+
+	FederateRooms bool `yaml:"federate_rooms"`
 
 	CommandPrefix string `yaml:"command_prefix"`
 
