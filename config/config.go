@@ -46,8 +46,6 @@ type Config struct {
 			MaxIdleConns int `yaml:"max_idle_conns"`
 		} `yaml:"database"`
 
-		StateStore string `yaml:"state_store_path,omitempty"`
-
 		Provisioning struct {
 			Prefix       string `yaml:"prefix"`
 			SharedSecret string `yaml:"shared_secret"`
