@@ -386,7 +386,7 @@ func (portal *Portal) handleMessage(source *User, evt *events.Message) {
 			existingMsg.UpdateMXID("net.maunium.whatsapp.fake::"+existingMsg.MXID, false)
 		}
 	} else {
-		portal.log.Warnln("Unhandled message:", evt.Info, evt.Message)
+		portal.log.Warnfln("Unhandled message: %+v / %+v", evt.Info, evt.Message)
 		if existingMsg != nil {
 			_, _ = portal.MainIntent().RedactEvent(portal.MXID, existingMsg.MXID, mautrix.ReqRedact{
 				Reason: "The undecryptable message contained an unsupported message type",
