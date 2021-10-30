@@ -100,6 +100,8 @@ func (handler *CommandHandler) CommandMux(ce *CommandEvent) {
 	switch ce.Command {
 	case "login":
 		handler.CommandLogin(ce)
+	case "ping-matrix":
+		handler.CommandPingMatrix(ce)
 	case "logout-matrix":
 		handler.CommandLogoutMatrix(ce)
 	case "help":
@@ -662,6 +664,7 @@ func (handler *CommandHandler) CommandHelp(ce *CommandEvent) {
 		cmdPrefix + cmdSetRelayHelp,
 		cmdPrefix + cmdUnsetRelayHelp,
 		cmdPrefix + cmdLoginMatrixHelp,
+		cmdPrefix + cmdPingMatrixHelp,
 		cmdPrefix + cmdLogoutMatrixHelp,
 		cmdPrefix + cmdToggleHelp,
 		cmdPrefix + cmdListHelp,
@@ -940,11 +943,27 @@ func (handler *CommandHandler) CommandLoginMatrix(ce *CommandEvent) {
 	ce.Reply("Successfully switched puppet")
 }
 
+const cmdPingMatrixHelp = `ping-matrix - Check if your double puppet is working correctly.`
+
+func (handler *CommandHandler) CommandPingMatrix(ce *CommandEvent) {
+	puppet := handler.bridge.GetPuppetByCustomMXID(ce.User.MXID)
+	if puppet == nil || puppet.CustomIntent() == nil {
+		ce.Reply("You have not changed your WhatsApp account's Matrix puppet.")
+		return
+	}
+	resp, err := puppet.CustomIntent().Whoami()
+	if err != nil {
+		ce.Reply("Failed to validate Matrix login: %v", err)
+	} else {
+		ce.Reply("Confirmed valid access token for %s / %s", resp.UserID, resp.DeviceID)
+	}
+}
+
 const cmdLogoutMatrixHelp = `logout-matrix - Switch your WhatsApp account's Matrix puppet back to the default one.`
 
 func (handler *CommandHandler) CommandLogoutMatrix(ce *CommandEvent) {
-	puppet := handler.bridge.GetPuppetByJID(ce.User.JID)
-	if len(puppet.CustomMXID) == 0 {
+	puppet := handler.bridge.GetPuppetByCustomMXID(ce.User.MXID)
+	if puppet == nil || puppet.CustomIntent() == nil {
 		ce.Reply("You had not changed your WhatsApp account's Matrix puppet.")
 		return
 	}
