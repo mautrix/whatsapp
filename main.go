@@ -291,6 +291,7 @@ func (bridge *Bridge) Init() {
 	store.BaseClientPayload.UserAgent.OsVersion = proto.String(WAVersion)
 	store.BaseClientPayload.UserAgent.OsBuildNumber = proto.String(WAVersion)
 	store.CompanionProps.Os = proto.String(bridge.Config.WhatsApp.OSName)
+	store.CompanionProps.RequireFullSync = proto.Bool(bridge.Config.Bridge.HistorySync.RequestFullSync)
 	versionParts := strings.Split(WAVersion, ".")
 	if len(versionParts) > 2 {
 		primary, _ := strconv.Atoi(versionParts[0])

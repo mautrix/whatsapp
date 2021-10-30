@@ -44,6 +44,7 @@ type BridgeConfig struct {
 		MaxAge               int64 `yaml:"max_age"`
 		Backfill             bool  `yaml:"backfill"`
 		DoublePuppetBackfill bool  `yaml:"double_puppet_backfill"`
+		RequestFullSync      bool  `yaml:"request_full_sync"`
 	} `yaml:"history_sync"`
 	UserAvatarSync    bool `yaml:"user_avatar_sync"`
 	BridgeMatrixLeave bool `yaml:"bridge_matrix_leave"`

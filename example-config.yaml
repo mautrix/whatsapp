@@ -107,6 +107,9 @@ bridge:
         # Whether to use custom puppet for backfilling.
         # In order to use this, the custom puppets must be in the appservice's user ID namespace.
         double_puppet_backfill: false
+        # Whether the client should request a full sync from the phone when logging in.
+        # This bumps the size of history syncs from 3 months to 1 year.
+        request_full_sync: false
     # Whether or not puppet avatars should be fetched from the server even if an avatar is already set.
     user_avatar_sync: true
     # Whether or not Matrix users leaving groups should be bridged to WhatsApp
