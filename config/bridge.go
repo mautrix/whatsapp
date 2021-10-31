@@ -17,6 +17,7 @@
 package config
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 	"text/template"
@@ -97,29 +98,6 @@ type BridgeConfig struct {
 	displaynameTemplate *template.Template `yaml:"-"`
 }
 
-func (bc *BridgeConfig) setDefaults() {
-	bc.PortalMessageBuffer = 128
-
-	bc.CallNotices.Start = true
-	bc.CallNotices.End = true
-
-	bc.HistorySync.CreatePortals = true
-	bc.HistorySync.MaxAge = 604800
-	bc.UserAvatarSync = true
-	bc.BridgeMatrixLeave = true
-
-	bc.SyncWithCustomPuppets = true
-	bc.DefaultBridgePresence = true
-	bc.DefaultBridgeReceipts = true
-
-	bc.BridgeNotices = true
-	bc.EnableStatusBroadcast = true
-
-	bc.ManagementRoomText.Welcome = "Hello, I'm a WhatsApp bridge bot."
-	bc.ManagementRoomText.WelcomeConnected = "Use `help` for help."
-	bc.ManagementRoomText.WelcomeUnconnected = "Use `help` for help or `login` to log in."
-}
-
 type umBridgeConfig BridgeConfig
 
 func (bc *BridgeConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
@@ -131,6 +109,8 @@ func (bc *BridgeConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	bc.usernameTemplate, err = template.New("username").Parse(bc.UsernameTemplate)
 	if err != nil {
 		return err
+	} else if !strings.Contains(bc.FormatUsername("1234567890"), "1234567890") {
+		return fmt.Errorf("username template is missing user ID placeholder")
 	}
 
 	bc.displaynameTemplate, err = template.New("displayname").Parse(bc.DisplaynameTemplate)

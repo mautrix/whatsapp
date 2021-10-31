@@ -17,6 +17,7 @@
 package config
 
 import (
+	"fmt"
 	"io/ioutil"
 
 	"gopkg.in/yaml.v2"
@@ -24,6 +25,8 @@ import (
 
 	"maunium.net/go/mautrix/appservice"
 )
+
+var ExampleConfig string
 
 type Config struct {
 	Homeserver struct {
@@ -88,14 +91,6 @@ func (config *Config) CanDoublePuppet(userID id.UserID) bool {
 	return true
 }
 
-func (config *Config) setDefaults() {
-	config.AppService.Database.MaxOpenConns = 20
-	config.AppService.Database.MaxIdleConns = 2
-	config.WhatsApp.OSName = "Mautrix-WhatsApp bridge"
-	config.WhatsApp.BrowserName = "mx-wa"
-	config.Bridge.setDefaults()
-}
-
 func Load(path string) (*Config, error) {
 	data, err := ioutil.ReadFile(path)
 	if err != nil {
@@ -103,7 +98,10 @@ func Load(path string) (*Config, error) {
 	}
 
 	var config = &Config{}
-	config.setDefaults()
+	err = yaml.UnmarshalStrict([]byte(ExampleConfig), config)
+	if err != nil {
+		return nil, fmt.Errorf("failed to unmarshal example config: %w", err)
+	}
 	err = yaml.Unmarshal(data, config)
 	return config, err
 }

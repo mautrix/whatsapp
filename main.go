@@ -26,6 +26,7 @@ import (
 	"sync"
 	"syscall"
 	"time"
+	_ "embed"
 
 	"google.golang.org/protobuf/proto"
 
@@ -70,6 +71,9 @@ var (
 	VersionString = ""
 )
 
+//go:embed example-config.yaml
+var ExampleConfig string
+
 func init() {
 	if len(Tag) > 0 && Tag[0] == 'v' {
 		Tag = Tag[1:]
@@ -88,6 +92,8 @@ func init() {
 	mautrix.DefaultUserAgent = fmt.Sprintf("mautrix-whatsapp/%s %s", Version, mautrix.DefaultUserAgent)
 	WAVersion = strings.FieldsFunc(Version, func(r rune) bool { return r == '-' || r == '+' })[0]
 	VersionString = fmt.Sprintf("%s %s (%s)", Name, Version, BuildTime)
+
+	config.ExampleConfig = ExampleConfig
 }
 
 var configPath = flag.MakeFull("c", "config", "The path to your config file.", "config.yaml").String()
