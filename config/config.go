@@ -18,7 +18,7 @@ package config
 
 import (
 	"fmt"
-	"io/ioutil"
+	"os"
 
 	"gopkg.in/yaml.v2"
 	"maunium.net/go/mautrix/id"
@@ -92,7 +92,7 @@ func (config *Config) CanDoublePuppet(userID id.UserID) bool {
 }
 
 func Load(path string) (*Config, error) {
-	data, err := ioutil.ReadFile(path)
+	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
@@ -111,7 +111,7 @@ func (config *Config) Save(path string) error {
 	if err != nil {
 		return err
 	}
-	return ioutil.WriteFile(path, data, 0600)
+	return os.WriteFile(path, data, 0600)
 }
 
 func (config *Config) MakeAppService() (*appservice.AppService, error) {

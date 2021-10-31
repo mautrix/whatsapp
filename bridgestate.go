@@ -21,7 +21,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"time"
 
@@ -128,7 +128,7 @@ func sendPreparedBridgeStateRequest(logger log.Logger, req *http.Request) bool {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
-		respBody, _ := ioutil.ReadAll(resp.Body)
+		respBody, _ := io.ReadAll(resp.Body)
 		if respBody != nil {
 			respBody = bytes.ReplaceAll(respBody, []byte("\n"), []byte("\\n"))
 		}

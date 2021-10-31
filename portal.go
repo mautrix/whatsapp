@@ -27,7 +27,7 @@ import (
 	"image/gif"
 	"image/jpeg"
 	"image/png"
-	"io/ioutil"
+	"io"
 	"math"
 	"mime"
 	"net/http"
@@ -1997,7 +1997,7 @@ func (portal *Portal) convertWebPtoPNG(webpImage []byte) ([]byte, error) {
 }
 
 func (portal *Portal) convertGifToVideo(gif []byte) ([]byte, error) {
-	dir, err := ioutil.TempDir("", "gif-convert-*")
+	dir, err := os.MkdirTemp("", "gif-convert-*")
 	if err != nil {
 		return nil, fmt.Errorf("failed to make temp dir: %w", err)
 	}
@@ -2036,7 +2036,7 @@ func (portal *Portal) convertGifToVideo(gif []byte) ([]byte, error) {
 		_ = outputFile.Close()
 		_ = os.Remove(outputFile.Name())
 	}()
-	mp4, err := ioutil.ReadAll(outputFile)
+	mp4, err := io.ReadAll(outputFile)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read mp4 from output file: %w", err)
 	}
