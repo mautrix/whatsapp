@@ -1563,15 +1563,12 @@ func (portal *Portal) convertLocationMessage(intent *appservice.IntentAPI, msg *
 	return &ConvertedMessage{Intent: intent, Type: event.EventMessage, Content: content}
 }
 
-const inviteMsg = `<a href="https://matrix.to/#/%s">%s</a> has invited you to join %s:
-<blockquote>%s</blockquote>
-The invite expires at %s. Reply to this message with <code>!wa accept</code> to accept the invite.`
+const inviteMsg = `%s<hr/>This invitation to join "%s" expires at %s. Reply to this message with <code>!wa accept</code> to accept the invite.`
 const inviteMetaField = "fi.mau.whatsapp.invite"
 
 func (portal *Portal) convertGroupInviteMessage(intent *appservice.IntentAPI, info *types.MessageInfo, msg *waProto.GroupInviteMessage) *ConvertedMessage {
-	puppet := portal.bridge.GetPuppetByJID(info.Sender)
 	expiry := time.Unix(msg.GetInviteExpiration(), 0)
-	htmlMessage := fmt.Sprintf(inviteMsg, intent.UserID, html.EscapeString(puppet.Displayname), msg.GetGroupName(), html.EscapeString(msg.GetCaption()), expiry)
+	htmlMessage := fmt.Sprintf(inviteMsg, html.EscapeString(msg.GetCaption()), msg.GetGroupName(), expiry)
 	content := &event.MessageEventContent{
 		MsgType:       event.MsgText,
 		Body:          format.HTMLToText(htmlMessage),

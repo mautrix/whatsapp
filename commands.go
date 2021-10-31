@@ -288,30 +288,20 @@ func (handler *CommandHandler) CommandJoin(ce *CommandEvent) {
 func (handler *CommandHandler) CommandAccept(ce *CommandEvent) {
 	if ce.Portal == nil || len(ce.ReplyTo) == 0 {
 		ce.Reply("You must reply to a group invite message when using this command.")
-		return
-	}
-	evt, err := ce.Portal.MainIntent().GetEvent(ce.RoomID, ce.ReplyTo)
-	if err != nil {
+	} else if evt, err := ce.Portal.MainIntent().GetEvent(ce.RoomID, ce.ReplyTo); err != nil {
 		handler.log.Errorln("Failed to get event %s to handle !wa accept command: %v", ce.ReplyTo, err)
 		ce.Reply("Failed to get reply event")
-		return
-	}
-	meta, ok := evt.Content.Raw[inviteMetaField].(map[string]interface{})
-	if !ok {
+	} else if meta, ok := evt.Content.Raw[inviteMetaField].(map[string]interface{}); !ok {
 		ce.Reply("That doesn't look like a group invite message.")
-		return
-	}
-	jid, inviter, code, expiration, ok := parseInviteMeta(meta)
-	if !ok {
+	} else if jid, inviter, code, expiration, ok := parseInviteMeta(meta); !ok {
 		ce.Reply("That doesn't look like a group invite message.")
-		return
-	}
-	err = ce.User.Client.AcceptGroupInvite(jid, inviter, code, expiration)
-	if err != nil {
+	} else if inviter.User == ce.User.JID.User {
+		ce.Reply("You can't accept your own invites")
+	} else if err = ce.User.Client.AcceptGroupInvite(jid, inviter, code, expiration); err != nil {
 		ce.Reply("Failed to accept group invite: %v", err)
-		return
+	} else {
+		ce.Reply("Successfully accepted the invite, the portal should be created momentarily")
 	}
-	ce.Reply("Successfully accepted the invite, the portal should be created momentarily")
 }
 
 const cmdCreateHelp = `create - Create a group chat.`
