@@ -20,6 +20,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -787,21 +789,29 @@ func (handler *CommandHandler) CommandDeleteAllPortals(ce *CommandEvent) {
 
 const cmdListHelp = `list <contacts|groups> [page] [items per page] - Get a list of all contacts and groups.`
 
-//func formatContacts(contacts bool, input map[string]whatsapp.Contact) (result []string) {
-//	for jid, contact := range input {
-//		if strings.HasSuffix(jid, whatsapp.NewUserSuffix) != contacts {
-//			continue
-//		}
-//
-//		if contacts {
-//			result = append(result, fmt.Sprintf("* %s / %s - `%s`", contact.Name, contact.Notify, contact.JID[:len(contact.JID)-len(whatsapp.NewUserSuffix)]))
-//		} else {
-//			result = append(result, fmt.Sprintf("* %s - `%s`", contact.Name, contact.JID))
-//		}
-//	}
-//	sort.Sort(sort.StringSlice(result))
-//	return
-//}
+func formatContacts(bridge *Bridge, input map[types.JID]types.ContactInfo) (result []string) {
+	for jid, contact := range input {
+		if len(contact.FullName) == 0 {
+			continue
+		}
+		puppet := bridge.GetPuppetByJID(jid)
+		pushName := contact.PushName
+		if len(pushName) == 0 {
+			pushName = contact.FullName
+		}
+		result = append(result, fmt.Sprintf("* %s / [%s](https://matrix.to/#/%s) - `+%s`", contact.FullName, pushName, puppet.MXID, jid.User))
+	}
+	sort.Sort(sort.StringSlice(result))
+	return
+}
+
+func formatGroups(input []*types.GroupInfo) (result []string) {
+	for _, group := range input {
+		result = append(result, fmt.Sprintf("* %s - `%s`", group.GroupName.Name, group.JID.User))
+	}
+	sort.Sort(sort.StringSlice(result))
+	return
+}
 
 func (handler *CommandHandler) CommandList(ce *CommandEvent) {
 	if len(ce.Args) == 0 {
@@ -832,35 +842,47 @@ func (handler *CommandHandler) CommandList(ce *CommandEvent) {
 			ce.Reply("Warning: a high number of items per page may fail to send a reply")
 		}
 	}
-	ce.Reply("Not yet implemented")
-	// TODO reimplement
-	//contacts := mode[0] == 'c'
-	//typeName := "Groups"
-	//if contacts {
-	//	typeName = "Contacts"
-	//}
-	//ce.User.Conn.Store.ContactsLock.RLock()
-	//result := formatContacts(contacts, ce.User.Conn.Store.Contacts)
-	//ce.User.Conn.Store.ContactsLock.RUnlock()
-	//if len(result) == 0 {
-	//	ce.Reply("No %s found", strings.ToLower(typeName))
-	//	return
-	//}
-	//pages := int(math.Ceil(float64(len(result)) / float64(max)))
-	//if (page-1)*max >= len(result) {
-	//	if pages == 1 {
-	//		ce.Reply("There is only 1 page of %s", strings.ToLower(typeName))
-	//	} else {
-	//		ce.Reply("There are only %d pages of %s", pages, strings.ToLower(typeName))
-	//	}
-	//	return
-	//}
-	//lastIndex := page * max
-	//if lastIndex > len(result) {
-	//	lastIndex = len(result)
-	//}
-	//result = result[(page-1)*max : lastIndex]
-	//ce.Reply("### %s (page %d of %d)\n\n%s", typeName, page, pages, strings.Join(result, "\n"))
+
+	contacts := mode[0] == 'c'
+	typeName := "Groups"
+	var result []string
+	if contacts {
+		typeName = "Contacts"
+		contactList, err := ce.User.Client.Store.Contacts.GetAllContacts()
+		if err != nil {
+			ce.Reply("Failed to get contacts: %s", err)
+			return
+		}
+		result = formatContacts(ce.User.bridge, contactList)
+
+	} else {
+		groupList, err := ce.User.Client.GetJoinedGroups()
+		if err != nil {
+			ce.Reply("Failed to get groups: %s", err)
+			return
+		}
+		result = formatGroups(groupList)
+	}
+
+	if len(result) == 0 {
+		ce.Reply("No %s found", strings.ToLower(typeName))
+		return
+	}
+	pages := int(math.Ceil(float64(len(result)) / float64(max)))
+	if (page-1)*max >= len(result) {
+		if pages == 1 {
+			ce.Reply("There is only 1 page of %s", strings.ToLower(typeName))
+		} else {
+			ce.Reply("There are only %d pages of %s", pages, strings.ToLower(typeName))
+		}
+		return
+	}
+	lastIndex := page * max
+	if lastIndex > len(result) {
+		lastIndex = len(result)
+	}
+	result = result[(page-1)*max : lastIndex]
+	ce.Reply("### %s (page %d of %d)\n\n%s", typeName, page, pages, strings.Join(result, "\n"))
 }
 
 const cmdOpenHelp = `open <_group JID_> - Open a group chat portal.`
