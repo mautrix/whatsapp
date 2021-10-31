@@ -315,7 +315,7 @@ func (mx *MatrixHandler) shouldIgnoreEvent(evt *event.Event) bool {
 	if _, isPuppet := mx.bridge.ParsePuppetMXID(evt.Sender); evt.Sender == mx.bridge.Bot.UserID || isPuppet {
 		return true
 	}
-	isCustomPuppet, ok := evt.Content.Raw["net.maunium.whatsapp.puppet"].(bool)
+	isCustomPuppet, ok := evt.Content.Raw[doublePuppetField].(bool)
 	if ok && isCustomPuppet && mx.bridge.GetPuppetByCustomMXID(evt.Sender) != nil {
 		return true
 	}
@@ -406,6 +406,7 @@ func (mx *MatrixHandler) HandleMessage(evt *event.Event) {
 
 	user := mx.bridge.GetUserByMXID(evt.Sender)
 	content := evt.Content.AsMessage()
+	content.RemoveReplyFallback()
 	if user.Whitelisted && content.MsgType == event.MsgText {
 		commandPrefix := mx.bridge.Config.Bridge.CommandPrefix
 		hasCommandPrefix := strings.HasPrefix(content.Body, commandPrefix)
@@ -413,7 +414,7 @@ func (mx *MatrixHandler) HandleMessage(evt *event.Event) {
 			content.Body = strings.TrimLeft(content.Body[len(commandPrefix):], " ")
 		}
 		if hasCommandPrefix || evt.RoomID == user.ManagementRoom {
-			mx.cmd.Handle(evt.RoomID, user, content.Body)
+			mx.cmd.Handle(evt.RoomID, user, content.Body, content.GetReplyTo())
 			return
 		}
 	}

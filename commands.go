@@ -60,6 +60,7 @@ type CommandEvent struct {
 	User    *User
 	Command string
 	Args    []string
+	ReplyTo id.EventID
 }
 
 // Reply sends a reply to command as notice
@@ -77,7 +78,7 @@ func (ce *CommandEvent) Reply(msg string, args ...interface{}) {
 }
 
 // Handle handles messages to the bridge
-func (handler *CommandHandler) Handle(roomID id.RoomID, user *User, message string) {
+func (handler *CommandHandler) Handle(roomID id.RoomID, user *User, message string, replyTo id.EventID) {
 	args := strings.Fields(message)
 	if len(args) == 0 {
 		args = []string{"unknown-command"}
@@ -91,6 +92,7 @@ func (handler *CommandHandler) Handle(roomID id.RoomID, user *User, message stri
 		User:    user,
 		Command: strings.ToLower(args[0]),
 		Args:    args[1:],
+		ReplyTo: replyTo,
 	}
 	handler.log.Debugfln("%s sent '%s' in %s", user.MXID, message, roomID)
 	handler.CommandMux(ce)
@@ -130,7 +132,7 @@ func (handler *CommandHandler) CommandMux(ce *CommandEvent) {
 		handler.CommandLogout(ce)
 	case "toggle":
 		handler.CommandToggle(ce)
-	case "set-relay", "unset-relay", "login-matrix", "sync", "list", "open", "pm", "invite-link", "check-invite", "join", "create":
+	case "set-relay", "unset-relay", "login-matrix", "sync", "list", "open", "pm", "invite-link", "check-invite", "join", "create", "accept":
 		if !ce.User.HasSession() {
 			ce.Reply("You are not logged in. Use the `login` command to log into WhatsApp.")
 			return
@@ -160,6 +162,8 @@ func (handler *CommandHandler) CommandMux(ce *CommandEvent) {
 			handler.CommandJoin(ce)
 		case "create":
 			handler.CommandCreate(ce)
+		case "accept":
+			handler.CommandAccept(ce)
 		}
 	default:
 		ce.Reply("Unknown command, use the `help` command for help.")
@@ -281,6 +285,35 @@ func (handler *CommandHandler) CommandJoin(ce *CommandEvent) {
 	ce.Reply("Successfully joined group `%s`, the portal should be created momentarily", jid)
 }
 
+func (handler *CommandHandler) CommandAccept(ce *CommandEvent) {
+	if ce.Portal == nil || len(ce.ReplyTo) == 0 {
+		ce.Reply("You must reply to a group invite message when using this command.")
+		return
+	}
+	evt, err := ce.Portal.MainIntent().GetEvent(ce.RoomID, ce.ReplyTo)
+	if err != nil {
+		handler.log.Errorln("Failed to get event %s to handle !wa accept command: %v", ce.ReplyTo, err)
+		ce.Reply("Failed to get reply event")
+		return
+	}
+	meta, ok := evt.Content.Raw[inviteMetaField].(map[string]interface{})
+	if !ok {
+		ce.Reply("That doesn't look like a group invite message.")
+		return
+	}
+	jid, inviter, code, expiration, ok := parseInviteMeta(meta)
+	if !ok {
+		ce.Reply("That doesn't look like a group invite message.")
+		return
+	}
+	err = ce.User.Client.AcceptGroupInvite(jid, inviter, code, expiration)
+	if err != nil {
+		ce.Reply("Failed to accept group invite: %v", err)
+		return
+	}
+	ce.Reply("Successfully accepted the invite, the portal should be created momentarily")
+}
+
 const cmdCreateHelp = `create - Create a group chat.`
 
 func (handler *CommandHandler) CommandCreate(ce *CommandEvent) {
@@ -351,6 +384,41 @@ func (handler *CommandHandler) CommandCreate(ce *CommandEvent) {
 	//ce.Reply("Successfully created WhatsApp group %s", portal.Key.JID)
 	//inCommunity := ce.User.addPortalToCommunity(portal)
 	//ce.User.CreateUserPortal(database.PortalKeyWithMeta{PortalKey: portal.Key, InCommunity: inCommunity})
+}
+
+func parseInviteMeta(meta map[string]interface{}) (jid, inviter types.JID, code string, expiration int64, ok bool) {
+	var fieldFound bool
+	code, fieldFound = meta["code"].(string)
+	if !fieldFound {
+		return
+	}
+	expirationStr, fieldFound := meta["expiration"].(string)
+	if !fieldFound {
+		return
+	}
+	inviterStr, fieldFound := meta["inviter"].(string)
+	if !fieldFound {
+		return
+	}
+	jidStr, fieldFound := meta["jid"].(string)
+	if !fieldFound {
+		return
+	}
+	var err error
+	expiration, err = strconv.ParseInt(expirationStr, 10, 64)
+	if err != nil {
+		return
+	}
+	inviter, err = types.ParseJID(inviterStr)
+	if err != nil {
+		return
+	}
+	jid, err = types.ParseJID(jidStr)
+	if err != nil {
+		return
+	}
+	ok = true
+	return
 }
 
 const cmdSetPowerLevelHelp = `set-pl [user ID] <power level> - Change the power level in a portal room. Only for bridge admins.`

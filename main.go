@@ -17,6 +17,7 @@
 package main
 
 import (
+	_ "embed"
 	"errors"
 	"fmt"
 	"os"
@@ -26,7 +27,6 @@ import (
 	"sync"
 	"syscall"
 	"time"
-	_ "embed"
 
 	"google.golang.org/protobuf/proto"
 

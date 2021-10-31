@@ -233,6 +233,7 @@ func (portal *Portal) shouldCreateRoom(msg PortalMessage) bool {
 		waMsg.DocumentMessage,
 		waMsg.ContactMessage,
 		waMsg.LocationMessage,
+		waMsg.GroupInviteMessage,
 	}
 	for _, message := range supportedMessages {
 		if message != nil {
@@ -262,7 +263,9 @@ func (portal *Portal) getMessageType(waMsg *waProto.Message) string {
 		return "contact"
 	case waMsg.LocationMessage != nil:
 		return "location"
-	case waMsg.GetProtocolMessage() != nil:
+	case waMsg.GroupInviteMessage != nil:
+		return "group invite"
+	case waMsg.ProtocolMessage != nil:
 		switch waMsg.GetProtocolMessage().GetType() {
 		case waProto.ProtocolMessage_REVOKE:
 			return "revoke"
@@ -294,6 +297,8 @@ func (portal *Portal) convertMessage(intent *appservice.IntentAPI, source *User,
 		return portal.convertContactMessage(intent, waMsg.GetContactMessage())
 	case waMsg.LocationMessage != nil:
 		return portal.convertLocationMessage(intent, waMsg.GetLocationMessage())
+	case waMsg.GroupInviteMessage != nil:
+		return portal.convertGroupInviteMessage(intent, info, waMsg.GetGroupInviteMessage())
 	default:
 		return nil
 	}
@@ -322,7 +327,7 @@ func (portal *Portal) handleUndecryptableMessage(source *User, evt *events.Undec
 	}
 	intent := portal.getMessageIntent(source, &evt.Info)
 	content := undecryptableMessageContent
-	resp, err := portal.sendMessage(intent, event.EventMessage, &content, evt.Info.Timestamp.UnixMilli())
+	resp, err := portal.sendMessage(intent, event.EventMessage, &content, nil, evt.Info.Timestamp.UnixMilli())
 	if err != nil {
 		portal.log.Errorln("Failed to send decryption error of %s to Matrix: %v", evt.Info.ID, err)
 	}
@@ -359,7 +364,7 @@ func (portal *Portal) handleMessage(source *User, evt *events.Message) {
 		if existingMsg != nil {
 			converted.Content.SetEdit(existingMsg.MXID)
 		}
-		resp, err := portal.sendMessage(converted.Intent, converted.Type, converted.Content, evt.Info.Timestamp.UnixMilli())
+		resp, err := portal.sendMessage(converted.Intent, converted.Type, converted.Content, converted.Extra, evt.Info.Timestamp.UnixMilli())
 		if err != nil {
 			portal.log.Errorln("Failed to send %s to Matrix: %v", msgID, err)
 		} else {
@@ -367,7 +372,7 @@ func (portal *Portal) handleMessage(source *User, evt *events.Message) {
 		}
 		// TODO figure out how to handle captions with undecryptable messages turning decryptable
 		if converted.Caption != nil && existingMsg == nil {
-			resp, err = portal.sendMessage(converted.Intent, converted.Type, converted.Caption, evt.Info.Timestamp.UnixMilli())
+			resp, err = portal.sendMessage(converted.Intent, converted.Type, converted.Caption, nil, evt.Info.Timestamp.UnixMilli())
 			if err != nil {
 				portal.log.Errorln("Failed to send caption of %s to Matrix: %v", msgID, err)
 			} else {
@@ -894,17 +899,20 @@ func (portal *Portal) parseWebMessageInfo(webMsg *waProto.WebMessageInfo) *types
 	return &info
 }
 
-const backfillIDField = "net.maunium.whatsapp.id"
+const backfillIDField = "fi.mau.whatsapp.backfill_msg_id"
+const doublePuppetField = "net.maunium.whatsapp.puppet"
 
-func (portal *Portal) wrapBatchEvent(info *types.MessageInfo, intent *appservice.IntentAPI, eventType event.Type, content *event.MessageEventContent) (*event.Event, error) {
+func (portal *Portal) wrapBatchEvent(info *types.MessageInfo, intent *appservice.IntentAPI, eventType event.Type, content *event.MessageEventContent, extraContent map[string]interface{}) (*event.Event, error) {
+	if extraContent == nil {
+		extraContent = map[string]interface{}{}
+	}
+	extraContent[backfillIDField] = info.ID
+	if intent.IsCustomPuppet {
+		extraContent[doublePuppetField] = intent.IsCustomPuppet
+	}
 	wrappedContent := event.Content{
 		Parsed: content,
-		Raw: map[string]interface{}{
-			backfillIDField: info.ID,
-		},
-	}
-	if intent.IsCustomPuppet {
-		wrappedContent.Raw["net.maunium.whatsapp.puppet"] = intent.IsCustomPuppet
+		Raw:    extraContent,
 	}
 	newEventType, err := portal.encrypt(&wrappedContent, eventType)
 	if err != nil {
@@ -919,12 +927,12 @@ func (portal *Portal) wrapBatchEvent(info *types.MessageInfo, intent *appservice
 }
 
 func (portal *Portal) appendBatchEvents(converted *ConvertedMessage, info *types.MessageInfo, eventsArray *[]*event.Event, infoArray *[]*types.MessageInfo) error {
-	mainEvt, err := portal.wrapBatchEvent(info, converted.Intent, converted.Type, converted.Content)
+	mainEvt, err := portal.wrapBatchEvent(info, converted.Intent, converted.Type, converted.Content, converted.Extra)
 	if err != nil {
 		return err
 	}
 	if converted.Caption != nil {
-		captionEvt, err := portal.wrapBatchEvent(info, converted.Intent, converted.Type, converted.Caption)
+		captionEvt, err := portal.wrapBatchEvent(info, converted.Intent, converted.Type, converted.Caption, nil)
 		if err != nil {
 			return err
 		}
@@ -1441,34 +1449,8 @@ func (portal *Portal) HandleMessageRevoke(user *User, info *types.MessageInfo, k
 	return true
 }
 
-//func (portal *Portal) HandleFakeMessage(_ *User, message FakeMessage) bool {
-//	if portal.isRecentlyHandled(message.ID) {
-//		return false
-//	}
-//
-//	content := event.MessageEventContent{
-//		MsgType: event.MsgNotice,
-//		Body:    message.Text,
-//	}
-//	if message.Alert {
-//		content.MsgType = event.MsgText
-//	}
-//	_, err := portal.sendMainIntentMessage(content)
-//	if err != nil {
-//		portal.log.Errorfln("Failed to handle fake message %s: %v", message.ID, err)
-//		return true
-//	}
-//
-//	portal.recentlyHandledLock.Lock()
-//	index := portal.recentlyHandledIndex
-//	portal.recentlyHandledIndex = (portal.recentlyHandledIndex + 1) % recentlyHandledLength
-//	portal.recentlyHandledLock.Unlock()
-//	portal.recentlyHandled[index] = message.ID
-//	return true
-//}
-
-func (portal *Portal) sendMainIntentMessage(content interface{}) (*mautrix.RespSendEvent, error) {
-	return portal.sendMessage(portal.MainIntent(), event.EventMessage, content, 0)
+func (portal *Portal) sendMainIntentMessage(content *event.MessageEventContent) (*mautrix.RespSendEvent, error) {
+	return portal.sendMessage(portal.MainIntent(), event.EventMessage, content, nil, 0)
 }
 
 func (portal *Portal) encrypt(content *event.Content, eventType event.Type) (event.Type, error) {
@@ -1486,12 +1468,13 @@ func (portal *Portal) encrypt(content *event.Content, eventType event.Type) (eve
 	return eventType, nil
 }
 
-func (portal *Portal) sendMessage(intent *appservice.IntentAPI, eventType event.Type, content interface{}, timestamp int64) (*mautrix.RespSendEvent, error) {
-	wrappedContent := event.Content{Parsed: content}
+func (portal *Portal) sendMessage(intent *appservice.IntentAPI, eventType event.Type, content *event.MessageEventContent, extraContent map[string]interface{}, timestamp int64) (*mautrix.RespSendEvent, error) {
+	wrappedContent := event.Content{Parsed: content, Raw: extraContent}
 	if timestamp != 0 && intent.IsCustomPuppet {
-		wrappedContent.Raw = map[string]interface{}{
-			"net.maunium.whatsapp.puppet": intent.IsCustomPuppet,
+		if wrappedContent.Raw == nil {
+			wrappedContent.Raw = map[string]interface{}{}
 		}
+		wrappedContent.Raw[doublePuppetField] = intent.IsCustomPuppet
 	}
 	var err error
 	eventType, err = portal.encrypt(&wrappedContent, eventType)
@@ -1510,6 +1493,7 @@ type ConvertedMessage struct {
 	Intent  *appservice.IntentAPI
 	Type    event.Type
 	Content *event.MessageEventContent
+	Extra   map[string]interface{}
 	Caption *event.MessageEventContent
 }
 
@@ -1530,57 +1514,6 @@ func (portal *Portal) convertTextMessage(intent *appservice.IntentAPI, msg *waPr
 
 	return &ConvertedMessage{Intent: intent, Type: event.EventMessage, Content: content}
 }
-
-//func (portal *Portal) HandleStubMessage(source *User, message whatsapp.StubMessage, isBackfill bool) bool {
-//	if portal.bridge.Config.Bridge.ChatMetaSync && (!portal.IsBroadcastList() || isBackfill) {
-//		// Chat meta sync is enabled, so we use chat update commands and full-syncs instead of message history
-//		// However, broadcast lists don't have update commands, so we handle these if it's not a backfill
-//		return false
-//	}
-//	intent := portal.startHandling(source, message.Info, fmt.Sprintf("stub %s", message.Type.String()))
-//	if intent == nil {
-//		return false
-//	}
-//	var senderJID string
-//	if message.Info.FromMe {
-//		senderJID = source.JID
-//	} else {
-//		senderJID = message.Info.SenderJid
-//	}
-//	var eventID id.EventID
-//	// TODO find more real event IDs
-//	// TODO timestamp massaging
-//	switch message.Type {
-//	case waProto.WebMessageInfo_GROUP_CHANGE_SUBJECT:
-//		portal.UpdateName(message.FirstParam, "", intent, true)
-//	case waProto.WebMessageInfo_GROUP_CHANGE_ICON:
-//		portal.UpdateAvatar(source, nil, true)
-//	case waProto.WebMessageInfo_GROUP_CHANGE_DESCRIPTION:
-//		if isBackfill {
-//			// TODO fetch topic from server
-//		}
-//		//portal.UpdateTopic(message.FirstParam, "", intent, true)
-//	case waProto.WebMessageInfo_GROUP_CHANGE_ANNOUNCE:
-//		eventID = portal.RestrictMessageSending(message.FirstParam == "on")
-//	case waProto.WebMessageInfo_GROUP_CHANGE_RESTRICT:
-//		eventID = portal.RestrictMetadataChanges(message.FirstParam == "on")
-//	case waProto.WebMessageInfo_GROUP_PARTICIPANT_ADD, waProto.WebMessageInfo_GROUP_PARTICIPANT_INVITE, waProto.WebMessageInfo_BROADCAST_ADD:
-//		eventID = portal.HandleWhatsAppInvite(source, senderJID, intent, message.Params)
-//	case waProto.WebMessageInfo_GROUP_PARTICIPANT_REMOVE, waProto.WebMessageInfo_GROUP_PARTICIPANT_LEAVE, waProto.WebMessageInfo_BROADCAST_REMOVE:
-//		portal.HandleWhatsAppKick(source, senderJID, message.Params)
-//	case waProto.WebMessageInfo_GROUP_PARTICIPANT_PROMOTE:
-//		eventID = portal.ChangeAdminStatus(message.Params, true)
-//	case waProto.WebMessageInfo_GROUP_PARTICIPANT_DEMOTE:
-//		eventID = portal.ChangeAdminStatus(message.Params, false)
-//	default:
-//		return false
-//	}
-//	if len(eventID) == 0 {
-//		eventID = id.EventID(fmt.Sprintf("net.maunium.whatsapp.fake::%s", message.Info.Id))
-//	}
-//	portal.markHandled(source, message.Info.Source, eventID, true)
-//	return true
-//}
 
 func (portal *Portal) convertLocationMessage(intent *appservice.IntentAPI, msg *waProto.LocationMessage) *ConvertedMessage {
 	url := msg.GetUrl()
@@ -1628,6 +1561,33 @@ func (portal *Portal) convertLocationMessage(intent *appservice.IntentAPI, msg *
 	portal.SetReply(content, msg.GetContextInfo().GetStanzaId())
 
 	return &ConvertedMessage{Intent: intent, Type: event.EventMessage, Content: content}
+}
+
+const inviteMsg = `<a href="https://matrix.to/#/%s">%s</a> has invited you to join %s:
+<blockquote>%s</blockquote>
+The invite expires at %s. Reply to this message with <code>!wa accept</code> to accept the invite.`
+const inviteMetaField = "fi.mau.whatsapp.invite"
+
+func (portal *Portal) convertGroupInviteMessage(intent *appservice.IntentAPI, info *types.MessageInfo, msg *waProto.GroupInviteMessage) *ConvertedMessage {
+	puppet := portal.bridge.GetPuppetByJID(info.Sender)
+	expiry := time.Unix(msg.GetInviteExpiration(), 0)
+	htmlMessage := fmt.Sprintf(inviteMsg, intent.UserID, html.EscapeString(puppet.Displayname), msg.GetGroupName(), html.EscapeString(msg.GetCaption()), expiry)
+	content := &event.MessageEventContent{
+		MsgType:       event.MsgText,
+		Body:          format.HTMLToText(htmlMessage),
+		Format:        event.FormatHTML,
+		FormattedBody: htmlMessage,
+	}
+	extraAttrs := map[string]interface{}{
+		inviteMetaField: map[string]interface{}{
+			"jid":        msg.GetGroupJid(),
+			"code":       msg.GetInviteCode(),
+			"expiration": strconv.FormatInt(msg.GetInviteExpiration(), 10),
+			"inviter":    info.Sender.ToNonAD().String(),
+		},
+	}
+	portal.SetReply(content, msg.GetContextInfo().GetStanzaId())
+	return &ConvertedMessage{Intent: intent, Type: event.EventMessage, Content: content, Extra: extraAttrs}
 }
 
 func (portal *Portal) convertContactMessage(intent *appservice.IntentAPI, msg *waProto.ContactMessage) *ConvertedMessage {
@@ -1721,7 +1681,7 @@ func (portal *Portal) leaveWithPuppetMeta(intent *appservice.IntentAPI) (*mautri
 			Membership: event.MembershipLeave,
 		},
 		Raw: map[string]interface{}{
-			"net.maunium.whatsapp.puppet": true,
+			doublePuppetField: true,
 		},
 	}
 	return intent.SendStateEvent(portal.MXID, event.StateMember, intent.UserID.String(), &content)
@@ -1743,7 +1703,7 @@ func (portal *Portal) HandleWhatsAppInvite(source *User, senderJID *types.JID, j
 				AvatarURL:   puppet.AvatarURL.CUString(),
 			},
 			Raw: map[string]interface{}{
-				"net.maunium.whatsapp.puppet": true,
+				doublePuppetField: true,
 			},
 		}
 		resp, err := intent.SendStateEvent(portal.MXID, event.StateMember, puppet.MXID.String(), &content)
@@ -2211,7 +2171,6 @@ func (portal *Portal) convertMatrixMessage(sender *User, evt *event.Event) (*waP
 	var ctxInfo waProto.ContextInfo
 	replyToID := content.GetReplyTo()
 	if len(replyToID) > 0 {
-		content.RemoveReplyFallback()
 		replyToMsg := portal.bridge.DB.Message.GetByMXID(replyToID)
 		if replyToMsg != nil {
 			ctxInfo.StanzaId = &replyToMsg.JID
@@ -2359,7 +2318,7 @@ func (portal *Portal) sendErrorMessage(message string, confirmed bool) id.EventI
 	if confirmed {
 		certainty = "was not"
 	}
-	resp, err := portal.sendMainIntentMessage(event.MessageEventContent{
+	resp, err := portal.sendMainIntentMessage(&event.MessageEventContent{
 		MsgType: event.MsgNotice,
 		Body:    fmt.Sprintf("\u26a0 Your message %s bridged: %v", certainty, message),
 	})

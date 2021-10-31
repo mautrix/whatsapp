@@ -217,7 +217,7 @@ func (puppet *Puppet) handleReceiptEvent(portal *Portal, event *event.Event) {
 	for eventID, receipts := range *event.Content.AsReceipt() {
 		if receipt, ok := receipts.Read[puppet.CustomMXID]; !ok {
 			// Ignore receipt events where this user isn't present.
-		} else if isDoublePuppeted, _ := receipt.Extra["net.maunium.whatsapp.puppet"].(bool); isDoublePuppeted {
+		} else if isDoublePuppeted, _ := receipt.Extra[doublePuppetField].(bool); isDoublePuppeted {
 			puppet.customUser.log.Debugfln("Ignoring double puppeted read receipt %+v", event.Content.Raw)
 			// Ignore double puppeted read receipts.
 		} else if message := puppet.bridge.DB.Message.GetByMXID(eventID); message != nil {
