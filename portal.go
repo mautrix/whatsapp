@@ -243,6 +243,26 @@ func (portal *Portal) shouldCreateRoom(msg PortalMessage) bool {
 	return false
 }
 
+func (portal *Portal) isPotentiallyInteresting(waMsg *waProto.Message) bool {
+	// List of message types that aren't supported, but might potentially be interesting
+	// (so a warning should be logged if they are encountered).
+	potentiallyInterestingThings := []interface{}{
+		waMsg.Call, waMsg.Chat, waMsg.ContactsArrayMessage, waMsg.HighlyStructuredMessage,
+		waMsg.SendPaymentMessage, waMsg.LiveLocationMessage, waMsg.RequestPaymentMessage,
+		waMsg.DeclinePaymentRequestMessage, waMsg.CancelPaymentRequestMessage, waMsg.TemplateMessage,
+		waMsg.TemplateButtonReplyMessage, waMsg.ProductMessage, waMsg.ListMessage, waMsg.OrderMessage,
+		waMsg.ListResponseMessage, waMsg.InvoiceMessage, waMsg.ButtonsResponseMessage,
+		waMsg.ButtonsResponseMessage, waMsg.PaymentInviteMessage, waMsg.InteractiveMessage,
+		waMsg.ReactionMessage, waMsg.StickerSyncRmrMessage,
+	}
+	for _, thing := range potentiallyInterestingThings {
+		if thing != nil {
+			return true
+		}
+	}
+	return false
+}
+
 func (portal *Portal) getMessageType(waMsg *waProto.Message) string {
 	switch {
 	case waMsg == nil:
@@ -274,8 +294,10 @@ func (portal *Portal) getMessageType(waMsg *waProto.Message) string {
 		default:
 			return "unknown_protocol"
 		}
-	default:
+	case portal.isPotentiallyInteresting(waMsg):
 		return "unknown"
+	default:
+		return "ignore"
 	}
 }
 
