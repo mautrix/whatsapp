@@ -154,9 +154,10 @@ func (msg *Message) Insert() {
 	}
 }
 
-func (msg *Message) MarkSent() {
+func (msg *Message) MarkSent(ts time.Time) {
 	msg.Sent = true
-	_, err := msg.db.Exec("UPDATE message SET sent=true WHERE chat_jid=$1 AND chat_receiver=$2 AND jid=$3", msg.Chat.JID, msg.Chat.Receiver, msg.JID)
+	msg.Timestamp = ts
+	_, err := msg.db.Exec("UPDATE message SET sent=true, timestamp=$4 WHERE chat_jid=$1 AND chat_receiver=$2 AND jid=$3", msg.Chat.JID, msg.Chat.Receiver, msg.JID, ts.Unix())
 	if err != nil {
 		msg.log.Warnfln("Failed to update %s@%s: %v", msg.Chat, msg.JID, err)
 	}

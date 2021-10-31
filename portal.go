@@ -2389,14 +2389,14 @@ func (portal *Portal) HandleMatrixMessage(sender *User, evt *event.Event) {
 	info := portal.generateMessageInfo(sender)
 	dbMsg := portal.markHandled(nil, info, evt.ID, false, true, false)
 	portal.log.Debugln("Sending event", evt.ID, "to WhatsApp", info.ID)
-	err := sender.Client.SendMessage(portal.Key.JID, info.ID, msg)
+	ts, err := sender.Client.SendMessage(portal.Key.JID, info.ID, msg)
 	if err != nil {
 		portal.log.Errorln("Error sending message: %v", err)
 		portal.sendErrorMessage(err.Error(), true)
 	} else {
 		portal.log.Debugfln("Handled Matrix event %s", evt.ID)
 		portal.sendDeliveryReceipt(evt.ID)
-		dbMsg.MarkSent()
+		dbMsg.MarkSent(ts)
 	}
 }
 
@@ -2415,7 +2415,7 @@ func (portal *Portal) HandleMatrixRedaction(sender *User, evt *event.Event) {
 	}
 
 	portal.log.Debugfln("Sending redaction %s of %s/%s to WhatsApp", evt.ID, msg.MXID, msg.JID)
-	err := sender.Client.RevokeMessage(portal.Key.JID, msg.JID)
+	_, err := sender.Client.RevokeMessage(portal.Key.JID, msg.JID)
 	if err != nil {
 		portal.log.Errorfln("Error handling Matrix redaction %s: %v", evt.ID, err)
 	} else {
