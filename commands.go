@@ -228,20 +228,15 @@ const cmdInviteLinkHelp = `invite-link - Get an invite link to the current group
 func (handler *CommandHandler) CommandInviteLink(ce *CommandEvent) {
 	if ce.Portal == nil {
 		ce.Reply("Not a portal room")
-		return
 	} else if ce.Portal.IsPrivateChat() {
 		ce.Reply("Can't get invite link to private chat")
-		return
+	} else if ce.Portal.IsBroadcastList() {
+		ce.Reply("Can't get invite link to broadcast list")
+	} else if link, err := ce.User.Client.GetGroupInviteLink(ce.Portal.Key.JID); err != nil {
+		ce.Reply("Failed to get invite link: %v", err)
+	} else {
+		ce.Reply(link)
 	}
-
-	ce.Reply("Not yet implemented")
-	// TODO reimplement
-	//link, err := ce.User.Conn.GroupInviteLink(ce.Portal.Key.JID)
-	//if err != nil {
-	//	ce.Reply("Failed to get invite link: %v", err)
-	//	return
-	//}
-	//ce.Reply("%s%s", inviteLinkPrefix, link)
 }
 
 const cmdJoinHelp = `join <invite link> - Join a group chat with an invite link.`
