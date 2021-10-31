@@ -563,60 +563,19 @@ func (handler *CommandHandler) CommandDeleteSession(ce *CommandEvent) {
 const cmdReconnectHelp = `reconnect - Reconnect to WhatsApp`
 
 func (handler *CommandHandler) CommandReconnect(ce *CommandEvent) {
-	ce.Reply("Not yet implemented")
-	// TODO reimplement
-	//if ce.User.Client == nil {
-	//	if ce.User.Session == nil {
-	//		ce.Reply("No existing connection and no session. Did you mean `login`?")
-	//	} else {
-	//		ce.Reply("No existing connection, creating one...")
-	//		ce.User.Connect(false)
-	//	}
-	//	return
-	//}
-	//
-	//wasConnected := true
-	//ce.User.Client.Disconnect()
-	//ctx := context.Background()
-	//connected := ce.User.Connect(false)
-	//
-	//err = ce.User.Conn.Restore(true, ctx)
-	//if err == whatsapp.ErrInvalidSession {
-	//	if ce.User.Session != nil {
-	//		ce.User.log.Debugln("Got invalid session error when reconnecting, but user has session. Retrying using RestoreWithSession()...")
-	//		ce.User.Conn.SetSession(*ce.User.Session)
-	//		err = ce.User.Conn.Restore(true, ctx)
-	//	} else {
-	//		ce.Reply("You are not logged in.")
-	//		return
-	//	}
-	//} else if err == whatsapp.ErrLoginInProgress {
-	//	ce.Reply("A login or reconnection is already in progress.")
-	//	return
-	//} else if err == whatsapp.ErrAlreadyLoggedIn {
-	//	ce.Reply("You were already connected.")
-	//	return
-	//}
-	//if err != nil {
-	//	ce.User.log.Warnln("Error while reconnecting:", err)
-	//	ce.Reply("Unknown error while reconnecting: %v", err)
-	//	ce.User.log.Debugln("Disconnecting due to failed session restore in reconnect command...")
-	//	err = ce.User.Conn.Disconnect()
-	//	if err != nil {
-	//		ce.User.log.Errorln("Failed to disconnect after failed session restore in reconnect command:", err)
-	//	}
-	//	return
-	//}
-	//ce.User.ConnectionErrors = 0
-	//
-	//var msg string
-	//if wasConnected {
-	//	msg = "Reconnected successfully."
-	//} else {
-	//	msg = "Connected successfully."
-	//}
-	//ce.Reply(msg)
-	//ce.User.PostLogin()
+	if ce.User.Client == nil {
+		if ce.User.Session == nil {
+			ce.Reply("You're not logged into WhatsApp. Please log in first.")
+		} else {
+			ce.User.Connect()
+			ce.Reply("Started connecting to WhatsApp")
+		}
+	} else {
+		ce.User.DeleteConnection()
+		ce.User.sendBridgeState(BridgeState{StateEvent: StateTransientDisconnect, Error: WANotConnected})
+		ce.User.Connect()
+		ce.Reply("Restarted connection to WhatsApp")
+	}
 }
 
 const cmdDisconnectHelp = `disconnect - Disconnect from WhatsApp (without logging out)`
