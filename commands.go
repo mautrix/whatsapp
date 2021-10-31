@@ -130,7 +130,7 @@ func (handler *CommandHandler) CommandMux(ce *CommandEvent) {
 		handler.CommandLogout(ce)
 	case "toggle":
 		handler.CommandToggle(ce)
-	case "set-relay", "unset-relay", "login-matrix", "sync", "list", "open", "pm", "invite-link", "join", "create":
+	case "set-relay", "unset-relay", "login-matrix", "sync", "list", "open", "pm", "invite-link", "check-invite", "join", "create":
 		if !ce.User.HasSession() {
 			ce.Reply("You are not logged in. Use the `login` command to log into WhatsApp.")
 			return
@@ -154,6 +154,8 @@ func (handler *CommandHandler) CommandMux(ce *CommandEvent) {
 			handler.CommandPM(ce)
 		case "invite-link":
 			handler.CommandInviteLink(ce)
+		case "check-invite":
+			handler.CommandCheckInvite(ce)
 		case "join":
 			handler.CommandJoin(ce)
 		case "create":
@@ -223,24 +225,43 @@ func (handler *CommandHandler) CommandVersion(ce *CommandEvent) {
 	ce.Reply(fmt.Sprintf("[%s](%s) %s (%s)", Name, URL, linkifiedVersion, BuildTime))
 }
 
-const cmdInviteLinkHelp = `invite-link - Get an invite link to the current group chat.`
+const cmdInviteLinkHelp = `invite-link [--reset] - Get an invite link to the current group chat, optionally regenerating the link and revoking the old link.`
 
 func (handler *CommandHandler) CommandInviteLink(ce *CommandEvent) {
+	reset := len(ce.Args) > 0 && strings.ToLower(ce.Args[0]) == "--reset"
 	if ce.Portal == nil {
 		ce.Reply("Not a portal room")
 	} else if ce.Portal.IsPrivateChat() {
 		ce.Reply("Can't get invite link to private chat")
 	} else if ce.Portal.IsBroadcastList() {
 		ce.Reply("Can't get invite link to broadcast list")
-	} else if link, err := ce.User.Client.GetGroupInviteLink(ce.Portal.Key.JID); err != nil {
+	} else if link, err := ce.User.Client.GetGroupInviteLink(ce.Portal.Key.JID, reset); err != nil {
 		ce.Reply("Failed to get invite link: %v", err)
 	} else {
 		ce.Reply(link)
 	}
 }
 
-const cmdJoinHelp = `join <invite link> - Join a group chat with an invite link.`
+const cmdCheckInviteHelp = `check-invite <invite link> - Resolve an invite link and check which group it points at.`
 const inviteLinkPrefix = "https://chat.whatsapp.com/"
+
+func (handler *CommandHandler) CommandCheckInvite(ce *CommandEvent) {
+	if len(ce.Args) == 0 {
+		ce.Reply("**Usage:** `join <invite link>`")
+		return
+	} else if len(ce.Args[0]) <= len(inviteLinkPrefix) || ce.Args[0][:len(inviteLinkPrefix)] != inviteLinkPrefix {
+		ce.Reply("That doesn't look like a WhatsApp invite link")
+		return
+	}
+	group, err := ce.User.Client.GetGroupInfoFromLink(ce.Args[0])
+	if err != nil {
+		ce.Reply("Failed to get group info: %v", err)
+		return
+	}
+	ce.Reply("That invite link points at %s (`%s`)", group.Name, group.JID)
+}
+
+const cmdJoinHelp = `join <invite link> - Join a group chat with an invite link.`
 
 func (handler *CommandHandler) CommandJoin(ce *CommandEvent) {
 	if len(ce.Args) == 0 {
@@ -251,28 +272,13 @@ func (handler *CommandHandler) CommandJoin(ce *CommandEvent) {
 		return
 	}
 
-	ce.Reply("Not yet implemented")
-	// TODO reimplement
-	//jid, err := ce.User.Conn.GroupAcceptInviteCode(ce.Args[0][len(inviteLinkPrefix):])
-	//if err != nil {
-	//	ce.Reply("Failed to join group: %v", err)
-	//	return
-	//}
-	//
-	//handler.log.Debugln("%s successfully joined group %s", ce.User.MXID, jid)
-	//portal := handler.bridge.GetPortalByJID(database.GroupPortalKey(jid))
-	//if len(portal.MXID) > 0 {
-	//	portal.Sync(ce.User, whatsapp.Contact{JID: portal.Key.JID})
-	//	ce.Reply("Successfully joined group \"%s\" and synced portal room: [%s](https://matrix.to/#/%s)", portal.Name, portal.Name, portal.MXID)
-	//} else {
-	//	err = portal.CreateMatrixRoom(ce.User)
-	//	if err != nil {
-	//		ce.Reply("Failed to create portal room: %v", err)
-	//		return
-	//	}
-	//
-	//	ce.Reply("Successfully joined group \"%s\" and created portal room: [%s](https://matrix.to/#/%s)", portal.Name, portal.Name, portal.MXID)
-	//}
+	jid, err := ce.User.Client.JoinGroupViaLink(ce.Args[0])
+	if err != nil {
+		ce.Reply("Failed to join group: %v", err)
+		return
+	}
+	handler.log.Debugln("%s successfully joined group %s", ce.User.MXID, jid)
+	ce.Reply("Successfully joined group `%s`, the portal should be created momentarily", jid)
 }
 
 const cmdCreateHelp = `create - Create a group chat.`
@@ -625,6 +631,7 @@ func (handler *CommandHandler) CommandHelp(ce *CommandEvent) {
 		cmdPrefix + cmdOpenHelp,
 		cmdPrefix + cmdPMHelp,
 		cmdPrefix + cmdInviteLinkHelp,
+		cmdPrefix + cmdCheckInviteHelp,
 		cmdPrefix + cmdJoinHelp,
 		cmdPrefix + cmdCreateHelp,
 		cmdPrefix + cmdSetPowerLevelHelp,
@@ -873,7 +880,7 @@ func (handler *CommandHandler) CommandPM(ce *CommandEvent) {
 			return
 		}
 	}
-	err = portal.CreateMatrixRoom(user)
+	err = portal.CreateMatrixRoom(user, nil)
 	if err != nil {
 		ce.Reply("Failed to create portal room: %v", err)
 		return

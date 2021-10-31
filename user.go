@@ -376,7 +376,7 @@ func (user *User) handleHistorySync(evt *waProto.HistorySync) {
 				continue
 			}
 			user.log.Debugln("Creating portal for", portal.Key.JID, "as part of history sync handling")
-			err = portal.CreateMatrixRoom(user)
+			err = portal.CreateMatrixRoom(user, nil)
 			if err != nil {
 				user.log.Warnfln("Failed to create room for %s during backfill: %v", portal.Key.JID, err)
 				continue
@@ -444,6 +444,8 @@ func (user *User) HandleEvent(event interface{}) {
 		go user.syncPuppet(v.JID)
 	case *events.GroupInfo:
 		go user.handleGroupUpdate(v)
+	case *events.JoinedGroup:
+		go user.handleGroupCreate(v)
 	case *events.Picture:
 		go user.handlePictureUpdate(v)
 	case *events.Receipt:
@@ -751,6 +753,18 @@ func (user *User) markSelfReadFull(portal *Portal) {
 	err := puppet.CustomIntent().MarkReadWithContent(portal.MXID, lastMessage.MXID, &CustomReadReceipt{DoublePuppet: true})
 	if err != nil {
 		user.log.Warnfln("Failed to mark %s in %s as read after backfill: %v", lastMessage.MXID, portal.MXID, err)
+	}
+}
+
+func (user *User) handleGroupCreate(evt *events.JoinedGroup) {
+	portal := user.GetPortalByJID(evt.JID)
+	if len(portal.MXID) == 0 {
+		err := portal.CreateMatrixRoom(user, &evt.GroupInfo)
+		if err != nil {
+			user.log.Errorln("Failed to create Matrix room after join notification: %v", err)
+		}
+	} else {
+		portal.Sync(user, &evt.GroupInfo)
 	}
 }
 

@@ -201,7 +201,7 @@ func (portal *Portal) handleMessageLoop() {
 				continue
 			}
 			portal.log.Debugln("Creating Matrix room from incoming message")
-			err := portal.CreateMatrixRoom(msg.source)
+			err := portal.CreateMatrixRoom(msg.source, nil)
 			if err != nil {
 				portal.log.Errorln("Failed to create portal room:", err)
 				continue
@@ -533,7 +533,7 @@ func (portal *Portal) SyncParticipants(source *User, metadata *types.GroupInfo) 
 		}
 
 		expectedLevel := 0
-		if participant.JID == metadata.OwnerJID {
+		if participant.JID == metadata.OwnerJID || participant.IsSuperAdmin {
 			expectedLevel = 95
 		} else if participant.IsAdmin {
 			expectedLevel = 50
@@ -737,11 +737,11 @@ func (portal *Portal) ensureUserInvited(user *User) (ok bool) {
 	return
 }
 
-func (portal *Portal) Sync(user *User) bool {
+func (portal *Portal) Sync(user *User, groupInfo *types.GroupInfo) bool {
 	portal.log.Infoln("Syncing portal for", user.MXID)
 
 	if len(portal.MXID) == 0 {
-		err := portal.CreateMatrixRoom(user)
+		err := portal.CreateMatrixRoom(user, groupInfo)
 		if err != nil {
 			portal.log.Errorln("Failed to create portal room:", err)
 			return false
@@ -1197,7 +1197,7 @@ var BackfillDummyStateEvent = event.Type{Type: "fi.mau.dummy.blank_backfill_stat
 var BackfillEndDummyEvent = event.Type{Type: "fi.mau.dummy.backfill_end", Class: event.MessageEventType}
 var ForwardBackfillDummyEvent = event.Type{Type: "fi.mau.dummy.pre_forward_backfill", Class: event.MessageEventType}
 
-func (portal *Portal) CreateMatrixRoom(user *User) error {
+func (portal *Portal) CreateMatrixRoom(user *User, groupInfo *types.GroupInfo) error {
 	portal.roomCreateLock.Lock()
 	defer portal.roomCreateLock.Unlock()
 	if len(portal.MXID) > 0 {
@@ -1211,7 +1211,6 @@ func (portal *Portal) CreateMatrixRoom(user *User) error {
 
 	portal.log.Infoln("Creating Matrix room. Info source:", user.MXID)
 
-	var metadata *types.GroupInfo
 	//var broadcastMetadata *types.BroadcastListInfo
 	if portal.IsPrivateChat() {
 		puppet := portal.bridge.GetPuppetByJID(portal.Key.JID)
@@ -1249,11 +1248,16 @@ func (portal *Portal) CreateMatrixRoom(user *User) error {
 		portal.log.Debugln("Broadcast list is not yet supported, not creating room after all")
 		return fmt.Errorf("broadcast list bridging is currently not supported")
 	} else {
-		var err error
-		metadata, err = user.Client.GetGroupInfo(portal.Key.JID)
-		if err == nil {
-			portal.Name = metadata.Name
-			portal.Topic = metadata.Topic
+		if groupInfo == nil {
+			var err error
+			groupInfo, err = user.Client.GetGroupInfo(portal.Key.JID)
+			if err != nil {
+				portal.log.Warnfln("Failed to get group info through %s: %v", user.JID, err)
+			}
+		}
+		if groupInfo != nil {
+			portal.Name = groupInfo.Name
+			portal.Topic = groupInfo.Topic
 		}
 		portal.UpdateAvatar(user, types.EmptyJID, false)
 	}
@@ -1325,13 +1329,13 @@ func (portal *Portal) CreateMatrixRoom(user *User) error {
 	portal.ensureUserInvited(user)
 	user.syncChatDoublePuppetDetails(portal, true)
 
-	if metadata != nil {
-		portal.SyncParticipants(user, metadata)
-		if metadata.IsAnnounce {
-			portal.RestrictMessageSending(metadata.IsAnnounce)
+	if groupInfo != nil {
+		portal.SyncParticipants(user, groupInfo)
+		if groupInfo.IsAnnounce {
+			portal.RestrictMessageSending(groupInfo.IsAnnounce)
 		}
-		if metadata.IsLocked {
-			portal.RestrictMetadataChanges(metadata.IsLocked)
+		if groupInfo.IsLocked {
+			portal.RestrictMetadataChanges(groupInfo.IsLocked)
 		}
 	}
 	//if broadcastMetadata != nil {
