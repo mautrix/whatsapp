@@ -278,12 +278,11 @@ func (mx *MatrixHandler) HandleMembership(evt *event.Event) {
 			if evt.Unsigned.PrevContent != nil {
 				_ = evt.Unsigned.PrevContent.ParseRaw(evt.Type)
 				prevContent, ok := evt.Unsigned.PrevContent.Parsed.(*event.MemberEventContent)
-				if ok {
-					if portal.IsPrivateChat() || prevContent.Membership == "join" {
-						portal.HandleMatrixLeave(user)
-					}
+				if ok && prevContent.Membership != "join" {
+					return
 				}
 			}
+			portal.HandleMatrixLeave(user)
 		} else {
 			portal.HandleMatrixKick(user, evt)
 		}
