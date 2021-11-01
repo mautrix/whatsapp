@@ -655,11 +655,15 @@ const cmdPingHelp = `ping - Check your connection to WhatsApp.`
 
 func (handler *CommandHandler) CommandPing(ce *CommandEvent) {
 	if ce.User.Session == nil {
-		ce.Reply("You're not logged into WhatsApp.")
+		if ce.User.Client != nil {
+			ce.Reply("Connected to WhatsApp, but not logged in.")
+		} else {
+			ce.Reply("You're not logged into WhatsApp.")
+		}
 	} else if ce.User.Client == nil || !ce.User.Client.IsConnected() {
-		ce.Reply("You don't have a WhatsApp connection.")
+		ce.Reply("You're logged in as +%s (device #%d), but you don't have a WhatsApp connection.", ce.User.JID.User, ce.User.JID.Device)
 	} else {
-		ce.Reply("Connection to WhatsApp OK (probably)")
+		ce.Reply("Logged in as +%s (device #%d), connection to WhatsApp OK (probably)", ce.User.JID.User, ce.User.JID.Device)
 	}
 }
 
