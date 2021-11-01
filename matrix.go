@@ -404,6 +404,10 @@ func (mx *MatrixHandler) HandleMessage(evt *event.Event) {
 	}
 
 	user := mx.bridge.GetUserByMXID(evt.Sender)
+	if user == nil {
+		return
+	}
+
 	content := evt.Content.AsMessage()
 	content.RemoveReplyFallback()
 	if user.Whitelisted && content.MsgType == event.MsgText {
@@ -426,29 +430,14 @@ func (mx *MatrixHandler) HandleMessage(evt *event.Event) {
 
 func (mx *MatrixHandler) HandleRedaction(evt *event.Event) {
 	defer mx.bridge.Metrics.TrackMatrixEvent(evt.Type)()
-	if _, isPuppet := mx.bridge.ParsePuppetMXID(evt.Sender); evt.Sender == mx.bridge.Bot.UserID || isPuppet {
-		return
-	}
 
 	user := mx.bridge.GetUserByMXID(evt.Sender)
-
-	if !user.Whitelisted {
-		return
-	}
-
-	if !user.HasSession() {
-		return
-	} else if !user.IsLoggedIn() {
-		msg := format.RenderMarkdown(fmt.Sprintf("[%[1]s](https://matrix.to/#/%[1]s): \u26a0 "+
-			"You are not connected to WhatsApp, so your redaction was not bridged. "+
-			"Use `%[2]s reconnect` to reconnect.", user.MXID, mx.bridge.Config.Bridge.CommandPrefix), true, false)
-		msg.MsgType = event.MsgNotice
-		_, _ = mx.bridge.Bot.SendMessageEvent(evt.RoomID, event.EventMessage, msg)
+	if user == nil {
 		return
 	}
 
 	portal := mx.bridge.GetPortalByMXID(evt.RoomID)
-	if portal != nil {
+	if portal != nil && (user.Whitelisted || portal.HasRelaybot()) {
 		portal.HandleMatrixRedaction(user, evt)
 	}
 }

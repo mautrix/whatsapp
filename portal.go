@@ -2081,36 +2081,6 @@ type MediaUpload struct {
 	FileLength    int
 }
 
-func (portal *Portal) sendMatrixConnectionError(sender *User, eventID id.EventID) bool {
-	if !sender.HasSession() {
-		portal.log.Debugln("Ignoring event", eventID, "from", sender.MXID, "as user has no session")
-		return true
-	} /*else if !sender.IsConnected() {
-		inRoom := ""
-		if portal.IsPrivateChat() {
-			inRoom = " in your management room"
-		}
-		if sender.IsLoginInProgress() {
-			portal.log.Debugln("Waiting for connection before handling event", eventID, "from", sender.MXID)
-			sender.Conn.WaitForLogin()
-			if sender.IsConnected() {
-				return false
-			}
-		}
-		reconnect := fmt.Sprintf("Use `%s reconnect`%s to reconnect.", portal.bridge.Config.Bridge.CommandPrefix, inRoom)
-		portal.log.Debugln("Ignoring event", eventID, "from", sender.MXID, "as user is not connected")
-		msg := format.RenderMarkdown("\u26a0 You are not connected to WhatsApp, so your message was not bridged. "+reconnect, true, false)
-		msg.MsgType = event.MsgNotice
-		_, err := portal.sendMainIntentMessage(msg)
-		if err != nil {
-			portal.log.Errorln("Failed to send bridging failure message:", err)
-		}
-		return true
-	}*/
-	// FIXME implement
-	return false
-}
-
 func (portal *Portal) addRelaybotFormat(sender *User, content *event.MessageEventContent) bool {
 	member := portal.MainIntent().Member(portal.MXID, sender.MXID)
 	if len(member.Displayname) == 0 {
@@ -2182,9 +2152,9 @@ func (portal *Portal) convertMatrixMessage(sender *User, evt *event.Event) (*waP
 		}
 	}
 	relaybotFormatted := false
-	if !sender.HasSession() {
+	if !sender.IsLoggedIn() {
 		if !portal.HasRelaybot() {
-			portal.log.Debugln("Ignoring message from", sender.MXID, "in chat with no relaybot")
+			portal.log.Warnln("Ignoring message from", sender.MXID, "in chat with no relaybot (convertMatrixMessage)")
 			return nil, sender
 		}
 		relaybotFormatted = portal.addRelaybotFormat(sender, content)
@@ -2352,12 +2322,10 @@ func (portal *Portal) generateMessageInfo(sender *User) *types.MessageInfo {
 }
 
 func (portal *Portal) HandleMatrixMessage(sender *User, evt *event.Event) {
-	if !portal.HasRelaybot() &&
-		((portal.IsPrivateChat() && sender.JID.User != portal.Key.Receiver.User) ||
-			portal.sendMatrixConnectionError(sender, evt.ID)) {
+	if !portal.canBridgeFrom(sender, "message") {
 		return
 	}
-	portal.log.Debugfln("Received event %s", evt.ID)
+	portal.log.Debugfln("Received event %s from %s", evt.ID, evt.Sender)
 	msg, sender := portal.convertMatrixMessage(sender, evt)
 	if msg == nil {
 		return
@@ -2377,16 +2345,23 @@ func (portal *Portal) HandleMatrixMessage(sender *User, evt *event.Event) {
 }
 
 func (portal *Portal) HandleMatrixRedaction(sender *User, evt *event.Event) {
-	if portal.IsPrivateChat() && sender.JID.User != portal.Key.Receiver.User {
+	if !portal.canBridgeFrom(sender, "redaction") {
 		return
+	}
+	portal.log.Debugfln("Received redaction %s from %s", evt.ID, evt.Sender)
+
+	senderLogIdentifier := sender.MXID
+	if !sender.HasSession() {
+		sender = portal.GetRelayUser()
+		senderLogIdentifier += " (through relaybot)"
 	}
 
 	msg := portal.bridge.DB.Message.GetByMXID(evt.Redacts)
 	if msg == nil {
-		portal.log.Debugfln("Ignoring redaction %s of unknown event by %s", msg, sender.MXID)
+		portal.log.Debugfln("Ignoring redaction %s of unknown event by %s", msg, senderLogIdentifier)
 		return
 	} else if msg.Sender.User != sender.JID.User {
-		portal.log.Debugfln("Ignoring redaction %s of %s/%s by %s: message was sent by someone else (%s, not %s)", evt.ID, msg.MXID, msg.JID, sender.MXID, msg.Sender, sender.JID)
+		portal.log.Debugfln("Ignoring redaction %s of %s/%s by %s: message was sent by someone else (%s, not %s)", evt.ID, msg.MXID, msg.JID, senderLogIdentifier, msg.Sender, sender.JID)
 		return
 	}
 
@@ -2398,6 +2373,29 @@ func (portal *Portal) HandleMatrixRedaction(sender *User, evt *event.Event) {
 		portal.log.Debugfln("Handled Matrix redaction %s of %s", evt.ID, evt.Redacts)
 		portal.sendDeliveryReceipt(evt.ID)
 	}
+}
+
+func (portal *Portal) canBridgeFrom(sender *User, evtType string) bool {
+	if !sender.IsLoggedIn() {
+		if portal.HasRelaybot() {
+			return true
+		} else if sender.Session != nil {
+			portal.log.Debugln("Ignoring %s from %s as user is not connected", evtType, sender.MXID)
+			msg := format.RenderMarkdown(fmt.Sprintf("\u26a0 You are not connected to WhatsApp, so your %s was not bridged.", evtType), true, false)
+			msg.MsgType = event.MsgNotice
+			_, err := portal.sendMainIntentMessage(&msg)
+			if err != nil {
+				portal.log.Errorln("Failed to send bridging failure message:", err)
+			}
+		} else {
+			portal.log.Debugfln("Ignoring %s from non-logged-in user %s in chat with no relay user", evtType, sender.MXID)
+		}
+		return false
+	} else if portal.IsPrivateChat() && sender.JID.User != portal.Key.Receiver.User {
+		portal.log.Debugfln("Ignoring %s from different user %s/%s in private chat with no relay user", evtType, sender.MXID, sender.JID)
+		return false
+	}
+	return true
 }
 
 func (portal *Portal) Delete() {
