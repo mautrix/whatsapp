@@ -55,7 +55,7 @@ build docker amd64:
     DOCKER_ARCH: amd64
   after_script:
   - |
-    if [[ "$CI_COMMIT_BRANCH" == "master" ]]; then
+    if [[ "$CI_COMMIT_BRANCH" == "master" && "$CI_JOB_STATUS" == "success" ]]; then
       apk add --update curl jq
       rm -rf /var/cache/apk/*
 

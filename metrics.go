@@ -20,6 +20,7 @@ import (
 	"context"
 	"net/http"
 	"runtime/debug"
+	"sync"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -61,12 +62,15 @@ type MetricsHandler struct {
 	unencryptedGroupCount   prometheus.Gauge
 	unencryptedPrivateCount prometheus.Gauge
 
-	connected       prometheus.Gauge
-	connectedState  map[whatsapp.JID]bool
-	loggedIn        prometheus.Gauge
-	loggedInState   map[whatsapp.JID]bool
-	syncLocked      prometheus.Gauge
-	syncLockedState map[whatsapp.JID]bool
+	connected           prometheus.Gauge
+	connectedState      map[whatsapp.JID]bool
+	connectedStateLock  sync.Mutex
+	loggedIn            prometheus.Gauge
+	loggedInState       map[whatsapp.JID]bool
+	loggedInStateLock   sync.Mutex
+	syncLocked          prometheus.Gauge
+	syncLockedState     map[whatsapp.JID]bool
+	syncLockedStateLock sync.Mutex
 	bufferLength    *prometheus.GaugeVec
 }
 
@@ -191,6 +195,8 @@ func (mh *MetricsHandler) TrackLoginState(jid whatsapp.JID, loggedIn bool) {
 	if !mh.running {
 		return
 	}
+	mh.loggedInStateLock.Lock()
+	defer mh.loggedInStateLock.Unlock()
 	currentVal, ok := mh.loggedInState[jid]
 	if !ok || currentVal != loggedIn {
 		mh.loggedInState[jid] = loggedIn
@@ -206,6 +212,9 @@ func (mh *MetricsHandler) TrackConnectionState(jid whatsapp.JID, connected bool)
 	if !mh.running {
 		return
 	}
+
+	mh.connectedStateLock.Lock()
+	defer mh.connectedStateLock.Unlock()
 	currentVal, ok := mh.connectedState[jid]
 	if !ok || currentVal != connected {
 		mh.connectedState[jid] = connected
@@ -221,6 +230,8 @@ func (mh *MetricsHandler) TrackSyncLock(jid whatsapp.JID, locked bool) {
 	if !mh.running {
 		return
 	}
+	mh.syncLockedStateLock.Lock()
+	defer mh.syncLockedStateLock.Unlock()
 	currentVal, ok := mh.syncLockedState[jid]
 	if !ok || currentVal != locked {
 		mh.syncLockedState[jid] = locked

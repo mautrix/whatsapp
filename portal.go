@@ -42,6 +42,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"golang.org/x/image/webp"
 	"github.com/Rhymen/go-whatsapp"
 	waProto "github.com/Rhymen/go-whatsapp/binary/proto"
 
@@ -1915,6 +1916,20 @@ func (portal *Portal) downloadThumbnail(content *event.MessageEventContent, id i
 	return buf.Bytes()
 }
 
+func (portal *Portal) convertWebPtoPNG(webpImage []byte) ([]byte, error) {
+	webpDecoded, err := webp.Decode(bytes.NewReader(webpImage))
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode webp image: %w", err)
+	}
+
+	var pngBuffer bytes.Buffer
+	if err := png.Encode(&pngBuffer, webpDecoded); err != nil {
+		return nil, fmt.Errorf("failed to encode png image: %w", err)
+	}
+
+	return pngBuffer.Bytes(), nil
+}
+
 func (portal *Portal) convertGifToVideo(gif []byte) ([]byte, error) {
 	dir, err := ioutil.TempDir("", "gif-convert-*")
 	if err != nil {
@@ -2000,7 +2015,14 @@ func (portal *Portal) preprocessMatrixMedia(sender *User, relaybotFormatted bool
 		}
 		content.Info.MimeType = "video/mp4"
 	}
-
+	if mediaType == whatsapp.MediaImage && content.GetInfo().MimeType == "image/webp" {
+		data, err = portal.convertWebPtoPNG(data)
+		if err != nil {
+			portal.log.Errorfln("Failed to convert webp to png in %s: %v", eventID, err)
+			return nil
+		}
+		content.Info.MimeType = "image/png"
+	}
 	url, mediaKey, fileEncSHA256, fileSHA256, fileLength, err := sender.Conn.Upload(bytes.NewReader(data), mediaType)
 	if err != nil {
 		portal.log.Errorfln("Failed to upload media in %s: %v", eventID, err)
