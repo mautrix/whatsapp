@@ -776,7 +776,6 @@ func (user *User) handleGroupCreate(evt *events.JoinedGroup) {
 func (user *User) handleGroupUpdate(evt *events.GroupInfo) {
 	portal := user.GetPortalByJID(evt.JID)
 	if portal == nil || len(portal.MXID) == 0 {
-		// TODO create portal when added to group
 		user.log.Debugfln("Ignoring group info update in chat with no portal: %+v", evt)
 		return
 	}

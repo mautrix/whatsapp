@@ -278,7 +278,7 @@ func (handler *CommandHandler) CommandJoin(ce *CommandEvent) {
 		return
 	}
 
-	jid, err := ce.User.Client.JoinGroupViaLink(ce.Args[0])
+	jid, err := ce.User.Client.JoinGroupWithLink(ce.Args[0])
 	if err != nil {
 		ce.Reply("Failed to join group: %v", err)
 		return
@@ -299,7 +299,7 @@ func (handler *CommandHandler) CommandAccept(ce *CommandEvent) {
 		ce.Reply("That doesn't look like a group invite message.")
 	} else if inviter.User == ce.User.JID.User {
 		ce.Reply("You can't accept your own invites")
-	} else if err = ce.User.Client.AcceptGroupInvite(jid, inviter, code, expiration); err != nil {
+	} else if err = ce.User.Client.JoinGroupWithInvite(jid, inviter, code, expiration); err != nil {
 		ce.Reply("Failed to accept group invite: %v", err)
 	} else {
 		ce.Reply("Successfully accepted the invite, the portal should be created momentarily")
