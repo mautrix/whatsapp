@@ -560,7 +560,7 @@ func (portal *Portal) SyncParticipants(source *User, metadata *types.GroupInfo) 
 		}
 
 		expectedLevel := 0
-		if participant.JID == metadata.OwnerJID || participant.IsSuperAdmin {
+		if participant.IsSuperAdmin {
 			expectedLevel = 95
 		} else if participant.IsAdmin {
 			expectedLevel = 50
