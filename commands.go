@@ -958,7 +958,7 @@ func (handler *CommandHandler) CommandPM(ce *CommandEvent) {
 			portal.log.Warnfln("ensureUserInvited(%s) returned false, creating new portal", user.MXID)
 			portal.MXID = ""
 		} else {
-			ce.Reply("You already have a private chat portal with that user at [%s](https://matrix.to/#/%s)", puppet.Displayname, portal.MXID)
+			ce.Reply("You already have a private chat portal with +%s at [%s](https://matrix.to/#/%s)", puppet.JID.User, puppet.Displayname, portal.MXID)
 			return
 		}
 	}
@@ -967,7 +967,7 @@ func (handler *CommandHandler) CommandPM(ce *CommandEvent) {
 		ce.Reply("Failed to create portal room: %v", err)
 		return
 	}
-	ce.Reply("Created portal room and invited you to it.")
+	ce.Reply("Created portal room with +%s and invited you to it.", puppet.JID.User)
 }
 
 const cmdLoginMatrixHelp = `login-matrix <_access token_> - Replace your WhatsApp account's Matrix puppet with your real Matrix account.`
