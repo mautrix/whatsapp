@@ -347,6 +347,15 @@ func (user *User) sendMarkdownBridgeAlert(formatString string, args ...interface
 	}
 }
 
+func containsSupportedMessages(conv *waProto.Conversation) bool {
+	for _, msg := range conv.GetMessages() {
+		if containsSupportedMessage(msg.GetMessage().GetMessage()) {
+			return true
+		}
+	}
+	return false
+}
+
 func (user *User) handleHistorySync(evt *waProto.HistorySync) {
 	if evt.GetSyncType() != waProto.HistorySync_RECENT && evt.GetSyncType() != waProto.HistorySync_FULL {
 		return
@@ -376,7 +385,10 @@ func (user *User) handleHistorySync(evt *waProto.HistorySync) {
 		lastMsg := time.Unix(int64(conv.GetConversationTimestamp()), 0)
 		portal := user.GetPortalByJID(jid)
 		if createRooms && len(portal.MXID) == 0 {
-			if maxAge > 0 && !lastMsg.After(minLastMsgToCreate) {
+			if !containsSupportedMessages(conv) {
+				user.log.Debugfln("Not creating portal for %s: no interesting messages found", portal.Key.JID)
+				continue
+			} else if maxAge > 0 && !lastMsg.After(minLastMsgToCreate) {
 				user.log.Debugfln("Not creating portal for %s: last message older than limit (%s)", portal.Key.JID, lastMsg)
 				continue
 			}

@@ -196,7 +196,7 @@ type Portal struct {
 func (portal *Portal) handleMessageLoop() {
 	for msg := range portal.messages {
 		if len(portal.MXID) == 0 {
-			if !portal.shouldCreateRoom(msg) {
+			if msg.evt == nil || !containsSupportedMessage(msg.evt.Message) {
 				portal.log.Debugln("Not creating portal room for incoming message: message is not a chat message")
 				continue
 			}
@@ -217,53 +217,33 @@ func (portal *Portal) handleMessageLoop() {
 	}
 }
 
-func (portal *Portal) shouldCreateRoom(msg PortalMessage) bool {
-	if msg.undecryptable != nil {
-		return true
+func containsSupportedMessage(waMsg *waProto.Message) bool {
+	if waMsg == nil {
+		return false
 	}
-	waMsg := msg.evt.Message
-	supportedMessages := []interface{}{
-		waMsg.Conversation,
-		waMsg.ExtendedTextMessage,
-		waMsg.ImageMessage,
-		waMsg.StickerMessage,
-		waMsg.VideoMessage,
-		waMsg.AudioMessage,
-		waMsg.VideoMessage,
-		waMsg.DocumentMessage,
-		waMsg.ContactMessage,
-		waMsg.LocationMessage,
-		waMsg.GroupInviteMessage,
-	}
-	for _, message := range supportedMessages {
-		if message != nil {
-			return true
-		}
-	}
-	return false
+	return waMsg.Conversation != nil || waMsg.ExtendedTextMessage != nil || waMsg.ImageMessage != nil ||
+		waMsg.StickerMessage != nil || waMsg.AudioMessage != nil || waMsg.VideoMessage != nil ||
+		waMsg.DocumentMessage != nil || waMsg.ContactMessage != nil || waMsg.LocationMessage != nil ||
+		waMsg.GroupInviteMessage != nil
 }
 
-func (portal *Portal) isPotentiallyInteresting(waMsg *waProto.Message) bool {
+func isPotentiallyInteresting(waMsg *waProto.Message) bool {
+	if waMsg == nil {
+		return false
+	}
 	// List of message types that aren't supported, but might potentially be interesting
 	// (so a warning should be logged if they are encountered).
-	potentiallyInterestingThings := []interface{}{
-		waMsg.Call, waMsg.Chat, waMsg.ContactsArrayMessage, waMsg.HighlyStructuredMessage,
-		waMsg.SendPaymentMessage, waMsg.LiveLocationMessage, waMsg.RequestPaymentMessage,
-		waMsg.DeclinePaymentRequestMessage, waMsg.CancelPaymentRequestMessage, waMsg.TemplateMessage,
-		waMsg.TemplateButtonReplyMessage, waMsg.ProductMessage, waMsg.ListMessage, waMsg.OrderMessage,
-		waMsg.ListResponseMessage, waMsg.InvoiceMessage, waMsg.ButtonsResponseMessage,
-		waMsg.ButtonsResponseMessage, waMsg.PaymentInviteMessage, waMsg.InteractiveMessage,
-		waMsg.ReactionMessage, waMsg.StickerSyncRmrMessage,
-	}
-	for _, thing := range potentiallyInterestingThings {
-		if thing != nil {
-			return true
-		}
-	}
-	return false
+	return waMsg.Call != nil || waMsg.Chat != nil || waMsg.ContactsArrayMessage != nil ||
+		waMsg.HighlyStructuredMessage != nil || waMsg.SendPaymentMessage != nil || waMsg.LiveLocationMessage != nil ||
+		waMsg.RequestPaymentMessage != nil || waMsg.DeclinePaymentRequestMessage != nil ||
+		waMsg.CancelPaymentRequestMessage != nil || waMsg.TemplateMessage != nil ||
+		waMsg.TemplateButtonReplyMessage != nil || waMsg.ProductMessage != nil || waMsg.ListMessage != nil ||
+		waMsg.OrderMessage != nil || waMsg.ListResponseMessage != nil || waMsg.InvoiceMessage != nil ||
+		waMsg.ButtonsMessage != nil || waMsg.ButtonsResponseMessage != nil || waMsg.PaymentInviteMessage != nil ||
+		waMsg.InteractiveMessage != nil || waMsg.ReactionMessage != nil || waMsg.StickerSyncRmrMessage != nil
 }
 
-func (portal *Portal) getMessageType(waMsg *waProto.Message) string {
+func getMessageType(waMsg *waProto.Message) string {
 	switch {
 	case waMsg == nil:
 		return "ignore"
@@ -294,7 +274,7 @@ func (portal *Portal) getMessageType(waMsg *waProto.Message) string {
 		default:
 			return "unknown_protocol"
 		}
-	case portal.isPotentiallyInteresting(waMsg):
+	case isPotentiallyInteresting(waMsg):
 		return "unknown"
 	default:
 		return "ignore"
@@ -362,7 +342,7 @@ func (portal *Portal) handleMessage(source *User, evt *events.Message) {
 		return
 	}
 	msgID := evt.Info.ID
-	msgType := portal.getMessageType(evt.Message)
+	msgType := getMessageType(evt.Message)
 	if msgType == "ignore" {
 		return
 	} else if portal.isRecentlyHandled(msgID, false) {
@@ -1072,9 +1052,9 @@ func (portal *Portal) backfill(source *User, messages []*waProto.HistorySyncMsg)
 	for i := len(messages) - 1; i >= 0; i-- {
 		wrappedMsg := messages[i]
 		webMsg := wrappedMsg.GetMessage()
-		msgType := portal.getMessageType(webMsg.GetMessage())
-		if msgType == "unknown" || msgType == "ignore" {
-			if msgType == "unknown" {
+		msgType := getMessageType(webMsg.GetMessage())
+		if msgType == "unknown" || msgType == "ignore" || msgType == "unknown_protocol" {
+			if msgType != "ignore" {
 				portal.log.Debugfln("Skipping message %s with unknown type in backfill", webMsg.GetKey().GetId())
 			}
 			continue
