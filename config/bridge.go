@@ -96,6 +96,8 @@ type BridgeConfig struct {
 
 	Relay RelaybotConfig `yaml:"relay"`
 
+	DoublePuppetServerMap map[string]string `yaml:"double_puppet_server_map"`
+
 	usernameTemplate    *template.Template `yaml:"-"`
 	displaynameTemplate *template.Template `yaml:"-"`
 }

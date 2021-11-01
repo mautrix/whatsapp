@@ -219,6 +219,9 @@ bridge:
         "example.com": user
         "@admin:example.com": admin
 
+    double_puppet_server_map: 
+      "matrix.org": https://matrix.org
+
     relay:
         # Whether relay mode should be allowed. If allowed, `!wa set-relay` can be used to turn any
         # authenticated user into a relaybot for that chat.

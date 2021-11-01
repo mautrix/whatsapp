@@ -84,7 +84,16 @@ func (puppet *Puppet) newCustomIntent() (*appservice.IntentAPI, error) {
 	if len(puppet.CustomMXID) == 0 {
 		return nil, ErrNoCustomMXID
 	}
-	client, err := mautrix.NewClient(puppet.bridge.AS.HomeserverURL, puppet.CustomMXID, puppet.AccessToken)
+	_, homeserver, err := puppet.CustomMXID.Parse()
+	if err != nil {
+		return nil, err
+	}
+	homeserverUrl, found := puppet.bridge.Config.Bridge.DoublePuppetServerMap[homeserver]
+	if !found {
+		puppet.log.Debugfln("Homeserver not found in double puppet server map. Using local homeserver")
+		homeserverUrl = puppet.bridge.AS.HomeserverURL
+	}
+	client, err := mautrix.NewClient(homeserverUrl, puppet.CustomMXID, puppet.AccessToken)
 	if err != nil {
 		return nil, err
 	}
