@@ -1,12 +1,19 @@
-# mautrix-whatsapp
-A Matrix-WhatsApp puppeting bridge based on the [Rhymen/go-whatsapp](https://github.com/Rhymen/go-whatsapp)
-implementation of the [sigalor/whatsapp-web-reveng](https://github.com/sigalor/whatsapp-web-reveng) project.
-
-### Element fork
+## Element fork
 
 The Element fork includes the following changes:
 - [Track "active" WhatsApp users and implement blocking when reaching the limit](https://github.com/tulir/mautrix-whatsapp/pull/323)
+- [Prevent keepalive from segfaulting if its WS is not initialized](https://github.com/vector-im/go-whatsapp/pull/1)
 
+Some changes that appear here may get upstreamed to https://github.com/mautrix/whatsapp, and will be removed from
+the list when they appear in both versions.
+
+Tagged versions will appear as `v{UPSTREAM-VERSION}-mod-{VERSION}`
+
+E.g. The third modification release to 1.0 of the upstream bridge would be `v1.0-mod-3`.
+
+# mautrix-whatsapp
+A Matrix-WhatsApp puppeting bridge based on the [Rhymen/go-whatsapp](https://github.com/Rhymen/go-whatsapp)
+implementation of the [sigalor/whatsapp-web-reveng](https://github.com/sigalor/whatsapp-web-reveng) project.
 ### Documentation
 All setup and usage instructions are located on
 [docs.mau.fi](https://docs.mau.fi/bridges/go/whatsapp/index.html).

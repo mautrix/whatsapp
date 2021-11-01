@@ -9,6 +9,7 @@ require (
 	github.com/mattn/go-sqlite3 v1.14.8
 	github.com/prometheus/client_golang v1.11.0
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
+	golang.org/x/image v0.0.0-20210628002857-a66eb6448b8d
 	gopkg.in/yaml.v2 v2.4.0
 	maunium.net/go/mauflag v1.0.0
 	maunium.net/go/maulogger/v2 v2.3.0
