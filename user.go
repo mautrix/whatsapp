@@ -769,7 +769,7 @@ func (user *User) handleGroupCreate(evt *events.JoinedGroup) {
 			user.log.Errorln("Failed to create Matrix room after join notification: %v", err)
 		}
 	} else {
-		portal.Sync(user, &evt.GroupInfo)
+		portal.UpdateMatrixRoom(user, &evt.GroupInfo)
 	}
 }
 

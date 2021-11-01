@@ -764,7 +764,7 @@ func (portal *Portal) ensureUserInvited(user *User) (ok bool) {
 	return
 }
 
-func (portal *Portal) Sync(user *User, groupInfo *types.GroupInfo) bool {
+func (portal *Portal) UpdateMatrixRoom(user *User, groupInfo *types.GroupInfo) bool {
 	portal.log.Infoln("Syncing portal for", user.MXID)
 
 	if len(portal.MXID) == 0 {
@@ -773,6 +773,7 @@ func (portal *Portal) Sync(user *User, groupInfo *types.GroupInfo) bool {
 			portal.log.Errorln("Failed to create portal room:", err)
 			return false
 		}
+		return true
 	} else {
 		portal.ensureUserInvited(user)
 	}

@@ -854,7 +854,6 @@ func (handler *CommandHandler) CommandList(ce *CommandEvent) {
 			return
 		}
 		result = formatContacts(ce.User.bridge, contactList)
-
 	} else {
 		groupList, err := ce.User.Client.GetJoinedGroups()
 		if err != nil {
@@ -873,7 +872,7 @@ func (handler *CommandHandler) CommandList(ce *CommandEvent) {
 		if pages == 1 {
 			ce.Reply("There is only 1 page of %s", strings.ToLower(typeName))
 		} else {
-			ce.Reply("There are only %d pages of %s", pages, strings.ToLower(typeName))
+			ce.Reply("There are %d pages of %s", pages, strings.ToLower(typeName))
 		}
 		return
 	}
@@ -892,33 +891,36 @@ func (handler *CommandHandler) CommandOpen(ce *CommandEvent) {
 		ce.Reply("**Usage:** `open <group JID>`")
 		return
 	}
-	ce.Reply("Not yet implemented")
 
-	// TODO reimplement
-	//user := ce.User
-	//jid := ce.Args[0]
-	//if strings.HasSuffix(jid, whatsapp.NewUserSuffix) {
-	//	ce.Reply("That looks like a user JID. Did you mean `pm %s`?", jid[:len(jid)-len(whatsapp.NewUserSuffix)])
-	//	return
-	//}
-	//
-	//user.Conn.Store.ContactsLock.RLock()
-	//contact, ok := user.Conn.Store.Contacts[jid]
-	//user.Conn.Store.ContactsLock.RUnlock()
-	//if !ok {
-	//	ce.Reply("Group JID not found in contacts. Try syncing contacts with `sync` first.")
-	//	return
-	//}
-	//handler.log.Debugln("Importing", jid, "for", user)
-	//portal := user.bridge.GetPortalByJID(database.GroupPortalKey(jid))
-	//if len(portal.MXID) > 0 {
-	//	portal.Sync(user, contact)
-	//	ce.Reply("Portal room synced.")
-	//} else {
-	//	portal.Sync(user, contact)
-	//	ce.Reply("Portal room created.")
-	//}
-	//_, _ = portal.MainIntent().InviteUser(portal.MXID, &mautrix.ReqInviteUser{UserID: user.MXID})
+	var jid types.JID
+	if strings.ContainsRune(ce.Args[0], '@') {
+		jid, _ = types.ParseJID(ce.Args[0])
+	} else {
+		jid = types.NewJID(ce.Args[0], types.GroupServer)
+	}
+	if jid.Server != types.GroupServer || !strings.ContainsRune(jid.User, '-') {
+		ce.Reply("That does not look like a group JID")
+		return
+	}
+
+	info, err := ce.User.Client.GetGroupInfo(jid)
+	if err != nil {
+		ce.Reply("Failed to get group info: %v", err)
+		return
+	}
+	handler.log.Debugln("Importing", jid, "for", ce.User.MXID)
+	portal := ce.User.GetPortalByJID(info.JID)
+	if len(portal.MXID) > 0 {
+		portal.UpdateMatrixRoom(ce.User, info)
+		ce.Reply("Portal room synced.")
+	} else {
+		err = portal.CreateMatrixRoom(ce.User, info)
+		if err != nil {
+			ce.Reply("Failed to create room: %v", err)
+		} else {
+			ce.Reply("Portal room created.")
+		}
+	}
 }
 
 const cmdPMHelp = `pm <_international phone number_> - Open a private chat with the given phone number.`
