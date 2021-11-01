@@ -178,7 +178,7 @@ func (prov *ProvisioningAPI) Ping(w http.ResponseWriter, r *http.Request) {
 		"management_room": user.ManagementRoom,
 		"conn":            nil,
 	}
-	if user.JID.IsEmpty() {
+	if !user.JID.IsEmpty() {
 		wa["jid"] = user.JID.String()
 	}
 	if user.Client != nil {
