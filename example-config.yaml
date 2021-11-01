@@ -163,7 +163,7 @@ bridge:
 
     # Whether or not created rooms should have federation enabled.
     # If false, created portal rooms will never be federated.
-    federate_rooms: false
+    federate_rooms: true
 
     # Messages sent upon joining a management room.
     # Markdown is supported. The defaults are listed below.
