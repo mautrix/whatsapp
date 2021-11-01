@@ -2158,13 +2158,6 @@ func parseGeoURI(uri string) (lat, long float64, err error) {
 	return
 }
 
-func fallbackQuoteContent() *waProto.Message {
-	blankString := ""
-	return &waProto.Message{
-		Conversation: &blankString,
-	}
-}
-
 func (portal *Portal) convertMatrixMessage(sender *User, evt *event.Event) (*waProto.Message, *User) {
 	content, ok := evt.Content.Parsed.(*event.MessageEventContent)
 	if !ok {
@@ -2179,11 +2172,13 @@ func (portal *Portal) convertMatrixMessage(sender *User, evt *event.Event) (*waP
 		replyToMsg := portal.bridge.DB.Message.GetByMXID(replyToID)
 		if replyToMsg != nil {
 			ctxInfo.StanzaId = &replyToMsg.JID
-			ctxInfo.Participant = proto.String(replyToMsg.Sender.String())
+			ctxInfo.Participant = proto.String(replyToMsg.Sender.ToNonAD().String())
 			// Using blank content here seems to work fine on all official WhatsApp apps.
-			// Getting the content from the phone would be possible, but it's complicated.
-			// https://github.com/mautrix/whatsapp/commit/b3312bc663772aa274cea90ffa773da2217bb5e0
-			ctxInfo.QuotedMessage = fallbackQuoteContent()
+			//
+			// We could probably invent a slightly more accurate version of the quoted message
+			// by fetching the Matrix event and converting it to the WhatsApp format, but that's
+			// a lot of work and this works fine.
+			ctxInfo.QuotedMessage = &waProto.Message{Conversation: proto.String("")}
 		}
 	}
 	relaybotFormatted := false
