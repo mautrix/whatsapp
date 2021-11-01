@@ -70,6 +70,8 @@ type BridgeConfig struct {
 
 	AllowUserInvite bool `yaml:"allow_user_invite"`
 
+	FederateRooms bool `yaml:"federate_rooms"`
+
 	CommandPrefix string `yaml:"command_prefix"`
 
 	ManagementRoomText struct {

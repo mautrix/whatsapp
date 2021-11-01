@@ -181,9 +181,14 @@ func (user *User) GetManagementRoom() id.RoomID {
 		if len(user.ManagementRoom) > 0 {
 			return user.ManagementRoom
 		}
+		creationContent := make(map[string]interface{})
+		if !user.bridge.Config.Bridge.FederateRooms {
+			creationContent["m.federate"] = false
+		}
 		resp, err := user.bridge.Bot.CreateRoom(&mautrix.ReqCreateRoom{
-			Topic:    "WhatsApp bridge notices",
-			IsDirect: true,
+			Topic:           "WhatsApp bridge notices",
+			IsDirect:        true,
+			CreationContent: creationContent,
 		})
 		if err != nil {
 			user.log.Errorln("Failed to auto-create management room:", err)

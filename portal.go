@@ -1311,14 +1311,19 @@ func (portal *Portal) CreateMatrixRoom(user *User, groupInfo *types.GroupInfo) e
 		}
 	}
 
+	creationContent := make(map[string]interface{})
+	if !portal.bridge.Config.Bridge.FederateRooms {
+		creationContent["m.federate"] = false
+	}
 	resp, err := intent.CreateRoom(&mautrix.ReqCreateRoom{
-		Visibility:   "private",
-		Name:         portal.Name,
-		Topic:        portal.Topic,
-		Invite:       invite,
-		Preset:       "private_chat",
-		IsDirect:     portal.IsPrivateChat(),
-		InitialState: initialState,
+		Visibility:      "private",
+		Name:            portal.Name,
+		Topic:           portal.Topic,
+		Invite:          invite,
+		Preset:          "private_chat",
+		IsDirect:        portal.IsPrivateChat(),
+		InitialState:    initialState,
+		CreationContent: creationContent,
 	})
 	if err != nil {
 		return err
