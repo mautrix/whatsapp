@@ -1089,7 +1089,7 @@ func (portal *Portal) backfill(source *User, messages []*waProto.HistorySyncMsg)
 			portal.log.Debugfln("Skipping unsupported message %s in backfill", info.ID)
 			continue
 		}
-		if history && !portal.IsPrivateChat() && !portal.bridge.StateStore.IsInRoom(portal.MXID, puppet.MXID) {
+		if history && !portal.IsPrivateChat() && !intent.IsCustomPuppet && !portal.bridge.StateStore.IsInRoom(portal.MXID, puppet.MXID) {
 			addMember(puppet)
 		}
 		err := portal.appendBatchEvents(converted, info, &batch.Events, infos)
