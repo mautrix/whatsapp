@@ -356,6 +356,11 @@ func containsSupportedMessages(conv *waProto.Conversation) bool {
 	return false
 }
 
+type portalToBackfill struct {
+	portal *Portal
+	conv *waProto.Conversation
+}
+
 func (user *User) handleHistorySync(evt *waProto.HistorySync) {
 	if evt.GetSyncType() != waProto.HistorySync_RECENT && evt.GetSyncType() != waProto.HistorySync_FULL {
 		return
@@ -364,6 +369,7 @@ func (user *User) handleHistorySync(evt *waProto.HistorySync) {
 	maxAge := user.bridge.Config.Bridge.HistorySync.MaxAge
 	minLastMsgToCreate := time.Now().Add(-time.Duration(maxAge) * time.Second)
 	createRooms := user.bridge.Config.Bridge.HistorySync.CreatePortals
+	portalsToBackfill := make([]portalToBackfill, 0)
 	for _, conv := range evt.GetConversations() {
 		jid, err := types.ParseJID(conv.GetId())
 		if err != nil {
@@ -404,13 +410,17 @@ func (user *User) handleHistorySync(evt *waProto.HistorySync) {
 		} else if !user.bridge.Config.Bridge.HistorySync.Backfill {
 			user.log.Debugln("Backfill is disabled, not bridging history sync payload for", portal.Key.JID)
 		} else {
-			user.log.Debugln("Bridging history sync payload for", portal.Key.JID)
-			portal.backfill(user, conv.GetMessages())
-			if !conv.GetMarkedAsUnread() && conv.GetUnreadCount() == 0 {
-				user.markSelfReadFull(portal)
-			}
+			portalsToBackfill = append(portalsToBackfill, portalToBackfill{portal, conv})
 		}
 	}
+	for _, ptb := range portalsToBackfill {
+		user.log.Debugln("Bridging history sync payload for", ptb.portal.Key.JID)
+		ptb.portal.backfill(user, ptb.conv.GetMessages())
+		if !ptb.conv.GetMarkedAsUnread() && ptb.conv.GetUnreadCount() == 0 {
+			user.markSelfReadFull(ptb.portal)
+		}
+	}
+	user.log.Infofln("Finished handling history sync with type %s, chunk order %d, progress %d%%", evt.GetSyncType(), evt.GetChunkOrder(), evt.GetProgress())
 }
 
 func (user *User) HandleEvent(event interface{}) {
