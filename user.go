@@ -430,7 +430,7 @@ func (user *User) handleCallStart(sender types.JID, id, callType string) {
 	portal := user.GetPortalByJID(sender)
 	text := "Incoming call"
 	if callType != "" {
-		text = fmt.Sprintf("Incoming %s call", text)
+		text = fmt.Sprintf("Incoming %s call", callType)
 	}
 	portal.messages <- PortalMessage{
 		fake: &fakeMessage{
