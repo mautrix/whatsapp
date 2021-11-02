@@ -358,7 +358,7 @@ func containsSupportedMessages(conv *waProto.Conversation) bool {
 
 type portalToBackfill struct {
 	portal *Portal
-	conv *waProto.Conversation
+	conv   *waProto.Conversation
 }
 
 func (user *User) handleHistorySync(evt *waProto.HistorySync) {
@@ -423,6 +423,25 @@ func (user *User) handleHistorySync(evt *waProto.HistorySync) {
 	user.log.Infofln("Finished handling history sync with type %s, chunk order %d, progress %d%%", evt.GetSyncType(), evt.GetChunkOrder(), evt.GetProgress())
 }
 
+func (user *User) handleCallStart(sender types.JID, id, callType string) {
+	if !user.bridge.Config.Bridge.CallStartNotices {
+		return
+	}
+	portal := user.GetPortalByJID(sender)
+	text := "Incoming call"
+	if callType != "" {
+		text = fmt.Sprintf("Incoming %s call", text)
+	}
+	portal.messages <- PortalMessage{
+		fake: &fakeMessage{
+			Sender: sender,
+			Text:   text,
+			ID:     id,
+		},
+		source: user,
+	}
+}
+
 func (user *User) HandleEvent(event interface{}) {
 	switch v := event.(type) {
 	case *events.LoggedOut:
@@ -482,6 +501,12 @@ func (user *User) HandleEvent(event interface{}) {
 	case *events.Message:
 		portal := user.GetPortalByJID(v.Info.Chat)
 		portal.messages <- PortalMessage{evt: v, source: user}
+	case *events.CallOffer:
+		user.handleCallStart(v.CallCreator, v.CallID, "")
+	case *events.CallOfferNotice:
+		user.handleCallStart(v.CallCreator, v.CallID, v.Type)
+	case *events.CallTerminate, *events.CallRelayLatency, *events.CallAccept, *events.UnknownCallEvent:
+		// ignore
 	case *events.UndecryptableMessage:
 		portal := user.GetPortalByJID(v.Info.Chat)
 		portal.messages <- PortalMessage{undecryptable: v, source: user}

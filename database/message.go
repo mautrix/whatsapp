@@ -124,6 +124,10 @@ func (msg *Message) IsFakeMXID() bool {
 	return strings.HasPrefix(msg.MXID.String(), "net.maunium.whatsapp.fake::")
 }
 
+func (msg *Message) IsFakeJID() bool {
+	return strings.HasPrefix(msg.JID, "FAKE::")
+}
+
 func (msg *Message) Scan(row Scannable) *Message {
 	var ts int64
 	err := row.Scan(&msg.Chat.JID, &msg.Chat.Receiver, &msg.JID, &msg.MXID, &msg.Sender, &ts, &msg.Sent, &msg.DecryptionError)

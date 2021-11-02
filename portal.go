@@ -161,9 +161,17 @@ func (bridge *Bridge) NewPortal(dbPortal *database.Portal) *Portal {
 
 const recentlyHandledLength = 100
 
+type fakeMessage struct {
+	Sender types.JID
+	Text   string
+	ID     string
+	Time   time.Time
+}
+
 type PortalMessage struct {
 	evt           *events.Message
 	undecryptable *events.UndecryptableMessage
+	fake          *fakeMessage
 	source        *User
 }
 
@@ -196,7 +204,7 @@ type Portal struct {
 func (portal *Portal) handleMessageLoop() {
 	for msg := range portal.messages {
 		if len(portal.MXID) == 0 {
-			if msg.evt == nil || !containsSupportedMessage(msg.evt.Message) {
+			if msg.fake == nil && (msg.evt == nil || !containsSupportedMessage(msg.evt.Message)) {
 				portal.log.Debugln("Not creating portal room for incoming message: message is not a chat message")
 				continue
 			}
@@ -211,6 +219,9 @@ func (portal *Portal) handleMessageLoop() {
 			portal.handleMessage(msg.source, msg.evt)
 		} else if msg.undecryptable != nil {
 			portal.handleUndecryptableMessage(msg.source, msg.undecryptable)
+		} else if msg.fake != nil {
+			msg.fake.ID = "FAKE::" + msg.fake.ID
+			portal.handleFakeMessage(*msg.fake)
 		} else {
 			portal.log.Warnln("Unexpected PortalMessage with no message: %+v", msg)
 		}
@@ -334,6 +345,32 @@ func (portal *Portal) handleUndecryptableMessage(source *User, evt *events.Undec
 		portal.log.Errorln("Failed to send decryption error of %s to Matrix: %v", evt.Info.ID, err)
 	}
 	portal.finishHandling(nil, &evt.Info, resp.EventID, true)
+}
+
+func (portal *Portal) handleFakeMessage(msg fakeMessage) {
+	if portal.isRecentlyHandled(msg.ID, false) {
+		portal.log.Debugfln("Not handling %s (fake): message was recently handled", msg.ID)
+		return
+	} else if existingMsg := portal.bridge.DB.Message.GetByJID(portal.Key, msg.ID); existingMsg != nil {
+		portal.log.Debugfln("Not handling %s (fake): message is duplicate", msg.ID)
+		return
+	}
+	intent := portal.bridge.GetPuppetByJID(msg.Sender).IntentFor(portal)
+	resp, err := portal.sendMessage(intent, event.EventMessage, &event.MessageEventContent{
+		MsgType: event.MsgText,
+		Body:    msg.Text,
+	}, nil, msg.Time.UnixMilli())
+	if err != nil {
+		portal.log.Errorln("Failed to send %s to Matrix: %v", msg.ID, err)
+	} else {
+		portal.finishHandling(nil, &types.MessageInfo{
+			ID:        msg.ID,
+			Timestamp: msg.Time,
+			MessageSource: types.MessageSource{
+				Sender: msg.Sender,
+			},
+		}, resp.EventID, false)
+	}
 }
 
 func (portal *Portal) handleMessage(source *User, evt *events.Message) {
@@ -2140,7 +2177,7 @@ func (portal *Portal) convertMatrixMessage(sender *User, evt *event.Event) (*waP
 	replyToID := content.GetReplyTo()
 	if len(replyToID) > 0 {
 		replyToMsg := portal.bridge.DB.Message.GetByMXID(replyToID)
-		if replyToMsg != nil {
+		if replyToMsg != nil && !replyToMsg.IsFakeJID() {
 			ctxInfo.StanzaId = &replyToMsg.JID
 			ctxInfo.Participant = proto.String(replyToMsg.Sender.ToNonAD().String())
 			// Using blank content here seems to work fine on all official WhatsApp apps.
@@ -2359,6 +2396,9 @@ func (portal *Portal) HandleMatrixRedaction(sender *User, evt *event.Event) {
 	msg := portal.bridge.DB.Message.GetByMXID(evt.Redacts)
 	if msg == nil {
 		portal.log.Debugfln("Ignoring redaction %s of unknown event by %s", msg, senderLogIdentifier)
+		return
+	} else if msg.IsFakeJID() {
+		portal.log.Debugfln("Ignoring redaction %s of fake event by %s", msg, senderLogIdentifier)
 		return
 	} else if msg.Sender.User != sender.JID.User {
 		portal.log.Debugfln("Ignoring redaction %s of %s/%s by %s: message was sent by someone else (%s, not %s)", evt.ID, msg.MXID, msg.JID, senderLogIdentifier, msg.Sender, sender.JID)

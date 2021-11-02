@@ -85,11 +85,8 @@ bridge:
 
     # Should the bridge send a read receipt from the bridge bot when a message has been sent to WhatsApp?
     delivery_receipts: false
-
-    # Should notices of incoming calls be sent to Matrix?
-    call_notices:
-        start: true
-        end: true
+    # Should incoming calls send a message to the Matrix room?
+    call_start_notices: true
 
     # Settings for handling history sync payloads. These settings only apply right after login,
     # because the phone only sends the history sync data once, and there's no way to re-request it
