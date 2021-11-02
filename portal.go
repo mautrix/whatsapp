@@ -2086,6 +2086,27 @@ func (portal *Portal) HandleMatrixMessage(sender *User, evt *event.Event) {
 	}
 }
 
+func (portal *Portal) HandleMatrixReaction(sender *User, evt *event.Event) {
+	if !portal.canBridgeFrom(sender, "message") {
+		return
+	}
+	portal.log.Debugfln("Received reaction event %s from %s", evt.ID, evt.Sender)
+
+	if evt.Type.Type != event.EventReaction.Type {
+		portal.log.Warnfln("Reaction event is not of Reaction type: %s", evt.Type.Type)
+	}
+
+	if portal.bridge.Config.Bridge.ReactionNotices {
+		_, err := portal.sendMainIntentMessage(&event.MessageEventContent{
+			MsgType: event.MsgNotice,
+			Body:    fmt.Sprintf("\u26a0 Reactions are not supported by WhatsApp."),
+		})
+		if err != nil {
+			portal.log.Warnfln("Failed to send reaction notice message:", err)
+		}
+	}
+}
+
 func (portal *Portal) HandleMatrixRedaction(sender *User, evt *event.Event) {
 	if !portal.canBridgeFrom(sender, "redaction") {
 		return
