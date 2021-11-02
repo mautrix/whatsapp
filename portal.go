@@ -1135,6 +1135,14 @@ func (portal *Portal) backfill(source *User, messages []*waProto.HistorySyncMsg)
 		}
 	}
 
+	if (len(historyBatch.Events) > 0 && len(historyBatch.BatchID) == 0) || len(newBatch.Events) > 0 {
+		portal.log.Debugln("Sending a dummy event to avoid forward extremity errors with backfill")
+		_, err := portal.MainIntent().SendMessageEvent(portal.MXID, PreBackfillDummyEvent, struct{}{})
+		if err != nil {
+			portal.log.Warnln("Error sending pre-backfill dummy event:", err)
+		}
+	}
+
 	if len(historyBatch.Events) > 0 && len(historyBatch.PrevEventID) > 0 {
 		portal.log.Infofln("Sending %d historical messages...", len(historyBatch.Events))
 		historyResp, err := portal.MainIntent().BatchSend(portal.MXID, &historyBatch)
@@ -1152,11 +1160,6 @@ func (portal *Portal) backfill(source *User, messages []*waProto.HistorySyncMsg)
 	}
 
 	if len(newBatch.Events) > 0 && len(newBatch.PrevEventID) > 0 {
-		portal.log.Debugln("Sending a dummy event to avoid forward extremity errors with forward backfill")
-		_, err := portal.MainIntent().SendMessageEvent(portal.MXID, ForwardBackfillDummyEvent, struct{}{})
-		if err != nil {
-			portal.log.Warnln("Error sending dummy event for forward backfill:", err)
-		}
 		portal.log.Infofln("Sending %d new messages...", len(newBatch.Events))
 		newResp, err := portal.MainIntent().BatchSend(portal.MXID, &newBatch)
 		if err != nil {
@@ -1243,7 +1246,7 @@ func (portal *Portal) UpdateBridgeInfo() {
 var PortalCreationDummyEvent = event.Type{Type: "fi.mau.dummy.portal_created", Class: event.MessageEventType}
 var BackfillDummyStateEvent = event.Type{Type: "fi.mau.dummy.blank_backfill_state", Class: event.StateEventType}
 var BackfillEndDummyEvent = event.Type{Type: "fi.mau.dummy.backfill_end", Class: event.MessageEventType}
-var ForwardBackfillDummyEvent = event.Type{Type: "fi.mau.dummy.pre_forward_backfill", Class: event.MessageEventType}
+var PreBackfillDummyEvent = event.Type{Type: "fi.mau.dummy.pre_backfill", Class: event.MessageEventType}
 
 func (portal *Portal) CreateMatrixRoom(user *User, groupInfo *types.GroupInfo) error {
 	portal.roomCreateLock.Lock()
