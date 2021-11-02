@@ -241,7 +241,6 @@ func (bridge *Bridge) Init() {
 		os.Exit(11)
 	}
 	_, _ = bridge.AS.Init()
-	bridge.Bot = bridge.AS.BotIntent()
 
 	bridge.Log = log.Create()
 	bridge.Config.Logging.Configure(bridge.Log)
@@ -254,6 +253,7 @@ func (bridge *Bridge) Init() {
 		}
 	}
 	bridge.AS.Log = log.Sub("Matrix")
+	bridge.Bot = bridge.AS.BotIntent()
 	bridge.Log.Infoln("Initializing", VersionString)
 
 	bridge.Log.Debugln("Initializing database connection")
