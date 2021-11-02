@@ -44,10 +44,6 @@ func New(dbType string, uri string, baseLog log.Logger) (*Database, error) {
 		return nil, err
 	}
 
-	if dbType == "sqlite3" {
-		_, _ = conn.Exec("PRAGMA foreign_keys = ON")
-	}
-
 	db := &Database{
 		DB:      conn,
 		log:     baseLog.Sub("Database"),
