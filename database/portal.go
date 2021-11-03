@@ -31,10 +31,6 @@ type PortalKey struct {
 	Receiver types.JID
 }
 
-func GroupPortalKey(jid types.JID) PortalKey {
-	return NewPortalKey(jid, jid)
-}
-
 func NewPortalKey(jid, receiver types.JID) PortalKey {
 	if jid.Server == types.GroupServer {
 		receiver = jid

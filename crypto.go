@@ -23,6 +23,8 @@ import (
 	"runtime/debug"
 	"time"
 
+	"github.com/lib/pq"
+
 	"maunium.net/go/maulogger/v2"
 
 	"maunium.net/go/mautrix"
@@ -48,6 +50,10 @@ type CryptoHelper struct {
 	store   *database.SQLCryptoStore
 	log     maulogger.Logger
 	baseLog maulogger.Logger
+}
+
+func init() {
+	crypto.PostgresArrayWrapper = pq.Array
 }
 
 func NewCryptoHelper(bridge *Bridge) Crypto {

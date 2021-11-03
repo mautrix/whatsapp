@@ -18,6 +18,7 @@ package database
 
 import (
 	"database/sql"
+	"errors"
 	"strings"
 	"time"
 
@@ -132,7 +133,7 @@ func (msg *Message) Scan(row Scannable) *Message {
 	var ts int64
 	err := row.Scan(&msg.Chat.JID, &msg.Chat.Receiver, &msg.JID, &msg.MXID, &msg.Sender, &ts, &msg.Sent, &msg.DecryptionError)
 	if err != nil {
-		if err != sql.ErrNoRows {
+		if !errors.Is(err, sql.ErrNoRows) {
 			msg.log.Errorln("Database scan failed:", err)
 		}
 		return nil

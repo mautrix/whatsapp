@@ -22,14 +22,12 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"sort"
 	"sync"
 	"time"
 
 	log "maunium.net/go/maulogger/v2"
 
 	"go.mau.fi/whatsmeow/appstate"
-	waProto "go.mau.fi/whatsmeow/binary/proto"
 	"maunium.net/go/mautrix/appservice"
 	"maunium.net/go/mautrix/pushrules"
 
@@ -164,14 +162,7 @@ func (bridge *Bridge) NewUser(dbUser *database.User) *User {
 	user.RelayWhitelisted = user.bridge.Config.Bridge.Permissions.IsRelayWhitelisted(user.MXID)
 	user.Whitelisted = user.bridge.Config.Bridge.Permissions.IsWhitelisted(user.MXID)
 	user.Admin = user.bridge.Config.Bridge.Permissions.IsAdmin(user.MXID)
-	go func() {
-		for evt := range user.historySyncs {
-			if evt == nil {
-				return
-			}
-			user.handleHistorySync(evt.Data)
-		}
-	}()
+	go user.handleHistorySyncsLoop()
 	return user
 }
 
@@ -346,124 +337,6 @@ func (user *User) sendMarkdownBridgeAlert(formatString string, args ...interface
 	if err != nil {
 		user.log.Warnf("Failed to send bridge alert \"%s\": %v", notice, err)
 	}
-}
-
-func containsSupportedMessages(conv *waProto.Conversation) bool {
-	for _, msg := range conv.GetMessages() {
-		if containsSupportedMessage(msg.GetMessage().GetMessage()) {
-			return true
-		}
-	}
-	return false
-}
-
-type portalToBackfill struct {
-	portal *Portal
-	conv   *waProto.Conversation
-}
-
-type conversationList []*waProto.Conversation
-
-var _ sort.Interface = (conversationList)(nil)
-
-func (c conversationList) Len() int {
-	return len(c)
-}
-
-func (c conversationList) Less(i, j int) bool {
-	return c[i].GetConversationTimestamp() < c[j].GetConversationTimestamp()
-}
-
-func (c conversationList) Swap(i, j int) {
-	c[i], c[j] = c[j], c[i]
-}
-
-func (user *User) handleHistorySync(evt *waProto.HistorySync) {
-	if evt.GetSyncType() != waProto.HistorySync_RECENT && evt.GetSyncType() != waProto.HistorySync_FULL {
-		return
-	}
-	user.log.Infofln("Handling history sync with type %s, chunk order %d, progress %d%%", evt.GetSyncType(), evt.GetChunkOrder(), evt.GetProgress())
-	maxAge := user.bridge.Config.Bridge.HistorySync.MaxAge
-	minLastMsgToCreate := time.Now().Add(-time.Duration(maxAge) * time.Second)
-	createRooms := user.bridge.Config.Bridge.HistorySync.CreatePortals
-
-	conversations := conversationList(evt.GetConversations())
-	sort.Sort(sort.Reverse(conversations))
-	portalsToBackfill := make(chan portalToBackfill, len(conversations))
-
-	var backfillWait sync.WaitGroup
-	backfillWait.Add(1)
-	go func() {
-		for ptb := range portalsToBackfill {
-			user.log.Debugln("Bridging history sync payload for", ptb.portal.Key.JID)
-			ptb.portal.backfill(user, ptb.conv.GetMessages())
-			if !ptb.conv.GetMarkedAsUnread() && ptb.conv.GetUnreadCount() == 0 {
-				user.markSelfReadFull(ptb.portal)
-			}
-		}
-		backfillWait.Done()
-	}()
-
-	for _, conv := range conversations {
-		jid, err := types.ParseJID(conv.GetId())
-		if err != nil {
-			user.log.Warnfln("Failed to parse chat JID '%s' in history sync: %v", conv.GetId(), err)
-			continue
-		}
-
-		muteEnd := time.Unix(int64(conv.GetMuteEndTime()), 0)
-		if muteEnd.After(time.Now()) {
-			_ = user.Client.Store.ChatSettings.PutMutedUntil(jid, muteEnd)
-		}
-		if conv.GetArchived() {
-			_ = user.Client.Store.ChatSettings.PutArchived(jid, true)
-		}
-		if conv.GetPinned() > 0 {
-			_ = user.Client.Store.ChatSettings.PutPinned(jid, true)
-		}
-
-		lastMsg := time.Unix(int64(conv.GetConversationTimestamp()), 0)
-		portal := user.GetPortalByJID(jid)
-		if createRooms && len(portal.MXID) == 0 {
-			if !containsSupportedMessages(conv) {
-				user.log.Debugfln("Not creating portal for %s: no interesting messages found", portal.Key.JID)
-				continue
-			} else if maxAge > 0 && !lastMsg.After(minLastMsgToCreate) {
-				user.log.Debugfln("Not creating portal for %s: last message older than limit (%s)", portal.Key.JID, lastMsg)
-				continue
-			}
-			user.log.Debugln("Creating portal for", portal.Key.JID, "as part of history sync handling")
-			participants := make([]types.GroupParticipant, len(conv.GetParticipant()))
-			for i, pcp := range conv.GetParticipant() {
-				participantJID, _ := types.ParseJID(pcp.GetUserJid())
-				participants[i] = types.GroupParticipant{
-					JID:          participantJID,
-					IsAdmin:      pcp.GetRank() == waProto.GroupParticipant_ADMIN,
-					IsSuperAdmin: pcp.GetRank() == waProto.GroupParticipant_SUPERADMIN,
-				}
-			}
-			partialInfo := types.GroupInfo{
-				JID:                  jid,
-				GroupName:            types.GroupName{Name: conv.GetName()},
-				Participants:         participants,
-			}
-			err = portal.CreateMatrixRoom(user, &partialInfo, false)
-			if err != nil {
-				user.log.Warnfln("Failed to create room for %s during backfill: %v", portal.Key.JID, err)
-				continue
-			}
-		}
-		if len(portal.MXID) == 0 {
-			user.log.Debugln("No room created, not bridging history sync payload for", portal.Key.JID)
-		} else if !user.bridge.Config.Bridge.HistorySync.Backfill {
-			user.log.Debugln("Backfill is disabled, not bridging history sync payload for", portal.Key.JID)
-		} else {
-			portalsToBackfill <- portalToBackfill{portal, conv}
-		}
-	}
-	close(portalsToBackfill)
-	backfillWait.Wait()
-	user.log.Infofln("Finished handling history sync with type %s, chunk order %d, progress %d%%", evt.GetSyncType(), evt.GetChunkOrder(), evt.GetProgress())
 }
 
 const callEventMaxAge = 15 * time.Minute
