@@ -452,8 +452,10 @@ func (user *User) handleHistorySync(evt *waProto.HistorySync) {
 	user.log.Infofln("Finished handling history sync with type %s, chunk order %d, progress %d%%", evt.GetSyncType(), evt.GetChunkOrder(), evt.GetProgress())
 }
 
-func (user *User) handleCallStart(sender types.JID, id, callType string) {
-	if !user.bridge.Config.Bridge.CallStartNotices {
+const callEventMaxAge = 15 * time.Minute
+
+func (user *User) handleCallStart(sender types.JID, id, callType string, ts time.Time) {
+	if !user.bridge.Config.Bridge.CallStartNotices || ts.Add(callEventMaxAge).Before(time.Now()) {
 		return
 	}
 	portal := user.GetPortalByJID(sender)
@@ -531,9 +533,9 @@ func (user *User) HandleEvent(event interface{}) {
 		portal := user.GetPortalByJID(v.Info.Chat)
 		portal.messages <- PortalMessage{evt: v, source: user}
 	case *events.CallOffer:
-		user.handleCallStart(v.CallCreator, v.CallID, "")
+		user.handleCallStart(v.CallCreator, v.CallID, "", v.Timestamp)
 	case *events.CallOfferNotice:
-		user.handleCallStart(v.CallCreator, v.CallID, v.Type)
+		user.handleCallStart(v.CallCreator, v.CallID, v.Type, v.Timestamp)
 	case *events.CallTerminate, *events.CallRelayLatency, *events.CallAccept, *events.UnknownCallEvent:
 		// ignore
 	case *events.UndecryptableMessage:
