@@ -1183,37 +1183,17 @@ func (portal *Portal) sendPostBackfillDummy(lastTimestamp time.Time) {
 	msg.Insert()
 }
 
-type BridgeInfoSection struct {
-	ID          string              `json:"id"`
-	DisplayName string              `json:"displayname,omitempty"`
-	AvatarURL   id.ContentURIString `json:"avatar_url,omitempty"`
-	ExternalURL string              `json:"external_url,omitempty"`
-}
-
-type BridgeInfoContent struct {
-	BridgeBot id.UserID          `json:"bridgebot"`
-	Creator   id.UserID          `json:"creator,omitempty"`
-	Protocol  BridgeInfoSection  `json:"protocol"`
-	Network   *BridgeInfoSection `json:"network,omitempty"`
-	Channel   BridgeInfoSection  `json:"channel"`
-}
-
-var (
-	StateBridgeInfo         = event.Type{Type: "m.bridge", Class: event.StateEventType}
-	StateHalfShotBridgeInfo = event.Type{Type: "uk.half-shot.bridge", Class: event.StateEventType}
-)
-
-func (portal *Portal) getBridgeInfo() (string, BridgeInfoContent) {
-	bridgeInfo := BridgeInfoContent{
+func (portal *Portal) getBridgeInfo() (string, event.BridgeEventContent) {
+	bridgeInfo := event.BridgeEventContent{
 		BridgeBot: portal.bridge.Bot.UserID,
 		Creator:   portal.MainIntent().UserID,
-		Protocol: BridgeInfoSection{
+		Protocol: event.BridgeInfoSection{
 			ID:          "whatsapp",
 			DisplayName: "WhatsApp",
 			AvatarURL:   id.ContentURIString(portal.bridge.Config.AppService.Bot.Avatar),
 			ExternalURL: "https://www.whatsapp.com/",
 		},
-		Channel: BridgeInfoSection{
+		Channel: event.BridgeInfoSection{
 			ID:          portal.Key.JID.String(),
 			DisplayName: portal.Name,
 			AvatarURL:   portal.AvatarURL.CUString(),
@@ -1230,11 +1210,12 @@ func (portal *Portal) UpdateBridgeInfo() {
 	}
 	portal.log.Debugln("Updating bridge info...")
 	stateKey, content := portal.getBridgeInfo()
-	_, err := portal.MainIntent().SendStateEvent(portal.MXID, StateBridgeInfo, stateKey, content)
+	_, err := portal.MainIntent().SendStateEvent(portal.MXID, event.StateBridge, stateKey, content)
 	if err != nil {
 		portal.log.Warnln("Failed to update m.bridge:", err)
 	}
-	_, err = portal.MainIntent().SendStateEvent(portal.MXID, StateHalfShotBridgeInfo, stateKey, content)
+	// TODO remove this once https://github.com/matrix-org/matrix-doc/pull/2346 is in spec
+	_, err = portal.MainIntent().SendStateEvent(portal.MXID, event.StateHalfShotBridge, stateKey, content)
 	if err != nil {
 		portal.log.Warnln("Failed to update uk.half-shot.bridge:", err)
 	}
@@ -1319,12 +1300,12 @@ func (portal *Portal) CreateMatrixRoom(user *User, groupInfo *types.GroupInfo, i
 			Parsed: portal.GetBasePowerLevels(),
 		},
 	}, {
-		Type:     StateBridgeInfo,
+		Type:     event.StateBridge,
 		Content:  event.Content{Parsed: bridgeInfo},
 		StateKey: &bridgeInfoStateKey,
 	}, {
 		// TODO remove this once https://github.com/matrix-org/matrix-doc/pull/2346 is in spec
-		Type:     StateHalfShotBridgeInfo,
+		Type:     event.StateHalfShotBridge,
 		Content:  event.Content{Parsed: bridgeInfo},
 		StateKey: &bridgeInfoStateKey,
 	}}
