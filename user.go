@@ -433,7 +433,21 @@ func (user *User) handleHistorySync(evt *waProto.HistorySync) {
 				continue
 			}
 			user.log.Debugln("Creating portal for", portal.Key.JID, "as part of history sync handling")
-			err = portal.CreateMatrixRoom(user, nil)
+			participants := make([]types.GroupParticipant, len(conv.GetParticipant()))
+			for i, pcp := range conv.GetParticipant() {
+				participantJID, _ := types.ParseJID(pcp.GetUserJid())
+				participants[i] = types.GroupParticipant{
+					JID:          participantJID,
+					IsAdmin:      pcp.GetRank() == waProto.GroupParticipant_ADMIN,
+					IsSuperAdmin: pcp.GetRank() == waProto.GroupParticipant_SUPERADMIN,
+				}
+			}
+			partialInfo := types.GroupInfo{
+				JID:                  jid,
+				GroupName:            types.GroupName{Name: conv.GetName()},
+				Participants:         participants,
+			}
+			err = portal.CreateMatrixRoom(user, &partialInfo, false)
 			if err != nil {
 				user.log.Warnfln("Failed to create room for %s during backfill: %v", portal.Key.JID, err)
 				continue
@@ -842,7 +856,7 @@ func (user *User) markSelfReadFull(portal *Portal) {
 func (user *User) handleGroupCreate(evt *events.JoinedGroup) {
 	portal := user.GetPortalByJID(evt.JID)
 	if len(portal.MXID) == 0 {
-		err := portal.CreateMatrixRoom(user, &evt.GroupInfo)
+		err := portal.CreateMatrixRoom(user, &evt.GroupInfo, true)
 		if err != nil {
 			user.log.Errorln("Failed to create Matrix room after join notification: %v", err)
 		}

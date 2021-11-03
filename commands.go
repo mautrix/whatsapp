@@ -918,7 +918,7 @@ func (handler *CommandHandler) CommandOpen(ce *CommandEvent) {
 		portal.UpdateMatrixRoom(ce.User, info)
 		ce.Reply("Portal room synced.")
 	} else {
-		err = portal.CreateMatrixRoom(ce.User, info)
+		err = portal.CreateMatrixRoom(ce.User, info, true)
 		if err != nil {
 			ce.Reply("Failed to create room: %v", err)
 		} else {
@@ -966,7 +966,7 @@ func (handler *CommandHandler) CommandPM(ce *CommandEvent) {
 			return
 		}
 	}
-	err = portal.CreateMatrixRoom(user, nil)
+	err = portal.CreateMatrixRoom(user, nil, false)
 	if err != nil {
 		ce.Reply("Failed to create portal room: %v", err)
 		return
