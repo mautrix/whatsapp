@@ -74,7 +74,7 @@ build docker amd64:
            bridge:      env.BEEPER_BRIDGE_TYPE,
            image:       "\(env.CI_REGISTRY_IMAGE):\(env.CI_COMMIT_SHA)-amd64",
            channel:     "INTERNAL",
-           deployNext:  false
+           deployNext:  true
          }
          ' | curl "$BEEPER_PROD_ADMIN_API_URL" -H "Content-Type: application/json" -d @-
     fi
