@@ -52,7 +52,7 @@ func (c conversationList) Len() int {
 }
 
 func (c conversationList) Less(i, j int) bool {
-	return c[i].GetConversationTimestamp() < c[j].GetConversationTimestamp()
+	return getConversationTimestamp(c[i]) < getConversationTimestamp(c[j])
 }
 
 func (c conversationList) Swap(i, j int) {
@@ -69,7 +69,7 @@ func (user *User) handleHistorySync(evt *waProto.HistorySync) {
 	if evt.GetSyncType() != waProto.HistorySync_RECENT && evt.GetSyncType() != waProto.HistorySync_FULL {
 		return
 	}
-	user.log.Infofln("Handling history sync with type %s, chunk order %d, progress %d%%", evt.GetSyncType(), evt.GetChunkOrder(), evt.GetProgress())
+	user.log.Infofln("Handling history sync with type %s, %d conversations, chunk order %d, progress %d%%", evt.GetSyncType(), len(evt.GetConversations()), evt.GetChunkOrder(), evt.GetProgress())
 
 	conversations := conversationList(evt.GetConversations())
 	// We want to handle recent conversations first
@@ -111,7 +111,7 @@ func (user *User) handleHistorySync(evt *waProto.HistorySync) {
 	fastBackfillWait.Wait()
 	close(portalsToBackfill)
 	backfillWait.Wait()
-	user.log.Infofln("Finished handling history sync with type %s, chunk order %d, progress %d%%", evt.GetSyncType(), evt.GetChunkOrder(), evt.GetProgress())
+	user.log.Infofln("Finished handling history sync with type %s, %d conversations, chunk order %d, progress %d%%", evt.GetSyncType(), len(conversations), evt.GetChunkOrder(), evt.GetProgress())
 }
 
 func (user *User) slowBackfillLoop(ch chan portalToBackfill, done func()) {
@@ -120,6 +120,8 @@ func (user *User) slowBackfillLoop(ch chan portalToBackfill, done func()) {
 		if len(ptb.msgs) > 0 {
 			user.log.Debugln("Bridging history sync payload for", ptb.portal.Key.JID)
 			ptb.portal.backfill(user, ptb.msgs)
+		} else {
+			user.log.Debugfln("Not backfilling %s: no bridgeable messages found", ptb.portal.Key.JID)
 		}
 		if !ptb.conv.GetMarkedAsUnread() && ptb.conv.GetUnreadCount() == 0 {
 			user.markSelfReadFull(ptb.portal)
@@ -178,10 +180,18 @@ func (user *User) handleHistorySyncConversation(index int, conv *waProto.Convers
 	}
 }
 
+func getConversationTimestamp(conv *waProto.Conversation) uint64 {
+	convTs := conv.GetConversationTimestamp()
+	if convTs == 0 && len(conv.GetMessages()) > 0 {
+		convTs = conv.Messages[0].GetMessage().GetMessageTimestamp()
+	}
+	return convTs
+}
+
 func (user *User) shouldCreatePortalForHistorySync(conv *waProto.Conversation, portal *Portal) bool {
 	maxAge := user.bridge.Config.Bridge.HistorySync.MaxAge
 	minLastMsgToCreate := time.Now().Add(-time.Duration(maxAge) * time.Second)
-	lastMsg := time.Unix(int64(conv.GetConversationTimestamp()), 0)
+	lastMsg := time.Unix(int64(getConversationTimestamp(conv)), 0)
 
 	if len(portal.MXID) > 0 {
 		user.log.Debugfln("Portal for %s already exists, ensuring user is invited", portal.Key.JID)
@@ -209,18 +219,21 @@ func (user *User) fastBackfillRoutine(ptb portalToBackfill, done func(), slowBac
 	err := ptb.portal.CreateMatrixRoom(user, getPartialInfoFromConversation(ptb.portal.Key.JID, ptb.conv), false)
 	if err != nil {
 		user.log.Warnfln("Failed to create room for %s during backfill: %v", ptb.portal.Key.JID, err)
+		return
 	}
 
 	if user.bridge.Config.Bridge.HistorySync.Backfill {
 		if len(ptb.msgs) > FastBackfillMessageCap {
-			user.log.Debugln("Bridging first 20 messages of history sync payload for", ptb.portal.Key.JID, "(async)")
+			user.log.Debugfln("Bridging first %d messages of history sync payload for %s (async)", FastBackfillMessageCount, ptb.portal.Key.JID)
 			ptb.portal.backfill(user, ptb.msgs[:FastBackfillMessageCount])
 			// Send the rest of the messages off to the slow backfill queue
 			ptb.msgs = ptb.msgs[FastBackfillMessageCount:]
 			slowBackfillChan <- ptb
 		} else if len(ptb.msgs) > 0 {
-			user.log.Debugln("Bridging history sync payload for", ptb.portal.Key.JID, "(async)")
+			user.log.Debugfln("Bridging all messages (%d) of history sync payload for %s (async)", len(ptb.msgs), ptb.portal.Key.JID)
 			ptb.portal.backfill(user, ptb.msgs)
+		} else {
+			user.log.Debugfln("Not backfilling %s: no bridgeable messages found", ptb.portal.Key.JID)
 		}
 	} else {
 		user.log.Debugln("Backfill is disabled, not bridging history sync payload for", ptb.portal.Key.JID)
