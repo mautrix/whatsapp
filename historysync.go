@@ -117,8 +117,10 @@ func (user *User) handleHistorySync(evt *waProto.HistorySync) {
 func (user *User) slowBackfillLoop(ch chan portalToBackfill, done func()) {
 	defer done()
 	for ptb := range ch {
-		user.log.Debugln("Bridging history sync payload for", ptb.portal.Key.JID)
-		ptb.portal.backfill(user, ptb.msgs)
+		if len(ptb.msgs) > 0 {
+			user.log.Debugln("Bridging history sync payload for", ptb.portal.Key.JID)
+			ptb.portal.backfill(user, ptb.msgs)
+		}
 		if !ptb.conv.GetMarkedAsUnread() && ptb.conv.GetUnreadCount() == 0 {
 			user.markSelfReadFull(ptb.portal)
 		}
@@ -216,7 +218,7 @@ func (user *User) fastBackfillRoutine(ptb portalToBackfill, done func(), slowBac
 			// Send the rest of the messages off to the slow backfill queue
 			ptb.msgs = ptb.msgs[FastBackfillMessageCount:]
 			slowBackfillChan <- ptb
-		} else {
+		} else if len(ptb.msgs) > 0 {
 			user.log.Debugln("Bridging history sync payload for", ptb.portal.Key.JID, "(async)")
 			ptb.portal.backfill(user, ptb.msgs)
 		}
