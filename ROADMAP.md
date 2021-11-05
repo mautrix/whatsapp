@@ -11,15 +11,15 @@
   * [x] Typing notifications
   * [x] Read receipts
   * [ ] Power level
-  * [ ] Membership actions
-    * [ ] Invite
-    * [ ] Join
-    * [ ] Leave
-    * [ ] Kick
+  * [x] Membership actions
+    * [x] Invite
+    * [x] Join
+    * [x] Leave
+    * [x] Kick
   * [ ] Room metadata changes
-    * [ ] Name
+    * [x] Name
     * [ ] Avatar
-    * [ ] Topic
+    * [x] Topic
   * [ ] Initial room metadata
 * WhatsApp → Matrix
   * [x] Message content
