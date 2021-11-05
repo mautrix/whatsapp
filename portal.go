@@ -402,6 +402,8 @@ func (portal *Portal) handleMessage(source *User, evt *events.Message) {
 		var eventID id.EventID
 		if existingMsg != nil {
 			converted.Content.SetEdit(existingMsg.MXID)
+		} else if len(converted.ReplyTo) > 0 {
+			portal.SetReply(converted.Content, converted.ReplyTo)
 		}
 		resp, err := portal.sendMessage(converted.Intent, converted.Type, converted.Content, converted.Extra, evt.Info.Timestamp.UnixMilli())
 		if err != nil {
@@ -1152,29 +1154,34 @@ func (portal *Portal) MainIntent() *appservice.IntentAPI {
 	return portal.bridge.Bot
 }
 
-func (portal *Portal) SetReply(content *event.MessageEventContent, replyToID types.MessageID) {
+func (portal *Portal) SetReply(content *event.MessageEventContent, replyToID types.MessageID) bool {
 	if len(replyToID) == 0 {
-		return
+		return false
 	}
 	message := portal.bridge.DB.Message.GetByJID(portal.Key, replyToID)
-	if message != nil && !message.IsFakeMXID() {
-		evt, err := portal.MainIntent().GetEvent(portal.MXID, message.MXID)
-		if err != nil {
-			portal.log.Warnln("Failed to get reply target:", err)
-			return
-		}
-		_ = evt.Content.ParseRaw(evt.Type)
-		if evt.Type == event.EventEncrypted {
-			decryptedEvt, err := portal.bridge.Crypto.Decrypt(evt)
-			if err != nil {
-				portal.log.Warnln("Failed to decrypt reply target:", err)
-			} else {
-				evt = decryptedEvt
-			}
-		}
-		content.SetReply(evt)
+	if message == nil || message.IsFakeMXID() {
+		return false
 	}
-	return
+	evt, err := portal.MainIntent().GetEvent(portal.MXID, message.MXID)
+	if err != nil {
+		portal.log.Warnln("Failed to get reply target:", err)
+		content.RelatesTo = &event.RelatesTo{
+			EventID: message.MXID,
+			Type:    event.RelReply,
+		}
+		return true
+	}
+	_ = evt.Content.ParseRaw(evt.Type)
+	if evt.Type == event.EventEncrypted {
+		decryptedEvt, err := portal.bridge.Crypto.Decrypt(evt)
+		if err != nil {
+			portal.log.Warnln("Failed to decrypt reply target:", err)
+		} else {
+			evt = decryptedEvt
+		}
+	}
+	content.SetReply(evt)
+	return true
 }
 
 func (portal *Portal) HandleMessageRevoke(user *User, info *types.MessageInfo, key *waProto.MessageKey) bool {
@@ -1245,6 +1252,8 @@ type ConvertedMessage struct {
 	Content *event.MessageEventContent
 	Extra   map[string]interface{}
 	Caption *event.MessageEventContent
+
+	ReplyTo types.MessageID
 }
 
 func (portal *Portal) convertTextMessage(intent *appservice.IntentAPI, msg *waProto.Message) *ConvertedMessage {
@@ -1252,17 +1261,18 @@ func (portal *Portal) convertTextMessage(intent *appservice.IntentAPI, msg *waPr
 		Body:    msg.GetConversation(),
 		MsgType: event.MsgText,
 	}
+	var replyTo types.MessageID
 	if msg.GetExtendedTextMessage() != nil {
 		content.Body = msg.GetExtendedTextMessage().GetText()
 
 		contextInfo := msg.GetExtendedTextMessage().GetContextInfo()
 		if contextInfo != nil {
 			portal.bridge.Formatter.ParseWhatsApp(content, contextInfo.GetMentionedJid())
-			portal.SetReply(content, contextInfo.GetStanzaId())
+			replyTo = contextInfo.GetStanzaId()
 		}
 	}
 
-	return &ConvertedMessage{Intent: intent, Type: event.EventMessage, Content: content}
+	return &ConvertedMessage{Intent: intent, Type: event.EventMessage, Content: content, ReplyTo: replyTo}
 }
 
 func (portal *Portal) convertLocationMessage(intent *appservice.IntentAPI, msg *waProto.LocationMessage) *ConvertedMessage {
@@ -1308,9 +1318,12 @@ func (portal *Portal) convertLocationMessage(intent *appservice.IntentAPI, msg *
 		}
 	}
 
-	portal.SetReply(content, msg.GetContextInfo().GetStanzaId())
-
-	return &ConvertedMessage{Intent: intent, Type: event.EventMessage, Content: content}
+	return &ConvertedMessage{
+		Intent: intent,
+		Type: event.EventMessage,
+		Content: content,
+		ReplyTo: msg.GetContextInfo().GetStanzaId(),
+	}
 }
 
 const inviteMsg = `%s<hr/>This invitation to join "%s" expires at %s. Reply to this message with <code>!wa accept</code> to accept the invite.`
@@ -1333,8 +1346,13 @@ func (portal *Portal) convertGroupInviteMessage(intent *appservice.IntentAPI, in
 			"inviter":    info.Sender.ToNonAD().String(),
 		},
 	}
-	portal.SetReply(content, msg.GetContextInfo().GetStanzaId())
-	return &ConvertedMessage{Intent: intent, Type: event.EventMessage, Content: content, Extra: extraAttrs}
+	return &ConvertedMessage{
+		Intent: intent,
+		Type: event.EventMessage,
+		Content: content,
+		Extra: extraAttrs,
+		ReplyTo: msg.GetContextInfo().GetStanzaId(),
+	}
 }
 
 func (portal *Portal) convertContactMessage(intent *appservice.IntentAPI, msg *waProto.ContactMessage) *ConvertedMessage {
@@ -1364,9 +1382,12 @@ func (portal *Portal) convertContactMessage(intent *appservice.IntentAPI, msg *w
 		content.URL = uploadResp.ContentURI.CUString()
 	}
 
-	portal.SetReply(content, msg.GetContextInfo().GetStanzaId())
-
-	return &ConvertedMessage{Intent: intent, Type: event.EventMessage, Content: content}
+	return &ConvertedMessage{
+		Intent: intent,
+		Type: event.EventMessage,
+		Content: content,
+		ReplyTo: msg.GetContextInfo().GetStanzaId(),
+	}
 }
 
 func (portal *Portal) tryKickUser(userID id.UserID, intent *appservice.IntentAPI) error {
@@ -1602,7 +1623,6 @@ func (portal *Portal) convertMediaMessage(intent *appservice.IntentAPI, source *
 	} else {
 		content.URL = uploaded.ContentURI.CUString()
 	}
-	portal.SetReply(content, msg.GetContextInfo().GetStanzaId())
 
 	messageWithThumbnail, ok := msg.(MediaMessageWithThumbnail)
 	if ok && messageWithThumbnail.GetJpegThumbnail() != nil && portal.bridge.Config.Bridge.WhatsappThumbnail {
@@ -1654,6 +1674,7 @@ func (portal *Portal) convertMediaMessage(intent *appservice.IntentAPI, source *
 		Type:    eventType,
 		Content: content,
 		Caption: captionContent,
+		ReplyTo: msg.GetContextInfo().GetStanzaId(),
 	}
 }
 

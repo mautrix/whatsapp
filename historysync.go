@@ -409,6 +409,10 @@ func (portal *Portal) backfill(source *User, messages []*waProto.WebMessageInfo)
 		if history && !portal.IsPrivateChat() && !intent.IsCustomPuppet && !portal.bridge.StateStore.IsInRoom(portal.MXID, puppet.MXID) {
 			addMember(puppet)
 		}
+		// TODO this won't work for history
+		if len(converted.ReplyTo) > 0 {
+			portal.SetReply(converted.Content, converted.ReplyTo)
+		}
 		err := portal.appendBatchEvents(converted, info, &batch.Events, infos)
 		if err != nil {
 			portal.log.Errorfln("Error handling message %s during backfill: %v", info.ID, err)
