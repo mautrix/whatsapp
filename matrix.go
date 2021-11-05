@@ -280,6 +280,19 @@ func (mx *MatrixHandler) HandleMembership(evt *event.Event) {
 		return
 	}
 
+	if content.Membership == event.MembershipJoin && evt.Unsigned.PrevContent != nil {
+		_ = evt.Unsigned.PrevContent.ParseRaw(evt.Type)
+		prevContent, ok := evt.Unsigned.PrevContent.Parsed.(*event.MemberEventContent)
+		if ok {
+			if prevContent.Membership == event.MembershipJoin || event.MembershipJoin == "join" {
+				var member = mx.bridge.StateStore.GetMember(evt.RoomID, id.UserID(evt.GetStateKey()))
+				if member.Displayname != content.Displayname {
+					mx.bridge.StateStore.UpdateMemberName(id.UserID(evt.GetStateKey()), evt.RoomID, content.Displayname)
+				}
+			}
+		}
+	}
+
 	user := mx.bridge.GetUserByMXID(evt.Sender)
 	if user == nil || !user.Whitelisted || !user.IsConnected() {
 		return
