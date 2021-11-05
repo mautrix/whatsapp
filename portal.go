@@ -1847,15 +1847,15 @@ type MediaUpload struct {
 
 func (portal *Portal) addRelaybotFormat(sender *User, content *event.MessageEventContent) bool {
 	member := portal.MainIntent().Member(portal.MXID, sender.MXID)
-	if len(member.Displayname) == 0 {
-		member.Displayname = string(sender.MXID)
+	if member == nil {
+		member = &event.MemberEventContent{}
 	}
 
 	if content.Format != event.FormatHTML {
 		content.FormattedBody = strings.Replace(html.EscapeString(content.Body), "\n", "<br/>", -1)
 		content.Format = event.FormatHTML
 	}
-	data, err := portal.bridge.Config.Bridge.Relay.FormatMessage(content, sender.MXID, member)
+	data, err := portal.bridge.Config.Bridge.Relay.FormatMessage(content, sender.MXID, *member)
 	if err != nil {
 		portal.log.Errorln("Failed to apply relaybot format:", err)
 	}

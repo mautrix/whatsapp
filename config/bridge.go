@@ -283,8 +283,8 @@ func (rc *RelaybotConfig) UnmarshalYAML(unmarshal func(interface{}) error) error
 }
 
 type Sender struct {
-	UserID id.UserID
-	*event.MemberEventContent
+	UserID string
+	event.MemberEventContent
 }
 
 type formatData struct {
@@ -293,11 +293,15 @@ type formatData struct {
 	Content *event.MessageEventContent
 }
 
-func (rc *RelaybotConfig) FormatMessage(content *event.MessageEventContent, sender id.UserID, member *event.MemberEventContent) (string, error) {
+func (rc *RelaybotConfig) FormatMessage(content *event.MessageEventContent, sender id.UserID, member event.MemberEventContent) (string, error) {
+	if len(member.Displayname) == 0 {
+		member.Displayname = sender.String()
+	}
+	member.Displayname = template.HTMLEscapeString(member.Displayname)
 	var output strings.Builder
 	err := rc.messageTemplates.ExecuteTemplate(&output, string(content.MsgType), formatData{
 		Sender: Sender{
-			UserID:             sender,
+			UserID:             template.HTMLEscapeString(sender.String()),
 			MemberEventContent: member,
 		},
 		Content: content,
