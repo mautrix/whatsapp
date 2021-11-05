@@ -13,7 +13,6 @@
   * [ ] Power level
   * [x] Membership actions
     * [x] Invite
-    * [x] Join
     * [x] Leave
     * [x] Kick
   * [ ] Room metadata changes
@@ -32,7 +31,8 @@
   * [ ] Chat types
     * [x] Private chat
     * [x] Group chat
-    * [ ] Broadcast list
+    * [x] Status broadcast
+    * [ ] Broadcast list (not currently supported on WhatsApp web)
   * [x] Message deletions
   * [x] Avatars
   * [ ] Presence
@@ -57,8 +57,8 @@
     * [x] Avatar
 * Misc
   * [x] Automatic portal creation
-    * [x] At startup
-    * [x] When receiving invite
+    * [x] After login
+    * [x] When added to group
     * [x] When receiving message
   * [x] Private chat creation by inviting Matrix puppet of WhatsApp user to new room
   * [x] Option to use own Matrix account for messages sent from WhatsApp mobile/other web clients
