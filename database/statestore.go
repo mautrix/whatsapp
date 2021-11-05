@@ -218,13 +218,13 @@ func (store *SQLStateStore) GetPowerLevels(roomID id.RoomID) (levels *event.Powe
 	var data []byte
 	err := row.Scan(&data)
 	if err != nil {
-		store.log.Errorln("Failed to scan power levels of %s: %v", roomID, err)
+		store.log.Errorfln("Failed to scan power levels of %s: %v", roomID, err)
 		return
 	}
 	levels = &event.PowerLevelsEventContent{}
 	err = json.Unmarshal(data, levels)
 	if err != nil {
-		store.log.Errorln("Failed to parse power levels of %s: %v", roomID, err)
+		store.log.Errorfln("Failed to parse power levels of %s: %v", roomID, err)
 		return nil
 	}
 	return
@@ -242,7 +242,7 @@ func (store *SQLStateStore) GetPowerLevel(roomID id.RoomID, userID id.UserID) in
 		var powerLevel int
 		err := row.Scan(&powerLevel)
 		if err != nil {
-			store.log.Errorln("Failed to scan power level of %s in %s: %v", userID, roomID, err)
+			store.log.Errorfln("Failed to scan power level of %s in %s: %v", userID, roomID, err)
 		}
 		return powerLevel
 	}
@@ -267,7 +267,7 @@ func (store *SQLStateStore) GetPowerLevelRequirement(roomID id.RoomID, eventType
 		var powerLevel int
 		err := row.Scan(&powerLevel)
 		if err != nil {
-			store.log.Errorln("Failed to scan power level for %s in %s: %v", eventType, roomID, err)
+			store.log.Errorfln("Failed to scan power level for %s in %s: %v", eventType, roomID, err)
 		}
 		return powerLevel
 	}
@@ -294,7 +294,7 @@ func (store *SQLStateStore) HasPowerLevel(roomID id.RoomID, userID id.UserID, ev
 		var hasPower bool
 		err := row.Scan(&hasPower)
 		if err != nil {
-			store.log.Errorln("Failed to scan power level for %s in %s: %v", eventType, roomID, err)
+			store.log.Errorfln("Failed to scan power level for %s in %s: %v", eventType, roomID, err)
 		}
 		return hasPower
 	}

@@ -1423,10 +1423,10 @@ func (portal *Portal) HandleWhatsAppKick(source *User, senderJID types.JID, jids
 	sender := portal.bridge.GetPuppetByJID(senderJID)
 	senderIntent := sender.IntentFor(portal)
 	for _, jid := range jids {
-		if source != nil && source.JID.User == jid.User {
-			portal.log.Debugln("Ignoring self-kick by", source.MXID)
-			continue
-		}
+		//if source != nil && source.JID.User == jid.User {
+		//	portal.log.Debugln("Ignoring self-kick by", source.MXID)
+		//	continue
+		//}
 		puppet := portal.bridge.GetPuppetByJID(jid)
 		portal.removeUser(puppet.JID == sender.JID, senderIntent, puppet.MXID, puppet.DefaultIntent())
 
@@ -1452,7 +1452,8 @@ func (portal *Portal) leaveWithPuppetMeta(intent *appservice.IntentAPI) (*mautri
 			doublePuppetField: true,
 		},
 	}
-	return intent.SendStateEvent(portal.MXID, event.StateMember, intent.UserID.String(), &content)
+	// Bypass IntentAPI, we don't want to EnsureJoined here
+	return intent.Client.SendStateEvent(portal.MXID, event.StateMember, intent.UserID.String(), &content)
 }
 
 func (portal *Portal) HandleWhatsAppInvite(source *User, senderJID *types.JID, jids []types.JID) (evtID id.EventID) {
@@ -2250,13 +2251,11 @@ func (portal *Portal) HandleMatrixLeave(sender *User) {
 		portal.Cleanup(false)
 		return
 	} else if portal.bridge.Config.Bridge.BridgeMatrixLeave {
-		// TODO should we somehow deduplicate this call if this leave was sent by the bridge?
-		// FIXME reimplement
-		//resp, err := sender.Client.LeaveGroup(portal.Key.JID)
-		//if err != nil {
-		//	portal.log.Errorfln("Failed to leave group as %s: %v", sender.MXID, err)
-		//	return
-		//}
+		err := sender.Client.LeaveGroup(portal.Key.JID)
+		if err != nil {
+			portal.log.Errorfln("Failed to leave group as %s: %v", sender.MXID, err)
+			return
+		}
 		//portal.log.Infoln("Leave response:", <-resp)
 	}
 	portal.CleanupIfEmpty()
@@ -2265,12 +2264,13 @@ func (portal *Portal) HandleMatrixLeave(sender *User) {
 func (portal *Portal) HandleMatrixKick(sender *User, evt *event.Event) {
 	puppet := portal.bridge.GetPuppetByMXID(id.UserID(evt.GetStateKey()))
 	if puppet != nil {
-		// FIXME reimplement
-		//resp, err := sender.Conn.RemoveMember(portal.Key.JID, []string{puppet.JID})
-		//if err != nil {
-		//	portal.log.Errorfln("Failed to kick %s from group as %s: %v", puppet.JID, sender.MXID, err)
-		//	return
-		//}
+		_, err := sender.Client.UpdateGroupParticipants(portal.Key.JID, map[types.JID]whatsmeow.ParticipantChange{
+			puppet.JID: whatsmeow.ParticipantChangeRemove,
+		})
+		if err != nil {
+			portal.log.Errorfln("Failed to kick %s from group as %s: %v", puppet.JID, sender.MXID, err)
+			return
+		}
 		//portal.log.Infoln("Kick %s response: %s", puppet.JID, <-resp)
 	}
 }
@@ -2278,12 +2278,13 @@ func (portal *Portal) HandleMatrixKick(sender *User, evt *event.Event) {
 func (portal *Portal) HandleMatrixInvite(sender *User, evt *event.Event) {
 	puppet := portal.bridge.GetPuppetByMXID(id.UserID(evt.GetStateKey()))
 	if puppet != nil {
-		// FIXME reimplement
-		//resp, err := sender.Conn.AddMember(portal.Key.JID, []string{puppet.JID})
-		//if err != nil {
-		//	portal.log.Errorfln("Failed to add %s to group as %s: %v", puppet.JID, sender.MXID, err)
-		//	return
-		//}
+		_, err := sender.Client.UpdateGroupParticipants(portal.Key.JID, map[types.JID]whatsmeow.ParticipantChange{
+			puppet.JID: whatsmeow.ParticipantChangeAdd,
+		})
+		if err != nil {
+			portal.log.Errorfln("Failed to add %s to group as %s: %v", puppet.JID, sender.MXID, err)
+			return
+		}
 		//portal.log.Infofln("Add %s response: %s", puppet.JID, <-resp)
 	}
 }
@@ -2295,17 +2296,16 @@ func (portal *Portal) HandleMatrixMeta(sender *User, evt *event.Event) {
 		if content.Name == portal.Name {
 			return
 		}
-		// FIXME reimplement
-		//portal.Name = content.Name
-		//resp, err = sender.Conn.UpdateGroupSubject(content.Name, portal.Key.JID)
+		portal.Name = content.Name
+		err = sender.Client.SetGroupName(portal.Key.JID, content.Name)
 	case *event.TopicEventContent:
 		if content.Topic == portal.Topic {
 			return
 		}
-		// FIXME reimplement
-		//portal.Topic = content.Topic
-		//resp, err = sender.Conn.UpdateGroupDescription(sender.JID, portal.Key.JID, content.Topic)
+		portal.Topic = content.Topic
+		err = sender.Client.SetGroupTopic(portal.Key.JID, "", "", content.Topic)
 	case *event.RoomAvatarEventContent:
+		// TODO implement
 		return
 	}
 	if err != nil {

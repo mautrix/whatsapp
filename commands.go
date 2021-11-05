@@ -323,6 +323,7 @@ func (handler *CommandHandler) CommandCreate(ce *CommandEvent) {
 	var roomNameEvent event.RoomNameEventContent
 	err = ce.Bot.StateEvent(ce.RoomID, event.StateRoomName, "", &roomNameEvent)
 	if err != nil && !errors.Is(err, mautrix.MNotFound) {
+		handler.log.Errorln("Failed to get room name to create group:", err)
 		ce.Reply("Failed to get room name")
 		return
 	} else if len(roomNameEvent.Name) == 0 {
@@ -337,45 +338,57 @@ func (handler *CommandHandler) CommandCreate(ce *CommandEvent) {
 		return
 	}
 
-	participants := []types.JID{ce.User.JID.ToNonAD()}
+	var participants []types.JID
+	participantDedup := make(map[types.JID]bool)
+	participantDedup[ce.User.JID.ToNonAD()] = true
+	participantDedup[types.EmptyJID] = true
 	for userID := range members.Joined {
 		jid, ok := handler.bridge.ParsePuppetMXID(userID)
-		if ok && jid.User != ce.User.JID.User {
+		if !ok {
+			user := handler.bridge.GetUserByMXID(userID)
+			if user != nil && !user.JID.IsEmpty() {
+				jid = user.JID.ToNonAD()
+			}
+		}
+		if !participantDedup[jid] {
+			participantDedup[jid] = true
 			participants = append(participants, jid)
 		}
 	}
 
-	ce.Reply("Not yet implemented")
-	// TODO reimplement
-	//resp, err := ce.User.Conn.CreateGroup(roomNameEvent.Name, participants)
-	//if err != nil {
-	//	ce.Reply("Failed to create group: %v", err)
-	//	return
-	//}
-	//portal := handler.bridge.GetPortalByJID(database.GroupPortalKey(resp.GroupID))
-	//portal.roomCreateLock.Lock()
-	//defer portal.roomCreateLock.Unlock()
-	//if len(portal.MXID) != 0 {
-	//	portal.log.Warnln("Detected race condition in room creation")
-	//	// TODO race condition, clean up the old room
-	//}
-	//portal.MXID = ce.RoomID
-	//portal.Name = roomNameEvent.Name
-	//portal.Encrypted = encryptionEvent.Algorithm == id.AlgorithmMegolmV1
-	//if !portal.Encrypted && handler.bridge.Config.Bridge.Encryption.Default {
-	//	_, err = portal.MainIntent().SendStateEvent(portal.MXID, event.StateEncryption, "", &event.EncryptionEventContent{Algorithm: id.AlgorithmMegolmV1})
-	//	if err != nil {
-	//		portal.log.Warnln("Failed to enable e2be:", err)
-	//	}
-	//	portal.Encrypted = true
-	//}
-	//
-	//portal.Update()
-	//portal.UpdateBridgeInfo()
-	//
-	//ce.Reply("Successfully created WhatsApp group %s", portal.Key.JID)
-	//inCommunity := ce.User.addPortalToCommunity(portal)
-	//ce.User.CreateUserPortal(database.PortalKeyWithMeta{PortalKey: portal.Key, InCommunity: inCommunity})
+	handler.log.Infofln("Creating group for %s with name %s and participants %+v", ce.RoomID, roomNameEvent.Name, participants)
+	resp, err := ce.User.Client.CreateGroup(roomNameEvent.Name, participants)
+	if err != nil {
+		ce.Reply("Failed to create group: %v", err)
+		return
+	}
+	portal := ce.User.GetPortalByJID(resp.JID)
+	portal.roomCreateLock.Lock()
+	defer portal.roomCreateLock.Unlock()
+	if len(portal.MXID) != 0 {
+		portal.log.Warnln("Detected race condition in room creation")
+		// TODO race condition, clean up the old room
+	}
+	portal.MXID = ce.RoomID
+	portal.Name = roomNameEvent.Name
+	portal.Encrypted = encryptionEvent.Algorithm == id.AlgorithmMegolmV1
+	if !portal.Encrypted && handler.bridge.Config.Bridge.Encryption.Default {
+		_, err = portal.MainIntent().SendStateEvent(portal.MXID, event.StateEncryption, "", &event.EncryptionEventContent{Algorithm: id.AlgorithmMegolmV1})
+		if err != nil {
+			portal.log.Warnln("Failed to enable encryption in room:", err)
+			if errors.Is(err, mautrix.MForbidden) {
+				ce.Reply("I don't seem to have permission to enable encryption in this room.")
+			} else {
+				ce.Reply("Failed to enable encryption in room: %v", err)
+			}
+		}
+		portal.Encrypted = true
+	}
+
+	portal.Update()
+	portal.UpdateBridgeInfo()
+
+	ce.Reply("Successfully created WhatsApp group %s", portal.Key.JID)
 }
 
 func parseInviteMeta(meta map[string]interface{}) (jid, inviter types.JID, code string, expiration int64, ok bool) {
