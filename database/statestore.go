@@ -179,7 +179,7 @@ func (store *SQLStateStore) SetMember(roomID id.RoomID, userID id.UserID, member
 	var err error
 	if store.db.dialect == "postgres" {
 		_, err = store.db.Exec(`INSERT INTO mx_user_profile (room_id, user_id, membership, displayname, avatar_url) VALUES ($1, $2, $3, $4, $5)
-			ON CONFLICT (room_id, user_id) DO UPDATE SET membership=$3`, roomID, userID, member.Membership, member.Displayname, member.AvatarURL)
+			ON CONFLICT (room_id, user_id) DO UPDATE SET membership=$3, displayname=$4, avatar_url=$5`, roomID, userID, member.Membership, member.Displayname, member.AvatarURL)
 	} else if store.db.dialect == "sqlite3" {
 		_, err = store.db.Exec("INSERT OR REPLACE INTO mx_user_profile (room_id, user_id, membership, displayname, avatar_url) VALUES ($1, $2, $3, $4, $5)",
 			roomID, userID, member.Membership, member.Displayname, member.AvatarURL)
