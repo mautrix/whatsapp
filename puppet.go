@@ -167,7 +167,7 @@ type Puppet struct {
 }
 
 func (puppet *Puppet) IntentFor(portal *Portal) *appservice.IntentAPI {
-	if (!portal.IsPrivateChat() && puppet.customIntent == nil) || portal.Key.JID == puppet.JID {
+	if puppet.customIntent == nil || portal.Key.JID == puppet.JID {
 		return puppet.DefaultIntent()
 	}
 	return puppet.customIntent

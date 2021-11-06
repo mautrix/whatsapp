@@ -391,15 +391,10 @@ func (portal *Portal) backfill(source *User, messages []*waProto.WebMessageInfo)
 			continue
 		}
 		puppet := portal.getMessagePuppet(source, info)
-		var intent *appservice.IntentAPI
-		if portal.Key.JID == puppet.JID {
+		intent := puppet.IntentFor(portal)
+		if intent.IsCustomPuppet && !portal.bridge.Config.Bridge.HistorySync.DoublePuppetBackfill {
 			intent = puppet.DefaultIntent()
-		} else {
-			intent = puppet.IntentFor(portal)
-			if intent.IsCustomPuppet && !portal.bridge.Config.Bridge.HistorySync.DoublePuppetBackfill {
-				intent = puppet.DefaultIntent()
-				addMember(puppet)
-			}
+			addMember(puppet)
 		}
 		converted := portal.convertMessage(intent, source, info, webMsg.GetMessage())
 		if converted == nil {
