@@ -21,6 +21,7 @@ import (
 	"os"
 
 	"gopkg.in/yaml.v2"
+
 	"maunium.net/go/mautrix/id"
 
 	"maunium.net/go/mautrix/appservice"
@@ -80,15 +81,10 @@ type Config struct {
 	Logging appservice.LogConfig `yaml:"logging"`
 }
 
-func (config *Config) CanDoublePuppet(userID id.UserID) bool {
-	if len(config.Bridge.LoginSharedSecret) == 0 {
-		// Automatic login not enabled
-		return false
-	} else if _, homeserver, _ := userID.Parse(); homeserver != config.Homeserver.Domain {
-		// user is on another homeserver
-		return false
-	}
-	return true
+func (config *Config) CanAutoDoublePuppet(userID id.UserID) bool {
+	_, homeserver, _ := userID.Parse()
+	_, hasSecret := config.Bridge.LoginSharedSecretMap[homeserver]
+	return hasSecret
 }
 
 func Load(path string) (*Config, error) {
@@ -103,6 +99,14 @@ func Load(path string) (*Config, error) {
 		return nil, fmt.Errorf("failed to unmarshal example config: %w", err)
 	}
 	err = yaml.Unmarshal(data, config)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(config.Bridge.LegacyLoginSharedSecret) > 0 {
+		config.Bridge.LoginSharedSecretMap[config.Homeserver.Domain] = config.Bridge.LegacyLoginSharedSecret
+	}
+
 	return config, err
 }
 

@@ -124,12 +124,18 @@ bridge:
     # Existing users won't be affected when these are changed.
     default_bridge_receipts: true
     default_bridge_presence: true
-    # Shared secret for https://github.com/devture/matrix-synapse-shared-secret-auth
+    # Servers to always allow double puppeting from
+    double_puppet_server_map:
+        example.com: https://example.com
+    # Allow using double puppeting from any server with a valid client .well-known file.
+    double_puppet_allow_discovery: false
+    # Shared secrets for https://github.com/devture/matrix-synapse-shared-secret-auth
     #
     # If set, double puppeting will be enabled automatically for local users
     # instead of users having to find an access token and run `login-matrix`
     # manually.
-    login_shared_secret: null
+    login_shared_secret_map:
+        example.com: foobar
 
     # Should the bridge explicitly set the avatar and room name for private chat portal rooms?
     private_chat_portal_meta: false
@@ -215,9 +221,6 @@ bridge:
         "*": relay
         "example.com": user
         "@admin:example.com": admin
-
-    double_puppet_server_map: 
-      "matrix.org": https://matrix.org
 
     relay:
         # Whether relay mode should be allowed. If allowed, `!wa set-relay` can be used to turn any

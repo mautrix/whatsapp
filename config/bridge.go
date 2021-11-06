@@ -46,11 +46,15 @@ type BridgeConfig struct {
 	UserAvatarSync    bool `yaml:"user_avatar_sync"`
 	BridgeMatrixLeave bool `yaml:"bridge_matrix_leave"`
 
-	SyncWithCustomPuppets bool   `yaml:"sync_with_custom_puppets"`
-	SyncDirectChatList    bool   `yaml:"sync_direct_chat_list"`
-	DefaultBridgeReceipts bool   `yaml:"default_bridge_receipts"`
-	DefaultBridgePresence bool   `yaml:"default_bridge_presence"`
-	LoginSharedSecret     string `yaml:"login_shared_secret"`
+	SyncWithCustomPuppets bool `yaml:"sync_with_custom_puppets"`
+	SyncDirectChatList    bool `yaml:"sync_direct_chat_list"`
+	DefaultBridgeReceipts bool `yaml:"default_bridge_receipts"`
+	DefaultBridgePresence bool `yaml:"default_bridge_presence"`
+
+	DoublePuppetServerMap      map[string]string `yaml:"double_puppet_server_map"`
+	DoublePuppetAllowDiscovery bool              `yaml:"double_puppet_allow_discovery"`
+	LoginSharedSecretMap       map[string]string `yaml:"login_shared_secret_map"`
+	LegacyLoginSharedSecret    string            `yaml:"login_shared_secret"`
 
 	PrivateChatPortalMeta bool   `yaml:"private_chat_portal_meta"`
 	BridgeNotices         bool   `yaml:"bridge_notices"`
@@ -91,8 +95,6 @@ type BridgeConfig struct {
 	Permissions PermissionConfig `yaml:"permissions"`
 
 	Relay RelaybotConfig `yaml:"relay"`
-
-	DoublePuppetServerMap map[string]string `yaml:"double_puppet_server_map"`
 
 	usernameTemplate    *template.Template `yaml:"-"`
 	displaynameTemplate *template.Template `yaml:"-"`

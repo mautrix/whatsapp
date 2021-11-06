@@ -299,7 +299,7 @@ func (user *User) IsLoggedIn() bool {
 }
 
 func (user *User) tryAutomaticDoublePuppeting() {
-	if !user.bridge.Config.CanDoublePuppet(user.MXID) {
+	if !user.bridge.Config.CanAutoDoublePuppet(user.MXID) {
 		return
 	}
 	user.log.Debugln("Checking if double puppeting needs to be enabled")
