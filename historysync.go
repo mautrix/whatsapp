@@ -394,14 +394,13 @@ func (portal *Portal) backfill(source *User, messages []*waProto.WebMessageInfo)
 		intent := puppet.IntentFor(portal)
 		if intent.IsCustomPuppet && !portal.bridge.Config.CanDoublePuppetBackfill(puppet.CustomMXID) {
 			intent = puppet.DefaultIntent()
-			addMember(puppet)
 		}
 		converted := portal.convertMessage(intent, source, info, webMsg.GetMessage())
 		if converted == nil {
 			portal.log.Debugfln("Skipping unsupported message %s in backfill", info.ID)
 			continue
 		}
-		if history && !portal.IsPrivateChat() && !intent.IsCustomPuppet && !portal.bridge.StateStore.IsInRoom(portal.MXID, puppet.MXID) {
+		if !intent.IsCustomPuppet && !portal.bridge.StateStore.IsInRoom(portal.MXID, puppet.MXID) {
 			addMember(puppet)
 		}
 		// TODO this won't work for history
