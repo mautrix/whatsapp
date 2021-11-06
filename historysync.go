@@ -382,9 +382,8 @@ func (portal *Portal) backfill(source *User, messages []*waProto.WebMessageInfo)
 		}
 		var batch *mautrix.ReqBatchSend
 		var infos *[]*types.MessageInfo
-		var history bool
 		if !historyMaxTs.IsZero() && info.Timestamp.Before(historyMaxTs) {
-			batch, infos, history = &historyBatch, &historyBatchInfos, true
+			batch, infos = &historyBatch, &historyBatchInfos
 		} else if !newMinTs.IsZero() && info.Timestamp.After(newMinTs) {
 			batch, infos = &newBatch, &newBatchInfos
 		} else {

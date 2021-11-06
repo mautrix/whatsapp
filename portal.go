@@ -1331,8 +1331,8 @@ func (portal *Portal) convertLocationMessage(intent *appservice.IntentAPI, msg *
 	}
 
 	return &ConvertedMessage{
-		Intent: intent,
-		Type: event.EventMessage,
+		Intent:  intent,
+		Type:    event.EventMessage,
 		Content: content,
 		ReplyTo: msg.GetContextInfo().GetStanzaId(),
 	}
@@ -1359,10 +1359,10 @@ func (portal *Portal) convertGroupInviteMessage(intent *appservice.IntentAPI, in
 		},
 	}
 	return &ConvertedMessage{
-		Intent: intent,
-		Type: event.EventMessage,
+		Intent:  intent,
+		Type:    event.EventMessage,
 		Content: content,
-		Extra: extraAttrs,
+		Extra:   extraAttrs,
 		ReplyTo: msg.GetContextInfo().GetStanzaId(),
 	}
 }
@@ -1395,8 +1395,8 @@ func (portal *Portal) convertContactMessage(intent *appservice.IntentAPI, msg *w
 	}
 
 	return &ConvertedMessage{
-		Intent: intent,
-		Type: event.EventMessage,
+		Intent:  intent,
+		Type:    event.EventMessage,
 		Content: content,
 		ReplyTo: msg.GetContextInfo().GetStanzaId(),
 	}
