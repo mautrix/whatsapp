@@ -87,6 +87,18 @@ func (config *Config) CanAutoDoublePuppet(userID id.UserID) bool {
 	return hasSecret
 }
 
+func (config *Config) CanDoublePuppetBackfill(userID id.UserID) bool {
+	if !config.Bridge.HistorySync.DoublePuppetBackfill {
+		return false
+	}
+	_, homeserver, _ := userID.Parse()
+	// Batch sending can only use local users, so don't allow double puppets on other servers.
+	if homeserver != config.Homeserver.Domain {
+		return false
+	}
+	return true
+}
+
 func Load(path string) (*Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {

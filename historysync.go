@@ -392,7 +392,7 @@ func (portal *Portal) backfill(source *User, messages []*waProto.WebMessageInfo)
 		}
 		puppet := portal.getMessagePuppet(source, info)
 		intent := puppet.IntentFor(portal)
-		if intent.IsCustomPuppet && !portal.bridge.Config.Bridge.HistorySync.DoublePuppetBackfill {
+		if intent.IsCustomPuppet && !portal.bridge.Config.CanDoublePuppetBackfill(puppet.CustomMXID) {
 			intent = puppet.DefaultIntent()
 			addMember(puppet)
 		}
