@@ -18,13 +18,11 @@ package config
 
 import (
 	"fmt"
-	"os"
 
-	"gopkg.in/yaml.v2"
-
-	"maunium.net/go/mautrix/id"
+	"gopkg.in/yaml.v3"
 
 	"maunium.net/go/mautrix/appservice"
+	"maunium.net/go/mautrix/id"
 )
 
 var ExampleConfig string
@@ -99,35 +97,21 @@ func (config *Config) CanDoublePuppetBackfill(userID id.UserID) bool {
 	return true
 }
 
-func Load(path string) (*Config, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, err
-	}
-
+func Load(data []byte, upgraded bool) (*Config, error) {
 	var config = &Config{}
-	err = yaml.UnmarshalStrict([]byte(ExampleConfig), config)
-	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal example config: %w", err)
+	if !upgraded {
+		// Fallback: if config upgrading failed, load example config for base values
+		err := yaml.Unmarshal([]byte(ExampleConfig), config)
+		if err != nil {
+			return nil, fmt.Errorf("failed to unmarshal example config: %w", err)
+		}
 	}
-	err = yaml.Unmarshal(data, config)
+	err := yaml.Unmarshal(data, config)
 	if err != nil {
 		return nil, err
-	}
-
-	if len(config.Bridge.LegacyLoginSharedSecret) > 0 {
-		config.Bridge.LoginSharedSecretMap[config.Homeserver.Domain] = config.Bridge.LegacyLoginSharedSecret
 	}
 
 	return config, err
-}
-
-func (config *Config) Save(path string) error {
-	data, err := yaml.Marshal(config)
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(path, data, 0600)
 }
 
 func (config *Config) MakeAppService() (*appservice.AppService, error) {

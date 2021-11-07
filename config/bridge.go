@@ -54,7 +54,6 @@ type BridgeConfig struct {
 	DoublePuppetServerMap      map[string]string `yaml:"double_puppet_server_map"`
 	DoublePuppetAllowDiscovery bool              `yaml:"double_puppet_allow_discovery"`
 	LoginSharedSecretMap       map[string]string `yaml:"login_shared_secret_map"`
-	LegacyLoginSharedSecret    string            `yaml:"login_shared_secret"`
 
 	PrivateChatPortalMeta bool   `yaml:"private_chat_portal_meta"`
 	BridgeNotices         bool   `yaml:"bridge_notices"`
@@ -65,12 +64,9 @@ type BridgeConfig struct {
 	TagOnlyOnCreate       bool   `yaml:"tag_only_on_create"`
 	MarkReadOnlyOnCreate  bool   `yaml:"mark_read_only_on_create"`
 	EnableStatusBroadcast bool   `yaml:"enable_status_broadcast"`
-
-	WhatsappThumbnail bool `yaml:"whatsapp_thumbnail"`
-
-	AllowUserInvite bool `yaml:"allow_user_invite"`
-
-	FederateRooms bool `yaml:"federate_rooms"`
+	WhatsappThumbnail     bool   `yaml:"whatsapp_thumbnail"`
+	AllowUserInvite       bool   `yaml:"allow_user_invite"`
+	FederateRooms         bool   `yaml:"federate_rooms"`
 
 	CommandPrefix string `yaml:"command_prefix"`
 
