@@ -19,6 +19,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"path"
 
 	"gopkg.in/yaml.v3"
 
@@ -130,8 +131,8 @@ func Upgrade(path string, save bool) ([]byte, bool, error) {
 	return upgrade(path, save, nil)
 }
 
-func upgrade(path string, save bool, mutate func(helper *UpgradeHelper)) ([]byte, bool, error) {
-	sourceData, err := os.ReadFile(path)
+func upgrade(configPath string, save bool, mutate func(helper *UpgradeHelper)) ([]byte, bool, error) {
+	sourceData, err := os.ReadFile(configPath)
 	if err != nil {
 		return nil, false, fmt.Errorf("failed to read config: %w", err)
 	}
@@ -157,7 +158,7 @@ func upgrade(path string, save bool, mutate func(helper *UpgradeHelper)) ([]byte
 	}
 	if save {
 		var tempFile *os.File
-		tempFile, err = os.CreateTemp("", "wa-config-*.yaml")
+		tempFile, err = os.CreateTemp(path.Dir(configPath), "wa-config-*.yaml")
 		if err != nil {
 			return output, true, fmt.Errorf("failed to create temp file for writing config: %w", err)
 		}
@@ -166,7 +167,7 @@ func upgrade(path string, save bool, mutate func(helper *UpgradeHelper)) ([]byte
 			_ = os.Remove(tempFile.Name())
 			return output, true, fmt.Errorf("failed to write updated config to temp file: %w", err)
 		}
-		err = os.Rename(tempFile.Name(), path)
+		err = os.Rename(tempFile.Name(), configPath)
 		if err != nil {
 			_ = os.Remove(tempFile.Name())
 			return output, true, fmt.Errorf("failed to override current config with temp file: %w", err)
