@@ -162,7 +162,7 @@ func (msg *Message) Insert() {
 func (msg *Message) MarkSent(ts time.Time) {
 	msg.Sent = true
 	msg.Timestamp = ts
-	_, err := msg.db.Exec("UPDATE message SET sent=true, timestamp=$4 WHERE chat_jid=$1 AND chat_receiver=$2 AND jid=$3", msg.Chat.JID, msg.Chat.Receiver, msg.JID, ts.Unix())
+	_, err := msg.db.Exec("UPDATE message SET sent=true, timestamp=$1 WHERE chat_jid=$2 AND chat_receiver=$3 AND jid=$4", ts.Unix(), msg.Chat.JID, msg.Chat.Receiver, msg.JID)
 	if err != nil {
 		msg.log.Warnfln("Failed to update %s@%s: %v", msg.Chat, msg.JID, err)
 	}
@@ -171,7 +171,7 @@ func (msg *Message) MarkSent(ts time.Time) {
 func (msg *Message) UpdateMXID(mxid id.EventID, stillDecryptionError bool) {
 	msg.MXID = mxid
 	msg.DecryptionError = stillDecryptionError
-	_, err := msg.db.Exec("UPDATE message SET mxid=$4, decryption_error=$5 WHERE chat_jid=$1 AND chat_receiver=$2 AND jid=$3", msg.Chat.JID, msg.Chat.Receiver, msg.JID, mxid, stillDecryptionError)
+	_, err := msg.db.Exec("UPDATE message SET mxid=$1, decryption_error=$2 WHERE chat_jid=$3 AND chat_receiver=$4 AND jid=$5", mxid, stillDecryptionError, msg.Chat.JID, msg.Chat.Receiver, msg.JID)
 	if err != nil {
 		msg.log.Warnfln("Failed to update %s@%s: %v", msg.Chat, msg.JID, err)
 	}
