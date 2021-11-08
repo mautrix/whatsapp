@@ -60,9 +60,9 @@ type User struct {
 	mgmtCreateLock sync.Mutex
 	connLock       sync.Mutex
 
-	historySyncs chan *events.HistorySync
-
+	historySyncs     chan *events.HistorySync
 	prevBridgeStatus *BridgeState
+	lastPresence     types.Presence
 }
 
 func (bridge *Bridge) GetUserByMXID(userID id.UserID) *User {
@@ -158,6 +158,7 @@ func (bridge *Bridge) NewUser(dbUser *database.User) *User {
 		log:    bridge.Log.Sub("User").Sub(string(dbUser.MXID)),
 
 		historySyncs: make(chan *events.HistorySync, 32),
+		lastPresence: types.PresenceUnavailable,
 	}
 	user.RelayWhitelisted = user.bridge.Config.Bridge.Permissions.IsRelayWhitelisted(user.MXID)
 	user.Whitelisted = user.bridge.Config.Bridge.Permissions.IsWhitelisted(user.MXID)
@@ -370,16 +371,18 @@ func (user *User) HandleEvent(event interface{}) {
 		go user.sendBridgeState(BridgeState{StateEvent: StateConnected})
 		user.bridge.Metrics.TrackConnectionState(user.JID, true)
 		user.bridge.Metrics.TrackLoginState(user.JID, true)
-		go func() {
-			err := user.Client.SendPresence(types.PresenceUnavailable)
-			if err != nil {
-				user.log.Warnln("Failed to send initial presence:", err)
-			}
-		}()
+		if len(user.Client.Store.PushName) > 0 {
+			go func() {
+				err := user.Client.SendPresence(user.lastPresence)
+				if err != nil {
+					user.log.Warnln("Failed to send initial presence:", err)
+				}
+			}()
+		}
 		go user.tryAutomaticDoublePuppeting()
 	case *events.AppStateSyncComplete:
 		if len(user.Client.Store.PushName) > 0 && v.Name == appstate.WAPatchCriticalBlock {
-			err := user.Client.SendPresence(types.PresenceUnavailable)
+			err := user.Client.SendPresence(user.lastPresence)
 			if err != nil {
 				user.log.Warnln("Failed to send presence after app state sync:", err)
 			}
@@ -389,7 +392,7 @@ func (user *User) HandleEvent(event interface{}) {
 	case *events.PushNameSetting:
 		// Send presence available when connecting and when the pushname is changed.
 		// This makes sure that outgoing messages always have the right pushname.
-		err := user.Client.SendPresence(types.PresenceUnavailable)
+		err := user.Client.SendPresence(user.lastPresence)
 		if err != nil {
 			user.log.Warnln("Failed to send presence after push name update:", err)
 		}

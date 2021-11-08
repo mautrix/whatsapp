@@ -240,9 +240,12 @@ func (puppet *Puppet) handlePresenceEvent(event *event.Event) {
 	} else {
 		puppet.customUser.log.Debugln("Marking online")
 	}
-	err := puppet.customUser.Client.SendPresence(presence)
-	if err != nil {
-		puppet.customUser.log.Warnln("Failed to set presence:", err)
+	puppet.customUser.lastPresence = presence
+	if puppet.customUser.Client.Store.PushName != "" {
+		err := puppet.customUser.Client.SendPresence(presence)
+		if err != nil {
+			puppet.customUser.log.Warnln("Failed to set presence:", err)
+		}
 	}
 }
 
