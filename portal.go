@@ -503,20 +503,13 @@ func (portal *Portal) getMessagePuppet(user *User, info *types.MessageInfo) *Pup
 		return portal.bridge.GetPuppetByJID(portal.Key.JID)
 	} else {
 		puppet := portal.bridge.GetPuppetByJID(info.Sender)
-		puppet.SyncContact(user, true)
+		puppet.SyncContact(user, true, "handling message")
 		return puppet
 	}
 }
 
 func (portal *Portal) getMessageIntent(user *User, info *types.MessageInfo) *appservice.IntentAPI {
-	if info.IsFromMe {
-		return portal.bridge.GetPuppetByJID(user.JID).IntentFor(portal)
-	} else if portal.IsPrivateChat() {
-		return portal.MainIntent()
-	}
-	puppet := portal.bridge.GetPuppetByJID(info.Sender)
-	puppet.SyncContact(user, true)
-	return puppet.IntentFor(portal)
+	return portal.getMessagePuppet(user, info).IntentFor(portal)
 }
 
 func (portal *Portal) finishHandling(existing *database.Message, message *types.MessageInfo, mxid id.EventID, decryptionError bool) {
@@ -578,7 +571,7 @@ func (portal *Portal) SyncParticipants(source *User, metadata *types.GroupInfo) 
 	for _, participant := range metadata.Participants {
 		participantMap[participant.JID] = true
 		puppet := portal.bridge.GetPuppetByJID(participant.JID)
-		puppet.SyncContact(source, true)
+		puppet.SyncContact(source, true, "group participant")
 		user := portal.bridge.GetUserByJID(participant.JID)
 		if user != nil {
 			portal.ensureUserInvited(user)
@@ -977,7 +970,7 @@ func (portal *Portal) CreateMatrixRoom(user *User, groupInfo *types.GroupInfo, i
 	//var broadcastMetadata *types.BroadcastListInfo
 	if portal.IsPrivateChat() {
 		puppet := portal.bridge.GetPuppetByJID(portal.Key.JID)
-		puppet.SyncContact(user, true)
+		puppet.SyncContact(user, true, "creating private chat portal")
 		if portal.bridge.Config.Bridge.PrivateChatPortalMeta {
 			portal.Name = puppet.Displayname
 			portal.AvatarURL = puppet.AvatarURL
@@ -1476,7 +1469,7 @@ func (portal *Portal) HandleWhatsAppInvite(source *User, senderJID *types.JID, j
 	}
 	for _, jid := range jids {
 		puppet := portal.bridge.GetPuppetByJID(jid)
-		puppet.SyncContact(source, true)
+		puppet.SyncContact(source, true, "handling whatsapp invite")
 		content := event.Content{
 			Parsed: event.MemberEventContent{
 				Membership:  "invite",

@@ -383,6 +383,8 @@ func (user *User) HandleEvent(event interface{}) {
 			if err != nil {
 				user.log.Warnln("Failed to send presence after app state sync:", err)
 			}
+		} else if v.Name == appstate.WAPatchCriticalUnblockLow {
+			go user.resyncPuppets()
 		}
 	case *events.PushNameSetting:
 		// Send presence available when connecting and when the pushname is changed.
@@ -403,9 +405,9 @@ func (user *User) HandleEvent(event interface{}) {
 		go user.sendBridgeState(BridgeState{StateEvent: StateTransientDisconnect})
 		user.bridge.Metrics.TrackConnectionState(user.JID, false)
 	case *events.Contact:
-		go user.syncPuppet(v.JID)
+		go user.syncPuppet(v.JID, "contact event")
 	case *events.PushName:
-		go user.syncPuppet(v.JID)
+		go user.syncPuppet(v.JID, "push name event")
 	case *events.GroupInfo:
 		go user.handleGroupUpdate(v)
 	case *events.JoinedGroup:
@@ -620,8 +622,20 @@ func (user *User) GetPortalByJID(jid types.JID) *Portal {
 	return user.bridge.GetPortalByJID(database.NewPortalKey(jid, user.JID))
 }
 
-func (user *User) syncPuppet(jid types.JID) {
-	user.bridge.GetPuppetByJID(jid).SyncContact(user, false)
+func (user *User) syncPuppet(jid types.JID, reason string) {
+	user.bridge.GetPuppetByJID(jid).SyncContact(user, false, reason)
+}
+
+func (user *User) resyncPuppets() {
+	contacts, err := user.Client.Store.Contacts.GetAllContacts()
+	if err != nil {
+		user.log.Errorln("Failed to get all contacts to sync puppets:", err)
+		return
+	}
+	for jid, contact := range contacts {
+		puppet := user.bridge.GetPuppetByJID(jid)
+		puppet.Sync(user, contact)
+	}
 }
 
 const WATypingTimeout = 15 * time.Second
@@ -769,12 +783,13 @@ func (user *User) handleGroupUpdate(evt *events.GroupInfo) {
 func (user *User) handlePictureUpdate(evt *events.Picture) {
 	if evt.JID.Server == types.DefaultUserServer {
 		puppet := user.bridge.GetPuppetByJID(evt.JID)
+		user.log.Debugfln("Received picture update for puppet %s (current: %s, new: %s)", evt.JID, puppet.Avatar, evt.PictureID)
 		if puppet.Avatar != evt.PictureID {
 			puppet.UpdateAvatar(user)
 		}
-	} else {
-		portal := user.GetPortalByJID(evt.JID)
-		if portal != nil && portal.Avatar != evt.PictureID {
+	} else if portal := user.GetPortalByJID(evt.JID); portal != nil {
+		user.log.Debugfln("Received picture update for portal %s (current: %s, new: %s)", evt.JID, portal.Avatar, evt.PictureID)
+		if portal.Avatar != evt.PictureID {
 			portal.UpdateAvatar(user, evt.Author, true)
 		}
 	}

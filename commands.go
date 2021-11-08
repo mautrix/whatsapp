@@ -967,7 +967,7 @@ func (handler *CommandHandler) CommandPM(ce *CommandEvent) {
 
 	handler.log.Debugln("Importing", targetUser.JID, "for", user)
 	puppet := user.bridge.GetPuppetByJID(targetUser.JID)
-	puppet.SyncContact(user, true)
+	puppet.SyncContact(user, true, "manual pm command")
 	portal := user.GetPortalByJID(puppet.JID)
 	if len(portal.MXID) > 0 {
 		ok := portal.ensureUserInvited(user)
