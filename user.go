@@ -387,7 +387,12 @@ func (user *User) HandleEvent(event interface{}) {
 				user.log.Warnln("Failed to send presence after app state sync:", err)
 			}
 		} else if v.Name == appstate.WAPatchCriticalUnblockLow {
-			go user.resyncPuppets()
+			go func() {
+				err := user.ResyncContacts()
+				if err != nil {
+					user.log.Errorln("Failed to resync puppets: %v", err)
+				}
+			}()
 		}
 	case *events.PushNameSetting:
 		// Send presence available when connecting and when the pushname is changed.
@@ -629,16 +634,38 @@ func (user *User) syncPuppet(jid types.JID, reason string) {
 	user.bridge.GetPuppetByJID(jid).SyncContact(user, false, reason)
 }
 
-func (user *User) resyncPuppets() {
+func (user *User) ResyncContacts() error {
 	contacts, err := user.Client.Store.Contacts.GetAllContacts()
 	if err != nil {
-		user.log.Errorln("Failed to get all contacts to sync puppets:", err)
-		return
+		return fmt.Errorf("failed to get cached contacts: %w", err)
 	}
+	user.log.Infofln("Resyncing displaynames with %d contacts", len(contacts))
 	for jid, contact := range contacts {
 		puppet := user.bridge.GetPuppetByJID(jid)
 		puppet.Sync(user, contact)
 	}
+	return nil
+}
+
+func (user *User) ResyncGroups(createPortals bool) error {
+	groups, err := user.Client.GetJoinedGroups()
+	if err != nil {
+		return fmt.Errorf("failed to get group list from server: %w", err)
+	}
+	for _, group := range groups {
+		portal := user.GetPortalByJID(group.JID)
+		if len(portal.MXID) == 0 {
+			if createPortals {
+				err = portal.CreateMatrixRoom(user, group, true)
+				if err != nil {
+					return fmt.Errorf("failed to create room for %s: %w", group.JID, err)
+				}
+			}
+		} else {
+			portal.UpdateMatrixRoom(user, group)
+		}
+	}
+	return nil
 }
 
 const WATypingTimeout = 15 * time.Second

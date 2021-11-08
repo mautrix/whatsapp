@@ -26,6 +26,7 @@ import (
 	"strings"
 
 	"github.com/skip2/go-qrcode"
+	"go.mau.fi/whatsmeow/appstate"
 
 	"maunium.net/go/maulogger/v2"
 
@@ -150,6 +151,8 @@ func (handler *CommandHandler) CommandMux(ce *CommandEvent) {
 			handler.CommandUnsetRelay(ce)
 		case "login-matrix":
 			handler.CommandLoginMatrix(ce)
+		case "sync":
+			handler.CommandSync(ce)
 		case "list":
 			handler.CommandList(ce)
 		case "open":
@@ -705,6 +708,7 @@ func (handler *CommandHandler) CommandHelp(ce *CommandEvent) {
 		cmdPrefix + cmdLogoutMatrixHelp,
 		cmdPrefix + cmdToggleHelp,
 		cmdPrefix + cmdListHelp,
+		cmdPrefix + cmdSyncHelp,
 		cmdPrefix + cmdOpenHelp,
 		cmdPrefix + cmdPMHelp,
 		cmdPrefix + cmdInviteLinkHelp,
@@ -985,6 +989,48 @@ func (handler *CommandHandler) CommandPM(ce *CommandEvent) {
 		return
 	}
 	ce.Reply("Created portal room with +%s and invited you to it.", puppet.JID.User)
+}
+
+const cmdSyncHelp = `sync <appstate/contacts/groups> [--create-portals] - Synchronize data from WhatsApp.`
+
+func (handler *CommandHandler) CommandSync(ce *CommandEvent) {
+	if len(ce.Args) == 0 {
+		ce.Reply("**Usage:** `sync <appstate/contacts/groups> [--create-portals]`")
+		return
+	}
+	args := strings.ToLower(strings.Join(ce.Args, " "))
+	contacts := strings.Contains(args, "contacts")
+	appState := strings.Contains(args, "appstate")
+	groups := strings.Contains(args, "groups")
+	createPortals := strings.Contains(args, "--create-portals")
+
+	if appState {
+		for _, name := range appstate.AllPatchNames {
+			err := ce.User.Client.FetchAppState(name, true, false)
+			if err != nil {
+				ce.Reply("Error syncing app state %s", name)
+			} else if name == appstate.WAPatchCriticalUnblockLow {
+				ce.Reply("Synced app state %s, contact sync running in background", name)
+			} else {
+				ce.Reply("Synced app state %s", name)
+			}
+		}
+	} else if contacts {
+		err := ce.User.ResyncContacts()
+		if err != nil {
+			ce.Reply("Error resyncing contacts: %v", err)
+		} else {
+			ce.Reply("Resynced contacts")
+		}
+	}
+	if groups {
+		err := ce.User.ResyncGroups(createPortals)
+		if err != nil {
+			ce.Reply("Error resyncing groups: %v", err)
+		} else {
+			ce.Reply("Resynced groups")
+		}
+	}
 }
 
 const cmdLoginMatrixHelp = `login-matrix <_access token_> - Replace your WhatsApp account's Matrix puppet with your real Matrix account.`
