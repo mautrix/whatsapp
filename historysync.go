@@ -61,7 +61,11 @@ func (c conversationList) Swap(i, j int) {
 
 func (user *User) handleHistorySyncsLoop() {
 	for evt := range user.historySyncs {
+		go user.sendBridgeState(BridgeState{StateEvent: StateBackfilling})
 		user.handleHistorySync(evt.Data)
+		if len(user.historySyncs) == 0 && user.IsConnected() {
+			go user.sendBridgeState(BridgeState{StateEvent: StateConnected})
+		}
 	}
 }
 
