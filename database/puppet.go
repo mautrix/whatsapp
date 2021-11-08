@@ -138,6 +138,6 @@ func (puppet *Puppet) Update() {
 	_, err := puppet.db.Exec("UPDATE puppet SET displayname=$1, name_quality=$2, avatar=$3, avatar_url=$4, custom_mxid=$5, access_token=$6, next_batch=$7, enable_presence=$8, enable_receipts=$9 WHERE username=$10",
 		puppet.Displayname, puppet.NameQuality, puppet.Avatar, puppet.AvatarURL.String(), puppet.CustomMXID, puppet.AccessToken, puppet.NextBatch, puppet.EnablePresence, puppet.EnableReceipts, puppet.JID.User)
 	if err != nil {
-		puppet.log.Warnfln("Failed to update %s->%s: %v", puppet.JID, err)
+		puppet.log.Warnfln("Failed to update %s: %v", puppet.JID, err)
 	}
 }

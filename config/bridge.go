@@ -47,11 +47,14 @@ type BridgeConfig struct {
 	UserAvatarSync    bool `yaml:"user_avatar_sync"`
 	BridgeMatrixLeave bool `yaml:"bridge_matrix_leave"`
 
-	SyncWithCustomPuppets bool   `yaml:"sync_with_custom_puppets"`
-	SyncDirectChatList    bool   `yaml:"sync_direct_chat_list"`
-	DefaultBridgeReceipts bool   `yaml:"default_bridge_receipts"`
-	DefaultBridgePresence bool   `yaml:"default_bridge_presence"`
-	LoginSharedSecret     string `yaml:"login_shared_secret"`
+	SyncWithCustomPuppets bool `yaml:"sync_with_custom_puppets"`
+	SyncDirectChatList    bool `yaml:"sync_direct_chat_list"`
+	DefaultBridgeReceipts bool `yaml:"default_bridge_receipts"`
+	DefaultBridgePresence bool `yaml:"default_bridge_presence"`
+
+	DoublePuppetServerMap      map[string]string `yaml:"double_puppet_server_map"`
+	DoublePuppetAllowDiscovery bool              `yaml:"double_puppet_allow_discovery"`
+	LoginSharedSecretMap       map[string]string `yaml:"login_shared_secret_map"`
 
 	PrivateChatPortalMeta bool   `yaml:"private_chat_portal_meta"`
 	BridgeNotices         bool   `yaml:"bridge_notices"`
@@ -62,12 +65,9 @@ type BridgeConfig struct {
 	TagOnlyOnCreate       bool   `yaml:"tag_only_on_create"`
 	MarkReadOnlyOnCreate  bool   `yaml:"mark_read_only_on_create"`
 	EnableStatusBroadcast bool   `yaml:"enable_status_broadcast"`
-
-	WhatsappThumbnail bool `yaml:"whatsapp_thumbnail"`
-
-	AllowUserInvite bool `yaml:"allow_user_invite"`
-
-	FederateRooms bool `yaml:"federate_rooms"`
+	WhatsappThumbnail     bool   `yaml:"whatsapp_thumbnail"`
+	AllowUserInvite       bool   `yaml:"allow_user_invite"`
+	FederateRooms         bool   `yaml:"federate_rooms"`
 
 	CommandPrefix string `yaml:"command_prefix"`
 
@@ -284,8 +284,8 @@ func (rc *RelaybotConfig) UnmarshalYAML(unmarshal func(interface{}) error) error
 }
 
 type Sender struct {
-	UserID id.UserID
-	*event.MemberEventContent
+	UserID string
+	event.MemberEventContent
 }
 
 type formatData struct {
@@ -294,11 +294,15 @@ type formatData struct {
 	Content *event.MessageEventContent
 }
 
-func (rc *RelaybotConfig) FormatMessage(content *event.MessageEventContent, sender id.UserID, member *event.MemberEventContent) (string, error) {
+func (rc *RelaybotConfig) FormatMessage(content *event.MessageEventContent, sender id.UserID, member event.MemberEventContent) (string, error) {
+	if len(member.Displayname) == 0 {
+		member.Displayname = sender.String()
+	}
+	member.Displayname = template.HTMLEscapeString(member.Displayname)
 	var output strings.Builder
 	err := rc.messageTemplates.ExecuteTemplate(&output, string(content.MsgType), formatData{
 		Sender: Sender{
-			UserID:             sender,
+			UserID:             template.HTMLEscapeString(sender.String()),
 			MemberEventContent: member,
 		},
 		Content: content,

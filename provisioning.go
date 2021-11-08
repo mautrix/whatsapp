@@ -180,6 +180,8 @@ func (prov *ProvisioningAPI) Ping(w http.ResponseWriter, r *http.Request) {
 	}
 	if !user.JID.IsEmpty() {
 		wa["jid"] = user.JID.String()
+		wa["phone"] = "+" + user.JID.User
+		wa["device"] = user.JID.Device
 	}
 	if user.Client != nil {
 		wa["conn"] = map[string]interface{}{

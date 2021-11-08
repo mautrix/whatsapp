@@ -161,8 +161,8 @@ func (portal *Portal) Insert() {
 }
 
 func (portal *Portal) Update() {
-	_, err := portal.db.Exec("UPDATE portal SET mxid=$3, name=$4, topic=$5, avatar=$6, avatar_url=$7, encrypted=$8, first_event_id=$9, next_batch_id=$10, relay_user_id=$11 WHERE jid=$1 AND receiver=$2",
-		portal.Key.JID, portal.Key.Receiver, portal.mxidPtr(), portal.Name, portal.Topic, portal.Avatar, portal.AvatarURL.String(), portal.Encrypted, portal.FirstEventID.String(), portal.NextBatchID.String(), portal.relayUserPtr())
+	_, err := portal.db.Exec("UPDATE portal SET mxid=$1, name=$2, topic=$3, avatar=$4, avatar_url=$5, encrypted=$6, first_event_id=$7, next_batch_id=$8, relay_user_id=$9 WHERE jid=$10 AND receiver=$11",
+		portal.mxidPtr(), portal.Name, portal.Topic, portal.Avatar, portal.AvatarURL.String(), portal.Encrypted, portal.FirstEventID.String(), portal.NextBatchID.String(), portal.relayUserPtr(), portal.Key.JID, portal.Key.Receiver)
 	if err != nil {
 		portal.log.Warnfln("Failed to update %s: %v", portal.Key, err)
 	}

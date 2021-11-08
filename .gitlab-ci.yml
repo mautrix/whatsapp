@@ -15,9 +15,11 @@ stages:
   - export GO_LDFLAGS="-s -w -linkmode external -extldflags -static -X main.Tag=$CI_COMMIT_TAG -X main.Commit=$CI_COMMIT_SHA -X 'main.BuildTime=`date '+%b %_d %Y, %H:%M:%S'`'"
   script:
   - go build -ldflags "$GO_LDFLAGS" -o mautrix-whatsapp
+  - sha256sum mautrix-whatsapp | tee mautrix-whatsapp.sha256sum
   artifacts:
     paths:
     - mautrix-whatsapp
+    - mautrix-whatsapp.sha256sum
     - example-config.yaml
 
 .build-docker: &build-docker

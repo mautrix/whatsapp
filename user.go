@@ -60,9 +60,9 @@ type User struct {
 	mgmtCreateLock sync.Mutex
 	connLock       sync.Mutex
 
-	historySyncs chan *events.HistorySync
-
+	historySyncs     chan *events.HistorySync
 	prevBridgeStatus *BridgeState
+	lastPresence     types.Presence
 }
 
 func (bridge *Bridge) GetUserByMXID(userID id.UserID) *User {
@@ -158,6 +158,7 @@ func (bridge *Bridge) NewUser(dbUser *database.User) *User {
 		log:    bridge.Log.Sub("User").Sub(string(dbUser.MXID)),
 
 		historySyncs: make(chan *events.HistorySync, 32),
+		lastPresence: types.PresenceUnavailable,
 	}
 	user.RelayWhitelisted = user.bridge.Config.Bridge.Permissions.IsRelayWhitelisted(user.MXID)
 	user.Whitelisted = user.bridge.Config.Bridge.Permissions.IsWhitelisted(user.MXID)
@@ -299,7 +300,7 @@ func (user *User) IsLoggedIn() bool {
 }
 
 func (user *User) tryAutomaticDoublePuppeting() {
-	if !user.bridge.Config.CanDoublePuppet(user.MXID) {
+	if !user.bridge.Config.CanAutoDoublePuppet(user.MXID) {
 		return
 	}
 	user.log.Debugln("Checking if double puppeting needs to be enabled")
@@ -370,24 +371,33 @@ func (user *User) HandleEvent(event interface{}) {
 		go user.sendBridgeState(BridgeState{StateEvent: StateConnected})
 		user.bridge.Metrics.TrackConnectionState(user.JID, true)
 		user.bridge.Metrics.TrackLoginState(user.JID, true)
-		go func() {
-			err := user.Client.SendPresence(types.PresenceUnavailable)
-			if err != nil {
-				user.log.Warnln("Failed to send initial presence:", err)
-			}
-		}()
+		if len(user.Client.Store.PushName) > 0 {
+			go func() {
+				err := user.Client.SendPresence(user.lastPresence)
+				if err != nil {
+					user.log.Warnln("Failed to send initial presence:", err)
+				}
+			}()
+		}
 		go user.tryAutomaticDoublePuppeting()
 	case *events.AppStateSyncComplete:
 		if len(user.Client.Store.PushName) > 0 && v.Name == appstate.WAPatchCriticalBlock {
-			err := user.Client.SendPresence(types.PresenceUnavailable)
+			err := user.Client.SendPresence(user.lastPresence)
 			if err != nil {
 				user.log.Warnln("Failed to send presence after app state sync:", err)
 			}
+		} else if v.Name == appstate.WAPatchCriticalUnblockLow {
+			go func() {
+				err := user.ResyncContacts()
+				if err != nil {
+					user.log.Errorln("Failed to resync puppets: %v", err)
+				}
+			}()
 		}
 	case *events.PushNameSetting:
 		// Send presence available when connecting and when the pushname is changed.
 		// This makes sure that outgoing messages always have the right pushname.
-		err := user.Client.SendPresence(types.PresenceUnavailable)
+		err := user.Client.SendPresence(user.lastPresence)
 		if err != nil {
 			user.log.Warnln("Failed to send presence after push name update:", err)
 		}
@@ -403,9 +413,9 @@ func (user *User) HandleEvent(event interface{}) {
 		go user.sendBridgeState(BridgeState{StateEvent: StateTransientDisconnect})
 		user.bridge.Metrics.TrackConnectionState(user.JID, false)
 	case *events.Contact:
-		go user.syncPuppet(v.JID)
+		go user.syncPuppet(v.JID, "contact event")
 	case *events.PushName:
-		go user.syncPuppet(v.JID)
+		go user.syncPuppet(v.JID, "push name event")
 	case *events.GroupInfo:
 		go user.handleGroupUpdate(v)
 	case *events.JoinedGroup:
@@ -620,8 +630,42 @@ func (user *User) GetPortalByJID(jid types.JID) *Portal {
 	return user.bridge.GetPortalByJID(database.NewPortalKey(jid, user.JID))
 }
 
-func (user *User) syncPuppet(jid types.JID) {
-	user.bridge.GetPuppetByJID(jid).SyncContact(user, false)
+func (user *User) syncPuppet(jid types.JID, reason string) {
+	user.bridge.GetPuppetByJID(jid).SyncContact(user, false, reason)
+}
+
+func (user *User) ResyncContacts() error {
+	contacts, err := user.Client.Store.Contacts.GetAllContacts()
+	if err != nil {
+		return fmt.Errorf("failed to get cached contacts: %w", err)
+	}
+	user.log.Infofln("Resyncing displaynames with %d contacts", len(contacts))
+	for jid, contact := range contacts {
+		puppet := user.bridge.GetPuppetByJID(jid)
+		puppet.Sync(user, contact)
+	}
+	return nil
+}
+
+func (user *User) ResyncGroups(createPortals bool) error {
+	groups, err := user.Client.GetJoinedGroups()
+	if err != nil {
+		return fmt.Errorf("failed to get group list from server: %w", err)
+	}
+	for _, group := range groups {
+		portal := user.GetPortalByJID(group.JID)
+		if len(portal.MXID) == 0 {
+			if createPortals {
+				err = portal.CreateMatrixRoom(user, group, true)
+				if err != nil {
+					return fmt.Errorf("failed to create room for %s: %w", group.JID, err)
+				}
+			}
+		} else {
+			portal.UpdateMatrixRoom(user, group)
+		}
+	}
+	return nil
 }
 
 const WATypingTimeout = 15 * time.Second
@@ -769,12 +813,13 @@ func (user *User) handleGroupUpdate(evt *events.GroupInfo) {
 func (user *User) handlePictureUpdate(evt *events.Picture) {
 	if evt.JID.Server == types.DefaultUserServer {
 		puppet := user.bridge.GetPuppetByJID(evt.JID)
+		user.log.Debugfln("Received picture update for puppet %s (current: %s, new: %s)", evt.JID, puppet.Avatar, evt.PictureID)
 		if puppet.Avatar != evt.PictureID {
 			puppet.UpdateAvatar(user)
 		}
-	} else {
-		portal := user.GetPortalByJID(evt.JID)
-		if portal != nil && portal.Avatar != evt.PictureID {
+	} else if portal := user.GetPortalByJID(evt.JID); portal != nil {
+		user.log.Debugfln("Received picture update for portal %s (current: %s, new: %s)", evt.JID, portal.Avatar, evt.PictureID)
+		if portal.Avatar != evt.PictureID {
 			portal.UpdateAvatar(user, evt.Author, true)
 		}
 	}

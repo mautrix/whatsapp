@@ -26,6 +26,7 @@ import (
 	"strings"
 
 	"github.com/skip2/go-qrcode"
+	"go.mau.fi/whatsmeow/appstate"
 
 	"maunium.net/go/maulogger/v2"
 
@@ -150,6 +151,8 @@ func (handler *CommandHandler) CommandMux(ce *CommandEvent) {
 			handler.CommandUnsetRelay(ce)
 		case "login-matrix":
 			handler.CommandLoginMatrix(ce)
+		case "sync":
+			handler.CommandSync(ce)
 		case "list":
 			handler.CommandList(ce)
 		case "open":
@@ -323,6 +326,7 @@ func (handler *CommandHandler) CommandCreate(ce *CommandEvent) {
 	var roomNameEvent event.RoomNameEventContent
 	err = ce.Bot.StateEvent(ce.RoomID, event.StateRoomName, "", &roomNameEvent)
 	if err != nil && !errors.Is(err, mautrix.MNotFound) {
+		handler.log.Errorln("Failed to get room name to create group:", err)
 		ce.Reply("Failed to get room name")
 		return
 	} else if len(roomNameEvent.Name) == 0 {
@@ -337,45 +341,57 @@ func (handler *CommandHandler) CommandCreate(ce *CommandEvent) {
 		return
 	}
 
-	participants := []types.JID{ce.User.JID.ToNonAD()}
+	var participants []types.JID
+	participantDedup := make(map[types.JID]bool)
+	participantDedup[ce.User.JID.ToNonAD()] = true
+	participantDedup[types.EmptyJID] = true
 	for userID := range members.Joined {
 		jid, ok := handler.bridge.ParsePuppetMXID(userID)
-		if ok && jid.User != ce.User.JID.User {
+		if !ok {
+			user := handler.bridge.GetUserByMXID(userID)
+			if user != nil && !user.JID.IsEmpty() {
+				jid = user.JID.ToNonAD()
+			}
+		}
+		if !participantDedup[jid] {
+			participantDedup[jid] = true
 			participants = append(participants, jid)
 		}
 	}
 
-	ce.Reply("Not yet implemented")
-	// TODO reimplement
-	//resp, err := ce.User.Conn.CreateGroup(roomNameEvent.Name, participants)
-	//if err != nil {
-	//	ce.Reply("Failed to create group: %v", err)
-	//	return
-	//}
-	//portal := handler.bridge.GetPortalByJID(database.GroupPortalKey(resp.GroupID))
-	//portal.roomCreateLock.Lock()
-	//defer portal.roomCreateLock.Unlock()
-	//if len(portal.MXID) != 0 {
-	//	portal.log.Warnln("Detected race condition in room creation")
-	//	// TODO race condition, clean up the old room
-	//}
-	//portal.MXID = ce.RoomID
-	//portal.Name = roomNameEvent.Name
-	//portal.Encrypted = encryptionEvent.Algorithm == id.AlgorithmMegolmV1
-	//if !portal.Encrypted && handler.bridge.Config.Bridge.Encryption.Default {
-	//	_, err = portal.MainIntent().SendStateEvent(portal.MXID, event.StateEncryption, "", &event.EncryptionEventContent{Algorithm: id.AlgorithmMegolmV1})
-	//	if err != nil {
-	//		portal.log.Warnln("Failed to enable e2be:", err)
-	//	}
-	//	portal.Encrypted = true
-	//}
-	//
-	//portal.Update()
-	//portal.UpdateBridgeInfo()
-	//
-	//ce.Reply("Successfully created WhatsApp group %s", portal.Key.JID)
-	//inCommunity := ce.User.addPortalToCommunity(portal)
-	//ce.User.CreateUserPortal(database.PortalKeyWithMeta{PortalKey: portal.Key, InCommunity: inCommunity})
+	handler.log.Infofln("Creating group for %s with name %s and participants %+v", ce.RoomID, roomNameEvent.Name, participants)
+	resp, err := ce.User.Client.CreateGroup(roomNameEvent.Name, participants)
+	if err != nil {
+		ce.Reply("Failed to create group: %v", err)
+		return
+	}
+	portal := ce.User.GetPortalByJID(resp.JID)
+	portal.roomCreateLock.Lock()
+	defer portal.roomCreateLock.Unlock()
+	if len(portal.MXID) != 0 {
+		portal.log.Warnln("Detected race condition in room creation")
+		// TODO race condition, clean up the old room
+	}
+	portal.MXID = ce.RoomID
+	portal.Name = roomNameEvent.Name
+	portal.Encrypted = encryptionEvent.Algorithm == id.AlgorithmMegolmV1
+	if !portal.Encrypted && handler.bridge.Config.Bridge.Encryption.Default {
+		_, err = portal.MainIntent().SendStateEvent(portal.MXID, event.StateEncryption, "", &event.EncryptionEventContent{Algorithm: id.AlgorithmMegolmV1})
+		if err != nil {
+			portal.log.Warnln("Failed to enable encryption in room:", err)
+			if errors.Is(err, mautrix.MForbidden) {
+				ce.Reply("I don't seem to have permission to enable encryption in this room.")
+			} else {
+				ce.Reply("Failed to enable encryption in room: %v", err)
+			}
+		}
+		portal.Encrypted = true
+	}
+
+	portal.Update()
+	portal.UpdateBridgeInfo()
+
+	ce.Reply("Successfully created WhatsApp group %s", portal.Key.JID)
 }
 
 func parseInviteMeta(meta map[string]interface{}) (jid, inviter types.JID, code string, expiration int64, ok bool) {
@@ -692,6 +708,7 @@ func (handler *CommandHandler) CommandHelp(ce *CommandEvent) {
 		cmdPrefix + cmdLogoutMatrixHelp,
 		cmdPrefix + cmdToggleHelp,
 		cmdPrefix + cmdListHelp,
+		cmdPrefix + cmdSyncHelp,
 		cmdPrefix + cmdOpenHelp,
 		cmdPrefix + cmdPMHelp,
 		cmdPrefix + cmdInviteLinkHelp,
@@ -954,7 +971,7 @@ func (handler *CommandHandler) CommandPM(ce *CommandEvent) {
 
 	handler.log.Debugln("Importing", targetUser.JID, "for", user)
 	puppet := user.bridge.GetPuppetByJID(targetUser.JID)
-	puppet.SyncContact(user, true)
+	puppet.SyncContact(user, true, "manual pm command")
 	portal := user.GetPortalByJID(puppet.JID)
 	if len(portal.MXID) > 0 {
 		ok := portal.ensureUserInvited(user)
@@ -972,6 +989,48 @@ func (handler *CommandHandler) CommandPM(ce *CommandEvent) {
 		return
 	}
 	ce.Reply("Created portal room with +%s and invited you to it.", puppet.JID.User)
+}
+
+const cmdSyncHelp = `sync <appstate/contacts/groups> [--create-portals] - Synchronize data from WhatsApp.`
+
+func (handler *CommandHandler) CommandSync(ce *CommandEvent) {
+	if len(ce.Args) == 0 {
+		ce.Reply("**Usage:** `sync <appstate/contacts/groups> [--create-portals]`")
+		return
+	}
+	args := strings.ToLower(strings.Join(ce.Args, " "))
+	contacts := strings.Contains(args, "contacts")
+	appState := strings.Contains(args, "appstate")
+	groups := strings.Contains(args, "groups")
+	createPortals := strings.Contains(args, "--create-portals")
+
+	if appState {
+		for _, name := range appstate.AllPatchNames {
+			err := ce.User.Client.FetchAppState(name, true, false)
+			if err != nil {
+				ce.Reply("Error syncing app state %s", name)
+			} else if name == appstate.WAPatchCriticalUnblockLow {
+				ce.Reply("Synced app state %s, contact sync running in background", name)
+			} else {
+				ce.Reply("Synced app state %s", name)
+			}
+		}
+	} else if contacts {
+		err := ce.User.ResyncContacts()
+		if err != nil {
+			ce.Reply("Error resyncing contacts: %v", err)
+		} else {
+			ce.Reply("Resynced contacts")
+		}
+	}
+	if groups {
+		err := ce.User.ResyncGroups(createPortals)
+		if err != nil {
+			ce.Reply("Error resyncing groups: %v", err)
+		} else {
+			ce.Reply("Resynced groups")
+		}
+	}
 }
 
 const cmdLoginMatrixHelp = `login-matrix <_access token_> - Replace your WhatsApp account's Matrix puppet with your real Matrix account.`

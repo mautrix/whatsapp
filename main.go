@@ -64,7 +64,7 @@ var (
 
 var (
 	// Version is the version number of the bridge. Changed manually when making a release.
-	Version = "0.2.0+dev"
+	Version = "0.2.0"
 	// WAVersion is the version number exposed to WhatsApp. Filled in init()
 	WAVersion = ""
 	// VersionString is the bridge version, plus commit information. Filled in init() using the build-time values.
@@ -97,8 +97,7 @@ func init() {
 }
 
 var configPath = flag.MakeFull("c", "config", "The path to your config file.", "config.yaml").String()
-
-//var baseConfigPath = flag.MakeFull("b", "base-config", "The path to the example config file.", "example-config.yaml").String()
+var dontSaveConfig = flag.MakeFull("n", "no-update", "Don't save updated config to disk.", "false").Bool()
 var registrationPath = flag.MakeFull("r", "registration", "The path where to save the appservice registration.", "registration.yaml").String()
 var generateRegistration = flag.MakeFull("g", "generate-registration", "Generate registration and quit.", "false").Bool()
 var version = flag.MakeFull("v", "version", "View bridge version and quit.", "false").Bool()
@@ -107,6 +106,11 @@ var migrateFrom = flag.Make().LongKey("migrate-db").Usage("Source database type 
 var wantHelp, _ = flag.MakeHelpFlag()
 
 func (bridge *Bridge) GenerateRegistration() {
+	if *dontSaveConfig {
+		// We need to save the generated as_token and hs_token in the config
+		_, _ = fmt.Fprintln(os.Stderr, "--no-update is not compatible with --generate-registration")
+		os.Exit(5)
+	}
 	reg, err := bridge.Config.NewRegistration()
 	if err != nil {
 		_, _ = fmt.Fprintln(os.Stderr, "Failed to generate registration:", err)
@@ -119,7 +123,10 @@ func (bridge *Bridge) GenerateRegistration() {
 		os.Exit(21)
 	}
 
-	err = bridge.Config.Save(*configPath)
+	err = config.Mutate(*configPath, func(helper *config.UpgradeHelper) {
+		helper.Set(config.Str, bridge.Config.AppService.ASToken, "appservice", "as_token")
+		helper.Set(config.Str, bridge.Config.AppService.HSToken, "appservice", "hs_token")
+	})
 	if err != nil {
 		_, _ = fmt.Fprintln(os.Stderr, "Failed to save config:", err)
 		os.Exit(22)
@@ -191,26 +198,6 @@ type Crypto interface {
 	Init() error
 	Start()
 	Stop()
-}
-
-func NewBridge() *Bridge {
-	bridge := &Bridge{
-		usersByMXID:         make(map[id.UserID]*User),
-		usersByUsername:     make(map[string]*User),
-		managementRooms:     make(map[id.RoomID]*User),
-		portalsByMXID:       make(map[id.RoomID]*Portal),
-		portalsByJID:        make(map[database.PortalKey]*Portal),
-		puppets:             make(map[types.JID]*Puppet),
-		puppetsByCustomMXID: make(map[id.UserID]*Puppet),
-	}
-
-	var err error
-	bridge.Config, err = config.Load(*configPath)
-	if err != nil {
-		_, _ = fmt.Fprintln(os.Stderr, "Failed to load config:", err)
-		os.Exit(10)
-	}
-	return bridge
 }
 
 func (bridge *Bridge) ensureConnection() {
@@ -344,10 +331,15 @@ func (bridge *Bridge) Start() {
 }
 
 func (bridge *Bridge) ResendBridgeInfo() {
-	bridge.Config.Bridge.ResendBridgeInfo = false
-	err := bridge.Config.Save(*configPath)
-	if err != nil {
-		bridge.Log.Errorln("Failed to save config after setting resend_bridge_info to false:", err)
+	if *dontSaveConfig {
+		bridge.Log.Warnln("Not setting resend_bridge_info to false in config due to --no-update flag")
+	} else {
+		err := config.Mutate(*configPath, func(helper *config.UpgradeHelper) {
+			helper.Set(config.Bool, "false", "bridge", "resend_bridge_info")
+		})
+		if err != nil {
+			bridge.Log.Errorln("Failed to save config after setting resend_bridge_info to false:", err)
+		}
 	}
 	bridge.Log.Infoln("Re-sending bridge info state event to all portals")
 	for _, portal := range bridge.GetAllPortals() {
@@ -426,6 +418,20 @@ func (bridge *Bridge) Stop() {
 }
 
 func (bridge *Bridge) Main() {
+	configData, upgraded, err := config.Upgrade(*configPath, !*dontSaveConfig)
+	if err != nil {
+		_, _ = fmt.Fprintln(os.Stderr, "Error updating config:", err)
+		if configData == nil {
+			os.Exit(10)
+		}
+	}
+
+	bridge.Config, err = config.Load(configData, upgraded)
+	if err != nil {
+		_, _ = fmt.Fprintln(os.Stderr, "Failed to parse config:", err)
+		os.Exit(10)
+	}
+
 	if *generateRegistration {
 		bridge.GenerateRegistration()
 		return
@@ -466,5 +472,13 @@ func main() {
 		return
 	}
 
-	NewBridge().Main()
+	(&Bridge{
+		usersByMXID:         make(map[id.UserID]*User),
+		usersByUsername:     make(map[string]*User),
+		managementRooms:     make(map[id.RoomID]*User),
+		portalsByMXID:       make(map[id.RoomID]*Portal),
+		portalsByJID:        make(map[database.PortalKey]*Portal),
+		puppets:             make(map[types.JID]*Puppet),
+		puppetsByCustomMXID: make(map[id.UserID]*Puppet),
+	}).Main()
 }

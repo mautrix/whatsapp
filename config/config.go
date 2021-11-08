@@ -18,12 +18,11 @@ package config
 
 import (
 	"fmt"
-	"os"
 
-	"gopkg.in/yaml.v2"
-	"maunium.net/go/mautrix/id"
+	"gopkg.in/yaml.v3"
 
 	"maunium.net/go/mautrix/appservice"
+	"maunium.net/go/mautrix/id"
 )
 
 var ExampleConfig string
@@ -80,38 +79,39 @@ type Config struct {
 	Logging appservice.LogConfig `yaml:"logging"`
 }
 
-func (config *Config) CanDoublePuppet(userID id.UserID) bool {
-	if len(config.Bridge.LoginSharedSecret) == 0 {
-		// Automatic login not enabled
+func (config *Config) CanAutoDoublePuppet(userID id.UserID) bool {
+	_, homeserver, _ := userID.Parse()
+	_, hasSecret := config.Bridge.LoginSharedSecretMap[homeserver]
+	return hasSecret
+}
+
+func (config *Config) CanDoublePuppetBackfill(userID id.UserID) bool {
+	if !config.Bridge.HistorySync.DoublePuppetBackfill {
 		return false
-	} else if _, homeserver, _ := userID.Parse(); homeserver != config.Homeserver.Domain {
-		// user is on another homeserver
+	}
+	_, homeserver, _ := userID.Parse()
+	// Batch sending can only use local users, so don't allow double puppets on other servers.
+	if homeserver != config.Homeserver.Domain {
 		return false
 	}
 	return true
 }
 
-func Load(path string) (*Config, error) {
-	data, err := os.ReadFile(path)
+func Load(data []byte, upgraded bool) (*Config, error) {
+	var config = &Config{}
+	if !upgraded {
+		// Fallback: if config upgrading failed, load example config for base values
+		err := yaml.Unmarshal([]byte(ExampleConfig), config)
+		if err != nil {
+			return nil, fmt.Errorf("failed to unmarshal example config: %w", err)
+		}
+	}
+	err := yaml.Unmarshal(data, config)
 	if err != nil {
 		return nil, err
 	}
 
-	var config = &Config{}
-	err = yaml.UnmarshalStrict([]byte(ExampleConfig), config)
-	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal example config: %w", err)
-	}
-	err = yaml.Unmarshal(data, config)
 	return config, err
-}
-
-func (config *Config) Save(path string) error {
-	data, err := yaml.Marshal(config)
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(path, data, 0600)
 }
 
 func (config *Config) MakeAppService() (*appservice.AppService, error) {

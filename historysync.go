@@ -66,7 +66,7 @@ func (user *User) handleHistorySyncsLoop() {
 }
 
 func (user *User) handleHistorySync(evt *waProto.HistorySync) {
-	if evt.GetSyncType() != waProto.HistorySync_RECENT && evt.GetSyncType() != waProto.HistorySync_FULL {
+	if evt == nil || evt.SyncType == nil || evt.GetSyncType() == waProto.HistorySync_INITIAL_STATUS_V3 || evt.GetSyncType() == waProto.HistorySync_PUSH_NAME {
 		return
 	}
 	user.log.Infofln("Handling history sync with type %s, %d conversations, chunk order %d, progress %d%%", evt.GetSyncType(), len(evt.GetConversations()), evt.GetChunkOrder(), evt.GetProgress())
@@ -382,32 +382,29 @@ func (portal *Portal) backfill(source *User, messages []*waProto.WebMessageInfo)
 		}
 		var batch *mautrix.ReqBatchSend
 		var infos *[]*types.MessageInfo
-		var history bool
 		if !historyMaxTs.IsZero() && info.Timestamp.Before(historyMaxTs) {
-			batch, infos, history = &historyBatch, &historyBatchInfos, true
+			batch, infos = &historyBatch, &historyBatchInfos
 		} else if !newMinTs.IsZero() && info.Timestamp.After(newMinTs) {
 			batch, infos = &newBatch, &newBatchInfos
 		} else {
 			continue
 		}
 		puppet := portal.getMessagePuppet(source, info)
-		var intent *appservice.IntentAPI
-		if portal.Key.JID == puppet.JID {
+		intent := puppet.IntentFor(portal)
+		if intent.IsCustomPuppet && !portal.bridge.Config.CanDoublePuppetBackfill(puppet.CustomMXID) {
 			intent = puppet.DefaultIntent()
-		} else {
-			intent = puppet.IntentFor(portal)
-			if intent.IsCustomPuppet && !portal.bridge.Config.Bridge.HistorySync.DoublePuppetBackfill {
-				intent = puppet.DefaultIntent()
-				addMember(puppet)
-			}
 		}
 		converted := portal.convertMessage(intent, source, info, webMsg.GetMessage())
 		if converted == nil {
 			portal.log.Debugfln("Skipping unsupported message %s in backfill", info.ID)
 			continue
 		}
-		if history && !portal.IsPrivateChat() && !intent.IsCustomPuppet && !portal.bridge.StateStore.IsInRoom(portal.MXID, puppet.MXID) {
+		if !intent.IsCustomPuppet && !portal.bridge.StateStore.IsInRoom(portal.MXID, puppet.MXID) {
 			addMember(puppet)
+		}
+		// TODO this won't work for history
+		if len(converted.ReplyTo) > 0 {
+			portal.SetReply(converted.Content, converted.ReplyTo)
 		}
 		err := portal.appendBatchEvents(converted, info, &batch.Events, infos)
 		if err != nil {

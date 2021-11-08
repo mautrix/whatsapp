@@ -21,6 +21,7 @@ import (
 	"crypto/sha512"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"time"
 
 	"go.mau.fi/whatsmeow/types"
@@ -64,10 +65,15 @@ func (puppet *Puppet) SwitchCustomMXID(accessToken string, mxid id.UserID) error
 }
 
 func (puppet *Puppet) loginWithSharedSecret(mxid id.UserID) (string, error) {
+	_, homeserver, _ := mxid.Parse()
 	puppet.log.Debugfln("Logging into %s with shared secret", mxid)
-	mac := hmac.New(sha512.New, []byte(puppet.bridge.Config.Bridge.LoginSharedSecret))
+	mac := hmac.New(sha512.New, []byte(puppet.bridge.Config.Bridge.LoginSharedSecretMap[homeserver]))
 	mac.Write([]byte(mxid))
-	resp, err := puppet.bridge.AS.BotClient().Login(&mautrix.ReqLogin{
+	client, err := puppet.bridge.newDoublePuppetClient(mxid, "")
+	if err != nil {
+		return "", fmt.Errorf("failed to create mautrix client to log in: %v", err)
+	}
+	resp, err := client.Login(&mautrix.ReqLogin{
 		Type:                     mautrix.AuthTypePassword,
 		Identifier:               mautrix.UserIdentifier{Type: mautrix.IdentifierTypeUser, User: string(mxid)},
 		Password:                 hex.EncodeToString(mac.Sum(nil)),
@@ -80,17 +86,44 @@ func (puppet *Puppet) loginWithSharedSecret(mxid id.UserID) (string, error) {
 	return resp.AccessToken, nil
 }
 
+func (bridge *Bridge) newDoublePuppetClient(mxid id.UserID, accessToken string) (*mautrix.Client, error) {
+	_, homeserver, err := mxid.Parse()
+	if err != nil {
+		return nil, err
+	}
+	homeserverURL, found := bridge.Config.Bridge.DoublePuppetServerMap[homeserver]
+	if !found {
+		if homeserver == bridge.AS.HomeserverDomain {
+			homeserverURL = bridge.AS.HomeserverURL
+		} else if bridge.Config.Bridge.DoublePuppetAllowDiscovery {
+			resp, err := mautrix.DiscoverClientAPI(homeserver)
+			if err != nil {
+				return nil, fmt.Errorf("failed to find homeserver URL for %s: %v", homeserver, err)
+			}
+			homeserverURL = resp.Homeserver.BaseURL
+			bridge.Log.Debugfln("Discovered URL %s for %s to enable double puppeting for %s", homeserverURL, homeserver, mxid)
+		} else {
+			return nil, fmt.Errorf("double puppeting from %s is not allowed", homeserver)
+		}
+	}
+	client, err := mautrix.NewClient(homeserverURL, mxid, accessToken)
+	if err != nil {
+		return nil, err
+	}
+	client.Logger = bridge.AS.Log.Sub(mxid.String())
+	client.Client = bridge.AS.HTTPClient
+	client.DefaultHTTPRetries = bridge.AS.DefaultHTTPRetries
+	return client, nil
+}
+
 func (puppet *Puppet) newCustomIntent() (*appservice.IntentAPI, error) {
 	if len(puppet.CustomMXID) == 0 {
 		return nil, ErrNoCustomMXID
 	}
-	client, err := mautrix.NewClient(puppet.bridge.AS.HomeserverURL, puppet.CustomMXID, puppet.AccessToken)
+	client, err := puppet.bridge.newDoublePuppetClient(puppet.CustomMXID, puppet.AccessToken)
 	if err != nil {
 		return nil, err
 	}
-	client.Logger = puppet.bridge.AS.Log.Sub(string(puppet.CustomMXID))
-	client.Client = puppet.bridge.AS.HTTPClient
-	client.DefaultHTTPRetries = puppet.bridge.AS.DefaultHTTPRetries
 	client.Syncer = puppet
 	client.Store = puppet
 
@@ -207,9 +240,12 @@ func (puppet *Puppet) handlePresenceEvent(event *event.Event) {
 	} else {
 		puppet.customUser.log.Debugln("Marking online")
 	}
-	err := puppet.customUser.Client.SendPresence(presence)
-	if err != nil {
-		puppet.customUser.log.Warnln("Failed to set presence:", err)
+	puppet.customUser.lastPresence = presence
+	if puppet.customUser.Client.Store.PushName != "" {
+		err := puppet.customUser.Client.SendPresence(presence)
+		if err != nil {
+			puppet.customUser.log.Warnln("Failed to set presence:", err)
+		}
 	}
 }
 
@@ -255,7 +291,7 @@ func (puppet *Puppet) handleTypingEvent(portal *Portal, evt *event.Event) {
 }
 
 func (puppet *Puppet) tryRelogin(cause error, action string) bool {
-	if !puppet.bridge.Config.CanDoublePuppet(puppet.CustomMXID) {
+	if !puppet.bridge.Config.CanAutoDoublePuppet(puppet.CustomMXID) {
 		return false
 	}
 	puppet.log.Debugfln("Trying to relogin after '%v' while %s", cause, action)

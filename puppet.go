@@ -167,7 +167,7 @@ type Puppet struct {
 }
 
 func (puppet *Puppet) IntentFor(portal *Portal) *appservice.IntentAPI {
-	if (!portal.IsPrivateChat() && puppet.customIntent == nil) || portal.Key.JID == puppet.JID {
+	if puppet.customIntent == nil || portal.Key.JID == puppet.JID {
 		return puppet.DefaultIntent()
 	}
 	return puppet.customIntent
@@ -232,6 +232,7 @@ func (puppet *Puppet) UpdateAvatar(source *User) bool {
 	if err != nil {
 		puppet.log.Warnln("Failed to set avatar:", err)
 	}
+	puppet.log.Debugln("Updated avatar", puppet.Avatar, "->", avatar.ID)
 	puppet.Avatar = avatar.ID
 	go puppet.updatePortalAvatar()
 	return true
@@ -289,16 +290,16 @@ func (puppet *Puppet) updatePortalName() {
 	})
 }
 
-func (puppet *Puppet) SyncContact(source *User, onlyIfNoName bool) {
+func (puppet *Puppet) SyncContact(source *User, onlyIfNoName bool, reason string) {
 	if onlyIfNoName && len(puppet.Displayname) > 0 {
 		return
 	}
 
 	contact, err := source.Client.Store.Contacts.GetContact(puppet.JID)
 	if err != nil {
-		puppet.log.Warnfln("Failed to get contact info through %s in SyncContact: %v", source.MXID)
+		puppet.log.Warnfln("Failed to get contact info through %s in SyncContact: %v (sync reason: %s)", source.MXID, reason)
 	} else if !contact.Found {
-		puppet.log.Warnfln("No contact info found through %s in SyncContact", source.MXID)
+		puppet.log.Warnfln("No contact info found through %s in SyncContact (sync reason: %s)", source.MXID, reason)
 	}
 	puppet.Sync(source, contact)
 }

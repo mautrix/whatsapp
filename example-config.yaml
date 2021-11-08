@@ -5,6 +5,8 @@ homeserver:
     # The domain of the homeserver (for MXIDs, etc).
     domain: example.com
 
+    # Is the homeserver actually mautrix-asmux?
+    asmux: false
     # The URL to push real-time bridge status to.
     # If set, the bridge will make POST requests to this URL whenever a user's whatsapp connection state changes.
     # The bridge will use the appservice as_token to authorize requests.
@@ -37,8 +39,9 @@ appservice:
     provisioning:
         # Prefix for the provisioning API paths.
         prefix: /_matrix/provision/v1
-        # Shared secret for authentication. If set to "disable", the provisioning API will be disabled.
-        shared_secret: disable
+        # Shared secret for authentication. If set to "generate", a random secret will be generated,
+        # or if set to "disable", the provisioning API will be disabled.
+        shared_secret: generate
 
     # The unique ID of this appservice.
     id: whatsapp
@@ -55,12 +58,14 @@ appservice:
     as_token: "This value is generated when generating the registration"
     hs_token: "This value is generated when generating the registration"
 
+# Prometheus config.
 metrics:
     # Enable prometheus metrics?
     enabled: false
     # IP and port where the metrics listener should be. The path is always /metrics
     listen: 127.0.0.1:8001
 
+# Config for things that are directly sent to WhatsApp.
 whatsapp:
     # Device name that's shown in the "WhatsApp Web" section in the mobile app.
     os_name: Mautrix-WhatsApp bridge
@@ -90,6 +95,8 @@ bridge:
     # Since WhatsApp does not support reactions, should a warning notice be sent to the Matrix room when a user reacts to a message?
     reaction_notices: true
 
+    portal_message_buffer: 128
+
     # Settings for handling history sync payloads. These settings only apply right after login,
     # because the phone only sends the history sync data once, and there's no way to re-request it
     # (other than logging out and back in again).
@@ -106,6 +113,7 @@ bridge:
         # Use double puppets for backfilling?
         # In order to use this, the double puppets must be in the appservice's user ID namespace
         # (because the bridge can't use the double puppet access token with batch sending).
+        # This only affects double puppets on the local server, double puppets on other servers will never be used.
         double_puppet_backfill: false
         # Should the bridge request a full sync from the phone when logging in?
         # This bumps the size of history syncs from 3 months to 1 year.
@@ -126,12 +134,18 @@ bridge:
     # Existing users won't be affected when these are changed.
     default_bridge_receipts: true
     default_bridge_presence: true
-    # Shared secret for https://github.com/devture/matrix-synapse-shared-secret-auth
+    # Servers to always allow double puppeting from
+    double_puppet_server_map:
+        example.com: https://example.com
+    # Allow using double puppeting from any server with a valid client .well-known file.
+    double_puppet_allow_discovery: false
+    # Shared secrets for https://github.com/devture/matrix-synapse-shared-secret-auth
     #
     # If set, double puppeting will be enabled automatically for local users
     # instead of users having to find an access token and run `login-matrix`
     # manually.
-    login_shared_secret: null
+    login_shared_secret_map:
+        example.com: foobar
 
     # Should the bridge explicitly set the avatar and room name for private chat portal rooms?
     private_chat_portal_meta: false
@@ -153,21 +167,18 @@ bridge:
     # Should WhatsApp status messages be bridged into a Matrix room?
     # Disabling this won't affect already created status broadcast rooms.
     enable_status_broadcast: true
-
     # Should the bridge use thumbnails from WhatsApp?
     # They're disabled by default due to very low resolution.
     whatsapp_thumbnail: false
-
     # Allow invite permission for user. User can invite any bots to room with whatsapp
     # users (private chat and groups)
     allow_user_invite: false
-
-    # The prefix for commands. Only required in non-management rooms.
-    command_prefix: "!wa"
-
     # Whether or not created rooms should have federation enabled.
     # If false, created portal rooms will never be federated.
     federate_rooms: true
+
+    # The prefix for commands. Only required in non-management rooms.
+    command_prefix: "!wa"
 
     # Messages sent upon joining a management room.
     # Markdown is supported. The defaults are listed below.
@@ -179,7 +190,7 @@ bridge:
         # Sent when joining a management room and the user is not logged in.
         welcome_unconnected: "Use `help` for help or `login` to log in."
         # Optional extra text sent when joining a management room.
-        # additional_help: "This would be some additional text in case you need it."
+        additional_help: ""
 
     # End-to-bridge encryption support options.
     #
@@ -218,6 +229,7 @@ bridge:
         "example.com": user
         "@admin:example.com": admin
 
+    # Settings for relay mode
     relay:
         # Whether relay mode should be allowed. If allowed, `!wa set-relay` can be used to turn any
         # authenticated user into a relaybot for that chat.
@@ -243,11 +255,11 @@ logging:
     # Set this to null to disable logging to file.
     file_name_format: "{{.Date}}-{{.Index}}.log"
     # Date format for file names in the Go time format: https://golang.org/pkg/time/#pkg-constants
-    file_date_format: 2006-01-02
+    file_date_format: "2006-01-02"
     # Log file permissions.
-    file_mode: 0600
+    file_mode: 0o600
     # Timestamp format for log entries in the Go time format.
-    timestamp_format: Jan _2, 2006 15:04:05
+    timestamp_format: "Jan _2, 2006 15:04:05"
     # Minimum severity for log messages printed to stdout/stderr. This doesn't affect the log file.
     # Options: debug, info, warn, error, fatal
     print_level: debug
