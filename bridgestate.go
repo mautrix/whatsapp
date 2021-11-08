@@ -56,7 +56,7 @@ const (
 var bridgeHumanErrors = map[BridgeErrorCode]string{
 	WANotLoggedIn:   "You're not logged into WhatsApp",
 	WANotConnected:  "You're not connected to WhatsApp",
-	WAConnecting:    "Trying to reconnect to WhatsApp. Please make sure WhatsApp is running on your phone and connected to the internet.",
+	WAConnecting:    "Reconnecting to WhatsApp...",
 	WAServerTimeout: "The WhatsApp web servers are not responding. The bridge will try to reconnect.",
 }
 
