@@ -162,10 +162,11 @@ func (bridge *Bridge) NewPortal(dbPortal *database.Portal) *Portal {
 const recentlyHandledLength = 100
 
 type fakeMessage struct {
-	Sender types.JID
-	Text   string
-	ID     string
-	Time   time.Time
+	Sender    types.JID
+	Text      string
+	ID        string
+	Time      time.Time
+	Important bool
 }
 
 type PortalMessage struct {
@@ -364,8 +365,12 @@ func (portal *Portal) handleFakeMessage(msg fakeMessage) {
 		portal.log.Debugfln("Not handling %s (fake): user doesn't have double puppeting enabled", msg.ID)
 		return
 	}
+	msgType := event.MsgNotice
+	if msg.Important {
+		msgType = event.MsgText
+	}
 	resp, err := portal.sendMessage(intent, event.EventMessage, &event.MessageEventContent{
-		MsgType: event.MsgText,
+		MsgType: msgType,
 		Body:    msg.Text,
 	}, nil, msg.Time.UnixMilli())
 	if err != nil {

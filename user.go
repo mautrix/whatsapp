@@ -22,6 +22,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 	"sync"
 	"time"
 
@@ -353,9 +354,11 @@ func (user *User) handleCallStart(sender types.JID, id, callType string, ts time
 	}
 	portal.messages <- PortalMessage{
 		fake: &fakeMessage{
-			Sender: sender,
-			Text:   text,
-			ID:     id,
+			Sender:    sender,
+			Text:      text,
+			ID:        id,
+			Time:      ts,
+			Important: true,
 		},
 		source: user,
 	}
@@ -433,6 +436,21 @@ func (user *User) HandleEvent(event interface{}) {
 		user.handleCallStart(v.CallCreator, v.CallID, "", v.Timestamp)
 	case *events.CallOfferNotice:
 		user.handleCallStart(v.CallCreator, v.CallID, v.Type, v.Timestamp)
+	case *events.IdentityChange:
+		puppet := user.bridge.GetPuppetByJID(v.JID)
+		portal := user.GetPortalByJID(v.JID)
+		if len(portal.MXID) > 0 {
+			portal.messages <- PortalMessage{
+				fake: &fakeMessage{
+					Sender:    v.JID,
+					Text:      fmt.Sprintf("Your security code with %s changed.", puppet.Displayname),
+					ID:        strconv.FormatInt(v.Timestamp.Unix(), 10),
+					Time:      v.Timestamp,
+					Important: false,
+				},
+				source: user,
+			}
+		}
 	case *events.CallTerminate, *events.CallRelayLatency, *events.CallAccept, *events.UnknownCallEvent:
 		// ignore
 	case *events.UndecryptableMessage:
