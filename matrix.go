@@ -436,13 +436,16 @@ func (mx *MatrixHandler) HandleReaction(evt *event.Event) {
 	}
 
 	user := mx.bridge.GetUserByMXID(evt.Sender)
-	if user == nil {
+	if user == nil || !user.RelayWhitelisted {
 		return
 	}
 
 	portal := mx.bridge.GetPortalByMXID(evt.RoomID)
-	if portal != nil && (user.Whitelisted || portal.HasRelaybot()) {
-		portal.HandleMatrixReaction(user, evt)
+	if portal != nil && (user.Whitelisted || portal.HasRelaybot()) && mx.bridge.Config.Bridge.ReactionNotices {
+		_, _ = portal.sendMainIntentMessage(&event.MessageEventContent{
+			MsgType: event.MsgNotice,
+			Body:    fmt.Sprintf("\u26a0 Reactions are not yet supported by WhatsApp."),
+		})
 	}
 }
 

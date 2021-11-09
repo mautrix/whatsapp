@@ -92,7 +92,7 @@ bridge:
     delivery_receipts: false
     # Should incoming calls send a message to the Matrix room?
     call_start_notices: true
-    # Since WhatsApp does not support reactions, should a warning notice be sent to the Matrix room when a user reacts to a message?
+    # Should a "reactions not yet supported" warning be sent to the Matrix room when a user reacts to a message?
     reaction_notices: true
 
     portal_message_buffer: 128
