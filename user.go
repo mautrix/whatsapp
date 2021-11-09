@@ -440,10 +440,14 @@ func (user *User) HandleEvent(event interface{}) {
 		puppet := user.bridge.GetPuppetByJID(v.JID)
 		portal := user.GetPortalByJID(v.JID)
 		if len(portal.MXID) > 0 && user.bridge.Config.Bridge.IdentityChangeNotices {
+			text := fmt.Sprintf("Your security code with %s changed.", puppet.Displayname)
+			if v.Implicit {
+				text = fmt.Sprintf("Your security code with %s (device #%d) changed.", puppet.Displayname, v.JID.Device)
+			}
 			portal.messages <- PortalMessage{
 				fake: &fakeMessage{
 					Sender:    v.JID,
-					Text:      fmt.Sprintf("Your security code with %s changed.", puppet.Displayname),
+					Text:      text,
 					ID:        strconv.FormatInt(v.Timestamp.Unix(), 10),
 					Time:      v.Timestamp,
 					Important: false,
