@@ -393,6 +393,14 @@ func (portal *Portal) backfill(source *User, messages []*waProto.WebMessageInfo)
 		} else {
 			continue
 		}
+		if webMsg.GetPushName() != "" && webMsg.GetPushName() != "-" {
+			changed, _, err := source.Client.Store.Contacts.PutPushName(info.Sender, webMsg.GetPushName())
+			if err != nil {
+				source.log.Errorfln("Failed to save push name of %s from historical message in device store: %v", info.Sender, err)
+			} else if changed {
+				source.log.Debugfln("Got push name %s for %s from historical message", webMsg.GetPushName(), info.Sender)
+			}
+		}
 		puppet := portal.getMessagePuppet(source, info)
 		intent := puppet.IntentFor(portal)
 		if intent.IsCustomPuppet && !portal.bridge.Config.CanDoublePuppetBackfill(puppet.CustomMXID) {
@@ -457,7 +465,7 @@ func (portal *Portal) parseWebMessageInfo(webMsg *waProto.WebMessageInfo) *types
 		MessageSource: types.MessageSource{
 			Chat:     portal.Key.JID,
 			IsFromMe: webMsg.GetKey().GetFromMe(),
-			IsGroup:  false,
+			IsGroup:  portal.Key.JID.Server == types.GroupServer,
 		},
 		ID:        webMsg.GetKey().GetId(),
 		PushName:  webMsg.GetPushName(),
