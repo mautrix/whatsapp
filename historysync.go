@@ -394,11 +394,14 @@ func (portal *Portal) backfill(source *User, messages []*waProto.WebMessageInfo)
 			continue
 		}
 		if webMsg.GetPushName() != "" && webMsg.GetPushName() != "-" {
-			changed, _, err := source.Client.Store.Contacts.PutPushName(info.Sender, webMsg.GetPushName())
-			if err != nil {
-				source.log.Errorfln("Failed to save push name of %s from historical message in device store: %v", info.Sender, err)
-			} else if changed {
-				source.log.Debugfln("Got push name %s for %s from historical message", webMsg.GetPushName(), info.Sender)
+			existingContact, _ := source.Client.Store.Contacts.GetContact(info.Sender)
+			if !existingContact.Found || existingContact.PushName == "" {
+				changed, _, err := source.Client.Store.Contacts.PutPushName(info.Sender, webMsg.GetPushName())
+				if err != nil {
+					source.log.Errorfln("Failed to save push name of %s from historical message in device store: %v", info.Sender, err)
+				} else if changed {
+					source.log.Debugfln("Got push name %s for %s from historical message", webMsg.GetPushName(), info.Sender)
+				}
 			}
 		}
 		puppet := portal.getMessagePuppet(source, info)
