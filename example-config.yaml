@@ -92,6 +92,8 @@ bridge:
     delivery_receipts: false
     # Should incoming calls send a message to the Matrix room?
     call_start_notices: true
+    # Should another user's cryptographic identity changing send a message to Matrix?
+    identity_change_notices: false
     # Should a "reactions not yet supported" warning be sent to the Matrix room when a user reacts to a message?
     reaction_notices: true
 

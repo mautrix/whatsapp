@@ -439,7 +439,7 @@ func (user *User) HandleEvent(event interface{}) {
 	case *events.IdentityChange:
 		puppet := user.bridge.GetPuppetByJID(v.JID)
 		portal := user.GetPortalByJID(v.JID)
-		if len(portal.MXID) > 0 {
+		if len(portal.MXID) > 0 && user.bridge.Config.Bridge.IdentityChangeNotices {
 			portal.messages <- PortalMessage{
 				fake: &fakeMessage{
 					Sender:    v.JID,

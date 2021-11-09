@@ -32,10 +32,11 @@ type BridgeConfig struct {
 	UsernameTemplate    string `yaml:"username_template"`
 	DisplaynameTemplate string `yaml:"displayname_template"`
 
-	DeliveryReceipts    bool `yaml:"delivery_receipts"`
-	PortalMessageBuffer int  `yaml:"portal_message_buffer"`
-	CallStartNotices    bool `yaml:"call_start_notices"`
-	ReactionNotices     bool `yaml:"reaction_notices"`
+	DeliveryReceipts      bool `yaml:"delivery_receipts"`
+	PortalMessageBuffer   int  `yaml:"portal_message_buffer"`
+	CallStartNotices      bool `yaml:"call_start_notices"`
+	IdentityChangeNotices bool `yaml:"identity_change_notices"`
+	ReactionNotices       bool `yaml:"reaction_notices"`
 
 	HistorySync struct {
 		CreatePortals        bool  `yaml:"create_portals"`
