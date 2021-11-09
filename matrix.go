@@ -50,6 +50,7 @@ func NewMatrixHandler(bridge *Bridge) *MatrixHandler {
 	bridge.EventProcessor.On(event.EventMessage, handler.HandleMessage)
 	bridge.EventProcessor.On(event.EventEncrypted, handler.HandleEncrypted)
 	bridge.EventProcessor.On(event.EventSticker, handler.HandleMessage)
+	bridge.EventProcessor.On(event.EventReaction, handler.HandleReaction)
 	bridge.EventProcessor.On(event.EventRedaction, handler.HandleRedaction)
 	bridge.EventProcessor.On(event.StateMember, handler.HandleMembership)
 	bridge.EventProcessor.On(event.StateRoomName, handler.HandleRoomMetadata)
@@ -425,6 +426,23 @@ func (mx *MatrixHandler) HandleMessage(evt *event.Event) {
 	portal := mx.bridge.GetPortalByMXID(evt.RoomID)
 	if portal != nil && (user.Whitelisted || portal.HasRelaybot()) {
 		portal.HandleMatrixMessage(user, evt)
+	}
+}
+
+func (mx *MatrixHandler) HandleReaction(evt *event.Event) {
+	defer mx.bridge.Metrics.TrackMatrixEvent(evt.Type)()
+	if mx.shouldIgnoreEvent(evt) {
+		return
+	}
+
+	user := mx.bridge.GetUserByMXID(evt.Sender)
+	if user == nil {
+		return
+	}
+
+	portal := mx.bridge.GetPortalByMXID(evt.RoomID)
+	if portal != nil && (user.Whitelisted || portal.HasRelaybot()) {
+		portal.HandleMatrixReaction(user, evt)
 	}
 }
 
