@@ -1008,7 +1008,7 @@ func (handler *CommandHandler) CommandSync(ce *CommandEvent) {
 		for _, name := range appstate.AllPatchNames {
 			err := ce.User.Client.FetchAppState(name, true, false)
 			if err != nil {
-				ce.Reply("Error syncing app state %s", name)
+				ce.Reply("Error syncing app state %s: %v", name, err)
 			} else if name == appstate.WAPatchCriticalUnblockLow {
 				ce.Reply("Synced app state %s, contact sync running in background", name)
 			} else {
