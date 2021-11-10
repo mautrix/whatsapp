@@ -722,58 +722,32 @@ func (user *User) handleReceipt(receipt *events.Receipt) {
 	if portal == nil || len(portal.MXID) == 0 {
 		return
 	}
-	if receipt.IsFromMe {
-		user.markSelfRead(portal, receipt.MessageID)
-	} else {
-		intent := user.bridge.GetPuppetByJID(receipt.Sender).IntentFor(portal)
-		ok := user.markOtherRead(portal, intent, receipt.MessageID)
-		if !ok {
-			// Message not found, try any previous IDs
-			for i := len(receipt.PreviousIDs) - 1; i >= 0; i-- {
-				ok = user.markOtherRead(portal, intent, receipt.PreviousIDs[i])
-				if ok {
-					break
-				}
-			}
+	// The order of the message ID array depends on the sender's platform, so we just have to find
+	// the last message based on timestamp. Also, timestamps only have second precision, so if
+	// there are many messages at the same second just mark them all as read, because we don't
+	// know which one is last
+	markAsRead := make([]*database.Message, 0, 1)
+	var bestTimestamp time.Time
+	for _, msgID := range receipt.MessageIDs {
+		msg := user.bridge.DB.Message.GetByJID(portal.Key, msgID)
+		if msg == nil || msg.IsFakeMXID() {
+			continue
+		}
+		if msg.Timestamp.After(bestTimestamp) {
+			bestTimestamp = msg.Timestamp
+			markAsRead = append(markAsRead[:0], msg)
+		} else if msg != nil && msg.Timestamp.Equal(bestTimestamp) {
+			markAsRead = append(markAsRead, msg)
 		}
 	}
-}
-
-func (user *User) markOtherRead(portal *Portal, intent *appservice.IntentAPI, messageID types.MessageID) bool {
-	msg := user.bridge.DB.Message.GetByJID(portal.Key, messageID)
-	if msg == nil || msg.IsFakeMXID() {
-		return false
-	}
-
-	err := intent.MarkReadWithContent(portal.MXID, msg.MXID, &CustomReadReceipt{DoublePuppet: intent.IsCustomPuppet})
-	if err != nil {
-		user.log.Warnfln("Failed to mark message %s as read by %s: %v", msg.MXID, intent.UserID, err)
-	}
-	return true
-}
-
-func (user *User) markSelfRead(portal *Portal, messageID types.MessageID) {
-	puppet := user.bridge.GetPuppetByCustomMXID(user.MXID)
-	if puppet == nil || puppet.CustomIntent() == nil {
-		return
-	}
-	var message *database.Message
-	if messageID == "" {
-		message = user.bridge.DB.Message.GetLastInChat(portal.Key)
-		if message == nil {
-			return
+	intent := user.bridge.GetPuppetByJID(receipt.Sender).IntentFor(portal)
+	for _, msg := range markAsRead {
+		err := intent.MarkReadWithContent(portal.MXID, msg.MXID, &CustomReadReceipt{DoublePuppet: intent.IsCustomPuppet})
+		if err != nil {
+			user.log.Warnfln("Failed to mark message %s as read by %s: %v", msg.MXID, intent.UserID, err)
+		} else {
+			user.log.Debugfln("Marked %s as read by %s", msg.MXID, intent.UserID)
 		}
-		user.log.Debugfln("User read chat %s/%s in WhatsApp mobile (last known event: %s/%s)", portal.Key.JID, portal.MXID, message.JID, message.MXID)
-	} else {
-		message = user.bridge.DB.Message.GetByJID(portal.Key, messageID)
-		if message == nil || message.IsFakeMXID() {
-			return
-		}
-		user.log.Debugfln("User read message %s/%s in %s/%s in WhatsApp mobile", message.JID, message.MXID, portal.Key.JID, portal.MXID)
-	}
-	err := puppet.CustomIntent().MarkReadWithContent(portal.MXID, message.MXID, &CustomReadReceipt{DoublePuppet: true})
-	if err != nil {
-		user.log.Warnfln("Failed to bridge own read receipt in %s: %v", portal.Key.JID, err)
 	}
 }
 
@@ -788,7 +762,7 @@ func (user *User) markSelfReadFull(portal *Portal) {
 	}
 	err := puppet.CustomIntent().MarkReadWithContent(portal.MXID, lastMessage.MXID, &CustomReadReceipt{DoublePuppet: true})
 	if err != nil {
-		user.log.Warnfln("Failed to mark %s in %s as read after backfill: %v", lastMessage.MXID, portal.MXID, err)
+		user.log.Warnfln("Failed to mark %s (last message) in %s as read: %v", lastMessage.MXID, portal.MXID, err)
 	}
 }
 
