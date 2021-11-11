@@ -92,23 +92,19 @@ func migrateTable(old *Database, new *Database, table string, columns ...string)
 }
 
 func Migrate(old *Database, new *Database) {
-	err := migrateTable(old, new, "portal", "jid", "receiver", "mxid", "name", "topic", "avatar", "avatar_url", "encrypted")
+	err := migrateTable(old, new, "portal", "jid", "receiver", "mxid", "name", "topic", "avatar", "avatar_url", "encrypted", "first_event_id", "next_batch_id", "relay_user_id")
 	if err != nil {
 		panic(err)
 	}
-	err = migrateTable(old, new, "user", "mxid", "jid", "management_room", "client_id", "client_token", "server_token", "enc_key", "mac_key", "last_connection")
+	err = migrateTable(old, new, "user", "mxid", "management_room", "username", "agent", "device")
 	if err != nil {
 		panic(err)
 	}
-	err = migrateTable(old, new, "puppet", "jid", "avatar", "displayname", "name_quality", "custom_mxid", "access_token", "next_batch", "avatar_url", "enable_presence", "enable_receipts")
+	err = migrateTable(old, new, "puppet", "username", "avatar", "displayname", "name_quality", "custom_mxid", "access_token", "next_batch", "avatar_url", "enable_presence", "enable_receipts")
 	if err != nil {
 		panic(err)
 	}
-	err = migrateTable(old, new, "user_portal", "user_jid", "portal_jid", "portal_receiver", "in_community")
-	if err != nil {
-		panic(err)
-	}
-	err = migrateTable(old, new, "message", "chat_jid", "chat_receiver", "jid", "mxid", "sender", "timestamp", "sent")
+	err = migrateTable(old, new, "message", "chat_jid", "chat_receiver", "jid", "mxid", "sender", "timestamp", "sent", "decryption_error")
 	if err != nil {
 		panic(err)
 	}
@@ -149,6 +145,14 @@ func Migrate(old *Database, new *Database) {
 		panic(err)
 	}
 	err = migrateTable(old, new, "crypto_megolm_outbound_session", "account_id", "room_id", "session_id", "session", "shared", "max_messages", "message_count", "max_age", "created_at", "last_used")
+	if err != nil {
+		panic(err)
+	}
+	err = migrateTable(old, new, "crypto_cross_signing_keys", "user_id", "usage", "key")
+	if err != nil {
+		panic(err)
+	}
+	err = migrateTable(old, new, "crypto_cross_signing_signatures", "signed_user_id", "signed_key", "signer_user_id", "signer_key", "signature")
 	if err != nil {
 		panic(err)
 	}
