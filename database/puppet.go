@@ -70,6 +70,7 @@ func (pq *PuppetQuery) GetByCustomMXID(mxid id.UserID) *Puppet {
 
 func (pq *PuppetQuery) GetAllWithCustomMXID() (puppets []*Puppet) {
 	rows, err := pq.db.Query("SELECT username, avatar, avatar_url, displayname, name_quality, custom_mxid, access_token, next_batch, enable_presence, enable_receipts, first_activity_ts, last_activity_ts FROM puppet WHERE custom_mxid<>''")
+	if err != nil || rows == nil {
 		return nil
 	}
 	defer rows.Close()
