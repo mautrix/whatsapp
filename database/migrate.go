@@ -156,4 +156,45 @@ func Migrate(old *Database, new *Database) {
 	if err != nil {
 		panic(err)
 	}
+	// Migrate whatsmeow tables.
+	err = migrateTable(old, new, "whatsmeow_device", "jid", "registration_id", "noise_key", "identity_key", "signed_pre_key", "signed_pre_key_id", "signed_pre_key_sig", "adv_key", "adv_details", "adv_account_sig", "adv_device_sig", "platform", "business_name", "push_name")
+	if err != nil {
+		panic(err)
+	}
+	err = migrateTable(old, new, "whatsmeow_identity_keys", "our_jid", "their_id", "identity")
+	if err != nil {
+		panic(err)
+	}
+	err = migrateTable(old, new, "whatsmeow_pre_keys", "jid", "key_id", "key", "uploaded")
+	if err != nil {
+		panic(err)
+	}
+	err = migrateTable(old, new, "whatsmeow_sessions", "our_jid", "their_id", "session")
+	if err != nil {
+		panic(err)
+	}
+	err = migrateTable(old, new, "whatsmeow_sender_keys", "our_jid", "chat_id", "sender_id", "sender_key")
+	if err != nil {
+		panic(err)
+	}
+	err = migrateTable(old, new, "whatsmeow_app_state_sync_keys", "jid", "key_id", "key_data", "timestamp", "fingerprint")
+	if err != nil {
+		panic(err)
+	}
+	err = migrateTable(old, new, "whatsmeow_app_state_version", "jid", "name", "version", "hash")
+	if err != nil {
+		panic(err)
+	}
+	err = migrateTable(old, new, "whatsmeow_app_state_mutation_macs", "jid", "name", "version", "index_mac", "value_mac")
+	if err != nil {
+		panic(err)
+	}
+	err = migrateTable(old, new, "whatsmeow_contacts", "our_jid", "their_jid", "first_name", "full_name", "push_name", "business_name")
+	if err != nil {
+		panic(err)
+	}
+	err = migrateTable(old, new, "whatsmeow_chat_settings", "our_jid", "chat_jid", "muted_until", "pinned", "archived")
+	if err != nil {
+		panic(err)
+	}
 }
