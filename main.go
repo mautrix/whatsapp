@@ -65,6 +65,8 @@ var (
 	WAVersion = ""
 	// VersionString is the bridge version, plus commit information. Filled in init() using the build-time values.
 	VersionString = ""
+	URL           = ""
+	Name          = "mautrix-whatsapp"
 )
 
 //go:embed example-config.yaml

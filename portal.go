@@ -467,6 +467,9 @@ func (portal *Portal) handleMessage(source *User, evt *events.Message) {
 		return
 	}
 
+	var sender *Puppet
+	var tsMilli = evt.Info.Timestamp.UnixMilli()
+
 	if evt.Info.IsFromMe {
 		// Ignore tracking activity for our own users
 		sender = nil
@@ -474,14 +477,12 @@ func (portal *Portal) handleMessage(source *User, evt *events.Message) {
 		sender = portal.bridge.GetPuppetByJID(evt.Info.Sender)
 	}
 
-	if sender != nil && message.Info.Timestamp+MaximumMsgLagActivity > uint64(time.Now().Unix()) {
-		sender.UpdateActivityTs(evt.Info.Timestamp.UnixMilli())
+	if sender != nil && tsMilli+MaximumMsgLagActivity > time.Now().Unix() {
+		sender.UpdateActivityTs(tsMilli)
 		portal.bridge.UpdateActivePuppetCount()
 	} else {
 		portal.log.Debugfln("Did not update acitivty for %s, ts %d was too stale", evt.Info.Sender, evt.Info.Timestamp)
 	}
-	return true
-
 	portal.bridge.Metrics.TrackWhatsAppMessage(evt.Info.Timestamp, strings.Split(msgType, " ")[0])
 }
 
