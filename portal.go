@@ -24,7 +24,7 @@ import (
 	"fmt"
 	"html"
 	"image"
-	"image/gif"
+	_ "image/gif"
 	"image/jpeg"
 	"image/png"
 	"io"
@@ -39,6 +39,7 @@ import (
 	"sync"
 	"time"
 
+	"golang.org/x/image/draw"
 	"golang.org/x/image/webp"
 	"google.golang.org/protobuf/proto"
 
@@ -1689,40 +1690,61 @@ func (portal *Portal) convertMediaMessage(intent *appservice.IntentAPI, source *
 	}
 }
 
-func (portal *Portal) downloadThumbnail(content *event.MessageEventContent, id id.EventID) []byte {
-	if len(content.GetInfo().ThumbnailURL) == 0 {
-		return nil
-	}
-	mxc, err := content.GetInfo().ThumbnailURL.Parse()
+const thumbnailMaxSize = 72
+const thumbnailMinSize = 24
+
+func createJPEGThumbnail(source []byte) ([]byte, error) {
+	src, _, err := image.Decode(bytes.NewReader(source))
 	if err != nil {
-		portal.log.Errorln("Malformed thumbnail URL in %s: %v", id, err)
+		return nil, fmt.Errorf("failed to decode thumbnail: %w", err)
 	}
-	thumbnail, err := portal.MainIntent().DownloadBytes(mxc)
-	if err != nil {
-		portal.log.Errorln("Failed to download thumbnail in %s: %v", id, err)
-		return nil
-	}
-	thumbnailType := http.DetectContentType(thumbnail)
+	imageBounds := src.Bounds()
+	width, height := imageBounds.Max.X, imageBounds.Max.Y
 	var img image.Image
-	switch thumbnailType {
-	case "image/png":
-		img, err = png.Decode(bytes.NewReader(thumbnail))
-	case "image/gif":
-		img, err = gif.Decode(bytes.NewReader(thumbnail))
-	case "image/jpeg":
-		return thumbnail
-	default:
-		return nil
+	if width <= thumbnailMaxSize && height <= thumbnailMaxSize {
+		// No need to resize
+		img = src
+	} else {
+		if width == height {
+			width = thumbnailMaxSize
+			height = thumbnailMaxSize
+		} else if width < height {
+			width /= height / thumbnailMaxSize
+			height = thumbnailMaxSize
+		} else {
+			height /= width / thumbnailMaxSize
+			width = thumbnailMaxSize
+		}
+		if width < thumbnailMinSize {
+			width = thumbnailMinSize
+		}
+		if height < thumbnailMinSize {
+			height = thumbnailMinSize
+		}
+		dst := image.NewRGBA(image.Rect(0, 0, width, height))
+		draw.NearestNeighbor.Scale(dst, dst.Rect, src, src.Bounds(), draw.Over, nil)
+		img = dst
 	}
+
 	var buf bytes.Buffer
-	err = jpeg.Encode(&buf, img, &jpeg.Options{
-		Quality: jpeg.DefaultQuality,
-	})
+	err = jpeg.Encode(&buf, img, &jpeg.Options{Quality: jpeg.DefaultQuality})
 	if err != nil {
-		portal.log.Errorln("Failed to re-encode thumbnail in %s: %v", id, err)
-		return nil
+		return nil, fmt.Errorf("failed to re-encode thumbnail: %w", err)
 	}
-	return buf.Bytes()
+	return buf.Bytes(), nil
+}
+
+func (portal *Portal) downloadThumbnail(original []byte, thumbnailURL id.ContentURIString, eventID id.EventID) ([]byte, error) {
+	if len(thumbnailURL) == 0 {
+		// just fall back to making thumbnail of original
+	} else if mxc, err := thumbnailURL.Parse(); err != nil {
+		portal.log.Warnfln("Malformed thumbnail URL in %s: %v (falling back to generating thumbnail from source)", eventID, err)
+	} else if thumbnail, err := portal.MainIntent().DownloadBytes(mxc); err != nil {
+		portal.log.Warnfln("Failed to download thumbnail in %s: %v (falling back to generating thumbnail from source)", eventID, err)
+	} else {
+		return createJPEGThumbnail(thumbnail)
+	}
+	return createJPEGThumbnail(original)
 }
 
 func (portal *Portal) convertWebPtoPNG(webpImage []byte) ([]byte, error) {
@@ -1838,11 +1860,21 @@ func (portal *Portal) preprocessMatrixMedia(sender *User, relaybotFormatted bool
 		return nil
 	}
 
+	// Audio doesn't have thumbnails
+	var thumbnail []byte
+	if mediaType != whatsmeow.MediaAudio {
+		thumbnail, err = portal.downloadThumbnail(data, content.GetInfo().ThumbnailURL, eventID)
+		// Ignore format errors for non-image files, we don't care about those thumbnails
+		if err != nil && (!errors.Is(err, image.ErrFormat) || mediaType == whatsmeow.MediaImage) {
+			portal.log.Errorfln("Failed to generate thumbnail for %s: %v", eventID, err)
+		}
+	}
+
 	return &MediaUpload{
 		UploadResponse: uploadResp,
 		Caption:        caption,
 		MentionedJIDs:  mentionedJIDs,
-		Thumbnail:      portal.downloadThumbnail(content, eventID),
+		Thumbnail:      thumbnail,
 		FileLength:     len(data),
 	}
 }
@@ -2029,6 +2061,7 @@ func (portal *Portal) convertMatrixMessage(sender *User, evt *event.Event) (*waP
 		}
 		msg.DocumentMessage = &waProto.DocumentMessage{
 			ContextInfo:   &ctxInfo,
+			JpegThumbnail: media.Thumbnail,
 			Url:           &media.URL,
 			Title:         &content.Body,
 			FileName:      &content.Body,
