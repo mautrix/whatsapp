@@ -467,7 +467,6 @@ func (portal *Portal) handleMessage(source *User, evt *events.Message) {
 		return
 	}
 
-
 	if evt.Info.IsFromMe {
 		// Ignore tracking activity for our own users
 		sender = nil
@@ -2121,17 +2120,11 @@ func (portal *Portal) generateMessageInfo(sender *User) *types.MessageInfo {
 }
 
 func (portal *Portal) HandleMatrixMessage(sender *User, evt *event.Event) {
-<<<<<<< HEAD
 	if portal.bridge.PuppetActivity.isBlocked {
 		portal.log.Warnln("Bridge is blocking messages")
 		return
 	}
-	if !portal.HasRelaybot() &&
-		((portal.IsPrivateChat() && sender.JID != portal.Key.Receiver) ||
-			portal.sendMatrixConnectionError(sender, evt.ID)) {
-=======
 	if !portal.canBridgeFrom(sender, "message") {
->>>>>>> v0.2.1
 		return
 	}
 	portal.log.Debugfln("Received event %s from %s", evt.ID, evt.Sender)
