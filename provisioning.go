@@ -1,5 +1,5 @@
 // mautrix-whatsapp - A Matrix-WhatsApp puppeting bridge.
-// Copyright (C) 2020 Tulir Asokan
+// Copyright (C) 2021 Tulir Asokan
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as published by
@@ -29,7 +29,7 @@ import (
 
 	"github.com/gorilla/websocket"
 
-	"github.com/Rhymen/go-whatsapp"
+	"go.mau.fi/whatsmeow"
 
 	log "maunium.net/go/maulogger/v2"
 
@@ -50,11 +50,13 @@ func (prov *ProvisioningAPI) Init() {
 	r.HandleFunc("/login", prov.Login).Methods(http.MethodGet)
 	r.HandleFunc("/logout", prov.Logout).Methods(http.MethodPost)
 	r.HandleFunc("/delete_session", prov.DeleteSession).Methods(http.MethodPost)
-	r.HandleFunc("/delete_connection", prov.DeleteConnection).Methods(http.MethodPost)
 	r.HandleFunc("/disconnect", prov.Disconnect).Methods(http.MethodPost)
 	r.HandleFunc("/reconnect", prov.Reconnect).Methods(http.MethodPost)
 	prov.bridge.AS.Router.HandleFunc("/_matrix/app/com.beeper.asmux/ping", prov.BridgeStatePing).Methods(http.MethodPost)
 	prov.bridge.AS.Router.HandleFunc("/_matrix/app/com.beeper.bridge_state", prov.BridgeStatePing).Methods(http.MethodPost)
+
+	// Deprecated, just use /disconnect
+	r.HandleFunc("/delete_connection", prov.Disconnect).Methods(http.MethodPost)
 }
 
 type responseWrap struct {
@@ -122,7 +124,7 @@ type Response struct {
 
 func (prov *ProvisioningAPI) DeleteSession(w http.ResponseWriter, r *http.Request) {
 	user := r.Context().Value("user").(*User)
-	if user.Session == nil && user.Conn == nil {
+	if user.Session == nil && user.Client == nil {
 		jsonResponse(w, http.StatusNotFound, Error{
 			Error:   "Nothing to purge: no session information stored and no active connection.",
 			ErrCode: "no session",
@@ -130,128 +132,43 @@ func (prov *ProvisioningAPI) DeleteSession(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	user.DeleteConnection()
-	user.SetSession(nil)
+	user.DeleteSession()
 	jsonResponse(w, http.StatusOK, Response{true, "Session information purged"})
-}
-
-func (prov *ProvisioningAPI) DeleteConnection(w http.ResponseWriter, r *http.Request) {
-	user := r.Context().Value("user").(*User)
-	if user.Conn == nil {
-		jsonResponse(w, http.StatusNotFound, Error{
-			Error:   "You don't have a WhatsApp connection.",
-			ErrCode: "not connected",
-		})
-		return
-	}
-	user.DeleteConnection()
-	jsonResponse(w, http.StatusOK, Response{true, "Disconnected from WhatsApp and connection deleted"})
+	user.removeFromJIDMap(StateLoggedOut)
 }
 
 func (prov *ProvisioningAPI) Disconnect(w http.ResponseWriter, r *http.Request) {
 	user := r.Context().Value("user").(*User)
-	if user.Conn == nil {
+	if user.Client == nil {
 		jsonResponse(w, http.StatusNotFound, Error{
 			Error:   "You don't have a WhatsApp connection.",
 			ErrCode: "no connection",
 		})
 		return
 	}
-	err := user.Conn.Disconnect()
-	if err == whatsapp.ErrNotConnected {
-		jsonResponse(w, http.StatusNotFound, Error{
-			Error:   "You were not connected",
-			ErrCode: "not connected",
-		})
-		return
-	} else if err != nil {
-		user.log.Warnln("Error while disconnecting:", err)
-		jsonResponse(w, http.StatusInternalServerError, Error{
-			Error:   fmt.Sprintf("Unknown error while disconnecting: %v", err),
-			ErrCode: err.Error(),
-		})
-		return
-	}
-	user.bridge.Metrics.TrackConnectionState(user.JID, false)
+	user.DeleteConnection()
 	jsonResponse(w, http.StatusOK, Response{true, "Disconnected from WhatsApp"})
+	user.sendBridgeState(BridgeState{StateEvent: StateBadCredentials, Error: WANotConnected})
 }
 
 func (prov *ProvisioningAPI) Reconnect(w http.ResponseWriter, r *http.Request) {
 	user := r.Context().Value("user").(*User)
-	if user.Conn == nil {
+	if user.Client == nil {
 		if user.Session == nil {
 			jsonResponse(w, http.StatusForbidden, Error{
 				Error:   "No existing connection and no session. Please log in first.",
 				ErrCode: "no session",
 			})
 		} else {
-			user.Connect(false)
-			jsonResponse(w, http.StatusOK, Response{true, "Created connection to WhatsApp."})
+			user.Connect()
+			jsonResponse(w, http.StatusAccepted, Response{true, "Created connection to WhatsApp."})
 		}
-		return
-	}
-
-	user.log.Debugln("Received /reconnect request, disconnecting")
-	wasConnected := true
-	err := user.Conn.Disconnect()
-	if err == whatsapp.ErrNotConnected {
-		wasConnected = false
-	} else if err != nil {
-		user.log.Warnln("Error while disconnecting:", err)
-	}
-
-	user.log.Debugln("Restoring session for /reconnect")
-	err = user.Conn.Restore(true, r.Context())
-	user.log.Debugfln("Restore session for /reconnect responded with %v", err)
-	if err == whatsapp.ErrInvalidSession {
-		if user.Session != nil {
-			user.log.Debugln("Got invalid session error when reconnecting, but user has session. Retrying using RestoreWithSession()...")
-			user.Conn.SetSession(*user.Session)
-			err = user.Conn.Restore(true, r.Context())
-		} else {
-			jsonResponse(w, http.StatusForbidden, Error{
-				Error:   "You're not logged in",
-				ErrCode: "not logged in",
-			})
-			return
-		}
-	}
-	if err == whatsapp.ErrLoginInProgress {
-		jsonResponse(w, http.StatusConflict, Error{
-			Error:   "A login or reconnection is already in progress.",
-			ErrCode: "login in progress",
-		})
-		return
-	} else if err == whatsapp.ErrAlreadyLoggedIn {
-		jsonResponse(w, http.StatusConflict, Error{
-			Error:   "You were already connected.",
-			ErrCode: err.Error(),
-		})
-		return
-	}
-	if err != nil {
-		user.log.Warnln("Error while reconnecting:", err)
-		jsonResponse(w, http.StatusInternalServerError, Error{
-			Error:   fmt.Sprintf("Unknown error while reconnecting: %v", err),
-			ErrCode: err.Error(),
-		})
-		user.log.Debugln("Disconnecting due to failed session restore in reconnect command...")
-		err = user.Conn.Disconnect()
-		if err != nil {
-			user.log.Errorln("Failed to disconnect after failed session restore in reconnect command:", err)
-		}
-		return
-	}
-	user.ConnectionErrors = 0
-	user.PostLogin()
-
-	var msg string
-	if wasConnected {
-		msg = "Reconnected successfully."
 	} else {
-		msg = "Connected successfully."
+		user.DeleteConnection()
+		user.sendBridgeState(BridgeState{StateEvent: StateTransientDisconnect, Error: WANotConnected})
+		user.Connect()
+		jsonResponse(w, http.StatusAccepted, Response{true, "Restarted connection to WhatsApp"})
 	}
-
-	jsonResponse(w, http.StatusOK, Response{true, msg})
 }
 
 func (prov *ProvisioningAPI) Ping(w http.ResponseWriter, r *http.Request) {
@@ -259,39 +176,25 @@ func (prov *ProvisioningAPI) Ping(w http.ResponseWriter, r *http.Request) {
 	wa := map[string]interface{}{
 		"has_session":     user.Session != nil,
 		"management_room": user.ManagementRoom,
-		"jid":             user.JID,
 		"conn":            nil,
-		"ping":            nil,
 	}
-	if user.Conn != nil {
+	if !user.JID.IsEmpty() {
+		wa["jid"] = user.JID.String()
+		wa["phone"] = "+" + user.JID.User
+		wa["device"] = user.JID.Device
+	}
+	if user.Client != nil {
 		wa["conn"] = map[string]interface{}{
-			"is_connected":         user.Conn.IsConnected(),
-			"is_logged_in":         user.Conn.IsLoggedIn(),
-			"is_login_in_progress": user.Conn.IsLoginInProgress(),
+			"is_connected": user.Client.IsConnected(),
+			"is_logged_in": user.Client.IsLoggedIn,
 		}
-		user.log.Debugln("Pinging WhatsApp mobile due to /ping API request")
-		err := user.Conn.AdminTest()
-		var errStr string
-		if err == whatsapp.ErrPingFalse {
-			user.log.Debugln("Forwarding ping false error from provisioning API to HandleError")
-			go user.HandleError(err)
-		}
-		if err != nil {
-			errStr = err.Error()
-		}
-		wa["ping"] = map[string]interface{}{
-			"ok":  err == nil,
-			"err": errStr,
-		}
-		user.log.Debugfln("Admin test response for /ping: %v (conn: %t, login: %t, in progress: %t)",
-			err, user.Conn.IsConnected(), user.Conn.IsLoggedIn(), user.Conn.IsLoginInProgress())
 	}
 	resp := map[string]interface{}{
-		"mxid":                 user.MXID,
-		"admin":                user.Admin,
-		"whitelisted":          user.Whitelisted,
-		"relaybot_whitelisted": user.RelaybotWhitelisted,
-		"whatsapp":             wa,
+		"mxid":              user.MXID,
+		"admin":             user.Admin,
+		"whitelisted":       user.Whitelisted,
+		"relay_whitelisted": user.RelayWhitelisted,
+		"whatsapp":          wa,
 	}
 	jsonResponse(w, http.StatusOK, resp)
 }
@@ -314,7 +217,7 @@ func (prov *ProvisioningAPI) Logout(w http.ResponseWriter, r *http.Request) {
 
 	force := strings.ToLower(r.URL.Query().Get("force")) != "false"
 
-	if user.Conn == nil {
+	if user.Client == nil {
 		if !force {
 			jsonResponse(w, http.StatusNotFound, Error{
 				Error:   "You're not connected",
@@ -322,7 +225,7 @@ func (prov *ProvisioningAPI) Logout(w http.ResponseWriter, r *http.Request) {
 			})
 		}
 	} else {
-		err := user.Conn.Logout()
+		err := user.Client.Logout()
 		if err != nil {
 			user.log.Warnln("Error while logging out:", err)
 			if !force {
@@ -332,16 +235,15 @@ func (prov *ProvisioningAPI) Logout(w http.ResponseWriter, r *http.Request) {
 				})
 				return
 			}
+		} else {
+			user.Session = nil
 		}
 		user.DeleteConnection()
 	}
 
 	user.bridge.Metrics.TrackConnectionState(user.JID, false)
 	user.removeFromJIDMap(StateLoggedOut)
-
-	// TODO this causes a foreign key violation, which should be fixed
-	//ce.User.JID = ""
-	user.SetSession(nil)
+	user.DeleteSession()
 	jsonResponse(w, http.StatusOK, Response{true, "Logged out successfully."})
 }
 
@@ -361,26 +263,10 @@ func (prov *ProvisioningAPI) Login(w http.ResponseWriter, r *http.Request) {
 		prov.log.Errorln("Failed to upgrade connection to websocket:", err)
 		return
 	}
-	defer c.Close()
-
-	if !user.Connect(true) {
-		user.log.Debugln("Connect() returned false, assuming error was logged elsewhere and canceling login.")
-		_ = c.WriteJSON(Error{
-			Error:   "Failed to connect to WhatsApp",
-			ErrCode: "connection error",
-		})
-		return
-	}
-
-	qrChan := make(chan string, 3)
-	go func() {
-		for code := range qrChan {
-			if code == "stop" {
-				return
-			}
-			_ = c.WriteJSON(map[string]interface{}{
-				"code": code,
-			})
+	defer func() {
+		err := c.Close()
+		if err != nil {
+			user.log.Debugln("Error closing websocket:", err)
 		}
 	}()
 
@@ -400,40 +286,63 @@ func (prov *ProvisioningAPI) Login(w http.ResponseWriter, r *http.Request) {
 		return nil
 	})
 
-	user.log.Debugln("Starting login via provisioning API")
-	session, jid, err := user.Conn.Login(qrChan, ctx)
-	qrChan <- "stop"
+	qrChan, err := user.Login(ctx)
 	if err != nil {
-		var msg string
-		if errors.Is(err, whatsapp.ErrAlreadyLoggedIn) {
-			msg = "You're already logged in"
-		} else if errors.Is(err, whatsapp.ErrLoginInProgress) {
-			msg = "You have a login in progress already."
-		} else if errors.Is(err, whatsapp.ErrLoginTimedOut) {
-			msg = "QR code scan timed out. Please try again."
-		} else if errors.Is(err, whatsapp.ErrInvalidWebsocket) {
-			msg = "WhatsApp connection error. Please try again."
-			// TODO might need to make sure it reconnects?
-		} else if errors.Is(err, whatsapp.ErrMultiDeviceNotSupported) {
-			msg = "WhatsApp multi-device is not currently supported. Please disable it and try again."
+		user.log.Errorf("Failed to log in from provisioning API:", err)
+		if errors.Is(err, ErrAlreadyLoggedIn) {
+			go user.Connect()
+			_ = c.WriteJSON(Error{
+				Error:   "You're already logged into WhatsApp",
+				ErrCode: "already logged in",
+			})
 		} else {
-			msg = fmt.Sprintf("Unknown error while logging in: %v", err)
+			_ = c.WriteJSON(Error{
+				Error:   "Failed to connect to WhatsApp",
+				ErrCode: "connection error",
+			})
 		}
-		user.log.Warnln("Failed to log in:", err)
-		_ = c.WriteJSON(Error{
-			Error:   msg,
-			ErrCode: err.Error(),
-		})
-		return
 	}
-	user.log.Debugln("Successful login as", jid, "via provisioning API")
-	user.ConnectionErrors = 0
-	user.JID = strings.Replace(jid, whatsapp.OldUserSuffix, whatsapp.NewUserSuffix, 1)
-	user.addToJIDMap()
-	user.SetSession(&session)
-	_ = c.WriteJSON(map[string]interface{}{
-		"success": true,
-		"jid":     user.JID,
-	})
-	user.PostLogin()
+	user.log.Debugln("Started login via provisioning API")
+
+	for {
+		select {
+		case evt := <-qrChan:
+			switch evt {
+			case whatsmeow.QRChannelSuccess:
+				jid := user.Client.Store.ID
+				user.log.Debugln("Successful login as", jid, "via provisioning API")
+				_ = c.WriteJSON(map[string]interface{}{
+					"success": true,
+					"jid":     jid,
+					"phone":   fmt.Sprintf("+%s", jid.User),
+				})
+			case whatsmeow.QRChannelTimeout:
+				user.log.Debugln("Login via provisioning API timed out")
+				_ = c.WriteJSON(Error{
+					Error:   "QR code scan timed out. Please try again.",
+					ErrCode: "login timed out",
+				})
+			case whatsmeow.QRChannelErrUnexpectedEvent:
+				user.log.Debugln("Login via provisioning API failed due to unexpected event")
+				_ = c.WriteJSON(Error{
+					Error:   "Got unexpected event while waiting for QRs, perhaps you're already logged in?",
+					ErrCode: "unexpected event",
+				})
+			case whatsmeow.QRChannelScannedWithoutMultidevice:
+				_ = c.WriteJSON(Error{
+					Error:   "Please enable the WhatsApp multidevice beta and scan the QR code again.",
+					ErrCode: "multidevice not enabled",
+				})
+				continue
+			default:
+				_ = c.WriteJSON(map[string]interface{}{
+					"code": string(evt),
+				})
+				continue
+			}
+			return
+		case <-ctx.Done():
+			return
+		}
+	}
 }

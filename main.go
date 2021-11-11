@@ -1,5 +1,5 @@
 // mautrix-whatsapp - A Matrix-WhatsApp puppeting bridge.
-// Copyright (C) 2020 Tulir Asokan
+// Copyright (C) 2021 Tulir Asokan
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as published by
@@ -17,16 +17,23 @@
 package main
 
 import (
+	_ "embed"
 	"errors"
 	"fmt"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
 	"time"
 
-	"github.com/Rhymen/go-whatsapp"
+	"google.golang.org/protobuf/proto"
+
+	waProto "go.mau.fi/whatsmeow/binary/proto"
+	"go.mau.fi/whatsmeow/store"
+	"go.mau.fi/whatsmeow/store/sqlstore"
+	"go.mau.fi/whatsmeow/types"
 
 	flag "maunium.net/go/mauflag"
 	log "maunium.net/go/maulogger/v2"
@@ -43,20 +50,25 @@ import (
 
 const ONE_DAY_S = 24 * 60 * 60
 
+// Information to find out exactly which commit the bridge was built from.
+// These are filled at build time with the -X linker flag.
 var (
-	// These are static
-	Name = "mautrix-whatsapp"
-	URL  = "https://github.com/mautrix/whatsapp"
-	// This is changed when making a release
-	Version = "0.1.9-mod-1"
-	// This is filled by init()
-	WAVersion     = ""
-	VersionString = ""
-	// These are filled at build time with the -X linker flag
 	Tag       = "unknown"
 	Commit    = "unknown"
 	BuildTime = "unknown"
 )
+
+var (
+	// Version is the version number of the bridge. Changed manually when making a release.
+	Version = "0.2.1-mod-1"
+	// WAVersion is the version number exposed to WhatsApp. Filled in init()
+	WAVersion = ""
+	// VersionString is the bridge version, plus commit information. Filled in init() using the build-time values.
+	VersionString = ""
+)
+
+//go:embed example-config.yaml
+var ExampleConfig string
 
 func init() {
 	if len(Tag) > 0 && Tag[0] == 'v' {
@@ -76,11 +88,12 @@ func init() {
 	mautrix.DefaultUserAgent = fmt.Sprintf("mautrix-whatsapp/%s %s", Version, mautrix.DefaultUserAgent)
 	WAVersion = strings.FieldsFunc(Version, func(r rune) bool { return r == '-' || r == '+' })[0]
 	VersionString = fmt.Sprintf("%s %s (%s)", Name, Version, BuildTime)
+
+	config.ExampleConfig = ExampleConfig
 }
 
 var configPath = flag.MakeFull("c", "config", "The path to your config file.", "config.yaml").String()
-
-//var baseConfigPath = flag.MakeFull("b", "base-config", "The path to the example config file.", "example-config.yaml").String()
+var dontSaveConfig = flag.MakeFull("n", "no-update", "Don't save updated config to disk.", "false").Bool()
 var registrationPath = flag.MakeFull("r", "registration", "The path where to save the appservice registration.", "registration.yaml").String()
 var generateRegistration = flag.MakeFull("g", "generate-registration", "Generate registration and quit.", "false").Bool()
 var version = flag.MakeFull("v", "version", "View bridge version and quit.", "false").Bool()
@@ -89,6 +102,11 @@ var migrateFrom = flag.Make().LongKey("migrate-db").Usage("Source database type 
 var wantHelp, _ = flag.MakeHelpFlag()
 
 func (bridge *Bridge) GenerateRegistration() {
+	if *dontSaveConfig {
+		// We need to save the generated as_token and hs_token in the config
+		_, _ = fmt.Fprintln(os.Stderr, "--no-update is not compatible with --generate-registration")
+		os.Exit(5)
+	}
 	reg, err := bridge.Config.NewRegistration()
 	if err != nil {
 		_, _ = fmt.Fprintln(os.Stderr, "Failed to generate registration:", err)
@@ -101,7 +119,10 @@ func (bridge *Bridge) GenerateRegistration() {
 		os.Exit(21)
 	}
 
-	err = bridge.Config.Save(*configPath)
+	err = config.Mutate(*configPath, func(helper *config.UpgradeHelper) {
+		helper.Set(config.Str, bridge.Config.AppService.ASToken, "appservice", "as_token")
+		helper.Set(config.Str, bridge.Config.AppService.HSToken, "appservice", "hs_token")
+	})
 	if err != nil {
 		_, _ = fmt.Fprintln(os.Stderr, "Failed to save config:", err)
 		os.Exit(22)
@@ -147,20 +168,20 @@ type Bridge struct {
 	Provisioning   *ProvisioningAPI
 	Bot            *appservice.IntentAPI
 	Formatter      *Formatter
-	Relaybot       *User
 	Crypto         Crypto
 	Metrics        *MetricsHandler
 	PuppetActivity *PuppetActivity
+	WAContainer    *sqlstore.Container
 
 	usersByMXID         map[id.UserID]*User
-	usersByJID          map[whatsapp.JID]*User
+	usersByUsername     map[string]*User
 	usersLock           sync.Mutex
 	managementRooms     map[id.RoomID]*User
 	managementRoomsLock sync.Mutex
 	portalsByMXID       map[id.RoomID]*Portal
 	portalsByJID        map[database.PortalKey]*Portal
 	portalsLock         sync.Mutex
-	puppets             map[whatsapp.JID]*Puppet
+	puppets             map[types.JID]*Puppet
 	puppetsByCustomMXID map[id.UserID]*Puppet
 	puppetsLock         sync.Mutex
 }
@@ -174,30 +195,6 @@ type Crypto interface {
 	Init() error
 	Start()
 	Stop()
-}
-
-func NewBridge() *Bridge {
-	bridge := &Bridge{
-		usersByMXID:         make(map[id.UserID]*User),
-		usersByJID:          make(map[whatsapp.JID]*User),
-		managementRooms:     make(map[id.RoomID]*User),
-		portalsByMXID:       make(map[id.RoomID]*Portal),
-		portalsByJID:        make(map[database.PortalKey]*Portal),
-		puppets:             make(map[whatsapp.JID]*Puppet),
-		puppetsByCustomMXID: make(map[id.UserID]*Puppet),
-		PuppetActivity: &PuppetActivity{
-			currentUserCount: 0,
-			isBlocked:        false,
-		},
-	}
-
-	var err error
-	bridge.Config, err = config.Load(*configPath)
-	if err != nil {
-		_, _ = fmt.Fprintln(os.Stderr, "Failed to load config:", err)
-		os.Exit(10)
-	}
-	return bridge
 }
 
 func (bridge *Bridge) ensureConnection() {
@@ -217,66 +214,6 @@ func (bridge *Bridge) ensureConnection() {
 			break
 		}
 	}
-}
-
-func (bridge *Bridge) Init() {
-	var err error
-
-	bridge.AS, err = bridge.Config.MakeAppService()
-	if err != nil {
-		_, _ = fmt.Fprintln(os.Stderr, "Failed to initialize AppService:", err)
-		os.Exit(11)
-	}
-	_, _ = bridge.AS.Init()
-	bridge.Bot = bridge.AS.BotIntent()
-	bridge.Log = log.Create()
-	bridge.Config.Logging.Configure(bridge.Log)
-	log.DefaultLogger = bridge.Log.(*log.BasicLogger)
-	if len(bridge.Config.Logging.FileNameFormat) > 0 {
-		err = log.OpenFile()
-		if err != nil {
-			_, _ = fmt.Fprintln(os.Stderr, "Failed to open log file:", err)
-			os.Exit(12)
-		}
-	}
-	bridge.AS.Log = log.Sub("Matrix")
-	bridge.Log.Infoln("Initializing", VersionString)
-
-	bridge.Log.Debugln("Initializing database connection")
-	bridge.DB, err = database.New(bridge.Config.AppService.Database.Type, bridge.Config.AppService.Database.URI, bridge.Log)
-	if err != nil {
-		bridge.Log.Fatalln("Failed to initialize database connection:", err)
-		os.Exit(14)
-	}
-
-	if len(bridge.Config.AppService.StateStore) > 0 && bridge.Config.AppService.StateStore != "./mx-state.json" {
-		version, err := upgrades.GetVersion(bridge.DB.DB)
-		if version < 0 && err == nil {
-			bridge.Log.Fatalln("Non-standard state store path. Please move the state store to ./mx-state.json " +
-				"and update the config. The state store will be migrated into the db on the next launch.")
-			os.Exit(18)
-		}
-	}
-
-	bridge.Log.Debugln("Initializing state store")
-	bridge.StateStore = database.NewSQLStateStore(bridge.DB)
-	bridge.AS.StateStore = bridge.StateStore
-
-	bridge.DB.SetMaxOpenConns(bridge.Config.AppService.Database.MaxOpenConns)
-	bridge.DB.SetMaxIdleConns(bridge.Config.AppService.Database.MaxIdleConns)
-
-	ss := bridge.Config.AppService.Provisioning.SharedSecret
-	if len(ss) > 0 && ss != "disable" {
-		bridge.Provisioning = &ProvisioningAPI{bridge: bridge}
-	}
-
-	bridge.Log.Debugln("Initializing Matrix event processor")
-	bridge.EventProcessor = appservice.NewEventProcessor(bridge.AS)
-	bridge.Log.Debugln("Initializing Matrix event handler")
-	bridge.MatrixHandler = NewMatrixHandler(bridge)
-	bridge.Formatter = NewFormatter(bridge)
-	bridge.Crypto = NewCryptoHelper(bridge)
-	bridge.Metrics = NewMetricsHandler(bridge.Config.Metrics.Listen, bridge.Log.Sub("Metrics"), bridge.DB, bridge.PuppetActivity)
 }
 
 func (mh *Bridge) UpdateActivePuppetCount() {
@@ -306,7 +243,77 @@ func (mh *Bridge) UpdateActivePuppetCount() {
 		mh.Log.Debugfln("Current active puppet count is %d (max %d)", activePuppetCount, mh.Config.AppService.Limits.MaxPuppetLimit)
 		mh.PuppetActivity.currentUserCount = activePuppetCount
 	}
+}
 
+func (bridge *Bridge) Init() {
+	var err error
+
+	bridge.AS, err = bridge.Config.MakeAppService()
+	if err != nil {
+		_, _ = fmt.Fprintln(os.Stderr, "Failed to initialize AppService:", err)
+		os.Exit(11)
+	}
+	_, _ = bridge.AS.Init()
+	bridge.Log = log.Create()
+	bridge.Config.Logging.Configure(bridge.Log)
+	log.DefaultLogger = bridge.Log.(*log.BasicLogger)
+	if len(bridge.Config.Logging.FileNameFormat) > 0 {
+		err = log.OpenFile()
+		if err != nil {
+			_, _ = fmt.Fprintln(os.Stderr, "Failed to open log file:", err)
+			os.Exit(12)
+		}
+	}
+	bridge.AS.Log = log.Sub("Matrix")
+	bridge.Bot = bridge.AS.BotIntent()
+	bridge.Log.Infoln("Initializing", VersionString)
+
+	bridge.Log.Debugln("Initializing database connection")
+	bridge.DB, err = database.New(bridge.Config.AppService.Database.Type, bridge.Config.AppService.Database.URI, bridge.Log)
+	if err != nil {
+		bridge.Log.Fatalln("Failed to initialize database connection:", err)
+		os.Exit(14)
+	}
+
+	bridge.Log.Debugln("Initializing state store")
+	bridge.StateStore = database.NewSQLStateStore(bridge.DB)
+	bridge.AS.StateStore = bridge.StateStore
+
+	bridge.DB.SetMaxOpenConns(bridge.Config.AppService.Database.MaxOpenConns)
+	bridge.DB.SetMaxIdleConns(bridge.Config.AppService.Database.MaxIdleConns)
+
+	bridge.WAContainer = sqlstore.NewWithDB(bridge.DB.DB, bridge.Config.AppService.Database.Type, nil)
+
+	ss := bridge.Config.AppService.Provisioning.SharedSecret
+	if len(ss) > 0 && ss != "disable" {
+		bridge.Provisioning = &ProvisioningAPI{bridge: bridge}
+	}
+
+	bridge.Log.Debugln("Initializing Matrix event processor")
+	bridge.EventProcessor = appservice.NewEventProcessor(bridge.AS)
+	bridge.Log.Debugln("Initializing Matrix event handler")
+	bridge.MatrixHandler = NewMatrixHandler(bridge)
+	bridge.Formatter = NewFormatter(bridge)
+	bridge.Crypto = NewCryptoHelper(bridge)
+	bridge.Metrics = NewMetricsHandler(bridge.Config.Metrics.Listen, bridge.Log.Sub("Metrics"), bridge.DB, bridge.PuppetActivity)
+
+	store.BaseClientPayload.UserAgent.OsVersion = proto.String(WAVersion)
+	store.BaseClientPayload.UserAgent.OsBuildNumber = proto.String(WAVersion)
+	store.CompanionProps.Os = proto.String(bridge.Config.WhatsApp.OSName)
+	store.CompanionProps.RequireFullSync = proto.Bool(bridge.Config.Bridge.HistorySync.RequestFullSync)
+	versionParts := strings.Split(WAVersion, ".")
+	if len(versionParts) > 2 {
+		primary, _ := strconv.Atoi(versionParts[0])
+		secondary, _ := strconv.Atoi(versionParts[1])
+		tertiary, _ := strconv.Atoi(versionParts[2])
+		store.CompanionProps.Version.Primary = proto.Uint32(uint32(primary))
+		store.CompanionProps.Version.Secondary = proto.Uint32(uint32(secondary))
+		store.CompanionProps.Version.Tertiary = proto.Uint32(uint32(tertiary))
+	}
+	platformID, ok := waProto.CompanionProps_CompanionPropsPlatformType_value[strings.ToUpper(bridge.Config.WhatsApp.BrowserName)]
+	if ok {
+		store.CompanionProps.PlatformType = waProto.CompanionProps_CompanionPropsPlatformType(platformID).Enum()
+	}
 }
 
 func (bridge *Bridge) Start() {
@@ -325,12 +332,10 @@ func (bridge *Bridge) Start() {
 			os.Exit(19)
 		}
 	}
-	bridge.sendGlobalBridgeState(BridgeState{StateEvent: StateStarting}.fill(nil))
 	if bridge.Provisioning != nil {
 		bridge.Log.Debugln("Initializing provisioning API")
 		bridge.Provisioning.Init()
 	}
-	bridge.LoadRelaybot()
 	bridge.Log.Debugln("Starting application service HTTP server")
 	go bridge.AS.Start()
 	bridge.Log.Debugln("Starting event processor")
@@ -352,31 +357,21 @@ func (bridge *Bridge) Start() {
 }
 
 func (bridge *Bridge) ResendBridgeInfo() {
-	bridge.Config.Bridge.ResendBridgeInfo = false
-	err := bridge.Config.Save(*configPath)
-	if err != nil {
-		bridge.Log.Errorln("Failed to save config after setting resend_bridge_info to false:", err)
+	if *dontSaveConfig {
+		bridge.Log.Warnln("Not setting resend_bridge_info to false in config due to --no-update flag")
+	} else {
+		err := config.Mutate(*configPath, func(helper *config.UpgradeHelper) {
+			helper.Set(config.Bool, "false", "bridge", "resend_bridge_info")
+		})
+		if err != nil {
+			bridge.Log.Errorln("Failed to save config after setting resend_bridge_info to false:", err)
+		}
 	}
 	bridge.Log.Infoln("Re-sending bridge info state event to all portals")
 	for _, portal := range bridge.GetAllPortals() {
 		portal.UpdateBridgeInfo()
 	}
 	bridge.Log.Infoln("Finished re-sending bridge info state events")
-}
-
-func (bridge *Bridge) LoadRelaybot() {
-	if !bridge.Config.Bridge.Relaybot.Enabled {
-		return
-	}
-	bridge.Relaybot = bridge.GetUserByMXID("relaybot")
-	if bridge.Relaybot.HasSession() {
-		bridge.Log.Debugln("Relaybot is enabled")
-	} else {
-		bridge.Log.Debugln("Relaybot is enabled, but not logged in")
-	}
-	bridge.Relaybot.ManagementRoom = bridge.Config.Bridge.Relaybot.ManagementRoom
-	bridge.Relaybot.IsRelaybot = true
-	bridge.Relaybot.Connect(false)
 }
 
 func (bridge *Bridge) UpdateBotProfile() {
@@ -411,10 +406,10 @@ func (bridge *Bridge) StartUsers() {
 	bridge.Log.Debugln("Starting users")
 	foundAnySessions := false
 	for _, user := range bridge.GetAllUsers() {
-		if user.Session != nil {
+		if !user.JID.IsEmpty() {
 			foundAnySessions = true
 		}
-		go user.Connect(false)
+		go user.Connect()
 	}
 	if !foundAnySessions {
 		bridge.sendGlobalBridgeState(BridgeState{StateEvent: StateUnconfigured}.fill(nil))
@@ -438,19 +433,31 @@ func (bridge *Bridge) Stop() {
 	bridge.AS.Stop()
 	bridge.Metrics.Stop()
 	bridge.EventProcessor.Stop()
-	for _, user := range bridge.usersByJID {
-		if user.Conn == nil {
+	for _, user := range bridge.usersByUsername {
+		if user.Client == nil {
 			continue
 		}
 		bridge.Log.Debugln("Disconnecting", user.MXID)
-		err := user.Conn.Disconnect()
-		if err != nil {
-			bridge.Log.Errorfln("Error while disconnecting %s: %v", user.MXID, err)
-		}
+		user.Client.Disconnect()
+		close(user.historySyncs)
 	}
 }
 
 func (bridge *Bridge) Main() {
+	configData, upgraded, err := config.Upgrade(*configPath, !*dontSaveConfig)
+	if err != nil {
+		_, _ = fmt.Fprintln(os.Stderr, "Error updating config:", err)
+		if configData == nil {
+			os.Exit(10)
+		}
+	}
+
+	bridge.Config, err = config.Load(configData, upgraded)
+	if err != nil {
+		_, _ = fmt.Fprintln(os.Stderr, "Failed to parse config:", err)
+		os.Exit(10)
+	}
+
 	if *generateRegistration {
 		bridge.GenerateRegistration()
 		return
@@ -491,5 +498,17 @@ func main() {
 		return
 	}
 
-	NewBridge().Main()
+	(&Bridge{
+		usersByMXID:         make(map[id.UserID]*User),
+		usersByUsername:     make(map[string]*User),
+		managementRooms:     make(map[id.RoomID]*User),
+		portalsByMXID:       make(map[id.RoomID]*Portal),
+		portalsByJID:        make(map[database.PortalKey]*Portal),
+		puppets:             make(map[types.JID]*Puppet),
+		puppetsByCustomMXID: make(map[id.UserID]*Puppet),
+		PuppetActivity: &PuppetActivity{
+			currentUserCount: 0,
+			isBlocked:        false,
+		},
+	}).Main()
 }

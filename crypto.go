@@ -14,7 +14,7 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-// +build cgo,!nocrypto
+//go:build cgo && !nocrypto
 
 package main
 
@@ -22,6 +22,8 @@ import (
 	"fmt"
 	"runtime/debug"
 	"time"
+
+	"github.com/lib/pq"
 
 	"maunium.net/go/maulogger/v2"
 
@@ -48,6 +50,10 @@ type CryptoHelper struct {
 	store   *database.SQLCryptoStore
 	log     maulogger.Logger
 	baseLog maulogger.Logger
+}
+
+func init() {
+	crypto.PostgresArrayWrapper = pq.Array
 }
 
 func NewCryptoHelper(bridge *Bridge) Crypto {
@@ -100,7 +106,8 @@ func (helper *CryptoHelper) allowKeyShare(device *crypto.DeviceIdentity, info ev
 			return &crypto.KeyShareRejection{Code: event.RoomKeyWithheldUnavailable, Reason: "Requested room is not a portal room"}
 		}
 		user := helper.bridge.GetUserByMXID(device.UserID)
-		if !user.Admin && !user.IsInPortal(portal.Key) {
+		// FIXME reimplement IsInPortal
+		if !user.Admin /*&& !user.IsInPortal(portal.Key)*/ {
 			helper.log.Debugfln("Rejecting key request for %s from %s/%s: user is not in portal", info.SessionID, device.UserID, device.DeviceID)
 			return &crypto.KeyShareRejection{Code: event.RoomKeyWithheldUnauthorized, Reason: "You're not in that portal"}
 		}

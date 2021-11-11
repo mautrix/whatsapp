@@ -1,4 +1,4 @@
-// +build !cgo nocrypto
+//go:build !cgo || nocrypto
 
 package main
 

@@ -39,7 +39,11 @@ type upgrade struct {
 	fn      upgradeFunc
 }
 
+<<<<<<< HEAD
 const NumberOfUpgrades = 25
+=======
+const NumberOfUpgrades = 30
+>>>>>>> v0.2.1
 
 var upgrades [NumberOfUpgrades]upgrade
 
@@ -100,6 +104,9 @@ func Run(log log.Logger, dialectName string, db *sql.DB) error {
 
 	log.Infofln("Database currently on v%d, latest: v%d", version, NumberOfUpgrades)
 	for i, upgradeItem := range upgrades[version:] {
+		if upgradeItem.fn == nil {
+			continue
+		}
 		log.Infofln("Upgrading database to v%d: %s", version+i+1, upgradeItem.message)
 		var tx *sql.Tx
 		tx, err = db.Begin()

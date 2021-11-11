@@ -1,5 +1,5 @@
 // mautrix-whatsapp - A Matrix-WhatsApp puppeting bridge.
-// Copyright (C) 2020 Tulir Asokan
+// Copyright (C) 2021 Tulir Asokan
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as published by
@@ -25,17 +25,19 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/Rhymen/go-whatsapp"
+	"github.com/skip2/go-qrcode"
+	"go.mau.fi/whatsmeow/appstate"
 
 	"maunium.net/go/maulogger/v2"
+
+	"go.mau.fi/whatsmeow"
+	"go.mau.fi/whatsmeow/types"
 
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/appservice"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/format"
 	"maunium.net/go/mautrix/id"
-
-	"maunium.net/go/mautrix-whatsapp/database"
 )
 
 type CommandHandler struct {
@@ -61,6 +63,7 @@ type CommandEvent struct {
 	User    *User
 	Command string
 	Args    []string
+	ReplyTo id.EventID
 }
 
 // Reply sends a reply to command as notice
@@ -78,7 +81,7 @@ func (ce *CommandEvent) Reply(msg string, args ...interface{}) {
 }
 
 // Handle handles messages to the bridge
-func (handler *CommandHandler) Handle(roomID id.RoomID, user *User, message string) {
+func (handler *CommandHandler) Handle(roomID id.RoomID, user *User, message string, replyTo id.EventID) {
 	args := strings.Fields(message)
 	if len(args) == 0 {
 		args = []string{"unknown-command"}
@@ -92,21 +95,18 @@ func (handler *CommandHandler) Handle(roomID id.RoomID, user *User, message stri
 		User:    user,
 		Command: strings.ToLower(args[0]),
 		Args:    args[1:],
+		ReplyTo: replyTo,
 	}
 	handler.log.Debugfln("%s sent '%s' in %s", user.MXID, message, roomID)
-	if roomID == handler.bridge.Config.Bridge.Relaybot.ManagementRoom {
-		handler.CommandRelaybot(ce)
-	} else {
-		handler.CommandMux(ce)
-	}
+	handler.CommandMux(ce)
 }
 
 func (handler *CommandHandler) CommandMux(ce *CommandEvent) {
 	switch ce.Command {
-	case "relaybot":
-		handler.CommandRelaybot(ce)
 	case "login":
 		handler.CommandLogin(ce)
+	case "ping-matrix":
+		handler.CommandPingMatrix(ce)
 	case "logout-matrix":
 		handler.CommandLogoutMatrix(ce)
 	case "help":
@@ -119,8 +119,6 @@ func (handler *CommandHandler) CommandMux(ce *CommandEvent) {
 		handler.CommandDisconnect(ce)
 	case "ping":
 		handler.CommandPing(ce)
-	case "delete-connection":
-		handler.CommandDeleteConnection(ce)
 	case "delete-session":
 		handler.CommandDeleteSession(ce)
 	case "delete-portal":
@@ -137,16 +135,20 @@ func (handler *CommandHandler) CommandMux(ce *CommandEvent) {
 		handler.CommandLogout(ce)
 	case "toggle":
 		handler.CommandToggle(ce)
-	case "login-matrix", "sync", "list", "open", "pm", "invite-link", "join", "create":
+	case "set-relay", "unset-relay", "login-matrix", "sync", "list", "open", "pm", "invite-link", "check-invite", "join", "create", "accept":
 		if !ce.User.HasSession() {
 			ce.Reply("You are not logged in. Use the `login` command to log into WhatsApp.")
 			return
-		} else if !ce.User.IsConnected() {
+		} else if !ce.User.IsLoggedIn() {
 			ce.Reply("You are not connected to WhatsApp. Use the `reconnect` command to reconnect.")
 			return
 		}
 
 		switch ce.Command {
+		case "set-relay":
+			handler.CommandSetRelay(ce)
+		case "unset-relay":
+			handler.CommandUnsetRelay(ce)
 		case "login-matrix":
 			handler.CommandLoginMatrix(ce)
 		case "sync":
@@ -159,10 +161,14 @@ func (handler *CommandHandler) CommandMux(ce *CommandEvent) {
 			handler.CommandPM(ce)
 		case "invite-link":
 			handler.CommandInviteLink(ce)
+		case "check-invite":
+			handler.CommandCheckInvite(ce)
 		case "join":
 			handler.CommandJoin(ce)
 		case "create":
 			handler.CommandCreate(ce)
+		case "accept":
+			handler.CommandAccept(ce)
 		}
 	default:
 		ce.Reply("Unknown command, use the `help` command for help.")
@@ -180,22 +186,35 @@ func (handler *CommandHandler) CommandDiscardMegolmSession(ce *CommandEvent) {
 	}
 }
 
-func (handler *CommandHandler) CommandRelaybot(ce *CommandEvent) {
-	if handler.bridge.Relaybot == nil {
-		ce.Reply("The relaybot is disabled")
-	} else if !ce.User.Admin {
-		ce.Reply("Only admins can manage the relaybot")
+const cmdSetRelayHelp = `set-relay - Relay messages in this room through your WhatsApp account.`
+
+func (handler *CommandHandler) CommandSetRelay(ce *CommandEvent) {
+	if !handler.bridge.Config.Bridge.Relay.Enabled {
+		ce.Reply("Relay mode is not enabled on this instance of the bridge")
+	} else if ce.Portal == nil {
+		ce.Reply("This is not a portal room")
+	} else if handler.bridge.Config.Bridge.Relay.AdminOnly && !ce.User.Admin {
+		ce.Reply("Only admins are allowed to enable relay mode on this instance of the bridge")
 	} else {
-		if ce.Command == "relaybot" {
-			if len(ce.Args) == 0 {
-				ce.Reply("**Usage:** `relaybot <command>`")
-				return
-			}
-			ce.Command = strings.ToLower(ce.Args[0])
-			ce.Args = ce.Args[1:]
-		}
-		ce.User = handler.bridge.Relaybot
-		handler.CommandMux(ce)
+		ce.Portal.RelayUserID = ce.User.MXID
+		ce.Portal.Update()
+		ce.Reply("Messages from non-logged-in users in this room will now be bridged through your WhatsApp account")
+	}
+}
+
+const cmdUnsetRelayHelp = `unset-relay - Stop relaying messages in this room.`
+
+func (handler *CommandHandler) CommandUnsetRelay(ce *CommandEvent) {
+	if !handler.bridge.Config.Bridge.Relay.Enabled {
+		ce.Reply("Relay mode is not enabled on this instance of the bridge")
+	} else if ce.Portal == nil {
+		ce.Reply("This is not a portal room")
+	} else if handler.bridge.Config.Bridge.Relay.AdminOnly && !ce.User.Admin {
+		ce.Reply("Only admins are allowed to enable relay mode on this instance of the bridge")
+	} else {
+		ce.Portal.RelayUserID = ""
+		ce.Portal.Update()
+		ce.Reply("Messages from non-logged-in users will no longer be bridged in this room")
 	}
 }
 
@@ -215,27 +234,43 @@ func (handler *CommandHandler) CommandVersion(ce *CommandEvent) {
 	ce.Reply(fmt.Sprintf("[%s](%s) %s (%s)", Name, URL, linkifiedVersion, BuildTime))
 }
 
-const cmdInviteLinkHelp = `invite-link - Get an invite link to the current group chat.`
+const cmdInviteLinkHelp = `invite-link [--reset] - Get an invite link to the current group chat, optionally regenerating the link and revoking the old link.`
 
 func (handler *CommandHandler) CommandInviteLink(ce *CommandEvent) {
+	reset := len(ce.Args) > 0 && strings.ToLower(ce.Args[0]) == "--reset"
 	if ce.Portal == nil {
 		ce.Reply("Not a portal room")
-		return
 	} else if ce.Portal.IsPrivateChat() {
 		ce.Reply("Can't get invite link to private chat")
-		return
-	}
-
-	link, err := ce.User.Conn.GroupInviteLink(ce.Portal.Key.JID)
-	if err != nil {
+	} else if ce.Portal.IsBroadcastList() {
+		ce.Reply("Can't get invite link to broadcast list")
+	} else if link, err := ce.User.Client.GetGroupInviteLink(ce.Portal.Key.JID, reset); err != nil {
 		ce.Reply("Failed to get invite link: %v", err)
+	} else {
+		ce.Reply(link)
+	}
+}
+
+const cmdCheckInviteHelp = `check-invite <invite link> - Resolve an invite link and check which group it points at.`
+const inviteLinkPrefix = "https://chat.whatsapp.com/"
+
+func (handler *CommandHandler) CommandCheckInvite(ce *CommandEvent) {
+	if len(ce.Args) == 0 {
+		ce.Reply("**Usage:** `join <invite link>`")
+		return
+	} else if len(ce.Args[0]) <= len(inviteLinkPrefix) || ce.Args[0][:len(inviteLinkPrefix)] != inviteLinkPrefix {
+		ce.Reply("That doesn't look like a WhatsApp invite link")
 		return
 	}
-	ce.Reply("%s%s", inviteLinkPrefix, link)
+	group, err := ce.User.Client.GetGroupInfoFromLink(ce.Args[0])
+	if err != nil {
+		ce.Reply("Failed to get group info: %v", err)
+		return
+	}
+	ce.Reply("That invite link points at %s (`%s`)", group.Name, group.JID)
 }
 
 const cmdJoinHelp = `join <invite link> - Join a group chat with an invite link.`
-const inviteLinkPrefix = "https://chat.whatsapp.com/"
 
 func (handler *CommandHandler) CommandJoin(ce *CommandEvent) {
 	if len(ce.Args) == 0 {
@@ -246,25 +281,31 @@ func (handler *CommandHandler) CommandJoin(ce *CommandEvent) {
 		return
 	}
 
-	jid, err := ce.User.Conn.GroupAcceptInviteCode(ce.Args[0][len(inviteLinkPrefix):])
+	jid, err := ce.User.Client.JoinGroupWithLink(ce.Args[0])
 	if err != nil {
 		ce.Reply("Failed to join group: %v", err)
 		return
 	}
-
 	handler.log.Debugln("%s successfully joined group %s", ce.User.MXID, jid)
-	portal := handler.bridge.GetPortalByJID(database.GroupPortalKey(jid))
-	if len(portal.MXID) > 0 {
-		portal.Sync(ce.User, whatsapp.Contact{JID: portal.Key.JID})
-		ce.Reply("Successfully joined group \"%s\" and synced portal room: [%s](https://matrix.to/#/%s)", portal.Name, portal.Name, portal.MXID)
-	} else {
-		err = portal.CreateMatrixRoom(ce.User)
-		if err != nil {
-			ce.Reply("Failed to create portal room: %v", err)
-			return
-		}
+	ce.Reply("Successfully joined group `%s`, the portal should be created momentarily", jid)
+}
 
-		ce.Reply("Successfully joined group \"%s\" and created portal room: [%s](https://matrix.to/#/%s)", portal.Name, portal.Name, portal.MXID)
+func (handler *CommandHandler) CommandAccept(ce *CommandEvent) {
+	if ce.Portal == nil || len(ce.ReplyTo) == 0 {
+		ce.Reply("You must reply to a group invite message when using this command.")
+	} else if evt, err := ce.Portal.MainIntent().GetEvent(ce.RoomID, ce.ReplyTo); err != nil {
+		handler.log.Errorln("Failed to get event %s to handle !wa accept command: %v", ce.ReplyTo, err)
+		ce.Reply("Failed to get reply event")
+	} else if meta, ok := evt.Content.Raw[inviteMetaField].(map[string]interface{}); !ok {
+		ce.Reply("That doesn't look like a group invite message.")
+	} else if jid, inviter, code, expiration, ok := parseInviteMeta(meta); !ok {
+		ce.Reply("That doesn't look like a group invite message.")
+	} else if inviter.User == ce.User.JID.User {
+		ce.Reply("You can't accept your own invites")
+	} else if err = ce.User.Client.JoinGroupWithInvite(jid, inviter, code, expiration); err != nil {
+		ce.Reply("Failed to accept group invite: %v", err)
+	} else {
+		ce.Reply("Successfully accepted the invite, the portal should be created momentarily")
 	}
 }
 
@@ -285,6 +326,7 @@ func (handler *CommandHandler) CommandCreate(ce *CommandEvent) {
 	var roomNameEvent event.RoomNameEventContent
 	err = ce.Bot.StateEvent(ce.RoomID, event.StateRoomName, "", &roomNameEvent)
 	if err != nil && !errors.Is(err, mautrix.MNotFound) {
+		handler.log.Errorln("Failed to get room name to create group:", err)
 		ce.Reply("Failed to get room name")
 		return
 	} else if len(roomNameEvent.Name) == 0 {
@@ -299,20 +341,31 @@ func (handler *CommandHandler) CommandCreate(ce *CommandEvent) {
 		return
 	}
 
-	participants := []string{ce.User.JID}
+	var participants []types.JID
+	participantDedup := make(map[types.JID]bool)
+	participantDedup[ce.User.JID.ToNonAD()] = true
+	participantDedup[types.EmptyJID] = true
 	for userID := range members.Joined {
 		jid, ok := handler.bridge.ParsePuppetMXID(userID)
-		if ok && jid != ce.User.JID {
+		if !ok {
+			user := handler.bridge.GetUserByMXID(userID)
+			if user != nil && !user.JID.IsEmpty() {
+				jid = user.JID.ToNonAD()
+			}
+		}
+		if !participantDedup[jid] {
+			participantDedup[jid] = true
 			participants = append(participants, jid)
 		}
 	}
 
-	resp, err := ce.User.Conn.CreateGroup(roomNameEvent.Name, participants)
+	handler.log.Infofln("Creating group for %s with name %s and participants %+v", ce.RoomID, roomNameEvent.Name, participants)
+	resp, err := ce.User.Client.CreateGroup(roomNameEvent.Name, participants)
 	if err != nil {
 		ce.Reply("Failed to create group: %v", err)
 		return
 	}
-	portal := handler.bridge.GetPortalByJID(database.GroupPortalKey(resp.GroupID))
+	portal := ce.User.GetPortalByJID(resp.JID)
 	portal.roomCreateLock.Lock()
 	defer portal.roomCreateLock.Unlock()
 	if len(portal.MXID) != 0 {
@@ -325,7 +378,12 @@ func (handler *CommandHandler) CommandCreate(ce *CommandEvent) {
 	if !portal.Encrypted && handler.bridge.Config.Bridge.Encryption.Default {
 		_, err = portal.MainIntent().SendStateEvent(portal.MXID, event.StateEncryption, "", &event.EncryptionEventContent{Algorithm: id.AlgorithmMegolmV1})
 		if err != nil {
-			portal.log.Warnln("Failed to enable e2be:", err)
+			portal.log.Warnln("Failed to enable encryption in room:", err)
+			if errors.Is(err, mautrix.MForbidden) {
+				ce.Reply("I don't seem to have permission to enable encryption in this room.")
+			} else {
+				ce.Reply("Failed to enable encryption in room: %v", err)
+			}
 		}
 		portal.Encrypted = true
 	}
@@ -334,8 +392,41 @@ func (handler *CommandHandler) CommandCreate(ce *CommandEvent) {
 	portal.UpdateBridgeInfo()
 
 	ce.Reply("Successfully created WhatsApp group %s", portal.Key.JID)
-	inCommunity := ce.User.addPortalToCommunity(portal)
-	ce.User.CreateUserPortal(database.PortalKeyWithMeta{PortalKey: portal.Key, InCommunity: inCommunity})
+}
+
+func parseInviteMeta(meta map[string]interface{}) (jid, inviter types.JID, code string, expiration int64, ok bool) {
+	var fieldFound bool
+	code, fieldFound = meta["code"].(string)
+	if !fieldFound {
+		return
+	}
+	expirationStr, fieldFound := meta["expiration"].(string)
+	if !fieldFound {
+		return
+	}
+	inviterStr, fieldFound := meta["inviter"].(string)
+	if !fieldFound {
+		return
+	}
+	jidStr, fieldFound := meta["jid"].(string)
+	if !fieldFound {
+		return
+	}
+	var err error
+	expiration, err = strconv.ParseInt(expirationStr, 10, 64)
+	if err != nil {
+		return
+	}
+	inviter, err = types.ParseJID(inviterStr)
+	if err != nil {
+		return
+	}
+	jid, err = types.ParseJID(jidStr)
+	if err != nil {
+		return
+	}
+	ok = true
+	return
 }
 
 const cmdSetPowerLevelHelp = `set-pl [user ID] <power level> - Change the power level in a portal room. Only for bridge admins.`
@@ -378,25 +469,94 @@ func (handler *CommandHandler) CommandSetPowerLevel(ce *CommandEvent) {
 	}
 }
 
-const cmdLoginHelp = `login - Authenticate this Bridge as WhatsApp Web Client`
+const cmdLoginHelp = `login - Link the bridge to your WhatsApp account as a web client`
 
 // CommandLogin handles login command
 func (handler *CommandHandler) CommandLogin(ce *CommandEvent) {
-	if !ce.User.Connect(true) {
-		ce.User.log.Debugln("Connect() returned false, assuming error was logged elsewhere and canceling login.")
+	if ce.User.Session != nil {
+		if ce.User.IsConnected() {
+			ce.Reply("You're already logged in")
+		} else {
+			ce.Reply("You're already logged in. Perhaps you wanted to `reconnect`?")
+		}
 		return
 	}
-	ce.User.Login(ce)
+
+	qrChan, err := ce.User.Login(context.Background())
+	if err != nil {
+		ce.User.log.Errorf("Failed to log in:", err)
+		ce.Reply("Failed to log in: %v", err)
+		return
+	}
+
+	var qrEventID id.EventID
+	for item := range qrChan {
+		switch item {
+		case whatsmeow.QRChannelSuccess:
+			jid := ce.User.Client.Store.ID
+			ce.Reply("Successfully logged in as +%s (device #%d)", jid.User, jid.Device)
+		case whatsmeow.QRChannelTimeout:
+			ce.Reply("QR code timed out. Please restart the login.")
+		case whatsmeow.QRChannelErrUnexpectedEvent:
+			ce.Reply("Failed to log in: unexpected connection event from server")
+		case whatsmeow.QRChannelScannedWithoutMultidevice:
+			ce.Reply("Please enable the WhatsApp multidevice beta and scan the QR code again.")
+		default:
+			qrEventID = ce.User.sendQR(ce, string(item), qrEventID)
+		}
+	}
+	_, _ = ce.Bot.RedactEvent(ce.RoomID, qrEventID)
 }
 
-const cmdLogoutHelp = `logout - Logout from WhatsApp`
+func (user *User) sendQR(ce *CommandEvent, code string, prevEvent id.EventID) id.EventID {
+	url, ok := user.uploadQR(ce, code)
+	if !ok {
+		return prevEvent
+	}
+	content := event.MessageEventContent{
+		MsgType: event.MsgImage,
+		Body:    code,
+		URL:     url.CUString(),
+	}
+	if len(prevEvent) != 0 {
+		content.SetEdit(prevEvent)
+	}
+	resp, err := ce.Bot.SendMessageEvent(ce.RoomID, event.EventMessage, &content)
+	if err != nil {
+		user.log.Errorln("Failed to send edited QR code to user:", err)
+	} else if len(prevEvent) == 0 {
+		prevEvent = resp.EventID
+	}
+	return prevEvent
+}
+
+func (user *User) uploadQR(ce *CommandEvent, code string) (id.ContentURI, bool) {
+	qrCode, err := qrcode.Encode(code, qrcode.Low, 256)
+	if err != nil {
+		user.log.Errorln("Failed to encode QR code:", err)
+		ce.Reply("Failed to encode QR code: %v", err)
+		return id.ContentURI{}, false
+	}
+
+	bot := user.bridge.AS.BotClient()
+
+	resp, err := bot.UploadBytes(qrCode, "image/png")
+	if err != nil {
+		user.log.Errorln("Failed to upload QR code:", err)
+		ce.Reply("Failed to upload QR code: %v", err)
+		return id.ContentURI{}, false
+	}
+	return resp.ContentURI, true
+}
+
+const cmdLogoutHelp = `logout - Unlink the bridge from your WhatsApp account`
 
 // CommandLogout handles !logout command
 func (handler *CommandHandler) CommandLogout(ce *CommandEvent) {
 	if ce.User.Session == nil {
 		ce.Reply("You're not logged in.")
 		return
-	} else if !ce.User.IsConnected() {
+	} else if !ce.User.IsLoggedIn() {
 		ce.Reply("You are not connected to WhatsApp. Use the `reconnect` command to reconnect, or `delete-session` to forget all login information.")
 		return
 	}
@@ -407,17 +567,16 @@ func (handler *CommandHandler) CommandLogout(ce *CommandEvent) {
 			ce.User.log.Warnln("Failed to logout-matrix while logging out of WhatsApp:", err)
 		}
 	}
-	err := ce.User.Conn.Logout()
+	err := ce.User.Client.Logout()
 	if err != nil {
 		ce.User.log.Warnln("Error while logging out:", err)
 		ce.Reply("Unknown error while logging out: %v", err)
 		return
 	}
+	ce.User.Session = nil
 	ce.User.removeFromJIDMap(StateLoggedOut)
-	// TODO this causes a foreign key violation, which should be fixed
-	//ce.User.JID = ""
-	ce.User.SetSession(nil)
 	ce.User.DeleteConnection()
+	ce.User.DeleteSession()
 	ce.Reply("Logged out successfully.")
 }
 
@@ -439,16 +598,16 @@ func (handler *CommandHandler) CommandToggle(ce *CommandEvent) {
 	}
 	if ce.Args[0] == "presence" || ce.Args[0] == "all" {
 		customPuppet.EnablePresence = !customPuppet.EnablePresence
-		var newPresence whatsapp.Presence
+		var newPresence types.Presence
 		if customPuppet.EnablePresence {
-			newPresence = whatsapp.PresenceAvailable
+			newPresence = types.PresenceAvailable
 			ce.Reply("Enabled presence bridging")
 		} else {
-			newPresence = whatsapp.PresenceUnavailable
+			newPresence = types.PresenceUnavailable
 			ce.Reply("Disabled presence bridging")
 		}
-		if ce.User.IsConnected() {
-			_, err := ce.User.Conn.Presence("", newPresence)
+		if ce.User.IsLoggedIn() {
+			err := ce.User.Client.SendPresence(newPresence)
 			if err != nil {
 				ce.User.log.Warnln("Failed to set presence:", err)
 			}
@@ -468,130 +627,59 @@ func (handler *CommandHandler) CommandToggle(ce *CommandEvent) {
 const cmdDeleteSessionHelp = `delete-session - Delete session information and disconnect from WhatsApp without sending a logout request`
 
 func (handler *CommandHandler) CommandDeleteSession(ce *CommandEvent) {
-	if ce.User.Session == nil && ce.User.Conn == nil {
+	if ce.User.Session == nil && ce.User.Client == nil {
 		ce.Reply("Nothing to purge: no session information stored and no active connection.")
 		return
 	}
-	//ce.User.JID = ""
 	ce.User.removeFromJIDMap(StateLoggedOut)
-	ce.User.SetSession(nil)
 	ce.User.DeleteConnection()
+	ce.User.DeleteSession()
 	ce.Reply("Session information purged")
 }
 
 const cmdReconnectHelp = `reconnect - Reconnect to WhatsApp`
 
 func (handler *CommandHandler) CommandReconnect(ce *CommandEvent) {
-	if ce.User.Conn == nil {
+	if ce.User.Client == nil {
 		if ce.User.Session == nil {
-			ce.Reply("No existing connection and no session. Did you mean `login`?")
+			ce.Reply("You're not logged into WhatsApp. Please log in first.")
 		} else {
-			ce.Reply("No existing connection, creating one...")
-			ce.User.Connect(false)
+			ce.User.Connect()
+			ce.Reply("Started connecting to WhatsApp")
 		}
-		return
-	}
-
-	wasConnected := true
-	err := ce.User.Conn.Disconnect()
-	if err == whatsapp.ErrNotConnected {
-		wasConnected = false
-	} else if err != nil {
-		ce.User.log.Warnln("Error while disconnecting:", err)
-	}
-
-	ctx := context.Background()
-
-	err = ce.User.Conn.Restore(true, ctx)
-	if err == whatsapp.ErrInvalidSession {
-		if ce.User.Session != nil {
-			ce.User.log.Debugln("Got invalid session error when reconnecting, but user has session. Retrying using RestoreWithSession()...")
-			ce.User.Conn.SetSession(*ce.User.Session)
-			err = ce.User.Conn.Restore(true, ctx)
-		} else {
-			ce.Reply("You are not logged in.")
-			return
-		}
-	} else if err == whatsapp.ErrLoginInProgress {
-		ce.Reply("A login or reconnection is already in progress.")
-		return
-	} else if err == whatsapp.ErrAlreadyLoggedIn {
-		ce.Reply("You were already connected.")
-		return
-	}
-	if err != nil {
-		ce.User.log.Warnln("Error while reconnecting:", err)
-		ce.Reply("Unknown error while reconnecting: %v", err)
-		ce.User.log.Debugln("Disconnecting due to failed session restore in reconnect command...")
-		err = ce.User.Conn.Disconnect()
-		if err != nil {
-			ce.User.log.Errorln("Failed to disconnect after failed session restore in reconnect command:", err)
-		}
-		return
-	}
-	ce.User.ConnectionErrors = 0
-
-	var msg string
-	if wasConnected {
-		msg = "Reconnected successfully."
 	} else {
-		msg = "Connected successfully."
+		ce.User.DeleteConnection()
+		ce.User.sendBridgeState(BridgeState{StateEvent: StateTransientDisconnect, Error: WANotConnected})
+		ce.User.Connect()
+		ce.Reply("Restarted connection to WhatsApp")
 	}
-	ce.Reply(msg)
-	ce.User.PostLogin()
-}
-
-const cmdDeleteConnectionHelp = `delete-connection - Disconnect ignoring errors and delete internal connection state.`
-
-func (handler *CommandHandler) CommandDeleteConnection(ce *CommandEvent) {
-	if ce.User.Conn == nil {
-		ce.Reply("You don't have a WhatsApp connection.")
-		return
-	}
-	ce.User.DeleteConnection()
-	ce.Reply("Successfully disconnected. Use the `reconnect` command to reconnect.")
 }
 
 const cmdDisconnectHelp = `disconnect - Disconnect from WhatsApp (without logging out)`
 
 func (handler *CommandHandler) CommandDisconnect(ce *CommandEvent) {
-	if ce.User.Conn == nil {
+	if ce.User.Client == nil {
 		ce.Reply("You don't have a WhatsApp connection.")
 		return
 	}
-	err := ce.User.Conn.Disconnect()
-	if err == whatsapp.ErrNotConnected {
-		ce.Reply("You were not connected.")
-		return
-	} else if err != nil {
-		ce.User.log.Warnln("Error while disconnecting:", err)
-		ce.Reply("Unknown error while disconnecting: %v", err)
-		return
-	}
-	ce.User.bridge.Metrics.TrackConnectionState(ce.User.JID, false)
-	ce.User.sendBridgeState(BridgeState{StateEvent: StateBadCredentials, Error: WANotConnected})
+	ce.User.DeleteConnection()
 	ce.Reply("Successfully disconnected. Use the `reconnect` command to reconnect.")
+	ce.User.sendBridgeState(BridgeState{StateEvent: StateBadCredentials, Error: WANotConnected})
 }
 
 const cmdPingHelp = `ping - Check your connection to WhatsApp.`
 
 func (handler *CommandHandler) CommandPing(ce *CommandEvent) {
 	if ce.User.Session == nil {
-		if ce.User.IsLoginInProgress() {
-			ce.Reply("You're not logged into WhatsApp, but there's a login in progress.")
+		if ce.User.Client != nil {
+			ce.Reply("Connected to WhatsApp, but not logged in.")
 		} else {
 			ce.Reply("You're not logged into WhatsApp.")
 		}
-	} else if ce.User.Conn == nil {
-		ce.Reply("You don't have a WhatsApp connection.")
-	} else if err := ce.User.Conn.AdminTest(); err != nil {
-		if ce.User.IsLoginInProgress() {
-			ce.Reply("Connection not OK: %v, but login in progress", err)
-		} else {
-			ce.Reply("Connection not OK: %v", err)
-		}
+	} else if ce.User.Client == nil || !ce.User.Client.IsConnected() {
+		ce.Reply("You're logged in as +%s (device #%d), but you don't have a WhatsApp connection.", ce.User.JID.User, ce.User.JID.Device)
 	} else {
-		ce.Reply("Connection to WhatsApp OK")
+		ce.Reply("Logged in as +%s (device #%d), connection to WhatsApp OK (probably)", ce.User.JID.User, ce.User.JID.Device)
 	}
 }
 
@@ -600,7 +688,7 @@ const cmdHelpHelp = `help - Prints this help`
 // CommandHelp handles help command
 func (handler *CommandHandler) CommandHelp(ce *CommandEvent) {
 	cmdPrefix := ""
-	if ce.User.ManagementRoom != ce.RoomID || ce.User.IsRelaybot {
+	if ce.User.ManagementRoom != ce.RoomID {
 		cmdPrefix = handler.bridge.Config.Bridge.CommandPrefix + " "
 	}
 
@@ -612,16 +700,19 @@ func (handler *CommandHandler) CommandHelp(ce *CommandEvent) {
 		cmdPrefix + cmdDeleteSessionHelp,
 		cmdPrefix + cmdReconnectHelp,
 		cmdPrefix + cmdDisconnectHelp,
-		cmdPrefix + cmdDeleteConnectionHelp,
 		cmdPrefix + cmdPingHelp,
+		cmdPrefix + cmdSetRelayHelp,
+		cmdPrefix + cmdUnsetRelayHelp,
 		cmdPrefix + cmdLoginMatrixHelp,
+		cmdPrefix + cmdPingMatrixHelp,
 		cmdPrefix + cmdLogoutMatrixHelp,
 		cmdPrefix + cmdToggleHelp,
-		cmdPrefix + cmdSyncHelp,
 		cmdPrefix + cmdListHelp,
+		cmdPrefix + cmdSyncHelp,
 		cmdPrefix + cmdOpenHelp,
 		cmdPrefix + cmdPMHelp,
 		cmdPrefix + cmdInviteLinkHelp,
+		cmdPrefix + cmdCheckInviteHelp,
 		cmdPrefix + cmdJoinHelp,
 		cmdPrefix + cmdCreateHelp,
 		cmdPrefix + cmdSetPowerLevelHelp,
@@ -630,35 +721,23 @@ func (handler *CommandHandler) CommandHelp(ce *CommandEvent) {
 	}, "\n* "))
 }
 
-const cmdSyncHelp = `sync [--create-all] - Synchronize contacts from phone and optionally create portals for group chats.`
-
-// CommandSync handles sync command
-func (handler *CommandHandler) CommandSync(ce *CommandEvent) {
-	user := ce.User
-	create := len(ce.Args) > 0 && ce.Args[0] == "--create-all"
-
-	ce.Reply("Updating contact and chat list...")
-	handler.log.Debugln("Importing contacts of", user.MXID)
-	_, err := user.Conn.Contacts()
+func canDeletePortal(portal *Portal, userID id.UserID) bool {
+	members, err := portal.MainIntent().JoinedMembers(portal.MXID)
 	if err != nil {
-		user.log.Errorln("Error updating contacts:", err)
-		ce.Reply("Failed to sync contact list (see logs for details)")
-		return
+		portal.log.Errorfln("Failed to get joined members to check if portal can be deleted by %s: %v", userID, err)
+		return false
 	}
-	handler.log.Debugln("Importing chats of", user.MXID)
-	_, err = user.Conn.Chats()
-	if err != nil {
-		user.log.Errorln("Error updating chats:", err)
-		ce.Reply("Failed to sync chat list (see logs for details)")
-		return
+	for otherUser := range members.Joined {
+		_, isPuppet := portal.bridge.ParsePuppetMXID(otherUser)
+		if isPuppet || otherUser == portal.bridge.Bot.UserID || otherUser == userID {
+			continue
+		}
+		user := portal.bridge.GetUserByMXID(otherUser)
+		if user != nil && user.Session != nil {
+			return false
+		}
 	}
-
-	ce.Reply("Syncing contacts...")
-	user.syncPuppets(nil)
-	ce.Reply("Syncing chats...")
-	user.syncPortals(nil, create)
-
-	ce.Reply("Sync complete.")
+	return true
 }
 
 const cmdDeletePortalHelp = `delete-portal - Delete the current portal. If the portal is used by other people, this is limited to bridge admins.`
@@ -669,12 +748,9 @@ func (handler *CommandHandler) CommandDeletePortal(ce *CommandEvent) {
 		return
 	}
 
-	if !ce.User.Admin {
-		users := ce.Portal.GetUserIDs()
-		if len(users) > 1 || (len(users) == 1 && users[0] != ce.User.MXID) {
-			ce.Reply("Only bridge admins can delete portals with other Matrix users")
-			return
-		}
+	if !ce.User.Admin && !canDeletePortal(ce.Portal, ce.User.MXID) {
+		ce.Reply("Only bridge admins can delete portals with other Matrix users")
+		return
 	}
 
 	ce.Portal.log.Infoln(ce.User.MXID, "requested deletion of portal.")
@@ -682,17 +758,23 @@ func (handler *CommandHandler) CommandDeletePortal(ce *CommandEvent) {
 	ce.Portal.Cleanup(false)
 }
 
-const cmdDeleteAllPortalsHelp = `delete-all-portals - Delete all your portals that aren't used by any other user.'`
+const cmdDeleteAllPortalsHelp = `delete-all-portals - Delete all portals.`
 
 func (handler *CommandHandler) CommandDeleteAllPortals(ce *CommandEvent) {
-	portals := ce.User.GetPortals()
-	portalsToDelete := make([]*Portal, 0, len(portals))
-	for _, portal := range portals {
-		users := portal.GetUserIDs()
-		if len(users) == 1 && users[0] == ce.User.MXID {
-			portalsToDelete = append(portalsToDelete, portal)
+	portals := handler.bridge.GetAllPortals()
+	var portalsToDelete []*Portal
+
+	if ce.User.Admin {
+		portalsToDelete = portals
+	} else {
+		portalsToDelete = portals[:0]
+		for _, portal := range portals {
+			if canDeletePortal(portal, ce.User.MXID) {
+				portalsToDelete = append(portalsToDelete, portal)
+			}
 		}
 	}
+
 	leave := func(portal *Portal) {
 		if len(portal.MXID) > 0 {
 			_, _ = portal.MainIntent().KickUser(portal.MXID, &mautrix.ReqKickUser{
@@ -711,13 +793,12 @@ func (handler *CommandHandler) CommandDeleteAllPortals(ce *CommandEvent) {
 			}
 		}
 	}
-	ce.Reply("Found %d portals with no other users, deleting...", len(portalsToDelete))
+	ce.Reply("Found %d portals, deleting...", len(portalsToDelete))
 	for _, portal := range portalsToDelete {
 		portal.Delete()
 		leave(portal)
 	}
-	ce.Reply("Finished deleting portal info. Now cleaning up rooms in background. " +
-		"You may already continue using the bridge. Use `sync` to recreate portals.")
+	ce.Reply("Finished deleting portal info. Now cleaning up rooms in background.")
 
 	go func() {
 		for _, portal := range portalsToDelete {
@@ -729,17 +810,25 @@ func (handler *CommandHandler) CommandDeleteAllPortals(ce *CommandEvent) {
 
 const cmdListHelp = `list <contacts|groups> [page] [items per page] - Get a list of all contacts and groups.`
 
-func formatContacts(contacts bool, input map[string]whatsapp.Contact) (result []string) {
+func formatContacts(bridge *Bridge, input map[types.JID]types.ContactInfo) (result []string) {
 	for jid, contact := range input {
-		if strings.HasSuffix(jid, whatsapp.NewUserSuffix) != contacts {
+		if len(contact.FullName) == 0 {
 			continue
 		}
-
-		if contacts {
-			result = append(result, fmt.Sprintf("* %s / %s - `%s`", contact.Name, contact.Notify, contact.JID[:len(contact.JID)-len(whatsapp.NewUserSuffix)]))
-		} else {
-			result = append(result, fmt.Sprintf("* %s - `%s`", contact.Name, contact.JID))
+		puppet := bridge.GetPuppetByJID(jid)
+		pushName := contact.PushName
+		if len(pushName) == 0 {
+			pushName = contact.FullName
 		}
+		result = append(result, fmt.Sprintf("* %s / [%s](https://matrix.to/#/%s) - `+%s`", contact.FullName, pushName, puppet.MXID, jid.User))
+	}
+	sort.Sort(sort.StringSlice(result))
+	return
+}
+
+func formatGroups(input []*types.GroupInfo) (result []string) {
+	for _, group := range input {
+		result = append(result, fmt.Sprintf("* %s - `%s`", group.GroupName.Name, group.JID.User))
 	}
 	sort.Sort(sort.StringSlice(result))
 	return
@@ -774,14 +863,27 @@ func (handler *CommandHandler) CommandList(ce *CommandEvent) {
 			ce.Reply("Warning: a high number of items per page may fail to send a reply")
 		}
 	}
+
 	contacts := mode[0] == 'c'
 	typeName := "Groups"
+	var result []string
 	if contacts {
 		typeName = "Contacts"
+		contactList, err := ce.User.Client.Store.Contacts.GetAllContacts()
+		if err != nil {
+			ce.Reply("Failed to get contacts: %s", err)
+			return
+		}
+		result = formatContacts(ce.User.bridge, contactList)
+	} else {
+		groupList, err := ce.User.Client.GetJoinedGroups()
+		if err != nil {
+			ce.Reply("Failed to get groups: %s", err)
+			return
+		}
+		result = formatGroups(groupList)
 	}
-	ce.User.Conn.Store.ContactsLock.RLock()
-	result := formatContacts(contacts, ce.User.Conn.Store.Contacts)
-	ce.User.Conn.Store.ContactsLock.RUnlock()
+
 	if len(result) == 0 {
 		ce.Reply("No %s found", strings.ToLower(typeName))
 		return
@@ -791,7 +893,7 @@ func (handler *CommandHandler) CommandList(ce *CommandEvent) {
 		if pages == 1 {
 			ce.Reply("There is only 1 page of %s", strings.ToLower(typeName))
 		} else {
-			ce.Reply("There are only %d pages of %s", pages, strings.ToLower(typeName))
+			ce.Reply("There are %d pages of %s", pages, strings.ToLower(typeName))
 		}
 		return
 	}
@@ -811,95 +913,124 @@ func (handler *CommandHandler) CommandOpen(ce *CommandEvent) {
 		return
 	}
 
-	user := ce.User
-	jid := ce.Args[0]
-
-	if strings.HasSuffix(jid, whatsapp.NewUserSuffix) {
-		ce.Reply("That looks like a user JID. Did you mean `pm %s`?", jid[:len(jid)-len(whatsapp.NewUserSuffix)])
+	var jid types.JID
+	if strings.ContainsRune(ce.Args[0], '@') {
+		jid, _ = types.ParseJID(ce.Args[0])
+	} else {
+		jid = types.NewJID(ce.Args[0], types.GroupServer)
+	}
+	if jid.Server != types.GroupServer || !strings.ContainsRune(jid.User, '-') {
+		ce.Reply("That does not look like a group JID")
 		return
 	}
 
-	user.Conn.Store.ContactsLock.RLock()
-	contact, ok := user.Conn.Store.Contacts[jid]
-	user.Conn.Store.ContactsLock.RUnlock()
-	if !ok {
-		ce.Reply("Group JID not found in contacts. Try syncing contacts with `sync` first.")
+	info, err := ce.User.Client.GetGroupInfo(jid)
+	if err != nil {
+		ce.Reply("Failed to get group info: %v", err)
 		return
 	}
-	handler.log.Debugln("Importing", jid, "for", user)
-	portal := user.bridge.GetPortalByJID(database.GroupPortalKey(jid))
+	handler.log.Debugln("Importing", jid, "for", ce.User.MXID)
+	portal := ce.User.GetPortalByJID(info.JID)
 	if len(portal.MXID) > 0 {
-		portal.Sync(user, contact)
+		portal.UpdateMatrixRoom(ce.User, info)
 		ce.Reply("Portal room synced.")
 	} else {
-		portal.Sync(user, contact)
-		ce.Reply("Portal room created.")
+		err = portal.CreateMatrixRoom(ce.User, info, true)
+		if err != nil {
+			ce.Reply("Failed to create room: %v", err)
+		} else {
+			ce.Reply("Portal room created.")
+		}
 	}
-	_, _ = portal.MainIntent().InviteUser(portal.MXID, &mautrix.ReqInviteUser{UserID: user.MXID})
 }
 
-const cmdPMHelp = `pm [--force] <_international phone number_> - Open a private chat with the given phone number.`
+const cmdPMHelp = `pm <_international phone number_> - Open a private chat with the given phone number.`
 
 func (handler *CommandHandler) CommandPM(ce *CommandEvent) {
 	if len(ce.Args) == 0 {
-		ce.Reply("**Usage:** `pm [--force] <international phone number>`")
+		ce.Reply("**Usage:** `pm <international phone number>`")
 		return
-	}
-
-	force := ce.Args[0] == "--force"
-	if force {
-		ce.Args = ce.Args[1:]
 	}
 
 	user := ce.User
 
 	number := strings.Join(ce.Args, "")
-	if number[0] == '+' {
-		number = number[1:]
+	resp, err := ce.User.Client.IsOnWhatsApp([]string{number})
+	if err != nil {
+		ce.Reply("Failed to check if user is on WhatsApp: %v", err)
+		return
+	} else if len(resp) == 0 {
+		ce.Reply("Didn't get a response to checking if the user is on WhatsApp")
+		return
 	}
-	for _, char := range number {
-		if char < '0' || char > '9' {
-			ce.Reply("Invalid phone number.")
-			return
-		}
+	targetUser := resp[0]
+	if !targetUser.IsIn {
+		ce.Reply("The server said +%s is not on WhatsApp", targetUser.JID.User)
+		return
 	}
-	jid := number + whatsapp.NewUserSuffix
 
-	handler.log.Debugln("Importing", jid, "for", user)
-
-	user.Conn.Store.ContactsLock.RLock()
-	contact, ok := user.Conn.Store.Contacts[jid]
-	user.Conn.Store.ContactsLock.RUnlock()
-	if !ok {
-		if !force {
-			ce.Reply("Phone number not found in contacts. Try syncing contacts with `sync` first. " +
-				"To create a portal anyway, use `pm --force <number>`.")
-			return
-		}
-		contact = whatsapp.Contact{JID: jid}
-	}
-	puppet := user.bridge.GetPuppetByJID(contact.JID)
-	puppet.Sync(user, contact)
-	portal := user.bridge.GetPortalByJID(database.NewPortalKey(contact.JID, user.JID))
+	handler.log.Debugln("Importing", targetUser.JID, "for", user)
+	puppet := user.bridge.GetPuppetByJID(targetUser.JID)
+	puppet.SyncContact(user, true, "manual pm command")
+	portal := user.GetPortalByJID(puppet.JID)
 	if len(portal.MXID) > 0 {
-		var err error
-		if !user.IsRelaybot {
-			err = portal.MainIntent().EnsureInvited(portal.MXID, user.MXID)
-		}
-		if err != nil {
-			portal.log.Warnfln("Failed to invite %s to portal: %v. Creating new portal", user.MXID, err)
+		ok := portal.ensureUserInvited(user)
+		if !ok {
+			portal.log.Warnfln("ensureUserInvited(%s) returned false, creating new portal", user.MXID)
 			portal.MXID = ""
 		} else {
-			ce.Reply("You already have a private chat portal with that user at [%s](https://matrix.to/#/%s)", puppet.Displayname, portal.MXID)
+			ce.Reply("You already have a private chat portal with +%s at [%s](https://matrix.to/#/%s)", puppet.JID.User, puppet.Displayname, portal.MXID)
 			return
 		}
 	}
-	err := portal.CreateMatrixRoom(user)
+	err = portal.CreateMatrixRoom(user, nil, false)
 	if err != nil {
 		ce.Reply("Failed to create portal room: %v", err)
 		return
 	}
-	ce.Reply("Created portal room and invited you to it.")
+	ce.Reply("Created portal room with +%s and invited you to it.", puppet.JID.User)
+}
+
+const cmdSyncHelp = `sync <appstate/contacts/groups> [--create-portals] - Synchronize data from WhatsApp.`
+
+func (handler *CommandHandler) CommandSync(ce *CommandEvent) {
+	if len(ce.Args) == 0 {
+		ce.Reply("**Usage:** `sync <appstate/contacts/groups> [--create-portals]`")
+		return
+	}
+	args := strings.ToLower(strings.Join(ce.Args, " "))
+	contacts := strings.Contains(args, "contacts")
+	appState := strings.Contains(args, "appstate")
+	groups := strings.Contains(args, "groups")
+	createPortals := strings.Contains(args, "--create-portals")
+
+	if appState {
+		for _, name := range appstate.AllPatchNames {
+			err := ce.User.Client.FetchAppState(name, true, false)
+			if err != nil {
+				ce.Reply("Error syncing app state %s: %v", name, err)
+			} else if name == appstate.WAPatchCriticalUnblockLow {
+				ce.Reply("Synced app state %s, contact sync running in background", name)
+			} else {
+				ce.Reply("Synced app state %s", name)
+			}
+		}
+	} else if contacts {
+		err := ce.User.ResyncContacts()
+		if err != nil {
+			ce.Reply("Error resyncing contacts: %v", err)
+		} else {
+			ce.Reply("Resynced contacts")
+		}
+	}
+	if groups {
+		err := ce.User.ResyncGroups(createPortals)
+		if err != nil {
+			ce.Reply("Error resyncing groups: %v", err)
+		} else {
+			ce.Reply("Resynced groups")
+		}
+	}
 }
 
 const cmdLoginMatrixHelp = `login-matrix <_access token_> - Replace your WhatsApp account's Matrix puppet with your real Matrix account.`
@@ -918,11 +1049,27 @@ func (handler *CommandHandler) CommandLoginMatrix(ce *CommandEvent) {
 	ce.Reply("Successfully switched puppet")
 }
 
+const cmdPingMatrixHelp = `ping-matrix - Check if your double puppet is working correctly.`
+
+func (handler *CommandHandler) CommandPingMatrix(ce *CommandEvent) {
+	puppet := handler.bridge.GetPuppetByCustomMXID(ce.User.MXID)
+	if puppet == nil || puppet.CustomIntent() == nil {
+		ce.Reply("You have not changed your WhatsApp account's Matrix puppet.")
+		return
+	}
+	resp, err := puppet.CustomIntent().Whoami()
+	if err != nil {
+		ce.Reply("Failed to validate Matrix login: %v", err)
+	} else {
+		ce.Reply("Confirmed valid access token for %s / %s", resp.UserID, resp.DeviceID)
+	}
+}
+
 const cmdLogoutMatrixHelp = `logout-matrix - Switch your WhatsApp account's Matrix puppet back to the default one.`
 
 func (handler *CommandHandler) CommandLogoutMatrix(ce *CommandEvent) {
-	puppet := handler.bridge.GetPuppetByJID(ce.User.JID)
-	if len(puppet.CustomMXID) == 0 {
+	puppet := handler.bridge.GetPuppetByCustomMXID(ce.User.MXID)
+	if puppet == nil || puppet.CustomIntent() == nil {
 		ce.Reply("You had not changed your WhatsApp account's Matrix puppet.")
 		return
 	}

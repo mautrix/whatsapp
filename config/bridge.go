@@ -1,5 +1,5 @@
 // mautrix-whatsapp - A Matrix-WhatsApp puppeting bridge.
-// Copyright (C) 2020 Tulir Asokan
+// Copyright (C) 2021 Tulir Asokan
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as published by
@@ -17,12 +17,12 @@
 package config
 
 import (
-	"bytes"
+	"fmt"
 	"strconv"
 	"strings"
 	"text/template"
 
-	"github.com/Rhymen/go-whatsapp"
+	"go.mau.fi/whatsmeow/types"
 
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
@@ -31,55 +31,44 @@ import (
 type BridgeConfig struct {
 	UsernameTemplate    string `yaml:"username_template"`
 	DisplaynameTemplate string `yaml:"displayname_template"`
-	CommunityTemplate   string `yaml:"community_template"`
 
-	ConnectionTimeout     int  `yaml:"connection_timeout"`
-	FetchMessageOnTimeout bool `yaml:"fetch_message_on_timeout"`
 	DeliveryReceipts      bool `yaml:"delivery_receipts"`
-	MaxConnectionAttempts int  `yaml:"max_connection_attempts"`
-	ConnectionRetryDelay  int  `yaml:"connection_retry_delay"`
-	ReportConnectionRetry bool `yaml:"report_connection_retry"`
-	AggressiveReconnect   bool `yaml:"aggressive_reconnect"`
-	ChatListWait          int  `yaml:"chat_list_wait"`
-	PortalSyncWait        int  `yaml:"portal_sync_wait"`
-	UserMessageBuffer     int  `yaml:"user_message_buffer"`
 	PortalMessageBuffer   int  `yaml:"portal_message_buffer"`
+	CallStartNotices      bool `yaml:"call_start_notices"`
+	IdentityChangeNotices bool `yaml:"identity_change_notices"`
+	ReactionNotices       bool `yaml:"reaction_notices"`
 
-	CallNotices struct {
-		Start bool `yaml:"start"`
-		End   bool `yaml:"end"`
-	} `yaml:"call_notices"`
+	HistorySync struct {
+		CreatePortals        bool  `yaml:"create_portals"`
+		MaxAge               int64 `yaml:"max_age"`
+		Backfill             bool  `yaml:"backfill"`
+		DoublePuppetBackfill bool  `yaml:"double_puppet_backfill"`
+		RequestFullSync      bool  `yaml:"request_full_sync"`
+	} `yaml:"history_sync"`
+	UserAvatarSync    bool `yaml:"user_avatar_sync"`
+	BridgeMatrixLeave bool `yaml:"bridge_matrix_leave"`
 
-	InitialChatSync      int   `yaml:"initial_chat_sync_count"`
-	InitialHistoryFill   int   `yaml:"initial_history_fill_count"`
-	HistoryDisableNotifs bool  `yaml:"initial_history_disable_notifications"`
-	RecoverChatSync      int   `yaml:"recovery_chat_sync_count"`
-	RecoverHistory       bool  `yaml:"recovery_history_backfill"`
-	ChatMetaSync         bool  `yaml:"chat_meta_sync"`
-	UserAvatarSync       bool  `yaml:"user_avatar_sync"`
-	BridgeMatrixLeave    bool  `yaml:"bridge_matrix_leave"`
-	SyncChatMaxAge       int64 `yaml:"sync_max_chat_age"`
+	SyncWithCustomPuppets bool `yaml:"sync_with_custom_puppets"`
+	SyncDirectChatList    bool `yaml:"sync_direct_chat_list"`
+	DefaultBridgeReceipts bool `yaml:"default_bridge_receipts"`
+	DefaultBridgePresence bool `yaml:"default_bridge_presence"`
 
-	SyncWithCustomPuppets bool   `yaml:"sync_with_custom_puppets"`
-	SyncDirectChatList    bool   `yaml:"sync_direct_chat_list"`
-	DefaultBridgeReceipts bool   `yaml:"default_bridge_receipts"`
-	DefaultBridgePresence bool   `yaml:"default_bridge_presence"`
-	LoginSharedSecret     string `yaml:"login_shared_secret"`
+	DoublePuppetServerMap      map[string]string `yaml:"double_puppet_server_map"`
+	DoublePuppetAllowDiscovery bool              `yaml:"double_puppet_allow_discovery"`
+	LoginSharedSecretMap       map[string]string `yaml:"login_shared_secret_map"`
 
-	InviteOwnPuppetForBackfilling bool   `yaml:"invite_own_puppet_for_backfilling"`
-	PrivateChatPortalMeta         bool   `yaml:"private_chat_portal_meta"`
-	BridgeNotices                 bool   `yaml:"bridge_notices"`
-	ResendBridgeInfo              bool   `yaml:"resend_bridge_info"`
-	MuteBridging                  bool   `yaml:"mute_bridging"`
-	ArchiveTag                    string `yaml:"archive_tag"`
-	PinnedTag                     string `yaml:"pinned_tag"`
-	TagOnlyOnCreate               bool   `yaml:"tag_only_on_create"`
-	MarkReadOnlyOnCreate          bool   `yaml:"mark_read_only_on_create"`
-	EnableStatusBroadcast         bool   `yaml:"enable_status_broadcast"`
-
-	WhatsappThumbnail bool `yaml:"whatsapp_thumbnail"`
-
-	AllowUserInvite bool `yaml:"allow_user_invite"`
+	PrivateChatPortalMeta bool   `yaml:"private_chat_portal_meta"`
+	BridgeNotices         bool   `yaml:"bridge_notices"`
+	ResendBridgeInfo      bool   `yaml:"resend_bridge_info"`
+	MuteBridging          bool   `yaml:"mute_bridging"`
+	ArchiveTag            string `yaml:"archive_tag"`
+	PinnedTag             string `yaml:"pinned_tag"`
+	TagOnlyOnCreate       bool   `yaml:"tag_only_on_create"`
+	MarkReadOnlyOnCreate  bool   `yaml:"mark_read_only_on_create"`
+	EnableStatusBroadcast bool   `yaml:"enable_status_broadcast"`
+	WhatsappThumbnail     bool   `yaml:"whatsapp_thumbnail"`
+	AllowUserInvite       bool   `yaml:"allow_user_invite"`
+	FederateRooms         bool   `yaml:"federate_rooms"`
 
 	CommandPrefix string `yaml:"command_prefix"`
 
@@ -103,50 +92,10 @@ type BridgeConfig struct {
 
 	Permissions PermissionConfig `yaml:"permissions"`
 
-	Relaybot RelaybotConfig `yaml:"relaybot"`
+	Relay RelaybotConfig `yaml:"relay"`
 
 	usernameTemplate    *template.Template `yaml:"-"`
 	displaynameTemplate *template.Template `yaml:"-"`
-	communityTemplate   *template.Template `yaml:"-"`
-}
-
-func (bc *BridgeConfig) setDefaults() {
-	bc.ConnectionTimeout = 20
-	bc.FetchMessageOnTimeout = false
-	bc.DeliveryReceipts = false
-	bc.MaxConnectionAttempts = 3
-	bc.ConnectionRetryDelay = -1
-	bc.ReportConnectionRetry = true
-	bc.ChatListWait = 30
-	bc.PortalSyncWait = 600
-	bc.UserMessageBuffer = 1024
-	bc.PortalMessageBuffer = 128
-
-	bc.CallNotices.Start = true
-	bc.CallNotices.End = true
-
-	bc.InitialChatSync = 10
-	bc.InitialHistoryFill = 20
-	bc.RecoverChatSync = -1
-	bc.RecoverHistory = true
-	bc.ChatMetaSync = true
-	bc.UserAvatarSync = true
-	bc.BridgeMatrixLeave = true
-	bc.SyncChatMaxAge = 259200
-
-	bc.SyncWithCustomPuppets = true
-	bc.DefaultBridgePresence = true
-	bc.DefaultBridgeReceipts = true
-	bc.LoginSharedSecret = ""
-
-	bc.InviteOwnPuppetForBackfilling = true
-	bc.PrivateChatPortalMeta = false
-	bc.BridgeNotices = true
-	bc.EnableStatusBroadcast = true
-
-	bc.ManagementRoomText.Welcome = "Hello, I'm a WhatsApp bridge bot."
-	bc.ManagementRoomText.WelcomeConnected = "Use `help` for help."
-	bc.ManagementRoomText.WelcomeUnconnected = "Use `help` for help or `login` to log in."
 }
 
 type umBridgeConfig BridgeConfig
@@ -160,18 +109,13 @@ func (bc *BridgeConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	bc.usernameTemplate, err = template.New("username").Parse(bc.UsernameTemplate)
 	if err != nil {
 		return err
+	} else if !strings.Contains(bc.FormatUsername("1234567890"), "1234567890") {
+		return fmt.Errorf("username template is missing user ID placeholder")
 	}
 
 	bc.displaynameTemplate, err = template.New("displayname").Parse(bc.DisplaynameTemplate)
 	if err != nil {
 		return err
-	}
-
-	if len(bc.CommunityTemplate) > 0 {
-		bc.communityTemplate, err = template.New("community").Parse(bc.CommunityTemplate)
-		if err != nil {
-			return err
-		}
 	}
 
 	return nil
@@ -181,44 +125,43 @@ type UsernameTemplateArgs struct {
 	UserID id.UserID
 }
 
-func (bc BridgeConfig) FormatDisplayname(contact whatsapp.Contact) (string, int8) {
-	var buf bytes.Buffer
-	if index := strings.IndexRune(contact.JID, '@'); index > 0 {
-		contact.JID = "+" + contact.JID[:index]
-	}
-	bc.displaynameTemplate.Execute(&buf, contact)
+type legacyContactInfo struct {
+	types.ContactInfo
+	Phone string
+
+	Notify string
+	VName  string
+	Name   string
+	Short  string
+	JID    string
+}
+
+func (bc BridgeConfig) FormatDisplayname(jid types.JID, contact types.ContactInfo) (string, int8) {
+	var buf strings.Builder
+	_ = bc.displaynameTemplate.Execute(&buf, legacyContactInfo{
+		ContactInfo: contact,
+		Notify:      contact.PushName,
+		VName:       contact.BusinessName,
+		Name:        contact.FullName,
+		Short:       contact.FirstName,
+		Phone:       "+" + jid.User,
+		JID:         "+" + jid.User,
+	})
 	var quality int8
 	switch {
-	case len(contact.Notify) > 0 || len(contact.VName) > 0:
+	case len(contact.PushName) > 0 || len(contact.BusinessName) > 0:
 		quality = 3
-	case len(contact.Name) > 0 || len(contact.Short) > 0:
+	case len(contact.FullName) > 0 || len(contact.FirstName) > 0:
 		quality = 2
-	case len(contact.JID) > 0:
-		quality = 1
 	default:
-		quality = 0
+		quality = 1
 	}
 	return buf.String(), quality
 }
 
-func (bc BridgeConfig) FormatUsername(userID whatsapp.JID) string {
-	var buf bytes.Buffer
-	bc.usernameTemplate.Execute(&buf, userID)
-	return buf.String()
-}
-
-type CommunityTemplateArgs struct {
-	Localpart string
-	Server    string
-}
-
-func (bc BridgeConfig) EnableCommunities() bool {
-	return bc.communityTemplate != nil
-}
-
-func (bc BridgeConfig) FormatCommunity(localpart, server string) string {
-	var buf bytes.Buffer
-	bc.communityTemplate.Execute(&buf, CommunityTemplateArgs{localpart, server})
+func (bc BridgeConfig) FormatUsername(username string) string {
+	var buf strings.Builder
+	_ = bc.usernameTemplate.Execute(&buf, username)
 	return buf.String()
 }
 
@@ -227,10 +170,10 @@ type PermissionConfig map[string]PermissionLevel
 type PermissionLevel int
 
 const (
-	PermissionLevelDefault  PermissionLevel = 0
-	PermissionLevelRelaybot PermissionLevel = 5
-	PermissionLevelUser     PermissionLevel = 10
-	PermissionLevelAdmin    PermissionLevel = 100
+	PermissionLevelDefault PermissionLevel = 0
+	PermissionLevelRelay   PermissionLevel = 5
+	PermissionLevelUser    PermissionLevel = 10
+	PermissionLevelAdmin   PermissionLevel = 100
 )
 
 func (pc *PermissionConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
@@ -245,8 +188,8 @@ func (pc *PermissionConfig) UnmarshalYAML(unmarshal func(interface{}) error) err
 	}
 	for key, value := range rawPC {
 		switch strings.ToLower(value) {
-		case "relaybot":
-			(*pc)[key] = PermissionLevelRelaybot
+		case "relaybot", "relay":
+			(*pc)[key] = PermissionLevelRelay
 		case "user":
 			(*pc)[key] = PermissionLevelUser
 		case "admin":
@@ -270,8 +213,8 @@ func (pc *PermissionConfig) MarshalYAML() (interface{}, error) {
 	rawPC := make(map[string]string)
 	for key, value := range *pc {
 		switch value {
-		case PermissionLevelRelaybot:
-			rawPC[key] = "relaybot"
+		case PermissionLevelRelay:
+			rawPC[key] = "relay"
 		case PermissionLevelUser:
 			rawPC[key] = "user"
 		case PermissionLevelAdmin:
@@ -283,8 +226,8 @@ func (pc *PermissionConfig) MarshalYAML() (interface{}, error) {
 	return rawPC, nil
 }
 
-func (pc PermissionConfig) IsRelaybotWhitelisted(userID id.UserID) bool {
-	return pc.GetPermissionLevel(userID) >= PermissionLevelRelaybot
+func (pc PermissionConfig) IsRelayWhitelisted(userID id.UserID) bool {
+	return pc.GetPermissionLevel(userID) >= PermissionLevelRelay
 }
 
 func (pc PermissionConfig) IsWhitelisted(userID id.UserID) bool {
@@ -316,10 +259,8 @@ func (pc PermissionConfig) GetPermissionLevel(userID id.UserID) PermissionLevel 
 }
 
 type RelaybotConfig struct {
-	Enabled        bool        `yaml:"enabled"`
-	ManagementRoom id.RoomID   `yaml:"management"`
-	InviteUsers    []id.UserID `yaml:"invites"`
-
+	Enabled          bool                         `yaml:"enabled"`
+	AdminOnly        bool                         `yaml:"admin_only"`
 	MessageFormats   map[event.MessageType]string `yaml:"message_formats"`
 	messageTemplates *template.Template           `yaml:"-"`
 }
@@ -344,8 +285,8 @@ func (rc *RelaybotConfig) UnmarshalYAML(unmarshal func(interface{}) error) error
 }
 
 type Sender struct {
-	UserID id.UserID
-	*event.MemberEventContent
+	UserID string
+	event.MemberEventContent
 }
 
 type formatData struct {
@@ -354,11 +295,15 @@ type formatData struct {
 	Content *event.MessageEventContent
 }
 
-func (rc *RelaybotConfig) FormatMessage(content *event.MessageEventContent, sender id.UserID, member *event.MemberEventContent) (string, error) {
+func (rc *RelaybotConfig) FormatMessage(content *event.MessageEventContent, sender id.UserID, member event.MemberEventContent) (string, error) {
+	if len(member.Displayname) == 0 {
+		member.Displayname = sender.String()
+	}
+	member.Displayname = template.HTMLEscapeString(member.Displayname)
 	var output strings.Builder
 	err := rc.messageTemplates.ExecuteTemplate(&output, string(content.MsgType), formatData{
 		Sender: Sender{
-			UserID:             sender,
+			UserID:             template.HTMLEscapeString(sender.String()),
 			MemberEventContent: member,
 		},
 		Content: content,

@@ -19,13 +19,18 @@ package database
 import (
 	"database/sql"
 
-	_ "github.com/lib/pq"
+	"github.com/lib/pq"
 	_ "github.com/mattn/go-sqlite3"
 
 	log "maunium.net/go/maulogger/v2"
 
+	"go.mau.fi/whatsmeow/store/sqlstore"
 	"maunium.net/go/mautrix-whatsapp/database/upgrades"
 )
+
+func init() {
+	sqlstore.PostgresArrayWrapper = pq.Array
+}
 
 type Database struct {
 	*sql.DB
@@ -42,10 +47,6 @@ func New(dbType string, uri string, baseLog log.Logger) (*Database, error) {
 	conn, err := sql.Open(dbType, uri)
 	if err != nil {
 		return nil, err
-	}
-
-	if dbType == "sqlite3" {
-		_, _ = conn.Exec("PRAGMA foreign_keys = ON")
 	}
 
 	db := &Database{
