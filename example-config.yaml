@@ -27,11 +27,11 @@ appservice:
         # The database type. "sqlite3" and "postgres" are supported.
         type: sqlite3
         # The database URI.
-        #   SQLite: File name is enough. For example, uri: mautrix-whatsapp.db
-        #           https://github.com/mattn/go-sqlite3#connection-string
-        #   Postgres: Connection string. For example, uri: postgres://user:password@host/database?sslmode=disable
-        #             To connect via Unix socket, use something like uri: postgres:///dbname?host=/var/run/postgresql
-        uri: mautrix-whatsapp.db
+        #   SQLite: File name is enough. https://github.com/mattn/go-sqlite3#connection-string
+        #   Postgres: Connection string. For example, postgres://user:password@host/database?sslmode=disable
+        #             To connect via Unix socket, use something like postgres:///dbname?host=/var/run/postgresql
+        uri: mautrix-whatsapp.db # for sqlite3
+        # uri: postgres://user:password@host/database?sslmode=disable # for postgres
         # Maximum number of connections. Mostly relevant for Postgres.
         max_open_conns: 20
         max_idle_conns: 2
