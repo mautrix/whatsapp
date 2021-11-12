@@ -5,7 +5,7 @@ import (
 )
 
 func init() {
-	upgrades[25] = upgrade{"Update things for multidevice", func(tx *sql.Tx, ctx context) error {
+	upgrades[26] = upgrade{"Update things for multidevice", func(tx *sql.Tx, ctx context) error {
 		// This is probably not necessary
 		_, err := tx.Exec("DROP TABLE user_portal")
 		if err != nil {
