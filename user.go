@@ -573,6 +573,12 @@ func (user *User) syncChatDoublePuppetDetails(portal *Portal, justCreated bool) 
 			return
 		}
 		intent := doublePuppet.CustomIntent()
+		if justCreated && user.bridge.Config.Bridge.MuteStatusBroadcast {
+			user.updateChatMute(intent, portal, time.Now().Add(365 * 24 * time.Hour))
+			user.updateChatTag(intent, portal, user.bridge.Config.Bridge.ArchiveTag, true)
+		} else if !chat.Found {
+			return
+		}
 		user.updateChatMute(intent, portal, chat.MutedUntil)
 		user.updateChatTag(intent, portal, user.bridge.Config.Bridge.ArchiveTag, chat.Archived)
 		user.updateChatTag(intent, portal, user.bridge.Config.Bridge.PinnedTag, chat.Pinned)
