@@ -26,6 +26,7 @@ import (
 	"strings"
 
 	"github.com/skip2/go-qrcode"
+
 	"go.mau.fi/whatsmeow/appstate"
 
 	"maunium.net/go/maulogger/v2"
@@ -502,7 +503,7 @@ func (handler *CommandHandler) CommandLogin(ce *CommandEvent) {
 		case whatsmeow.QRChannelScannedWithoutMultidevice:
 			ce.Reply("Please enable the WhatsApp multidevice beta and scan the QR code again.")
 		default:
-			qrEventID = ce.User.sendQR(ce, string(item), qrEventID)
+			qrEventID = ce.User.sendQR(ce, item.Code, qrEventID)
 		}
 	}
 	_, _ = ce.Bot.RedactEvent(ce.RoomID, qrEventID)
