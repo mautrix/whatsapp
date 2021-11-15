@@ -500,10 +500,10 @@ func (user *User) updateChatMute(intent *appservice.IntentAPI, portal *Portal, m
 	}
 	var err error
 	if mutedUntil.IsZero() && mutedUntil.Before(time.Now()) {
-		user.log.Debugfln("Portal %s is muted until %d, unmuting...", portal.MXID, mutedUntil)
+		user.log.Debugfln("Portal %s is muted until %s, unmuting...", portal.MXID, mutedUntil)
 		err = intent.DeletePushRule("global", pushrules.RoomRule, string(portal.MXID))
 	} else {
-		user.log.Debugfln("Portal %s is muted until %d, muting...", portal.MXID, mutedUntil)
+		user.log.Debugfln("Portal %s is muted until %s, muting...", portal.MXID, mutedUntil)
 		err = intent.PutPushRule("global", pushrules.RoomRule, string(portal.MXID), &mautrix.ReqPutPushRule{
 			Actions: []pushrules.PushActionType{pushrules.ActionDontNotify},
 		})
@@ -574,8 +574,9 @@ func (user *User) syncChatDoublePuppetDetails(portal *Portal, justCreated bool) 
 		}
 		intent := doublePuppet.CustomIntent()
 		if justCreated && user.bridge.Config.Bridge.MuteStatusBroadcast {
-			user.updateChatMute(intent, portal, time.Now().Add(365 * 24 * time.Hour))
+			user.updateChatMute(intent, portal, time.Now().Add(365*24*time.Hour))
 			user.updateChatTag(intent, portal, user.bridge.Config.Bridge.ArchiveTag, true)
+			return
 		} else if !chat.Found {
 			return
 		}

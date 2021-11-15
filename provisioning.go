@@ -336,7 +336,7 @@ func (prov *ProvisioningAPI) Login(w http.ResponseWriter, r *http.Request) {
 				continue
 			default:
 				_ = c.WriteJSON(map[string]interface{}{
-					"code": evt.Code,
+					"code":    evt.Code,
 					"timeout": int(evt.Timeout.Seconds()),
 				})
 				continue
