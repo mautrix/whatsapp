@@ -87,7 +87,6 @@ bridge:
     # {{.FullName}}  - full name from contact list
     # {{.FirstName}} - first name from contact list
     displayname_template: "{{if .PushName}}{{.PushName}}{{else if .BusinessName}}{{.BusinessName}}{{else}}{{.JID}}{{end}} (WA)"
-
     # Should the bridge send a read receipt from the bridge bot when a message has been sent to WhatsApp?
     delivery_receipts: false
     # Should incoming calls send a message to the Matrix room?
@@ -96,9 +95,7 @@ bridge:
     identity_change_notices: false
     # Should a "reactions not yet supported" warning be sent to the Matrix room when a user reacts to a message?
     reaction_notices: true
-
     portal_message_buffer: 128
-
     # Settings for handling history sync payloads. These settings only apply right after login,
     # because the phone only sends the history sync data once, and there's no way to re-request it
     # (other than logging out and back in again).
@@ -124,7 +121,6 @@ bridge:
     user_avatar_sync: true
     # Should Matrix users leaving groups be bridged to WhatsApp?
     bridge_matrix_leave: true
-
     # Should the bridge sync with double puppeting to receive EDUs that aren't normally sent to appservices.
     sync_with_custom_puppets: true
     # Should the bridge update the m.direct account data event when double puppeting is enabled.
@@ -148,7 +144,6 @@ bridge:
     # manually.
     login_shared_secret_map:
         example.com: foobar
-
     # Should the bridge explicitly set the avatar and room name for private chat portal rooms?
     private_chat_portal_meta: false
     # Should Matrix m.notice-type messages be bridged?

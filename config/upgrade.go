@@ -26,10 +26,6 @@ import (
 	"maunium.net/go/mautrix/appservice"
 )
 
-func (helper *UpgradeHelper) TempMethod() {
-	helper.doUpgrade()
-}
-
 func (helper *UpgradeHelper) doUpgrade() {
 	helper.Copy(Str, "homeserver", "address")
 	helper.Copy(Str, "homeserver", "domain")
@@ -134,6 +130,34 @@ func Upgrade(path string, save bool) ([]byte, bool, error) {
 	return upgrade(path, save, nil)
 }
 
+func (helper *UpgradeHelper) addSpaceBeforeComment(path ...string) {
+	node := helper.GetBaseNode(path...)
+	if node.Key == nil {
+		panic(fmt.Errorf("didn't find key at %+v", path))
+	}
+	node.Key.HeadComment = "\n" + node.Key.HeadComment
+}
+
+func (helper *UpgradeHelper) addSpaces() {
+	// The yaml package doesn't preserve blank lines, so re-add them manually where appropriate
+	helper.addSpaceBeforeComment("homeserver", "asmux")
+	helper.addSpaceBeforeComment("appservice")
+	helper.addSpaceBeforeComment("appservice", "hostname")
+	helper.addSpaceBeforeComment("appservice", "database")
+	helper.addSpaceBeforeComment("appservice", "provisioning")
+	helper.addSpaceBeforeComment("appservice", "id")
+	helper.addSpaceBeforeComment("appservice", "as_token")
+	helper.addSpaceBeforeComment("metrics")
+	helper.addSpaceBeforeComment("whatsapp")
+	helper.addSpaceBeforeComment("bridge")
+	helper.addSpaceBeforeComment("bridge", "command_prefix")
+	helper.addSpaceBeforeComment("bridge", "management_room_text")
+	helper.addSpaceBeforeComment("bridge", "encryption")
+	helper.addSpaceBeforeComment("bridge", "permissions")
+	helper.addSpaceBeforeComment("bridge", "relay")
+	helper.addSpaceBeforeComment("logging")
+}
+
 func upgrade(configPath string, save bool, mutate func(helper *UpgradeHelper)) ([]byte, bool, error) {
 	sourceData, err := os.ReadFile(configPath)
 	if err != nil {
@@ -154,6 +178,7 @@ func upgrade(configPath string, save bool, mutate func(helper *UpgradeHelper)) (
 	if mutate != nil {
 		mutate(helper)
 	}
+	helper.addSpaces()
 
 	output, err := yaml.Marshal(&base)
 	if err != nil {
