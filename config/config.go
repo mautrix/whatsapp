@@ -121,6 +121,7 @@ func (config *Config) MakeAppService() (*appservice.AppService, error) {
 	as.HomeserverURL = config.Homeserver.Address
 	as.Host.Hostname = config.AppService.Hostname
 	as.Host.Port = config.AppService.Port
+	as.MessageSendCheckpointEndpoint = config.Homeserver.MessageSendCheckpointEndpoint
 	as.DefaultHTTPRetries = 4
 	var err error
 	as.Registration, err = config.GetRegistration()
