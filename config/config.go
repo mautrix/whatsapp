@@ -29,10 +29,11 @@ var ExampleConfig string
 
 type Config struct {
 	Homeserver struct {
-		Address        string `yaml:"address"`
-		Domain         string `yaml:"domain"`
-		Asmux          bool   `yaml:"asmux"`
-		StatusEndpoint string `yaml:"status_endpoint"`
+		Address                       string `yaml:"address"`
+		Domain                        string `yaml:"domain"`
+		Asmux                         bool   `yaml:"asmux"`
+		StatusEndpoint                string `yaml:"status_endpoint"`
+		MessageSendCheckpointEndpoint string `yaml:"message_send_checkpoint_endpoint"`
 	} `yaml:"homeserver"`
 
 	AppService struct {
