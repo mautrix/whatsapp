@@ -153,14 +153,14 @@ func (puppet *Puppet) UpdateActivityTs(ts int64) {
 	}
 	puppet.log.Debugfln("Updating activity time for %s to %d", puppet.JID, signedTs)
 	puppet.LastActivityTs = signedTs
-	_, err := puppet.db.Exec("UPDATE puppet SET last_activity_ts=$1 WHERE jid=$2", puppet.LastActivityTs, puppet.JID)
+	_, err := puppet.db.Exec("UPDATE puppet SET last_activity_ts=$1 WHERE username=$2", puppet.LastActivityTs, puppet.JID.User)
 	if err != nil {
 		puppet.log.Warnfln("Failed to update last_activity_ts for %s: %v", puppet.JID, err)
 	}
 
 	if puppet.FirstActivityTs == 0 {
 		puppet.FirstActivityTs = signedTs
-		_, err = puppet.db.Exec("UPDATE puppet SET first_activity_ts=$1 WHERE jid=$2 AND first_activity_ts is NULL", puppet.FirstActivityTs, puppet.JID)
+		_, err = puppet.db.Exec("UPDATE puppet SET first_activity_ts=$1 WHERE username=$2 AND first_activity_ts is NULL", puppet.FirstActivityTs, puppet.JID.User)
 		if err != nil {
 			puppet.log.Warnfln("Failed to update first_activity_ts %s: %v", puppet.JID, err)
 		}
