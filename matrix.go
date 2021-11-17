@@ -342,16 +342,20 @@ func (mx *MatrixHandler) HandleEncrypted(evt *event.Event) {
 			mx.log.Debugfln("Got session %s after waiting, trying to decrypt %s again", content.SessionID, evt.ID)
 			decrypted, err = mx.bridge.Crypto.Decrypt(evt)
 		} else {
+			mx.as.SendErrorMessageSendCheckpoint(evt, appservice.StepDecrypted, err, false)
 			go mx.waitLongerForSession(evt)
 			return
 		}
 	}
 	if err != nil {
+		mx.as.SendErrorMessageSendCheckpoint(evt, appservice.StepDecrypted, err, true)
+
 		mx.log.Warnfln("Failed to decrypt %s: %v", evt.ID, err)
 		_, _ = mx.bridge.Bot.SendNotice(evt.RoomID, fmt.Sprintf(
 			"\u26a0 Your message was not bridged: %v", err))
 		return
 	}
+	mx.as.SendMessageSendCheckpoint(decrypted, appservice.StepDecrypted)
 	mx.bridge.EventProcessor.Dispatch(decrypted)
 }
 
@@ -375,14 +379,18 @@ func (mx *MatrixHandler) waitLongerForSession(evt *event.Event) {
 		mx.log.Debugfln("Got session %s after waiting more, trying to decrypt %s again", content.SessionID, evt.ID)
 		decrypted, err := mx.bridge.Crypto.Decrypt(evt)
 		if err == nil {
+			mx.as.SendMessageSendCheckpoint(decrypted, appservice.StepDecrypted)
 			mx.bridge.EventProcessor.Dispatch(decrypted)
 			_, _ = mx.bridge.Bot.RedactEvent(evt.RoomID, resp.EventID)
 			return
 		}
-		mx.log.Warnfln("Failed to decrypt %s: %v", err)
+		mx.log.Warnfln("Failed to decrypt %s: %v", evt.ID, err)
+		mx.as.SendErrorMessageSendCheckpoint(evt, appservice.StepDecrypted, err, true)
 		update.Body = fmt.Sprintf("\u26a0 Your message was not bridged: %v", err)
 	} else {
-		mx.log.Debugfln("Didn't get %s, giving up on %s", content.SessionID, evt.ID)
+		errMsg := fmt.Sprintf("Didn't get %s, giving up on %s", content.SessionID, evt.ID)
+		mx.log.Debugfln(errMsg)
+		mx.as.SendErrorMessageSendCheckpoint(evt, appservice.StepDecrypted, fmt.Errorf(errMsg), true)
 		update.Body = "\u26a0 Your message was not bridged: the bridge hasn't received the decryption keys. " +
 			"If this keeps happening, try restarting your client."
 	}
@@ -395,7 +403,10 @@ func (mx *MatrixHandler) waitLongerForSession(evt *event.Event) {
 			EventID: resp.EventID,
 		}
 	}
-	_, _ = mx.bridge.Bot.SendMessageEvent(evt.RoomID, event.EventMessage, &update)
+	_, err = mx.bridge.Bot.SendMessageEvent(evt.RoomID, event.EventMessage, &update)
+	if err != nil {
+		mx.log.Debugfln("Failed to update decryption error notice %s: %v", resp.EventID, err)
+	}
 }
 
 func (mx *MatrixHandler) HandleMessage(evt *event.Event) {

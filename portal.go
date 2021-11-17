@@ -43,7 +43,6 @@ import (
 	"golang.org/x/image/webp"
 	"google.golang.org/protobuf/proto"
 
-	"maunium.net/go/mautrix/bridge"
 	"maunium.net/go/mautrix/format"
 
 	"go.mau.fi/whatsmeow"
@@ -2145,14 +2144,10 @@ func (portal *Portal) HandleMatrixMessage(sender *User, evt *event.Event) {
 	if err != nil {
 		portal.log.Errorln("Error sending message: %v", err)
 		portal.sendErrorMessage(err.Error(), true)
-		checkpoint := bridge.NewErrorMessageSendCheckpoint(evt.ID, evt.RoomID, bridge.StepRemote, evt.Type, err)
-		checkpoint.MessageType = evt.Content.AsMessage().MsgType
-		go checkpoint.Send(portal.bridge.Config.Homeserver.MessageSendCheckpointEndpoint, portal.bridge.AS.Registration.AppToken)
+		portal.bridge.AS.SendErrorMessageSendCheckpoint(evt, appservice.StepRemote, err, true)
 	} else {
 		portal.log.Debugfln("Handled Matrix event %s", evt.ID)
-		checkpoint := bridge.NewMessageSendCheckpoint(evt.ID, evt.RoomID, bridge.StepRemote, bridge.StatusSuccesss, evt.Type)
-		checkpoint.MessageType = evt.Content.AsMessage().MsgType
-		go checkpoint.Send(portal.bridge.Config.Homeserver.MessageSendCheckpointEndpoint, portal.bridge.AS.Registration.AppToken)
+		portal.bridge.AS.SendMessageSendCheckpoint(evt, appservice.StepRemote)
 		portal.sendDeliveryReceipt(evt.ID)
 		dbMsg.MarkSent(ts)
 	}
@@ -2186,12 +2181,10 @@ func (portal *Portal) HandleMatrixRedaction(sender *User, evt *event.Event) {
 	_, err := sender.Client.RevokeMessage(portal.Key.JID, msg.JID)
 	if err != nil {
 		portal.log.Errorfln("Error handling Matrix redaction %s: %v", evt.ID, err)
-		checkpoint := bridge.NewErrorMessageSendCheckpoint(evt.ID, evt.RoomID, bridge.StepRemote, evt.Type, err)
-		go checkpoint.Send(portal.bridge.Config.Homeserver.MessageSendCheckpointEndpoint, portal.bridge.AS.Registration.AppToken)
+		portal.bridge.AS.SendErrorMessageSendCheckpoint(evt, appservice.StepRemote, err, true)
 	} else {
 		portal.log.Debugfln("Handled Matrix redaction %s of %s", evt.ID, evt.Redacts)
-		checkpoint := bridge.NewMessageSendCheckpoint(evt.ID, evt.RoomID, bridge.StepRemote, bridge.StatusSuccesss, evt.Type)
-		go checkpoint.Send(portal.bridge.Config.Homeserver.MessageSendCheckpointEndpoint, portal.bridge.AS.Registration.AppToken)
+		portal.bridge.AS.SendMessageSendCheckpoint(evt, appservice.StepRemote)
 		portal.sendDeliveryReceipt(evt.ID)
 	}
 }
