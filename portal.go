@@ -2144,8 +2144,10 @@ func (portal *Portal) HandleMatrixMessage(sender *User, evt *event.Event) {
 	if err != nil {
 		portal.log.Errorln("Error sending message: %v", err)
 		portal.sendErrorMessage(err.Error(), true)
+		portal.bridge.AS.SendErrorMessageSendCheckpoint(evt, appservice.StepRemote, err, true)
 	} else {
 		portal.log.Debugfln("Handled Matrix event %s", evt.ID)
+		portal.bridge.AS.SendMessageSendCheckpoint(evt, appservice.StepRemote)
 		portal.sendDeliveryReceipt(evt.ID)
 		dbMsg.MarkSent(ts)
 	}
@@ -2179,8 +2181,10 @@ func (portal *Portal) HandleMatrixRedaction(sender *User, evt *event.Event) {
 	_, err := sender.Client.RevokeMessage(portal.Key.JID, msg.JID)
 	if err != nil {
 		portal.log.Errorfln("Error handling Matrix redaction %s: %v", evt.ID, err)
+		portal.bridge.AS.SendErrorMessageSendCheckpoint(evt, appservice.StepRemote, err, true)
 	} else {
 		portal.log.Debugfln("Handled Matrix redaction %s of %s", evt.ID, evt.Redacts)
+		portal.bridge.AS.SendMessageSendCheckpoint(evt, appservice.StepRemote)
 		portal.sendDeliveryReceipt(evt.ID)
 	}
 }

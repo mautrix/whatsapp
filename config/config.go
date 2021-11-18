@@ -29,10 +29,11 @@ var ExampleConfig string
 
 type Config struct {
 	Homeserver struct {
-		Address        string `yaml:"address"`
-		Domain         string `yaml:"domain"`
-		Asmux          bool   `yaml:"asmux"`
-		StatusEndpoint string `yaml:"status_endpoint"`
+		Address                       string `yaml:"address"`
+		Domain                        string `yaml:"domain"`
+		Asmux                         bool   `yaml:"asmux"`
+		StatusEndpoint                string `yaml:"status_endpoint"`
+		MessageSendCheckpointEndpoint string `yaml:"message_send_checkpoint_endpoint"`
 	} `yaml:"homeserver"`
 
 	AppService struct {
@@ -120,6 +121,7 @@ func (config *Config) MakeAppService() (*appservice.AppService, error) {
 	as.HomeserverURL = config.Homeserver.Address
 	as.Host.Hostname = config.AppService.Hostname
 	as.Host.Port = config.AppService.Port
+	as.MessageSendCheckpointEndpoint = config.Homeserver.MessageSendCheckpointEndpoint
 	as.DefaultHTTPRetries = 4
 	var err error
 	as.Registration, err = config.GetRegistration()

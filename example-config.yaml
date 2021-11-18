@@ -11,6 +11,8 @@ homeserver:
     # If set, the bridge will make POST requests to this URL whenever a user's whatsapp connection state changes.
     # The bridge will use the appservice as_token to authorize requests.
     status_endpoint: null
+    # Endpoint for reporting per-message status.
+    message_send_checkpoint_endpoint: null
 
 # Application service host/registration related details.
 # Changing these values requires regeneration of the registration.
