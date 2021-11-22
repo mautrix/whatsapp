@@ -923,37 +923,35 @@ func (handler *CommandHandler) CommandList(ce *CommandEvent) {
 	ce.Reply("### %s (page %d of %d)\n\n%s", typeName, page, pages, strings.Join(result, "\n"))
 }
 
-const cmdSearchHelp = `search <search query> - Search for a contact or group using a query.`
+const cmdSearchHelp = `search <query> - Search for contacts or groups.`
 
 func (handler *CommandHandler) CommandSearch(ce *CommandEvent) {
 	if len(ce.Args) == 0 {
-		ce.Reply("**Usage:** `search <name query>`")
+		ce.Reply("**Usage:** `search <query>`")
 		return
 	}
-	query := strings.ToLower(strings.TrimSpace(strings.Join(ce.Args, " ")))
-
-	var err error
 
 	contactList, err := ce.User.Client.Store.Contacts.GetAllContacts()
 	if err != nil {
 		ce.Reply("Failed to get contacts: %s", err)
 		return
 	}
-	formatedContacts := formatContacts(ce.User.bridge, contactList, query)
-
 	groupList, err := ce.User.Client.GetJoinedGroups()
 	if err != nil {
 		ce.Reply("Failed to get groups: %s", err)
 		return
 	}
-	formatedGroups := formatGroups(groupList, query)
 
-	var result string
-	if len(formatedContacts) > 0 {
-		result = "\n\n#### Contacts: \n\n" + strings.Join(formatedContacts, "\n")
+	query := strings.ToLower(strings.TrimSpace(strings.Join(ce.Args, " ")))
+	formattedContacts := strings.Join(formatContacts(ce.User.bridge, contactList, query), "\n")
+	formattedGroups := strings.Join(formatGroups(groupList, query), "\n")
+
+	result := make([]string, 0, 2)
+	if len(formattedContacts) > 0 {
+		result = append(result, "### Contacts\n\n" + formattedContacts)
 	}
-	if len(formatedGroups) > 0 {
-		result += "\n\n#### Groups: \n\n" + strings.Join(formatedGroups, "\n")
+	if len(formattedGroups) > 0 {
+		result = append(result, "### Groups\n\n" + formattedGroups)
 	}
 
 	if len(result) == 0 {
@@ -961,7 +959,7 @@ func (handler *CommandHandler) CommandSearch(ce *CommandEvent) {
 		return
 	}
 
-	ce.Reply("### Search results:%s", result)
+	ce.Reply(strings.Join(result, "\n\n"))
 }
 
 const cmdOpenHelp = `open <_group JID_> - Open a group chat portal.`
