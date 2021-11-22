@@ -2142,7 +2142,7 @@ func (portal *Portal) HandleMatrixMessage(sender *User, evt *event.Event) {
 	portal.log.Debugln("Sending event", evt.ID, "to WhatsApp", info.ID)
 	ts, err := sender.Client.SendMessage(portal.Key.JID, info.ID, msg)
 	if err != nil {
-		portal.log.Errorln("Error sending message: %v", err)
+		portal.log.Errorfln("Error sending message: %v", err)
 		portal.sendErrorMessage(err.Error(), true)
 		portal.bridge.AS.SendErrorMessageSendCheckpoint(evt, appservice.StepRemote, err, true)
 	} else {
