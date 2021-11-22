@@ -27,11 +27,10 @@ import (
 
 	"github.com/skip2/go-qrcode"
 
-	"go.mau.fi/whatsmeow/appstate"
-
 	"maunium.net/go/maulogger/v2"
 
 	"go.mau.fi/whatsmeow"
+	"go.mau.fi/whatsmeow/appstate"
 	"go.mau.fi/whatsmeow/types"
 
 	"maunium.net/go/mautrix"
