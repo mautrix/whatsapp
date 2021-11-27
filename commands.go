@@ -20,6 +20,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"html"
 	"math"
 	"sort"
 	"strconv"
@@ -135,7 +136,7 @@ func (handler *CommandHandler) CommandMux(ce *CommandEvent) {
 		handler.CommandLogout(ce)
 	case "toggle":
 		handler.CommandToggle(ce)
-	case "set-relay", "unset-relay", "login-matrix", "sync", "list", "search", "open", "pm", "invite-link", "check-invite", "join", "create", "accept":
+	case "set-relay", "unset-relay", "login-matrix", "sync", "list", "search", "open", "pm", "invite-link", "resolve", "resolve-link", "join", "create", "accept":
 		if !ce.User.HasSession() {
 			ce.Reply("You are not logged in. Use the `login` command to log into WhatsApp.")
 			return
@@ -163,8 +164,8 @@ func (handler *CommandHandler) CommandMux(ce *CommandEvent) {
 			handler.CommandPM(ce)
 		case "invite-link":
 			handler.CommandInviteLink(ce)
-		case "check-invite":
-			handler.CommandCheckInvite(ce)
+		case "resolve", "resolve-link":
+			handler.CommandResolveLink(ce)
 		case "join":
 			handler.CommandJoin(ce)
 		case "create":
@@ -253,23 +254,38 @@ func (handler *CommandHandler) CommandInviteLink(ce *CommandEvent) {
 	}
 }
 
-const cmdCheckInviteHelp = `check-invite <invite link> - Resolve an invite link and check which group it points at.`
-const inviteLinkPrefix = "https://chat.whatsapp.com/"
+const cmdResolveLinkHelp = `resolve-link <group or message link> - Resolve a WhatsApp group invite or business message link.`
 
-func (handler *CommandHandler) CommandCheckInvite(ce *CommandEvent) {
+func (handler *CommandHandler) CommandResolveLink(ce *CommandEvent) {
 	if len(ce.Args) == 0 {
-		ce.Reply("**Usage:** `join <invite link>`")
-		return
-	} else if len(ce.Args[0]) <= len(inviteLinkPrefix) || ce.Args[0][:len(inviteLinkPrefix)] != inviteLinkPrefix {
-		ce.Reply("That doesn't look like a WhatsApp invite link")
+		ce.Reply("**Usage:** `resolve-link <group or message link>`")
 		return
 	}
-	group, err := ce.User.Client.GetGroupInfoFromLink(ce.Args[0])
-	if err != nil {
-		ce.Reply("Failed to get group info: %v", err)
-		return
+	if strings.HasPrefix(ce.Args[0], whatsmeow.InviteLinkPrefix) {
+		group, err := ce.User.Client.GetGroupInfoFromLink(ce.Args[0])
+		if err != nil {
+			ce.Reply("Failed to get group info: %v", err)
+			return
+		}
+		ce.Reply("That invite link points at %s (`%s`)", group.Name, group.JID)
+	} else if strings.HasPrefix(ce.Args[0], whatsmeow.BusinessMessageLinkPrefix) || strings.HasPrefix(ce.Args[0], whatsmeow.BusinessMessageLinkDirectPrefix) {
+		target, err := ce.User.Client.ResolveBusinessMessageLink(ce.Args[0])
+		if err != nil {
+			ce.Reply("Failed to get business info: %v", err)
+			return
+		}
+		message := ""
+		if len(target.Message) > 0 {
+			parts := strings.Split(target.Message, "\n")
+			for i, part := range parts {
+				parts[i] = "> " + html.EscapeString(part)
+			}
+			message = fmt.Sprintf(" The following prefilled message is attached:\n\n%s", strings.Join(parts, "\n"))
+		}
+		ce.Reply("That link points at %s (+%s).%s", target.PushName, target.JID.User, message)
+	} else {
+		ce.Reply("That doesn't look like a group invite link nor a business message link.")
 	}
-	ce.Reply("That invite link points at %s (`%s`)", group.Name, group.JID)
 }
 
 const cmdJoinHelp = `join <invite link> - Join a group chat with an invite link.`
@@ -278,7 +294,7 @@ func (handler *CommandHandler) CommandJoin(ce *CommandEvent) {
 	if len(ce.Args) == 0 {
 		ce.Reply("**Usage:** `join <invite link>`")
 		return
-	} else if len(ce.Args[0]) <= len(inviteLinkPrefix) || ce.Args[0][:len(inviteLinkPrefix)] != inviteLinkPrefix {
+	} else if !strings.HasPrefix(ce.Args[0], whatsmeow.InviteLinkPrefix) {
 		ce.Reply("That doesn't look like a WhatsApp invite link")
 		return
 	}
@@ -715,7 +731,7 @@ func (handler *CommandHandler) CommandHelp(ce *CommandEvent) {
 		cmdPrefix + cmdOpenHelp,
 		cmdPrefix + cmdPMHelp,
 		cmdPrefix + cmdInviteLinkHelp,
-		cmdPrefix + cmdCheckInviteHelp,
+		cmdPrefix + cmdResolveLinkHelp,
 		cmdPrefix + cmdJoinHelp,
 		cmdPrefix + cmdCreateHelp,
 		cmdPrefix + cmdSetPowerLevelHelp,
