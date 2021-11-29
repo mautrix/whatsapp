@@ -2166,19 +2166,23 @@ func (portal *Portal) HandleMatrixRedaction(sender *User, evt *event.Event) {
 	}
 
 	msg := portal.bridge.DB.Message.GetByMXID(evt.Redacts)
+	var err error = nil
 	if msg == nil {
-		portal.log.Debugfln("Ignoring redaction %s of unknown event by %s", msg, senderLogIdentifier)
-		return
+		err = fmt.Errorf("Ignoring redaction %s of unknown event by %s", msg, senderLogIdentifier)
 	} else if msg.IsFakeJID() {
-		portal.log.Debugfln("Ignoring redaction %s of fake event by %s", msg, senderLogIdentifier)
-		return
+		err = fmt.Errorf("Ignoring redaction %s of fake event by %s", msg, senderLogIdentifier)
 	} else if msg.Sender.User != sender.JID.User {
-		portal.log.Debugfln("Ignoring redaction %s of %s/%s by %s: message was sent by someone else (%s, not %s)", evt.ID, msg.MXID, msg.JID, senderLogIdentifier, msg.Sender, sender.JID)
+		err = fmt.Errorf("Ignoring redaction %s of %s/%s by %s: message was sent by someone else (%s, not %s)", evt.ID, msg.MXID, msg.JID, senderLogIdentifier, msg.Sender, sender.JID)
+	}
+
+	if err != nil {
+		portal.log.Debug(err)
+		portal.bridge.AS.SendErrorMessageSendCheckpoint(evt, appservice.StepRemote, err, true)
 		return
 	}
 
 	portal.log.Debugfln("Sending redaction %s of %s/%s to WhatsApp", evt.ID, msg.MXID, msg.JID)
-	_, err := sender.Client.RevokeMessage(portal.Key.JID, msg.JID)
+	_, err = sender.Client.RevokeMessage(portal.Key.JID, msg.JID)
 	if err != nil {
 		portal.log.Errorfln("Error handling Matrix redaction %s: %v", evt.ID, err)
 		portal.bridge.AS.SendErrorMessageSendCheckpoint(evt, appservice.StepRemote, err, true)
