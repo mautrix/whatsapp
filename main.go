@@ -205,7 +205,10 @@ func (bridge *Bridge) ensureConnection() {
 		resp, err := bridge.Bot.Whoami()
 		if err != nil {
 			if errors.Is(err, mautrix.MUnknownToken) {
-				bridge.Log.Fatalln("Access token invalid. Is the registration installed in your homeserver correctly?")
+				bridge.Log.Fatalln("The as_token was not accepted. Is the registration file installed in your homeserver correctly?")
+				os.Exit(16)
+			} else if errors.Is(err, mautrix.MExclusive) {
+				bridge.Log.Fatalln("The as_token was accepted, but the /register request was not. Are the homeserver domain and username template in the config correct, and do they match the values in the registration?")
 				os.Exit(16)
 			}
 			bridge.Log.Errorfln("Failed to connect to homeserver: %v. Retrying in 10 seconds...", err)
