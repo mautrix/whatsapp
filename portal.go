@@ -2192,6 +2192,32 @@ func (portal *Portal) HandleMatrixRedaction(sender *User, evt *event.Event) {
 	}
 }
 
+func (portal *Portal) HandleMatrixReadReceipt(sender *User, eventID id.EventID, receiptTimestamp time.Time) {
+	maxTimestamp := receiptTimestamp
+	if message := portal.bridge.DB.Message.GetByMXID(eventID); message != nil {
+		maxTimestamp = message.Timestamp
+	}
+
+	prevTimestamp := sender.GetLastReadTS(portal.Key)
+	if prevTimestamp.IsZero() {
+		prevTimestamp = maxTimestamp.Add(-2 * time.Second)
+	}
+
+	messages := portal.bridge.DB.Message.GetMessagesBetween(portal.Key, prevTimestamp, maxTimestamp)
+	sender.SetLastReadTS(portal.Key, messages[len(messages)-1].Timestamp)
+	groupedMessages := make(map[types.JID][]types.MessageID)
+	for _, msg := range messages {
+		groupedMessages[msg.Sender] = append(groupedMessages[msg.Sender], msg.JID)
+	}
+	portal.log.Debugfln("Sending read receipts by %s: %v", sender.JID, groupedMessages)
+	for messageSender, ids := range groupedMessages {
+		err := sender.Client.MarkRead(ids, receiptTimestamp, portal.Key.JID, messageSender)
+		if err != nil {
+			portal.log.Warnfln("Failed to mark %v as read by %s: %v", ids, sender.JID, err)
+		}
+	}
+}
+
 func (portal *Portal) canBridgeFrom(sender *User, evtType string) bool {
 	if !sender.IsLoggedIn() {
 		if portal.HasRelaybot() {

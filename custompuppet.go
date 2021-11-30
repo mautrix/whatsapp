@@ -256,12 +256,8 @@ func (puppet *Puppet) handleReceiptEvent(portal *Portal, event *event.Event) {
 		} else if isDoublePuppeted, _ := receipt.Extra[doublePuppetField].(bool); isDoublePuppeted {
 			puppet.customUser.log.Debugfln("Ignoring double puppeted read receipt %+v", event.Content.Raw)
 			// Ignore double puppeted read receipts.
-		} else if message := puppet.bridge.DB.Message.GetByMXID(eventID); message != nil {
-			puppet.customUser.log.Debugfln("Marking %s/%s in %s/%s as read", message.JID, message.MXID, portal.Key.JID, portal.MXID)
-			err := puppet.customUser.Client.MarkRead([]types.MessageID{message.JID}, time.UnixMilli(receipt.Timestamp), portal.Key.JID, message.Sender)
-			if err != nil {
-				puppet.customUser.log.Warnln("Error marking read:", err)
-			}
+		} else {
+			portal.HandleMatrixReadReceipt(puppet.customUser, eventID, time.UnixMilli(receipt.Timestamp))
 		}
 	}
 }

@@ -62,6 +62,10 @@ const (
 		SELECT chat_jid, chat_receiver, jid, mxid, sender, timestamp, sent, decryption_error FROM message
 		WHERE chat_jid=$1 AND chat_receiver=$2 AND sent=true ORDER BY timestamp ASC LIMIT 1
 	`
+	getMessagesBetweenQuery = `
+		SELECT chat_jid, chat_receiver, jid, mxid, sender, timestamp, sent, decryption_error FROM message
+		WHERE chat_jid=$1 AND chat_receiver=$2 AND timestamp>$3 AND timestamp<=$4 AND sent=true ORDER BY timestamp ASC
+	`
 )
 
 func (mq *MessageQuery) GetAll(chat PortalKey) (messages []*Message) {
@@ -98,6 +102,17 @@ func (mq *MessageQuery) GetLastInChatBefore(chat PortalKey, maxTimestamp time.Ti
 
 func (mq *MessageQuery) GetFirstInChat(chat PortalKey) *Message {
 	return mq.maybeScan(mq.db.QueryRow(getFirstMessageInChatQuery, chat.JID, chat.Receiver))
+}
+
+func (mq *MessageQuery) GetMessagesBetween(chat PortalKey, minTimestamp, maxTimestamp time.Time) (messages []*Message) {
+	rows, err := mq.db.Query(getMessagesBetweenQuery, chat.JID, chat.Receiver, minTimestamp.Unix(), maxTimestamp.Unix())
+	if err != nil || rows == nil {
+		return nil
+	}
+	for rows.Next() {
+		messages = append(messages, mq.New().Scan(rows))
+	}
+	return
 }
 
 func (mq *MessageQuery) maybeScan(row *sql.Row) *Message {

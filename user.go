@@ -747,6 +747,9 @@ func (user *User) handleReceipt(receipt *events.Receipt) {
 			markAsRead = append(markAsRead, msg)
 		}
 	}
+	if receipt.Sender.User == user.JID.User {
+		user.SetLastReadTS(portal.Key, markAsRead[0].Timestamp)
+	}
 	intent := user.bridge.GetPuppetByJID(receipt.Sender).IntentFor(portal)
 	for _, msg := range markAsRead {
 		err := intent.MarkReadWithContent(portal.MXID, msg.MXID, &CustomReadReceipt{DoublePuppet: intent.IsCustomPuppet})
@@ -767,6 +770,7 @@ func (user *User) markSelfReadFull(portal *Portal) {
 	if lastMessage == nil {
 		return
 	}
+	user.SetLastReadTS(portal.Key, lastMessage.Timestamp)
 	err := puppet.CustomIntent().MarkReadWithContent(portal.MXID, lastMessage.MXID, &CustomReadReceipt{DoublePuppet: true})
 	if err != nil {
 		user.log.Warnfln("Failed to mark %s (last message) in %s as read: %v", lastMessage.MXID, portal.MXID, err)
