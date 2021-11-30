@@ -186,7 +186,7 @@ func (prov *ProvisioningAPI) Ping(w http.ResponseWriter, r *http.Request) {
 	if user.Client != nil {
 		wa["conn"] = map[string]interface{}{
 			"is_connected": user.Client.IsConnected(),
-			"is_logged_in": user.Client.IsLoggedIn,
+			"is_logged_in": user.Client.IsLoggedIn(),
 		}
 	}
 	resp := map[string]interface{}{

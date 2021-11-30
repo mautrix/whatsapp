@@ -297,7 +297,7 @@ func (user *User) IsConnected() bool {
 }
 
 func (user *User) IsLoggedIn() bool {
-	return user.IsConnected() && user.Client.IsLoggedIn
+	return user.IsConnected() && user.Client.IsLoggedIn()
 }
 
 func (user *User) tryAutomaticDoublePuppeting() {
