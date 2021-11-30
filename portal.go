@@ -375,7 +375,7 @@ func (portal *Portal) handleFakeMessage(msg fakeMessage) {
 		Body:    msg.Text,
 	}, nil, msg.Time.UnixMilli())
 	if err != nil {
-		portal.log.Errorln("Failed to send %s to Matrix: %v", msg.ID, err)
+		portal.log.Errorfln("Failed to send %s to Matrix: %v", msg.ID, err)
 	} else {
 		portal.finishHandling(nil, &types.MessageInfo{
 			ID:        msg.ID,
@@ -425,7 +425,7 @@ func (portal *Portal) handleMessage(source *User, evt *events.Message) {
 		}
 		resp, err := portal.sendMessage(converted.Intent, converted.Type, converted.Content, converted.Extra, evt.Info.Timestamp.UnixMilli())
 		if err != nil {
-			portal.log.Errorln("Failed to send %s to Matrix: %v", msgID, err)
+			portal.log.Errorfln("Failed to send %s to Matrix: %v", msgID, err)
 		} else {
 			eventID = resp.EventID
 		}
@@ -433,7 +433,7 @@ func (portal *Portal) handleMessage(source *User, evt *events.Message) {
 		if converted.Caption != nil && existingMsg == nil {
 			resp, err = portal.sendMessage(converted.Intent, converted.Type, converted.Caption, nil, evt.Info.Timestamp.UnixMilli())
 			if err != nil {
-				portal.log.Errorln("Failed to send caption of %s to Matrix: %v", msgID, err)
+				portal.log.Errorfln("Failed to send caption of %s to Matrix: %v", msgID, err)
 			} else {
 				eventID = resp.EventID
 			}

@@ -963,10 +963,10 @@ func (handler *CommandHandler) CommandSearch(ce *CommandEvent) {
 
 	result := make([]string, 0, 2)
 	if len(formattedContacts) > 0 {
-		result = append(result, "### Contacts\n\n" + formattedContacts)
+		result = append(result, "### Contacts\n\n"+formattedContacts)
 	}
 	if len(formattedGroups) > 0 {
-		result = append(result, "### Groups\n\n" + formattedGroups)
+		result = append(result, "### Groups\n\n"+formattedGroups)
 	}
 
 	if len(result) == 0 {
