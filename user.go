@@ -748,7 +748,11 @@ func (user *User) handleReceipt(receipt *events.Receipt) {
 		}
 	}
 	if receipt.Sender.User == user.JID.User {
-		user.SetLastReadTS(portal.Key, markAsRead[0].Timestamp)
+		if len(markAsRead) > 0 {
+			user.SetLastReadTS(portal.Key, markAsRead[0].Timestamp)
+		} else {
+			user.SetLastReadTS(portal.Key, receipt.Timestamp)
+		}
 	}
 	intent := user.bridge.GetPuppetByJID(receipt.Sender).IntentFor(portal)
 	for _, msg := range markAsRead {
