@@ -2204,7 +2204,9 @@ func (portal *Portal) HandleMatrixReadReceipt(sender *User, eventID id.EventID, 
 	}
 
 	messages := portal.bridge.DB.Message.GetMessagesBetween(portal.Key, prevTimestamp, maxTimestamp)
-	sender.SetLastReadTS(portal.Key, messages[len(messages)-1].Timestamp)
+	if len(messages) > 0 {
+		sender.SetLastReadTS(portal.Key, messages[len(messages)-1].Timestamp)
+	}
 	groupedMessages := make(map[types.JID][]types.MessageID)
 	for _, msg := range messages {
 		groupedMessages[msg.Sender] = append(groupedMessages[msg.Sender], msg.JID)
