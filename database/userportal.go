@@ -40,7 +40,7 @@ func (user *User) SetLastReadTS(portal PortalKey, ts time.Time) {
 	if user.db.dialect == "postgres" {
 		_, err = user.db.Exec(`
 			INSERT INTO user_portal (user_mxid, portal_jid, portal_receiver, last_read_ts) VALUES ($1, $2, $3, $4)
-			ON CONFLICT (user_mxid, portal_jid, portal_receiver) DO UPDATE SET last_read_ts=$4
+			ON CONFLICT (user_mxid, portal_jid, portal_receiver) DO UPDATE SET last_read_ts=$4 WHERE user_portal.last_read_ts<$4
 		`, user.MXID, portal.JID, portal.Receiver, ts.Unix())
 	} else if user.db.dialect == "sqlite3" {
 		_, err = user.db.Exec(
