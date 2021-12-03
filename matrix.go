@@ -342,7 +342,7 @@ func (mx *MatrixHandler) HandleEncrypted(evt *event.Event) {
 			mx.log.Debugfln("Got session %s after waiting, trying to decrypt %s again", content.SessionID, evt.ID)
 			decrypted, err = mx.bridge.Crypto.Decrypt(evt)
 		} else {
-			mx.as.SendErrorMessageSendCheckpoint(evt, appservice.StepDecrypted, err, false)
+			mx.as.SendErrorMessageSendCheckpoint(evt, appservice.StepDecrypted, fmt.Errorf("didn't receive encryption keys"), false)
 			go mx.waitLongerForSession(evt)
 			return
 		}
@@ -360,11 +360,13 @@ func (mx *MatrixHandler) HandleEncrypted(evt *event.Event) {
 }
 
 func (mx *MatrixHandler) waitLongerForSession(evt *event.Event) {
-	const extendedTimeout = sessionWaitTimeout * 2
+	const extendedTimeout = sessionWaitTimeout * 3
 
 	content := evt.Content.AsEncrypted()
 	mx.log.Debugfln("Couldn't find session %s trying to decrypt %s, waiting %d more seconds...",
 		content.SessionID, evt.ID, int(extendedTimeout.Seconds()))
+
+	go mx.bridge.Crypto.RequestSession(evt.RoomID, content.SenderKey, content.SessionID, evt.Sender, content.DeviceID)
 
 	resp, err := mx.bridge.Bot.SendNotice(evt.RoomID, fmt.Sprintf(
 		"\u26a0 Your message was not bridged: the bridge hasn't received the decryption keys. "+
@@ -388,11 +390,10 @@ func (mx *MatrixHandler) waitLongerForSession(evt *event.Event) {
 		mx.as.SendErrorMessageSendCheckpoint(evt, appservice.StepDecrypted, err, true)
 		update.Body = fmt.Sprintf("\u26a0 Your message was not bridged: %v", err)
 	} else {
-		errMsg := fmt.Sprintf("Didn't get %s, giving up on %s", content.SessionID, evt.ID)
-		mx.log.Debugfln(errMsg)
-		mx.as.SendErrorMessageSendCheckpoint(evt, appservice.StepDecrypted, fmt.Errorf(errMsg), true)
+		mx.log.Debugfln("Didn't get %s, giving up on %s", content.SessionID, evt.ID)
+		mx.as.SendErrorMessageSendCheckpoint(evt, appservice.StepDecrypted, fmt.Errorf("didn't receive encryption keys"), true)
 		update.Body = "\u26a0 Your message was not bridged: the bridge hasn't received the decryption keys. " +
-			"If this keeps happening, try restarting your client."
+			"If this error keeps happening, try restarting your client."
 	}
 
 	newContent := update
