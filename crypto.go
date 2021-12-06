@@ -38,7 +38,7 @@ import (
 var NoSessionFound = crypto.NoSessionFound
 
 var levelTrace = maulogger.Level{
-	Name:     "Trace",
+	Name:     "TRACE",
 	Severity: -10,
 	Color:    -1,
 }

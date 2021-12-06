@@ -83,7 +83,7 @@ type cryptoLogger struct {
 }
 
 var levelTrace = log.Level{
-	Name:     "Trace",
+	Name:     "TRACE",
 	Severity: -10,
 	Color:    -1,
 }
