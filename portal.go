@@ -198,6 +198,9 @@ type Portal struct {
 
 	privateChatBackfillInvitePuppet func()
 
+	currentlyTyping     []id.UserID
+	currentlyTypingLock sync.Mutex
+
 	messages chan PortalMessage
 
 	relayUser *User
@@ -2213,6 +2216,11 @@ func (portal *Portal) HandleMatrixRedaction(sender *User, evt *event.Event) {
 }
 
 func (portal *Portal) HandleMatrixReadReceipt(sender *User, eventID id.EventID, receiptTimestamp time.Time) {
+	if !sender.IsLoggedIn() {
+		portal.log.Debugfln("Ignoring read receipt by %s: user is not connected to WhatsApp", sender.JID)
+		return
+	}
+
 	maxTimestamp := receiptTimestamp
 	if message := portal.bridge.DB.Message.GetByMXID(eventID); message != nil {
 		maxTimestamp = message.Timestamp
@@ -2238,6 +2246,51 @@ func (portal *Portal) HandleMatrixReadReceipt(sender *User, eventID id.EventID, 
 			portal.log.Warnfln("Failed to mark %v as read by %s: %v", ids, sender.JID, err)
 		}
 	}
+}
+
+func typingDiff(prev, new []id.UserID) (started, stopped []id.UserID) {
+OuterNew:
+	for _, userID := range new {
+		for _, previousUserID := range prev {
+			if userID == previousUserID {
+				continue OuterNew
+			}
+		}
+		started = append(started, userID)
+	}
+OuterPrev:
+	for _, userID := range prev {
+		for _, previousUserID := range new {
+			if userID == previousUserID {
+				continue OuterPrev
+			}
+		}
+		stopped = append(stopped, userID)
+	}
+	return
+}
+
+func (portal *Portal) setTyping(userIDs []id.UserID, state types.ChatPresence) {
+	for _, userID := range userIDs {
+		user := portal.bridge.GetUserByMXIDIfExists(userID)
+		if user == nil || !user.IsLoggedIn() {
+			continue
+		}
+		portal.log.Debugfln("Bridging typing change from %s to chat presence %s", state, user.MXID)
+		err := user.Client.SendChatPresence(state, portal.Key.JID)
+		if err != nil {
+			portal.log.Warnln("Error sending chat presence:", err)
+		}
+	}
+}
+
+func (portal *Portal) HandleMatrixTyping(newTyping []id.UserID) {
+	portal.currentlyTypingLock.Lock()
+	defer portal.currentlyTypingLock.Unlock()
+	startedTyping, stoppedTyping := typingDiff(portal.currentlyTyping, newTyping)
+	portal.currentlyTyping = newTyping
+	portal.setTyping(startedTyping, types.ChatPresenceComposing)
+	portal.setTyping(stoppedTyping, types.ChatPresencePaused)
 }
 
 func (portal *Portal) canBridgeFrom(sender *User, evtType string) bool {

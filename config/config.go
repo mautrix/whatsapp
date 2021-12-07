@@ -61,6 +61,8 @@ type Config struct {
 			Avatar      string `yaml:"avatar"`
 		} `yaml:"bot"`
 
+		EphemeralEvents bool `yaml:"ephemeral_events"`
+
 		ASToken string `yaml:"as_token"`
 		HSToken string `yaml:"hs_token"`
 	} `yaml:"appservice"`

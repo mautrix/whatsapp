@@ -66,7 +66,7 @@ type User struct {
 	lastPresence     types.Presence
 }
 
-func (bridge *Bridge) GetUserByMXID(userID id.UserID) *User {
+func (bridge *Bridge) getUserByMXID(userID id.UserID, onlyIfExists bool) *User {
 	_, isPuppet := bridge.ParsePuppetMXID(userID)
 	if isPuppet || userID == bridge.Bot.UserID {
 		return nil
@@ -75,9 +75,21 @@ func (bridge *Bridge) GetUserByMXID(userID id.UserID) *User {
 	defer bridge.usersLock.Unlock()
 	user, ok := bridge.usersByMXID[userID]
 	if !ok {
-		return bridge.loadDBUser(bridge.DB.User.GetByMXID(userID), &userID)
+		userIDPtr := &userID
+		if onlyIfExists {
+			userIDPtr = nil
+		}
+		return bridge.loadDBUser(bridge.DB.User.GetByMXID(userID), userIDPtr)
 	}
 	return user
+}
+
+func (bridge *Bridge) GetUserByMXID(userID id.UserID) *User {
+	return bridge.getUserByMXID(userID, false)
+}
+
+func (bridge *Bridge) GetUserByMXIDIfExists(userID id.UserID) *User {
+	return bridge.getUserByMXID(userID, true)
 }
 
 func (bridge *Bridge) GetUserByJID(jid types.JID) *User {
