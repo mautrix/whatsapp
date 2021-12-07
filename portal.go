@@ -237,7 +237,7 @@ func containsSupportedMessage(waMsg *waProto.Message) bool {
 	return waMsg.Conversation != nil || waMsg.ExtendedTextMessage != nil || waMsg.ImageMessage != nil ||
 		waMsg.StickerMessage != nil || waMsg.AudioMessage != nil || waMsg.VideoMessage != nil ||
 		waMsg.DocumentMessage != nil || waMsg.ContactMessage != nil || waMsg.LocationMessage != nil ||
-		waMsg.GroupInviteMessage != nil
+		waMsg.LiveLocationMessage != nil || waMsg.GroupInviteMessage != nil
 }
 
 func isPotentiallyInteresting(waMsg *waProto.Message) bool {
@@ -276,6 +276,8 @@ func getMessageType(waMsg *waProto.Message) string {
 		return "contact"
 	case waMsg.LocationMessage != nil:
 		return "location"
+	case waMsg.LiveLocationMessage != nil:
+		return "live location start"
 	case waMsg.GroupInviteMessage != nil:
 		return "group invite"
 	case waMsg.ProtocolMessage != nil:
@@ -312,6 +314,8 @@ func (portal *Portal) convertMessage(intent *appservice.IntentAPI, source *User,
 		return portal.convertContactMessage(intent, waMsg.GetContactMessage())
 	case waMsg.LocationMessage != nil:
 		return portal.convertLocationMessage(intent, waMsg.GetLocationMessage())
+	case waMsg.LiveLocationMessage != nil:
+		return portal.convertLiveLocationMessage(intent, waMsg.GetLiveLocationMessage())
 	case waMsg.GroupInviteMessage != nil:
 		return portal.convertGroupInviteMessage(intent, info, waMsg.GetGroupInviteMessage())
 	default:
@@ -1284,6 +1288,22 @@ func (portal *Portal) convertTextMessage(intent *appservice.IntentAPI, msg *waPr
 	}
 
 	return &ConvertedMessage{Intent: intent, Type: event.EventMessage, Content: content, ReplyTo: replyTo}
+}
+
+func (portal *Portal) convertLiveLocationMessage(intent *appservice.IntentAPI, msg *waProto.LiveLocationMessage) *ConvertedMessage {
+	content := &event.MessageEventContent{
+		Body:    "Started sharing live location",
+		MsgType: event.MsgNotice,
+	}
+	if len(msg.GetCaption()) > 0 {
+		content.Body += ": " + msg.GetCaption()
+	}
+	return &ConvertedMessage{
+		Intent:  intent,
+		Type:    event.EventMessage,
+		Content: content,
+		ReplyTo: msg.GetContextInfo().GetStanzaId(),
+	}
 }
 
 func (portal *Portal) convertLocationMessage(intent *appservice.IntentAPI, msg *waProto.LocationMessage) *ConvertedMessage {
