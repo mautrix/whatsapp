@@ -343,10 +343,11 @@ func (mx *MatrixHandler) HandleEncrypted(evt *event.Event) {
 	if errors.Is(err, NoSessionFound) {
 		content := evt.Content.AsEncrypted()
 		mx.log.Debugfln("Couldn't find session %s trying to decrypt %s, waiting %d seconds...", content.SessionID, evt.ID, int(sessionWaitTimeout.Seconds()))
+		mx.as.SendErrorMessageSendCheckpoint(evt, appservice.StepDecrypted, err, false, decryptionRetryCount)
+		decryptionRetryCount++
 		if mx.bridge.Crypto.WaitForSession(evt.RoomID, content.SenderKey, content.SessionID, sessionWaitTimeout) {
 			mx.log.Debugfln("Got session %s after waiting, trying to decrypt %s again", content.SessionID, evt.ID)
 			decrypted, err = mx.bridge.Crypto.Decrypt(evt)
-			decryptionRetryCount++
 		} else {
 			mx.as.SendErrorMessageSendCheckpoint(evt, appservice.StepDecrypted, fmt.Errorf("didn't receive encryption keys"), false, decryptionRetryCount)
 			go mx.waitLongerForSession(evt)
@@ -387,17 +388,17 @@ func (mx *MatrixHandler) waitLongerForSession(evt *event.Event) {
 		mx.log.Debugfln("Got session %s after waiting more, trying to decrypt %s again", content.SessionID, evt.ID)
 		decrypted, err := mx.bridge.Crypto.Decrypt(evt)
 		if err == nil {
-			mx.as.SendMessageSendCheckpoint(decrypted, appservice.StepDecrypted, 1)
+			mx.as.SendMessageSendCheckpoint(decrypted, appservice.StepDecrypted, 2)
 			mx.bridge.EventProcessor.Dispatch(decrypted)
 			_, _ = mx.bridge.Bot.RedactEvent(evt.RoomID, resp.EventID)
 			return
 		}
 		mx.log.Warnfln("Failed to decrypt %s: %v", evt.ID, err)
-		mx.as.SendErrorMessageSendCheckpoint(evt, appservice.StepDecrypted, err, true, 1)
+		mx.as.SendErrorMessageSendCheckpoint(evt, appservice.StepDecrypted, err, true, 2)
 		update.Body = fmt.Sprintf("\u26a0 Your message was not bridged: %v", err)
 	} else {
 		mx.log.Debugfln("Didn't get %s, giving up on %s", content.SessionID, evt.ID)
-		mx.as.SendErrorMessageSendCheckpoint(evt, appservice.StepDecrypted, fmt.Errorf("didn't receive encryption keys"), true, 1)
+		mx.as.SendErrorMessageSendCheckpoint(evt, appservice.StepDecrypted, fmt.Errorf("didn't receive encryption keys"), true, 2)
 		update.Body = "\u26a0 Your message was not bridged: the bridge hasn't received the decryption keys. " +
 			"If this error keeps happening, try restarting your client."
 	}
