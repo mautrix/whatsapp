@@ -2190,11 +2190,11 @@ func (portal *Portal) HandleMatrixRedaction(sender *User, evt *event.Event) {
 
 	msg := portal.bridge.DB.Message.GetByMXID(evt.Redacts)
 	if msg == nil {
-		portal.log.Debugfln("Ignoring redaction %s of unknown event by %s", msg, senderLogIdentifier)
+		portal.log.Debugfln("Ignoring redaction %s of unknown event by %s", evt.ID, senderLogIdentifier)
 		portal.bridge.AS.SendErrorMessageSendCheckpoint(evt, appservice.StepRemote, errors.New("target not found"), true, 0)
 		return
 	} else if msg.IsFakeJID() {
-		portal.log.Debugfln("Ignoring redaction %s of fake event by %s", msg, senderLogIdentifier)
+		portal.log.Debugfln("Ignoring redaction %s of fake event by %s", evt.ID, senderLogIdentifier)
 		portal.bridge.AS.SendErrorMessageSendCheckpoint(evt, appservice.StepRemote, errors.New("target is a fake event"), true, 0)
 		return
 	} else if msg.Sender.User != sender.JID.User {
