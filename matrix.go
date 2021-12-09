@@ -22,8 +22,9 @@ import (
 	"strings"
 	"time"
 
-	"go.mau.fi/whatsmeow/types"
 	"maunium.net/go/maulogger/v2"
+
+	"go.mau.fi/whatsmeow/types"
 
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/appservice"
