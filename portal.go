@@ -1981,7 +1981,7 @@ func (portal *Portal) convertMatrixMessage(sender *User, evt *event.Event) (*waP
 		}
 	}
 	relaybotFormatted := false
-	if !sender.IsLoggedIn() {
+	if !sender.IsLoggedIn() || (portal.IsPrivateChat() && sender.JID.User != portal.Key.Receiver.User) {
 		if !portal.HasRelaybot() {
 			portal.log.Warnln("Ignoring message from", sender.MXID, "in chat with no relaybot (convertMatrixMessage)")
 			return nil, sender
@@ -2309,7 +2309,7 @@ func (portal *Portal) canBridgeFrom(sender *User, evtType string) bool {
 			portal.log.Debugfln("Ignoring %s from non-logged-in user %s in chat with no relay user", evtType, sender.MXID)
 		}
 		return false
-	} else if portal.IsPrivateChat() && sender.JID.User != portal.Key.Receiver.User {
+	} else if portal.IsPrivateChat() && sender.JID.User != portal.Key.Receiver.User && !portal.HasRelaybot() {
 		portal.log.Debugfln("Ignoring %s from different user %s/%s in private chat with no relay user", evtType, sender.MXID, sender.JID)
 		return false
 	}
