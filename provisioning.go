@@ -307,7 +307,7 @@ func (prov *ProvisioningAPI) Login(w http.ResponseWriter, r *http.Request) {
 	for {
 		select {
 		case evt := <-qrChan:
-			switch evt.Code {
+			switch evt.Event {
 			case whatsmeow.QRChannelSuccess.Code:
 				jid := user.Client.Store.ID
 				user.log.Debugln("Successful login as", jid, "via provisioning API")

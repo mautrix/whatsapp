@@ -509,7 +509,7 @@ func (handler *CommandHandler) CommandLogin(ce *CommandEvent) {
 
 	var qrEventID id.EventID
 	for item := range qrChan {
-		switch item.Code {
+		switch item.Event {
 		case whatsmeow.QRChannelSuccess.Code:
 			jid := ce.User.Client.Store.ID
 			ce.Reply("Successfully logged in as +%s (device #%d)", jid.User, jid.Device)
