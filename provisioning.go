@@ -308,7 +308,7 @@ func (prov *ProvisioningAPI) Login(w http.ResponseWriter, r *http.Request) {
 		select {
 		case evt := <-qrChan:
 			switch evt.Event {
-			case whatsmeow.QRChannelSuccess.Code:
+			case whatsmeow.QRChannelSuccess.Event:
 				jid := user.Client.Store.ID
 				user.log.Debugln("Successful login as", jid, "via provisioning API")
 				_ = c.WriteJSON(map[string]interface{}{
@@ -316,19 +316,19 @@ func (prov *ProvisioningAPI) Login(w http.ResponseWriter, r *http.Request) {
 					"jid":     jid,
 					"phone":   fmt.Sprintf("+%s", jid.User),
 				})
-			case whatsmeow.QRChannelTimeout.Code:
+			case whatsmeow.QRChannelTimeout.Event:
 				user.log.Debugln("Login via provisioning API timed out")
 				_ = c.WriteJSON(Error{
 					Error:   "QR code scan timed out. Please try again.",
 					ErrCode: "login timed out",
 				})
-			case whatsmeow.QRChannelErrUnexpectedEvent.Code:
+			case whatsmeow.QRChannelErrUnexpectedEvent.Event:
 				user.log.Debugln("Login via provisioning API failed due to unexpected event")
 				_ = c.WriteJSON(Error{
 					Error:   "Got unexpected event while waiting for QRs, perhaps you're already logged in?",
 					ErrCode: "unexpected event",
 				})
-			case whatsmeow.QRChannelScannedWithoutMultidevice.Code:
+			case whatsmeow.QRChannelScannedWithoutMultidevice.Event:
 				_ = c.WriteJSON(Error{
 					Error:   "Please enable the WhatsApp multidevice beta and scan the QR code again.",
 					ErrCode: "multidevice not enabled",
