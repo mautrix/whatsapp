@@ -1553,12 +1553,17 @@ type MediaMessage interface {
 type MediaMessageWithThumbnail interface {
 	MediaMessage
 	GetJpegThumbnail() []byte
-	GetCaption() string
 }
 
 type MediaMessageWithCaption interface {
 	MediaMessage
 	GetCaption() string
+}
+
+type MediaMessageWithDimensions interface {
+	MediaMessage
+	GetHeight() uint32
+	GetWidth() uint32
 }
 
 type MediaMessageWithFileName interface {
@@ -1602,7 +1607,12 @@ func (portal *Portal) convertMediaMessage(intent *appservice.IntentAPI, source *
 	}
 
 	var width, height int
-	if strings.HasPrefix(msg.GetMimetype(), "image/") {
+	messageWithDimensions, ok := msg.(MediaMessageWithDimensions)
+	if ok {
+		width = int(messageWithDimensions.GetWidth())
+		height = int(messageWithDimensions.GetHeight())
+	}
+	if width == 0 && height == 0 && strings.HasPrefix(msg.GetMimetype(), "image/") {
 		cfg, _, _ := image.DecodeConfig(bytes.NewReader(data))
 		width, height = cfg.Width, cfg.Height
 	}
