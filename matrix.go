@@ -445,7 +445,7 @@ func (mx *MatrixHandler) HandleMessage(evt *event.Event) {
 
 	portal := mx.bridge.GetPortalByMXID(evt.RoomID)
 	if portal != nil && (user.Whitelisted || portal.HasRelaybot()) {
-		portal.HandleMatrixMessage(user, evt)
+		portal.matrixMessages <- PortalMatrixMessage{user: user, evt: evt}
 	}
 }
 
@@ -479,7 +479,7 @@ func (mx *MatrixHandler) HandleRedaction(evt *event.Event) {
 
 	portal := mx.bridge.GetPortalByMXID(evt.RoomID)
 	if portal != nil && (user.Whitelisted || portal.HasRelaybot()) {
-		portal.HandleMatrixRedaction(user, evt)
+		portal.matrixMessages <- PortalMatrixMessage{user: user, evt: evt}
 	}
 }
 
