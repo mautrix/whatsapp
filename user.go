@@ -527,7 +527,7 @@ func (user *User) updateChatMute(intent *appservice.IntentAPI, portal *Portal, m
 
 type CustomTagData struct {
 	Order        json.Number `json:"order"`
-	DoublePuppet bool        `json:"net.maunium.whatsapp.puppet"`
+	DoublePuppet string      `json:"fi.mau.double_puppet_source"`
 }
 
 type CustomTagEventContent struct {
@@ -552,9 +552,9 @@ func (user *User) updateChatTag(intent *appservice.IntentAPI, portal *Portal, ta
 	currentTag, ok := existingTags.Tags[tag]
 	if active && !ok {
 		user.log.Debugln("Adding tag", tag, "to", portal.MXID)
-		data := CustomTagData{"0.5", true}
+		data := CustomTagData{"0.5", doublePuppetValue}
 		err = intent.AddTagWithCustomData(portal.MXID, tag, &data)
-	} else if !active && ok && currentTag.DoublePuppet {
+	} else if !active && ok && currentTag.DoublePuppet == doublePuppetValue {
 		user.log.Debugln("Removing tag", tag, "from", portal.MXID)
 		err = intent.RemoveTag(portal.MXID, tag)
 	} else {
@@ -567,7 +567,7 @@ func (user *User) updateChatTag(intent *appservice.IntentAPI, portal *Portal, ta
 
 type CustomReadReceipt struct {
 	Timestamp    int64 `json:"ts,omitempty"`
-	DoublePuppet bool  `json:"net.maunium.whatsapp.puppet,omitempty"`
+	DoublePuppet bool  `json:"fi.mau.double_puppet_source,omitempty"`
 }
 
 func (user *User) syncChatDoublePuppetDetails(portal *Portal, justCreated bool) {

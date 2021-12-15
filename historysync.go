@@ -518,7 +518,7 @@ func (portal *Portal) wrapBatchEvent(info *types.MessageInfo, intent *appservice
 	}
 	extraContent[backfillIDField] = info.ID
 	if intent.IsCustomPuppet {
-		extraContent[doublePuppetField] = intent.IsCustomPuppet
+		extraContent[doublePuppetKey] = doublePuppetValue
 	}
 	wrappedContent := event.Content{
 		Parsed: content,
