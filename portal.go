@@ -1270,6 +1270,7 @@ func (portal *Portal) encrypt(content *event.Content, eventType event.Type) (eve
 }
 
 const doublePuppetKey = "fi.mau.double_puppet_source"
+const doublePuppetValue = "mautrix-whatsapp"
 
 func (portal *Portal) sendMessage(intent *appservice.IntentAPI, eventType event.Type, content *event.MessageEventContent, extraContent map[string]interface{}, timestamp int64) (*mautrix.RespSendEvent, error) {
 	wrappedContent := event.Content{Parsed: content, Raw: extraContent}
@@ -1278,7 +1279,7 @@ func (portal *Portal) sendMessage(intent *appservice.IntentAPI, eventType event.
 			wrappedContent.Raw = map[string]interface{}{}
 		}
 		if intent.IsCustomPuppet {
-			wrappedContent.Raw[doublePuppetKey] = "whatsapp"
+			wrappedContent.Raw[doublePuppetKey] = doublePuppetValue
 		}
 	}
 	var err error
@@ -1513,7 +1514,7 @@ func (portal *Portal) leaveWithPuppetMeta(intent *appservice.IntentAPI) (*mautri
 			Membership: event.MembershipLeave,
 		},
 		Raw: map[string]interface{}{
-			doublePuppetKey: "whatsapp",
+			doublePuppetKey: doublePuppetValue,
 		},
 	}
 	// Bypass IntentAPI, we don't want to EnsureJoined here
@@ -1536,7 +1537,7 @@ func (portal *Portal) HandleWhatsAppInvite(source *User, senderJID *types.JID, j
 				AvatarURL:   puppet.AvatarURL.CUString(),
 			},
 			Raw: map[string]interface{}{
-				doublePuppetKey: "whatsapp",
+				doublePuppetKey: doublePuppetValue,
 			},
 		}
 		resp, err := intent.SendStateEvent(portal.MXID, event.StateMember, puppet.MXID.String(), &content)

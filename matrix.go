@@ -522,7 +522,7 @@ func (mx *MatrixHandler) HandleReceipt(evt *event.Event) {
 			} else if customPuppet := mx.bridge.GetPuppetByCustomMXID(user.MXID); customPuppet != nil && !customPuppet.EnableReceipts {
 				// TODO move this flag to the user and/or portal data
 				continue
-			} else if isDoublePuppeted, _ := receipt.Extra[doublePuppetField].(bool); isDoublePuppeted {
+			} else if val, ok := receipt.Extra[doublePuppetKey].(string); ok && customPuppet != nil && val == doublePuppetValue {
 				// Ignore double puppeted read receipts.
 				user.log.Debugfln("Ignoring double puppeted read receipt %+v", evt.Content.Raw)
 			} else {

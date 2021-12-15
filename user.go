@@ -552,9 +552,9 @@ func (user *User) updateChatTag(intent *appservice.IntentAPI, portal *Portal, ta
 	currentTag, ok := existingTags.Tags[tag]
 	if active && !ok {
 		user.log.Debugln("Adding tag", tag, "to", portal.MXID)
-		data := CustomTagData{"0.5", "whatsapp"}
+		data := CustomTagData{"0.5", doublePuppetValue}
 		err = intent.AddTagWithCustomData(portal.MXID, tag, &data)
-	} else if !active && ok && currentTag.DoublePuppet == "whatsapp" {
+	} else if !active && ok && currentTag.DoublePuppet == doublePuppetValue {
 		user.log.Debugln("Removing tag", tag, "from", portal.MXID)
 		err = intent.RemoveTag(portal.MXID, tag)
 	} else {
