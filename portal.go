@@ -2278,7 +2278,9 @@ func (portal *Portal) HandleMatrixReadReceipt(sender *User, eventID id.EventID, 
 	}
 	groupedMessages := make(map[types.JID][]types.MessageID)
 	for _, msg := range messages {
-		groupedMessages[msg.Sender] = append(groupedMessages[msg.Sender], msg.JID)
+		if !msg.IsFakeJID() {
+			groupedMessages[msg.Sender] = append(groupedMessages[msg.Sender], msg.JID)
+		}
 	}
 	portal.log.Debugfln("Sending read receipts by %s: %v", sender.JID, groupedMessages)
 	for messageSender, ids := range groupedMessages {
