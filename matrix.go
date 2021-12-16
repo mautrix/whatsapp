@@ -320,7 +320,7 @@ func (mx *MatrixHandler) shouldIgnoreEvent(evt *event.Event) bool {
 	if _, isPuppet := mx.bridge.ParsePuppetMXID(evt.Sender); evt.Sender == mx.bridge.Bot.UserID || isPuppet {
 		return true
 	}
-	if _, ok := evt.Content.Raw[doublePuppetKey]; ok && mx.bridge.GetPuppetByCustomMXID(evt.Sender) != nil {
+	if val, ok := evt.Content.Raw[doublePuppetKey]; ok && val == doublePuppetValue && mx.bridge.GetPuppetByCustomMXID(evt.Sender) != nil {
 		return true
 	}
 	user := mx.bridge.GetUserByMXID(evt.Sender)
