@@ -450,7 +450,10 @@ func parseInviteMeta(meta map[string]interface{}) (jid, inviter types.JID, code 
 const cmdSetPowerLevelHelp = `set-pl [user ID] <power level> - Change the power level in a portal room. Only for bridge admins.`
 
 func (handler *CommandHandler) CommandSetPowerLevel(ce *CommandEvent) {
-	if ce.Portal == nil {
+	if !ce.User.Admin {
+		ce.Reply("Only bridge admins can use `set-pl`")
+		return
+	} else if ce.Portal == nil {
 		ce.Reply("Not a portal room")
 		return
 	}
