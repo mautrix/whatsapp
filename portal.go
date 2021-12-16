@@ -216,7 +216,7 @@ type Portal struct {
 
 func (portal *Portal) handleMessageLoopItem(msg PortalMessage) {
 	if len(portal.MXID) == 0 {
-		if msg.fake == nil && (msg.evt == nil || !containsSupportedMessage(msg.evt.Message)) {
+		if msg.fake == nil && msg.undecryptable == nil && (msg.evt == nil || !containsSupportedMessage(msg.evt.Message)) {
 			portal.log.Debugln("Not creating portal room for incoming message: message is not a chat message")
 			return
 		}
