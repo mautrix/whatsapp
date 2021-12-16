@@ -1236,10 +1236,14 @@ func (portal *Portal) HandleMessageRevoke(user *User, info *types.MessageInfo, k
 		return false
 	}
 	intent := portal.bridge.GetPuppetByJID(info.Sender).IntentFor(portal)
-	_, err := intent.RedactEvent(portal.MXID, msg.MXID)
+	redactionReq := mautrix.ReqRedact{Extra: map[string]interface{}{}}
+	if intent.IsCustomPuppet {
+		redactionReq.Extra[doublePuppetKey] = doublePuppetValue
+	}
+	_, err := intent.RedactEvent(portal.MXID, msg.MXID, redactionReq)
 	if err != nil {
 		if errors.Is(err, mautrix.MForbidden) {
-			_, err = portal.MainIntent().RedactEvent(portal.MXID, msg.MXID)
+			_, err = portal.MainIntent().RedactEvent(portal.MXID, msg.MXID, redactionReq)
 			if err != nil {
 				portal.log.Errorln("Failed to redact %s: %v", msg.JID, err)
 			}
