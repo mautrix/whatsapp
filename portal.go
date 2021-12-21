@@ -2212,7 +2212,13 @@ func (portal *Portal) HandleMatrixMessage(sender *User, evt *event.Event) {
 	if err != nil {
 		portal.log.Errorfln("Error sending message: %v", err)
 		portal.sendErrorMessage(err.Error(), true)
-		portal.bridge.AS.SendErrorMessageSendCheckpoint(evt, appservice.StepRemote, err, true, 0)
+		status := appservice.StatusPermFailure
+		if errors.Is(err, whatsmeow.ErrBroadcastListUnsupported) {
+			status = appservice.StatusUnsupported
+		}
+		checkpoint := appservice.NewMessageSendCheckpoint(evt, appservice.StepRemote, status, 0)
+		checkpoint.Info = err.Error()
+		go checkpoint.Send(portal.bridge.AS)
 	} else {
 		portal.log.Debugfln("Handled Matrix event %s", evt.ID)
 		portal.bridge.AS.SendMessageSendCheckpoint(evt, appservice.StepRemote, 0)
