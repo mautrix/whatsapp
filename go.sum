@@ -221,5 +221,5 @@ maunium.net/go/mauflag v1.0.0 h1:YiaRc0tEI3toYtJMRIfjP+jklH45uDHtT80nUamyD4M=
 maunium.net/go/mauflag v1.0.0/go.mod h1:nLivPOpTpHnpzEh8jEdSL9UqO9+/KBJFmNRlwKfkPeA=
 maunium.net/go/maulogger/v2 v2.3.1 h1:fwBYJne0pHvJrrIPHK+TAPfyxxbBEz46oVGez2x0ODE=
 maunium.net/go/maulogger/v2 v2.3.1/go.mod h1:TYWy7wKwz/tIXTpsx8G3mZseIRiC5DoMxSZazOHy68A=
-maunium.net/go/mautrix v0.10.8-0.20211216234047-dc0b05104668 h1:vCAYZ11XJr+9hcrR4i30yPtN5UV+4aPOEaAlbtaVkws=
-maunium.net/go/mautrix v0.10.8-0.20211216234047-dc0b05104668/go.mod h1:k4Ng5oci83MEbqPL6KOjPdbU7f8v01KlMjR/zTQ+7mA=
+maunium.net/go/mautrix v0.10.8-0.20211222205631-95662fc3f0f3 h1:/mhoJYRbniwUh9OEwBJzZPCtEGvpiCWsO+MbPzbqE1o=
+maunium.net/go/mautrix v0.10.8-0.20211222205631-95662fc3f0f3/go.mod h1:k4Ng5oci83MEbqPL6KOjPdbU7f8v01KlMjR/zTQ+7mA=
