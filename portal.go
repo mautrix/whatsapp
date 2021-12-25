@@ -43,20 +43,19 @@ import (
 	"golang.org/x/image/webp"
 	"google.golang.org/protobuf/proto"
 
-	"maunium.net/go/mautrix/format"
-
-	"go.mau.fi/whatsmeow"
-	waProto "go.mau.fi/whatsmeow/binary/proto"
-	"go.mau.fi/whatsmeow/types"
-	"go.mau.fi/whatsmeow/types/events"
-
 	log "maunium.net/go/maulogger/v2"
 
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/appservice"
 	"maunium.net/go/mautrix/crypto/attachment"
 	"maunium.net/go/mautrix/event"
+	"maunium.net/go/mautrix/format"
 	"maunium.net/go/mautrix/id"
+
+	"go.mau.fi/whatsmeow"
+	waProto "go.mau.fi/whatsmeow/binary/proto"
+	"go.mau.fi/whatsmeow/types"
+	"go.mau.fi/whatsmeow/types/events"
 
 	"maunium.net/go/mautrix-whatsapp/database"
 )
@@ -452,6 +451,12 @@ func (portal *Portal) handleMessage(source *User, evt *events.Message) {
 	}
 	converted := portal.convertMessage(intent, source, &evt.Info, evt.Message)
 	if converted != nil {
+		if evt.Info.IsIncomingBroadcast() {
+			if converted.Extra == nil {
+				converted.Extra = map[string]interface{}{}
+			}
+			converted.Extra["fi.mau.whatsapp.source_broadcast_list"] = evt.Info.Chat.String()
+		}
 		var eventID id.EventID
 		if existingMsg != nil {
 			converted.Content.SetEdit(existingMsg.MXID)
@@ -522,6 +527,9 @@ func (portal *Portal) markHandled(msg *database.Message, info *types.MessageInfo
 		msg.Sender = info.Sender
 		msg.Sent = isSent
 		msg.DecryptionError = decryptionError
+		if info.IsIncomingBroadcast() {
+			msg.BroadcastListJID = info.Chat
+		}
 		msg.Insert()
 	} else {
 		msg.UpdateMXID(mxid, decryptionError)
@@ -2288,13 +2296,25 @@ func (portal *Portal) HandleMatrixReadReceipt(sender *User, eventID id.EventID, 
 	}
 	groupedMessages := make(map[types.JID][]types.MessageID)
 	for _, msg := range messages {
-		if !msg.IsFakeJID() {
-			groupedMessages[msg.Sender] = append(groupedMessages[msg.Sender], msg.JID)
-		}
+		var key types.JID
+		if msg.IsFakeJID() || msg.Sender.User == sender.JID.User {
+			// Don't send read receipts for own messages or fake messages
+			continue
+		} else if !portal.IsPrivateChat() {
+			key = msg.Sender
+		} else if !msg.BroadcastListJID.IsEmpty() {
+			key = msg.BroadcastListJID
+		} // else: blank key (participant field isn't needed in direct chat read receipts)
+		groupedMessages[key] = append(groupedMessages[key], msg.JID)
 	}
 	portal.log.Debugfln("Sending read receipts by %s: %v", sender.JID, groupedMessages)
 	for messageSender, ids := range groupedMessages {
-		err := sender.Client.MarkRead(ids, receiptTimestamp, portal.Key.JID, messageSender)
+		chatJID := portal.Key.JID
+		if messageSender.Server == types.BroadcastServer {
+			chatJID = messageSender
+			messageSender = portal.Key.JID
+		}
+		err := sender.Client.MarkRead(ids, receiptTimestamp, chatJID, messageSender)
 		if err != nil {
 			portal.log.Warnfln("Failed to mark %v as read by %s: %v", ids, sender.JID, err)
 		}

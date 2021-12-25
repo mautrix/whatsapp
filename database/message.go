@@ -43,27 +43,27 @@ func (mq *MessageQuery) New() *Message {
 
 const (
 	getAllMessagesQuery = `
-		SELECT chat_jid, chat_receiver, jid, mxid, sender, timestamp, sent, decryption_error FROM message
+		SELECT chat_jid, chat_receiver, jid, mxid, sender, timestamp, sent, decryption_error, broadcast_list_jid FROM message
 		WHERE chat_jid=$1 AND chat_receiver=$2
 	`
 	getMessageByJIDQuery = `
-		SELECT chat_jid, chat_receiver, jid, mxid, sender, timestamp, sent, decryption_error FROM message
+		SELECT chat_jid, chat_receiver, jid, mxid, sender, timestamp, sent, decryption_error, broadcast_list_jid FROM message
 		WHERE chat_jid=$1 AND chat_receiver=$2 AND jid=$3
 	`
 	getMessageByMXIDQuery = `
-		SELECT chat_jid, chat_receiver, jid, mxid, sender, timestamp, sent, decryption_error FROM message
+		SELECT chat_jid, chat_receiver, jid, mxid, sender, timestamp, sent, decryption_error, broadcast_list_jid FROM message
 		WHERE mxid=$1
 	`
 	getLastMessageInChatQuery = `
-		SELECT chat_jid, chat_receiver, jid, mxid, sender, timestamp, sent, decryption_error FROM message
+		SELECT chat_jid, chat_receiver, jid, mxid, sender, timestamp, sent, decryption_error, broadcast_list_jid FROM message
 		WHERE chat_jid=$1 AND chat_receiver=$2 AND timestamp<=$3 AND sent=true ORDER BY timestamp DESC LIMIT 1
 	`
 	getFirstMessageInChatQuery = `
-		SELECT chat_jid, chat_receiver, jid, mxid, sender, timestamp, sent, decryption_error FROM message
+		SELECT chat_jid, chat_receiver, jid, mxid, sender, timestamp, sent, decryption_error, broadcast_list_jid FROM message
 		WHERE chat_jid=$1 AND chat_receiver=$2 AND sent=true ORDER BY timestamp ASC LIMIT 1
 	`
 	getMessagesBetweenQuery = `
-		SELECT chat_jid, chat_receiver, jid, mxid, sender, timestamp, sent, decryption_error FROM message
+		SELECT chat_jid, chat_receiver, jid, mxid, sender, timestamp, sent, decryption_error, broadcast_list_jid FROM message
 		WHERE chat_jid=$1 AND chat_receiver=$2 AND timestamp>$3 AND timestamp<=$4 AND sent=true ORDER BY timestamp ASC
 	`
 )
@@ -133,7 +133,8 @@ type Message struct {
 	Timestamp time.Time
 	Sent      bool
 
-	DecryptionError bool
+	DecryptionError  bool
+	BroadcastListJID types.JID
 }
 
 func (msg *Message) IsFakeMXID() bool {
@@ -146,7 +147,7 @@ func (msg *Message) IsFakeJID() bool {
 
 func (msg *Message) Scan(row Scannable) *Message {
 	var ts int64
-	err := row.Scan(&msg.Chat.JID, &msg.Chat.Receiver, &msg.JID, &msg.MXID, &msg.Sender, &ts, &msg.Sent, &msg.DecryptionError)
+	err := row.Scan(&msg.Chat.JID, &msg.Chat.Receiver, &msg.JID, &msg.MXID, &msg.Sender, &ts, &msg.Sent, &msg.DecryptionError, &msg.BroadcastListJID)
 	if err != nil {
 		if !errors.Is(err, sql.ErrNoRows) {
 			msg.log.Errorln("Database scan failed:", err)
@@ -166,9 +167,9 @@ func (msg *Message) Insert() {
 		sender = ""
 	}
 	_, err := msg.db.Exec(`INSERT INTO message
-			(chat_jid, chat_receiver, jid, mxid, sender, timestamp, sent, decryption_error)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-		msg.Chat.JID, msg.Chat.Receiver, msg.JID, msg.MXID, sender, msg.Timestamp.Unix(), msg.Sent, msg.DecryptionError)
+			(chat_jid, chat_receiver, jid, mxid, sender, timestamp, sent, decryption_error, broadcast_list_jid)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+		msg.Chat.JID, msg.Chat.Receiver, msg.JID, msg.MXID, sender, msg.Timestamp.Unix(), msg.Sent, msg.DecryptionError, msg.BroadcastListJID)
 	if err != nil {
 		msg.log.Warnfln("Failed to insert %s@%s: %v", msg.Chat, msg.JID, err)
 	}

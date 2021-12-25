@@ -28,20 +28,19 @@ import (
 
 	log "maunium.net/go/maulogger/v2"
 
-	"go.mau.fi/whatsmeow/appstate"
+	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/appservice"
+	"maunium.net/go/mautrix/event"
+	"maunium.net/go/mautrix/format"
+	"maunium.net/go/mautrix/id"
 	"maunium.net/go/mautrix/pushrules"
 
 	"go.mau.fi/whatsmeow"
+	"go.mau.fi/whatsmeow/appstate"
 	"go.mau.fi/whatsmeow/store"
 	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
 	waLog "go.mau.fi/whatsmeow/util/log"
-
-	"maunium.net/go/mautrix"
-	"maunium.net/go/mautrix/event"
-	"maunium.net/go/mautrix/format"
-	"maunium.net/go/mautrix/id"
 
 	"maunium.net/go/mautrix-whatsapp/database"
 )
@@ -442,7 +441,7 @@ func (user *User) HandleEvent(event interface{}) {
 	case *events.ChatPresence:
 		go user.handleChatPresence(v)
 	case *events.Message:
-		portal := user.GetPortalByJID(v.Info.Chat)
+		portal := user.GetPortalByMessageSource(v.Info.MessageSource)
 		portal.messages <- PortalMessage{evt: v, source: user}
 	case *events.CallOffer:
 		user.handleCallStart(v.CallCreator, v.CallID, "", v.Timestamp)
@@ -470,7 +469,7 @@ func (user *User) HandleEvent(event interface{}) {
 	case *events.CallTerminate, *events.CallRelayLatency, *events.CallAccept, *events.UnknownCallEvent:
 		// ignore
 	case *events.UndecryptableMessage:
-		portal := user.GetPortalByJID(v.Info.Chat)
+		portal := user.GetPortalByMessageSource(v.Info.MessageSource)
 		portal.messages <- PortalMessage{undecryptable: v, source: user}
 	case *events.HistorySync:
 		user.historySyncs <- v
@@ -667,6 +666,21 @@ func (user *User) handleLoggedOut(onConnect bool) {
 	user.sendBridgeState(BridgeState{StateEvent: StateBadCredentials, Error: WANotLoggedIn})
 }
 
+func (user *User) GetPortalByMessageSource(ms types.MessageSource) *Portal {
+	jid := ms.Chat
+	if ms.IsIncomingBroadcast() {
+		if ms.IsFromMe {
+			jid = ms.BroadcastListOwner.ToNonAD()
+		} else {
+			jid = ms.Sender.ToNonAD()
+		}
+		if jid.IsEmpty() {
+			return nil
+		}
+	}
+	return user.bridge.GetPortalByJID(database.NewPortalKey(jid, user.JID))
+}
+
 func (user *User) GetPortalByJID(jid types.JID) *Portal {
 	return user.bridge.GetPortalByJID(database.NewPortalKey(jid, user.JID))
 }
@@ -737,7 +751,7 @@ func (user *User) handleReceipt(receipt *events.Receipt) {
 	if receipt.Type != events.ReceiptTypeRead && receipt.Type != events.ReceiptTypeReadSelf {
 		return
 	}
-	portal := user.GetPortalByJID(receipt.Chat)
+	portal := user.GetPortalByMessageSource(receipt.MessageSource)
 	if portal == nil || len(portal.MXID) == 0 {
 		return
 	}
