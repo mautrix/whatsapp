@@ -1619,6 +1619,32 @@ type MediaMessageWithDuration interface {
 	GetSeconds() uint32
 }
 
+// MimeExtensionSanityOverrides includes extensions for various common mimetypes.
+//
+// This is necessary because sometimes the OS mimetype database and Go interact in weird ways,
+// which causes very obscure extensions to be first in the array for common mimetypes
+// (e.g. image/jpeg -> .jpe, text/plain -> ,v).
+var MimeExtensionSanityOverrides = map[string]string{
+	"image/png":  ".png",
+	"image/webp": ".webp",
+	"image/jpeg": ".jpg",
+	"image/tiff": ".tiff",
+	"image/heif": ".heic",
+	"image/heic": ".heic",
+
+	"audio/mpeg": ".mp3",
+	"audio/ogg":  ".ogg",
+	"audio/webm": ".webm",
+	"video/mp4":  ".mp4",
+	"video/mpeg": ".mpeg",
+	"video/webm": ".webm",
+
+	"text/plain": ".txt",
+	"text/html":  ".html",
+
+	"application/xml": ".xml",
+}
+
 func (portal *Portal) convertMediaMessage(intent *appservice.IntentAPI, source *User, info *types.MessageInfo, msg MediaMessage) *ConvertedMessage {
 	messageWithCaption, ok := msg.(MediaMessageWithCaption)
 	var captionContent *event.MessageEventContent
@@ -1695,10 +1721,14 @@ func (portal *Portal) convertMediaMessage(intent *appservice.IntentAPI, source *
 			content.Body = mimeClass
 		}
 
-		exts, _ := mime.ExtensionsByType(msg.GetMimetype())
-		if exts != nil && len(exts) > 0 {
-			content.Body += exts[0]
+		ext, ok := MimeExtensionSanityOverrides[strings.Split(msg.GetMimetype(), ";")[0]]
+		if !ok {
+			exts, _ := mime.ExtensionsByType(msg.GetMimetype())
+			if len(exts) > 0 {
+				ext = exts[0]
+			}
 		}
+		content.Body += ext
 	}
 
 	msgWithDuration, ok := msg.(MediaMessageWithDuration)
