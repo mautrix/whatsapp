@@ -555,6 +555,7 @@ func (user *User) intPostLogin() {
 	defer user.syncWait.Done()
 	user.lastReconnection = time.Now().Unix()
 	user.createCommunity()
+	user.createSpace()
 	user.tryAutomaticDoublePuppeting()
 
 	user.log.Debugln("Waiting for chat list receive confirmation")
@@ -1076,7 +1077,7 @@ func (user *User) tryReconnect(msg string) {
 			if errors.Is(err, whatsapp.ErrInvalidSession) {
 				errMsg = "invalid session"
 			}
-			user.sendMarkdownBridgeAlert("\u26a0 Failed to reconnect to WhatsApp: %s. " +
+			user.sendMarkdownBridgeAlert("\u26a0 Failed to reconnect to WhatsApp: %s. "+
 				"To re-pair your phone, log in again.", errMsg)
 			return
 		} else if errors.Is(err, whatsapp.ErrAlreadyLoggedIn) {

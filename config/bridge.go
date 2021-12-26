@@ -101,6 +101,7 @@ type BridgeConfig struct {
 	usernameTemplate    *template.Template `yaml:"-"`
 	displaynameTemplate *template.Template `yaml:"-"`
 	communityTemplate   *template.Template `yaml:"-"`
+	spacesTemplate      *template.Template `yaml:"-"`
 }
 
 func (bc *BridgeConfig) setDefaults() {
@@ -203,6 +204,10 @@ type CommunityTemplateArgs struct {
 
 func (bc BridgeConfig) EnableCommunities() bool {
 	return bc.communityTemplate != nil
+}
+
+func (bc BridgeConfig) EnableSpaces() bool {
+	return bc.spacesTemplate != nil
 }
 
 func (bc BridgeConfig) FormatCommunity(localpart, server string) string {

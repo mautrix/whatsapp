@@ -89,6 +89,8 @@ bridge:
     # whatsapp_{{.Localpart}}={{.Server}} is a good value that should work for any user.
     community_template: null
 
+    spacesTemplate: false
+
     # WhatsApp connection timeout in seconds.
     connection_timeout: 20
     # If WhatsApp doesn't respond within connection_timeout, should the bridge try to fetch the message
