@@ -179,6 +179,42 @@ func (bridge *Bridge) NewUser(dbUser *database.User) *User {
 	return user
 }
 
+func (user *User) getSpaceRoom() id.RoomID {
+	var roomID id.RoomID
+
+	user.log.Debugln("getSpaceRoom called")
+
+	if len(user.SpaceRoom) == 0 {
+		//TODO check if Spaces creation is enabled by config
+		creationContent := make(map[string]interface{})
+		creationContent["type"] = "m.space"
+
+		user.log.Debugln("Creating a new space for the user")
+
+		user.log.Debugln("Inviting user " + user.MXID)
+		var invite []id.UserID
+		invite = append(invite, user.MXID)
+
+		resp, err := user.bridge.Bot.CreateRoom(&mautrix.ReqCreateRoom{
+			Topic:           "WhatsApp bridge Space",
+			Invite:          invite,
+			CreationContent: creationContent,
+		})
+		if err != nil {
+			user.log.Errorln("Failed to auto-create space room:", err)
+		} else {
+			user.setSpaceRoom(resp.RoomID)
+		}
+	} else {
+		user.log.Debugln("Space found" + user.SpaceRoom)
+	}
+	return roomID
+}
+
+func (user *User) setSpaceRoom(roomID id.RoomID) {
+	user.log.Debugln("Space ID to set" + roomID)
+}
+
 func (user *User) GetManagementRoom() id.RoomID {
 	if len(user.ManagementRoom) == 0 {
 		user.mgmtCreateLock.Lock()

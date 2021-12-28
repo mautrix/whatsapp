@@ -72,6 +72,7 @@ type User struct {
 	MXID           id.UserID
 	JID            types.JID
 	ManagementRoom id.RoomID
+	SpaceRoom      id.RoomID
 }
 
 func (user *User) Scan(row Scannable) *User {
