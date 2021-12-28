@@ -179,8 +179,9 @@ type Bridge struct {
 	usersByMXID         map[id.UserID]*User
 	usersByUsername     map[string]*User
 	usersLock           sync.Mutex
-	managementRooms     map[id.RoomID]*User
+	spaceRooms          map[id.RoomID]*User
 	managementRoomsLock sync.Mutex
+	managementRooms     map[id.RoomID]*User
 	portalsByMXID       map[id.RoomID]*Portal
 	portalsByJID        map[database.PortalKey]*Portal
 	portalsLock         sync.Mutex

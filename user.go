@@ -196,6 +196,8 @@ func (user *User) getSpaceRoom() id.RoomID {
 		invite = append(invite, user.MXID)
 
 		resp, err := user.bridge.Bot.CreateRoom(&mautrix.ReqCreateRoom{
+			Visibility:      "private",
+			Name:            "WhatsApp",
 			Topic:           "WhatsApp bridge Space",
 			Invite:          invite,
 			CreationContent: creationContent,
@@ -207,12 +209,21 @@ func (user *User) getSpaceRoom() id.RoomID {
 		}
 	} else {
 		user.log.Debugln("Space found" + user.SpaceRoom)
+		roomID = user.SpaceRoom
 	}
 	return roomID
 }
 
-func (user *User) setSpaceRoom(roomID id.RoomID) {
-	user.log.Debugln("Space ID to set" + roomID)
+func (user *User) setSpaceRoom(spaceID id.RoomID) {
+	existingUser, ok := user.bridge.spaceRooms[spaceID]
+	if ok {
+		existingUser.SpaceRoom = ""
+		existingUser.Update()
+	}
+
+	user.SpaceRoom = spaceID
+	user.bridge.spaceRooms[user.SpaceRoom] = user
+	user.Update()
 }
 
 func (user *User) GetManagementRoom() id.RoomID {
