@@ -1196,7 +1196,6 @@ func (portal *Portal) CreateMatrixRoom(user *User, groupInfo *types.GroupInfo, i
 }
 
 func (portal *Portal) addToSpace(spaceID id.RoomID, portalID id.RoomID, homeserverDomain string) {
-
 	parentSpaceContent := make(map[string]interface{})
 	parentSpaceContent["via"] = []string{homeserverDomain}
 
