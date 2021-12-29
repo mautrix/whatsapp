@@ -70,6 +70,7 @@ type BridgeConfig struct {
 	WhatsappThumbnail     bool   `yaml:"whatsapp_thumbnail"`
 	AllowUserInvite       bool   `yaml:"allow_user_invite"`
 	FederateRooms         bool   `yaml:"federate_rooms"`
+	SpacePerUser          bool   `yaml:"space_per_user"`
 
 	CommandPrefix string `yaml:"command_prefix"`
 

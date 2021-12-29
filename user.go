@@ -184,8 +184,6 @@ func (user *User) getSpaceRoom() id.RoomID {
 	var roomID id.RoomID
 
 	if len(user.SpaceRoom) == 0 {
-		//TODO check if Spaces creation is enabled by config
-
 		//Create Space
 		user.log.Debugln("Locking to create space.")
 		user.spaceCreateLock.Lock()

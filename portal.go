@@ -1141,7 +1141,9 @@ func (portal *Portal) CreateMatrixRoom(user *User, groupInfo *types.GroupInfo, i
 	portal.ensureUserInvited(user)
 	user.syncChatDoublePuppetDetails(portal, true)
 
-	portal.addToSpace(user.getSpaceRoom(), portal.MXID, portal.bridge.Config.Homeserver.Domain)
+	if portal.bridge.Config.Bridge.SpacePerUser {
+		portal.addToSpace(user.getSpaceRoom(), portal.MXID, portal.bridge.Config.Homeserver.Domain)
+	}
 
 	if groupInfo != nil {
 		portal.SyncParticipants(user, groupInfo)
