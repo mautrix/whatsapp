@@ -805,39 +805,8 @@ func (portal *Portal) ensureMXIDInvited(mxid id.UserID) {
 	}
 }
 
-func (portal *Portal) ensureUserInvited(user *User) (ok bool) {
-	inviteContent := event.Content{
-		Parsed: &event.MemberEventContent{
-			Membership: event.MembershipInvite,
-			IsDirect:   portal.IsPrivateChat(),
-		},
-		Raw: map[string]interface{}{},
-	}
-	customPuppet := portal.bridge.GetPuppetByCustomMXID(user.MXID)
-	if customPuppet != nil && customPuppet.CustomIntent() != nil {
-		inviteContent.Raw["fi.mau.will_auto_accept"] = true
-	}
-	_, err := portal.MainIntent().SendStateEvent(portal.MXID, event.StateMember, user.MXID.String(), &inviteContent)
-	var httpErr mautrix.HTTPError
-	if err != nil && errors.As(err, &httpErr) && httpErr.RespError != nil && strings.Contains(httpErr.RespError.Err, "is already in the room") {
-		portal.bridge.StateStore.SetMembership(portal.MXID, user.MXID, event.MembershipJoin)
-		ok = true
-	} else if err != nil {
-		portal.log.Warnfln("Failed to invite %s: %v", user.MXID, err)
-	} else {
-		ok = true
-	}
-
-	if customPuppet != nil && customPuppet.CustomIntent() != nil {
-		err = customPuppet.CustomIntent().EnsureJoined(portal.MXID)
-		if err != nil {
-			portal.log.Warnfln("Failed to auto-join portal as %s: %v", user.MXID, err)
-			ok = false
-		} else {
-			ok = true
-		}
-	}
-	return
+func (portal *Portal) ensureUserInvited(user *User) bool {
+	return user.ensureInvited(portal.MainIntent(), portal.MXID, portal.IsPrivateChat())
 }
 
 func (portal *Portal) UpdateMatrixRoom(user *User, groupInfo *types.GroupInfo) bool {
@@ -847,6 +816,7 @@ func (portal *Portal) UpdateMatrixRoom(user *User, groupInfo *types.GroupInfo) b
 	portal.log.Infoln("Syncing portal for", user.MXID)
 
 	portal.ensureUserInvited(user)
+	go portal.addToSpace(user)
 
 	update := false
 	update = portal.UpdateMetadata(user, groupInfo) || update
@@ -971,7 +941,7 @@ func (portal *Portal) getBridgeInfo() (string, event.BridgeEventContent) {
 		Protocol: event.BridgeInfoSection{
 			ID:          "whatsapp",
 			DisplayName: "WhatsApp",
-			AvatarURL:   id.ContentURIString(portal.bridge.Config.AppService.Bot.Avatar),
+			AvatarURL:   portal.bridge.Config.AppService.Bot.ParsedAvatar.CUString(),
 			ExternalURL: "https://www.whatsapp.com/",
 		},
 		Channel: event.BridgeInfoSection{
@@ -1141,7 +1111,7 @@ func (portal *Portal) CreateMatrixRoom(user *User, groupInfo *types.GroupInfo, i
 	portal.ensureUserInvited(user)
 	user.syncChatDoublePuppetDetails(portal, true)
 
-	portal.addToSpace(user.getSpaceRoom(), portal.MXID, portal.bridge.Config.Homeserver.Domain)
+	go portal.addToSpace(user)
 
 	if groupInfo != nil {
 		portal.SyncParticipants(user, groupInfo)
@@ -1178,14 +1148,20 @@ func (portal *Portal) CreateMatrixRoom(user *User, groupInfo *types.GroupInfo, i
 	return nil
 }
 
-func (portal *Portal) addToSpace(spaceID id.RoomID, portalID id.RoomID, homeserverDomain string) {
-
-	parentSpaceContent := make(map[string]interface{})
-	parentSpaceContent["via"] = []string{homeserverDomain}
-
-	portal.log.Debugfln("adding room %s to the space %s", portalID, spaceID)
-
-	portal.MainIntent().SendStateEvent(spaceID, event.Type{Type: "m.space.child", Class: event.StateEventType}, portalID.String(), parentSpaceContent)
+func (portal *Portal) addToSpace(user *User) {
+	spaceID := user.GetSpaceRoom()
+	if len(spaceID) == 0 || user.IsInSpace(portal.Key) {
+		return
+	}
+	_, err := portal.bridge.Bot.SendStateEvent(spaceID, event.StateSpaceChild, portal.MXID.String(), &event.SpaceChildEventContent{
+		Via: []string{portal.bridge.Config.Homeserver.Domain},
+	})
+	if err != nil {
+		portal.log.Errorfln("Failed to add room to %s's personal filtering space (%s): %v", user.MXID, spaceID, err)
+	} else {
+		portal.log.Debugfln("Added room to %s's personal filtering space (%s)", user.MXID, spaceID)
+		user.MarkInSpace(portal.Key)
+	}
 }
 
 func (portal *Portal) IsPrivateChat() bool {

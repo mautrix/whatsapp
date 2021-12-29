@@ -59,6 +59,8 @@ type Config struct {
 			Username    string `yaml:"username"`
 			Displayname string `yaml:"displayname"`
 			Avatar      string `yaml:"avatar"`
+
+			ParsedAvatar id.ContentURI `yaml:"-"`
 		} `yaml:"bot"`
 
 		EphemeralEvents bool `yaml:"ephemeral_events"`

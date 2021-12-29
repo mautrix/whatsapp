@@ -356,7 +356,7 @@ func (bridge *Bridge) ResendBridgeInfo() {
 
 func (bridge *Bridge) UpdateBotProfile() {
 	bridge.Log.Debugln("Updating bot profile")
-	botConfig := bridge.Config.AppService.Bot
+	botConfig := &bridge.Config.AppService.Bot
 
 	var err error
 	var mxc id.ContentURI
@@ -367,6 +367,7 @@ func (bridge *Bridge) UpdateBotProfile() {
 		if err == nil {
 			err = bridge.Bot.SetAvatarURL(mxc)
 		}
+		botConfig.ParsedAvatar = mxc
 	}
 	if err != nil {
 		bridge.Log.Warnln("Failed to update bot avatar:", err)

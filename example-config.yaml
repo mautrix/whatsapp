@@ -94,6 +94,8 @@ bridge:
     # {{.FullName}}  - full name from contact list
     # {{.FirstName}} - first name from contact list
     displayname_template: "{{if .PushName}}{{.PushName}}{{else if .BusinessName}}{{.BusinessName}}{{else}}{{.JID}}{{end}} (WA)"
+    # Should the bridge create a space for each logged-in user and add bridged rooms to it?
+    personal_filtering_spaces: false
     # Should the bridge send a read receipt from the bridge bot when a message has been sent to WhatsApp?
     delivery_receipts: false
     # Should incoming calls send a message to the Matrix room?

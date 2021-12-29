@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -64,6 +65,8 @@ type User struct {
 	historySyncs     chan *events.HistorySync
 	prevBridgeStatus *BridgeState
 	lastPresence     types.Presence
+
+	spaceMembershipChecked bool
 }
 
 func (bridge *Bridge) getUserByMXID(userID id.UserID, onlyIfExists bool) *User {
@@ -180,56 +183,83 @@ func (bridge *Bridge) NewUser(dbUser *database.User) *User {
 	return user
 }
 
-func (user *User) getSpaceRoom() id.RoomID {
-	var roomID id.RoomID
-
-	if len(user.SpaceRoom) == 0 {
-		//TODO check if Spaces creation is enabled by config
-
-		//Create Space
-		user.log.Debugln("Locking to create space.")
-		user.spaceCreateLock.Lock()
-		defer user.spaceCreateLock.Unlock()
-
-		if len(user.SpaceRoom) != 0 {
-			roomID = user.SpaceRoom
-			user.log.Debugln("Returning space after lock" + user.SpaceRoom)
-		} else {
-			creationContent := make(map[string]interface{})
-			creationContent["type"] = "m.space"
-
-			user.log.Debugln("Creating a new space for the user")
-
-			user.log.Debugln("Inviting user " + user.MXID)
-			var invite []id.UserID
-			invite = append(invite, user.MXID)
-
-			resp, err := user.bridge.Bot.CreateRoom(&mautrix.ReqCreateRoom{
-				Visibility:      "private",
-				Name:            "WhatsApp",
-				Topic:           "WhatsApp bridge Space",
-				Invite:          invite,
-				CreationContent: creationContent,
-			})
-			if err != nil {
-				user.log.Errorln("Failed to auto-create space room:", err)
-			} else {
-				user.setSpaceRoom(resp.RoomID)
-				roomID = resp.RoomID
-			}
-		}
+func (user *User) ensureInvited(intent *appservice.IntentAPI, roomID id.RoomID, isDirect bool) (ok bool) {
+	inviteContent := event.Content{
+		Parsed: &event.MemberEventContent{
+			Membership: event.MembershipInvite,
+			IsDirect:   isDirect,
+		},
+		Raw: map[string]interface{}{},
+	}
+	customPuppet := user.bridge.GetPuppetByCustomMXID(user.MXID)
+	if customPuppet != nil && customPuppet.CustomIntent() != nil {
+		inviteContent.Raw["fi.mau.will_auto_accept"] = true
+	}
+	_, err := intent.SendStateEvent(roomID, event.StateMember, user.MXID.String(), &inviteContent)
+	var httpErr mautrix.HTTPError
+	if err != nil && errors.As(err, &httpErr) && httpErr.RespError != nil && strings.Contains(httpErr.RespError.Err, "is already in the room") {
+		user.bridge.StateStore.SetMembership(roomID, user.MXID, event.MembershipJoin)
+		ok = true
+	} else if err != nil {
+		user.log.Warnfln("Failed to invite user to %s: %v", roomID, err)
 	} else {
-		user.log.Debugln("Space found" + user.SpaceRoom)
-		roomID = user.SpaceRoom
+		ok = true
 	}
 
-	return roomID
+	if customPuppet != nil && customPuppet.CustomIntent() != nil {
+		err = customPuppet.CustomIntent().EnsureJoined(roomID)
+		if err != nil {
+			user.log.Warnfln("Failed to auto-join %s: %v", roomID, err)
+			ok = false
+		} else {
+			ok = true
+		}
+	}
+	return
 }
 
-func (user *User) setSpaceRoom(spaceID id.RoomID) {
-	user.SpaceRoom = spaceID
-	user.bridge.spaceRooms[user.SpaceRoom] = user
-	user.Update()
+func (user *User) GetSpaceRoom() id.RoomID {
+	if !user.bridge.Config.Bridge.PersonalFilteringSpaces {
+		return ""
+	}
+
+	if len(user.SpaceRoom) == 0 {
+		user.spaceCreateLock.Lock()
+		defer user.spaceCreateLock.Unlock()
+		if len(user.SpaceRoom) > 0 {
+			return user.SpaceRoom
+		}
+
+		resp, err := user.bridge.Bot.CreateRoom(&mautrix.ReqCreateRoom{
+			Visibility: "private",
+			Name:       "WhatsApp",
+			Topic:      "Your WhatsApp bridged chats",
+			InitialState: []*event.Event{{
+				Type: event.StateRoomAvatar,
+				Content: event.Content{
+					Parsed: &event.RoomAvatarEventContent{
+						URL: user.bridge.Config.AppService.Bot.ParsedAvatar,
+					},
+				},
+			}},
+			CreationContent: map[string]interface{}{
+				"type": event.RoomTypeSpace,
+			},
+		})
+
+		if err != nil {
+			user.log.Errorln("Failed to auto-create space room:", err)
+		} else {
+			user.SpaceRoom = resp.RoomID
+			user.Update()
+			user.ensureInvited(user.bridge.Bot, user.SpaceRoom, false)
+		}
+	} else if !user.spaceMembershipChecked && !user.bridge.StateStore.IsInRoom(user.SpaceRoom, user.MXID) {
+		user.ensureInvited(user.bridge.Bot, user.SpaceRoom, false)
+	}
+	user.spaceMembershipChecked = true
+
+	return user.SpaceRoom
 }
 
 func (user *User) GetManagementRoom() id.RoomID {

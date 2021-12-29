@@ -176,6 +176,8 @@ func (user *User) handleHistorySyncConversation(index int, conv *waProto.Convers
 			user.log.Warnfln("Failed to create room for %s during backfill: %v", portal.Key.JID, err)
 			return
 		}
+	} else {
+		portal.UpdateMatrixRoom(user, nil)
 	}
 	if !user.bridge.Config.Bridge.HistorySync.Backfill {
 		user.log.Debugln("Backfill is disabled, not bridging history sync payload for", portal.Key.JID)
