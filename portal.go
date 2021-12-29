@@ -1141,7 +1141,7 @@ func (portal *Portal) CreateMatrixRoom(user *User, groupInfo *types.GroupInfo, i
 	portal.ensureUserInvited(user)
 	user.syncChatDoublePuppetDetails(portal, true)
 
-	portal.addToSpace(user.getSpaceRoom(), portal.MXID)
+	portal.addToSpace(user.getSpaceRoom(), portal.MXID, portal.bridge.Config.Homeserver.Domain)
 
 	if groupInfo != nil {
 		portal.SyncParticipants(user, groupInfo)
@@ -1178,12 +1178,13 @@ func (portal *Portal) CreateMatrixRoom(user *User, groupInfo *types.GroupInfo, i
 	return nil
 }
 
-func (portal *Portal) addToSpace(spaceID id.RoomID, portalID id.RoomID) {
+func (portal *Portal) addToSpace(spaceID id.RoomID, portalID id.RoomID, homeserverDomain string) {
 
 	parentSpaceContent := make(map[string]interface{})
-	parentSpaceContent["via"] = []string{"matrix.wounn.xyz"}
+	parentSpaceContent["via"] = []string{homeserverDomain}
 
-	portal.log.Errorln("adding room " + portalID + " to the space " + spaceID)
+	portal.log.Debugfln("adding room %s to the space %s", portalID, spaceID)
+
 	portal.MainIntent().SendStateEvent(spaceID, event.Type{Type: "m.space.child", Class: event.StateEventType}, portalID.String(), parentSpaceContent)
 }
 
