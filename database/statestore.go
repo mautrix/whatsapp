@@ -19,7 +19,6 @@ package database
 import (
 	"database/sql"
 	"encoding/json"
-	"fmt"
 	"sync"
 
 	log "maunium.net/go/maulogger/v2"
@@ -60,14 +59,7 @@ func (store *SQLStateStore) IsRegistered(userID id.UserID) bool {
 }
 
 func (store *SQLStateStore) MarkRegistered(userID id.UserID) {
-	var err error
-	if store.db.dialect == "postgres" {
-		_, err = store.db.Exec("INSERT INTO mx_registrations (user_id) VALUES ($1) ON CONFLICT (user_id) DO NOTHING", userID)
-	} else if store.db.dialect == "sqlite3" {
-		_, err = store.db.Exec("INSERT OR REPLACE INTO mx_registrations (user_id) VALUES ($1)", userID)
-	} else {
-		err = fmt.Errorf("unsupported dialect %s", store.db.dialect)
-	}
+	_, err := store.db.Exec("INSERT INTO mx_registrations (user_id) VALUES ($1) ON CONFLICT (user_id) DO NOTHING", userID)
 	if err != nil {
 		store.log.Warnfln("Failed to mark %s as registered: %v", userID, err)
 	}
@@ -161,31 +153,20 @@ func (store *SQLStateStore) IsMembership(roomID id.RoomID, userID id.UserID, all
 }
 
 func (store *SQLStateStore) SetMembership(roomID id.RoomID, userID id.UserID, membership event.Membership) {
-	var err error
-	if store.db.dialect == "postgres" {
-		_, err = store.db.Exec(`INSERT INTO mx_user_profile (room_id, user_id, membership) VALUES ($1, $2, $3)
-			ON CONFLICT (room_id, user_id) DO UPDATE SET membership=$3`, roomID, userID, membership)
-	} else if store.db.dialect == "sqlite3" {
-		_, err = store.db.Exec("INSERT OR REPLACE INTO mx_user_profile (room_id, user_id, membership) VALUES ($1, $2, $3)", roomID, userID, membership)
-	} else {
-		err = fmt.Errorf("unsupported dialect %s", store.db.dialect)
-	}
+	_, err := store.db.Exec(`
+		INSERT INTO mx_user_profile (room_id, user_id, membership) VALUES ($1, $2, $3)
+		ON CONFLICT (room_id, user_id) DO UPDATE SET membership=excluded.membership
+	`, roomID, userID, membership)
 	if err != nil {
 		store.log.Warnfln("Failed to set membership of %s in %s to %s: %v", userID, roomID, membership, err)
 	}
 }
 
 func (store *SQLStateStore) SetMember(roomID id.RoomID, userID id.UserID, member *event.MemberEventContent) {
-	var err error
-	if store.db.dialect == "postgres" {
-		_, err = store.db.Exec(`INSERT INTO mx_user_profile (room_id, user_id, membership, displayname, avatar_url) VALUES ($1, $2, $3, $4, $5)
-			ON CONFLICT (room_id, user_id) DO UPDATE SET membership=$3, displayname=$4, avatar_url=$5`, roomID, userID, member.Membership, member.Displayname, member.AvatarURL)
-	} else if store.db.dialect == "sqlite3" {
-		_, err = store.db.Exec("INSERT OR REPLACE INTO mx_user_profile (room_id, user_id, membership, displayname, avatar_url) VALUES ($1, $2, $3, $4, $5)",
-			roomID, userID, member.Membership, member.Displayname, member.AvatarURL)
-	} else {
-		err = fmt.Errorf("unsupported dialect %s", store.db.dialect)
-	}
+	_, err := store.db.Exec(`
+		INSERT INTO mx_user_profile (room_id, user_id, membership, displayname, avatar_url) VALUES ($1, $2, $3, $4, $5)
+		ON CONFLICT (room_id, user_id) DO UPDATE SET membership=excluded.membership, displayname=excluded.displayname, avatar_url=excluded.avatar_url
+	`, roomID, userID, member.Membership, member.Displayname, member.AvatarURL)
 	if err != nil {
 		store.log.Warnfln("Failed to set membership of %s in %s to %s: %v", userID, roomID, member, err)
 	}
@@ -197,14 +178,10 @@ func (store *SQLStateStore) SetPowerLevels(roomID id.RoomID, levels *event.Power
 		store.log.Errorfln("Failed to marshal power levels of %s: %v", roomID, err)
 		return
 	}
-	if store.db.dialect == "postgres" {
-		_, err = store.db.Exec(`INSERT INTO mx_room_state (room_id, power_levels) VALUES ($1, $2)
-			ON CONFLICT (room_id) DO UPDATE SET power_levels=$2`, roomID, levelsBytes)
-	} else if store.db.dialect == "sqlite3" {
-		_, err = store.db.Exec("INSERT OR REPLACE INTO mx_room_state (room_id, power_levels) VALUES ($1, $2)", roomID, levelsBytes)
-	} else {
-		err = fmt.Errorf("unsupported dialect %s", store.db.dialect)
-	}
+	_, err = store.db.Exec(`
+		INSERT INTO mx_room_state (room_id, power_levels) VALUES ($1, $2)
+		ON CONFLICT (room_id) DO UPDATE SET power_levels=excluded.power_levels
+	`, roomID, levelsBytes)
 	if err != nil {
 		store.log.Warnfln("Failed to store power levels of %s: %v", roomID, err)
 	}
