@@ -1086,6 +1086,21 @@ func (portal *Portal) CreateMatrixRoom(user *User, groupInfo *types.GroupInfo, i
 		Content:  event.Content{Parsed: bridgeInfo},
 		StateKey: &bridgeInfoStateKey,
 	}}
+
+	if portal.bridge.Config.Bridge.SpacePerUser {
+		spaceRoomID := user.getSpaceRoom().String()
+
+		parentSpaceContent := make(map[string]interface{})
+		parentSpaceContent["via"] = []string{portal.bridge.Config.Homeserver.Domain}
+		parentSpaceContent["canonical"] = true
+
+		initialState = append(initialState, &event.Event{
+			Type:     event.Type{Type: "m.space.parent", Class: event.StateEventType},
+			Content:  event.Content{Raw: parentSpaceContent},
+			StateKey: &spaceRoomID,
+		})
+	}
+
 	if !portal.AvatarURL.IsEmpty() {
 		initialState = append(initialState, &event.Event{
 			Type: event.StateRoomAvatar,
