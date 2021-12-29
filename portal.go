@@ -1141,6 +1141,8 @@ func (portal *Portal) CreateMatrixRoom(user *User, groupInfo *types.GroupInfo, i
 	portal.ensureUserInvited(user)
 	user.syncChatDoublePuppetDetails(portal, true)
 
+	portal.addToSpace(user.getSpaceRoom(), portal.MXID, portal.bridge.Config.Homeserver.Domain)
+
 	if groupInfo != nil {
 		portal.SyncParticipants(user, groupInfo)
 		if groupInfo.IsAnnounce {
@@ -1174,6 +1176,16 @@ func (portal *Portal) CreateMatrixRoom(user *User, groupInfo *types.GroupInfo, i
 		portal.Update()
 	}
 	return nil
+}
+
+func (portal *Portal) addToSpace(spaceID id.RoomID, portalID id.RoomID, homeserverDomain string) {
+
+	parentSpaceContent := make(map[string]interface{})
+	parentSpaceContent["via"] = []string{homeserverDomain}
+
+	portal.log.Debugfln("adding room %s to the space %s", portalID, spaceID)
+
+	portal.MainIntent().SendStateEvent(spaceID, event.Type{Type: "m.space.child", Class: event.StateEventType}, portalID.String(), parentSpaceContent)
 }
 
 func (portal *Portal) IsPrivateChat() bool {

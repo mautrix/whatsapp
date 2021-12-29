@@ -57,8 +57,9 @@ type User struct {
 	Whitelisted      bool
 	RelayWhitelisted bool
 
-	mgmtCreateLock sync.Mutex
-	connLock       sync.Mutex
+	mgmtCreateLock  sync.Mutex
+	spaceCreateLock sync.Mutex
+	connLock        sync.Mutex
 
 	historySyncs     chan *events.HistorySync
 	prevBridgeStatus *BridgeState
@@ -177,6 +178,58 @@ func (bridge *Bridge) NewUser(dbUser *database.User) *User {
 	user.Admin = user.bridge.Config.Bridge.Permissions.IsAdmin(user.MXID)
 	go user.handleHistorySyncsLoop()
 	return user
+}
+
+func (user *User) getSpaceRoom() id.RoomID {
+	var roomID id.RoomID
+
+	if len(user.SpaceRoom) == 0 {
+		//TODO check if Spaces creation is enabled by config
+
+		//Create Space
+		user.log.Debugln("Locking to create space.")
+		user.spaceCreateLock.Lock()
+		defer user.spaceCreateLock.Unlock()
+
+		if len(user.SpaceRoom) != 0 {
+			roomID = user.SpaceRoom
+			user.log.Debugln("Returning space after lock" + user.SpaceRoom)
+		} else {
+			creationContent := make(map[string]interface{})
+			creationContent["type"] = "m.space"
+
+			user.log.Debugln("Creating a new space for the user")
+
+			user.log.Debugln("Inviting user " + user.MXID)
+			var invite []id.UserID
+			invite = append(invite, user.MXID)
+
+			resp, err := user.bridge.Bot.CreateRoom(&mautrix.ReqCreateRoom{
+				Visibility:      "private",
+				Name:            "WhatsApp",
+				Topic:           "WhatsApp bridge Space",
+				Invite:          invite,
+				CreationContent: creationContent,
+			})
+			if err != nil {
+				user.log.Errorln("Failed to auto-create space room:", err)
+			} else {
+				user.setSpaceRoom(resp.RoomID)
+				roomID = resp.RoomID
+			}
+		}
+	} else {
+		user.log.Debugln("Space found" + user.SpaceRoom)
+		roomID = user.SpaceRoom
+	}
+
+	return roomID
+}
+
+func (user *User) setSpaceRoom(spaceID id.RoomID) {
+	user.SpaceRoom = spaceID
+	user.bridge.spaceRooms[user.SpaceRoom] = user
+	user.Update()
 }
 
 func (user *User) GetManagementRoom() id.RoomID {
