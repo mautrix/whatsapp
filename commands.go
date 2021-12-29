@@ -1102,6 +1102,10 @@ func (handler *CommandHandler) CommandSync(ce *CommandEvent) {
 		}
 	}
 	if space {
+		if !ce.Bridge.Config.Bridge.PersonalFilteringSpaces {
+			ce.Reply("Personal filtering spaces are not enabled on this instance of the bridge")
+			return
+		}
 		keys := ce.Bridge.DB.Portal.FindPrivateChatsNotInSpace(ce.User.JID)
 		count := 0
 		for _, key := range keys {

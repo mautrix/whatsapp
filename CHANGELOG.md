@@ -3,9 +3,14 @@
 * Added support for bridging incoming broadcast list messages.
 * Added overrides for mime type -> file extension mapping as some OSes have
   very obscure extensions in their mime type database.
+* Added support for personal filtering spaces (started by [@HelderFSFerreira] and [@clmnin] in [#413]).
 * Fixed avatar remove events from WhatsApp being ignored.
 * Fixed the bridge using the wrong Olm session if a client established a new
   one due to corruption.
+
+[@HelderFSFerreira]: https://github.com/HelderFSFerreira
+[@clmnin]: https://github.com/clmnin
+[#413]: https://github.com/mautrix/whatsapp/pull/413
 
 # v0.2.2 (2021-12-16)
 
