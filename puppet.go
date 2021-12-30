@@ -242,9 +242,13 @@ func (puppet *Puppet) UpdateName(source *User, contact types.ContactInfo) bool {
 	if puppet.Displayname != newName && quality >= puppet.NameQuality {
 		err := puppet.DefaultIntent().SetDisplayName(newName)
 		if err == nil {
+			contact, err := source.Client.Store.Contacts.GetContact(puppet.JID)
+			if err != nil {
+				puppet.log.Warnln("Failed to get contact info in UpdateName")
+			}
 			puppet.Displayname = newName
 			puppet.NameQuality = quality
-			go puppet.updatePortalName()
+			go puppet.updatePortalName(contact)
 			puppet.Update()
 		} else {
 			puppet.log.Warnln("Failed to set display name:", err)
@@ -276,7 +280,7 @@ func (puppet *Puppet) updatePortalAvatar() {
 	})
 }
 
-func (puppet *Puppet) updatePortalName() {
+func (puppet *Puppet) updatePortalName(contact types.ContactInfo) {
 	puppet.updatePortalMeta(func(portal *Portal) {
 		if len(portal.MXID) > 0 {
 			_, err := portal.MainIntent().SetRoomName(portal.MXID, puppet.Displayname)
@@ -284,7 +288,18 @@ func (puppet *Puppet) updatePortalName() {
 				portal.log.Warnln("Failed to set name:", err)
 			}
 		}
-		portal.Name = puppet.Displayname
+		if portal.bridge.Config.Bridge.SetRoomNameToContactName {
+			var newName string
+			if len(contact.FullName) > 0 {
+				newName = contact.FullName
+			} else {
+				// fall back to Display Name if FullName field is empty
+				newName = puppet.Displayname
+			}
+			portal.Name = newName
+		} else {
+			portal.Name = puppet.Displayname
+		}
 		portal.Update()
 	})
 }

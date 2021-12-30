@@ -29,8 +29,9 @@ import (
 )
 
 type BridgeConfig struct {
-	UsernameTemplate    string `yaml:"username_template"`
-	DisplaynameTemplate string `yaml:"displayname_template"`
+	UsernameTemplate         string `yaml:"username_template"`
+	DisplaynameTemplate      string `yaml:"displayname_template"`
+	SetRoomNameToContactName bool   `yaml:"set_room_name_to_contact_name"`
 
 	PersonalFilteringSpaces bool `yaml:"personal_filtering_spaces"`
 

@@ -991,7 +991,23 @@ func (portal *Portal) CreateMatrixRoom(user *User, groupInfo *types.GroupInfo, i
 		puppet := portal.bridge.GetPuppetByJID(portal.Key.JID)
 		puppet.SyncContact(user, true, "creating private chat portal")
 		if portal.bridge.Config.Bridge.PrivateChatPortalMeta {
-			portal.Name = puppet.Displayname
+			if portal.bridge.Config.Bridge.SetRoomNameToContactName {
+				contact, err := user.Client.Store.Contacts.GetContact(puppet.JID)
+				if err != nil {
+					puppet.log.Warnln("Failed to get contact info in createPrivatePortalFromInvite")
+				} else {
+					var newName string
+					if len(contact.FullName) > 0 {
+						newName = contact.FullName
+					} else {
+						// fall back to Display Name if FullName field is empty
+						newName = puppet.Displayname
+					}
+					portal.Name = newName
+				}
+			} else {
+				portal.Name = puppet.Displayname
+			}
 			portal.AvatarURL = puppet.AvatarURL
 			portal.Avatar = puppet.Avatar
 		} else {

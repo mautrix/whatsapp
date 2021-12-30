@@ -176,7 +176,23 @@ func (mx *MatrixHandler) createPrivatePortalFromInvite(roomID id.RoomID, inviter
 	portal.Topic = PrivateChatTopic
 	_, _ = portal.MainIntent().SetRoomTopic(portal.MXID, portal.Topic)
 	if portal.bridge.Config.Bridge.PrivateChatPortalMeta {
-		portal.Name = puppet.Displayname
+		if portal.bridge.Config.Bridge.SetRoomNameToContactName {
+			contact, err := inviter.Client.Store.Contacts.GetContact(puppet.JID)
+			if err != nil {
+				puppet.log.Warnln("Failed to get contact info in createPrivatePortalFromInvite")
+			} else {
+				var newName string
+				if len(contact.FullName) > 0 {
+					newName = contact.FullName
+				} else {
+					// fall back to Display Name if FullName field is empty
+					newName = puppet.Displayname
+				}
+				portal.Name = newName
+			}
+		} else {
+			portal.Name = puppet.Displayname
+		}
 		portal.AvatarURL = puppet.AvatarURL
 		portal.Avatar = puppet.Avatar
 		_, _ = portal.MainIntent().SetRoomName(portal.MXID, portal.Name)

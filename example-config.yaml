@@ -96,6 +96,9 @@ bridge:
     displayname_template: "{{if .PushName}}{{.PushName}}{{else if .BusinessName}}{{.BusinessName}}{{else}}{{.JID}}{{end}} (WA)"
     # Should the bridge create a space for each logged-in user and add bridged rooms to it?
     personal_filtering_spaces: false
+    # portal names as contact's full name - since it is not recommended to set {{.FullName}} as the displayname of the puppet
+    # you can instead set the room name to be the contact's FullName
+    set_room_name_to_contact_name: false
     # Should the bridge send a read receipt from the bridge bot when a message has been sent to WhatsApp?
     delivery_receipts: false
     # Should incoming calls send a message to the Matrix room?
