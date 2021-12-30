@@ -1068,7 +1068,7 @@ func (handler *CommandHandler) CommandPM(ce *CommandEvent) {
 	ce.Reply("Created portal room with +%s and invited you to it.", puppet.JID.User)
 }
 
-const cmdSyncHelp = `sync <appstate/contacts/groups> [--create-portals] - Synchronize data from WhatsApp.`
+const cmdSyncHelp = `sync <appstate/contacts/groups/space> [--create-portals] - Synchronize data from WhatsApp.`
 
 func (handler *CommandHandler) CommandSync(ce *CommandEvent) {
 	if len(ce.Args) == 0 {
