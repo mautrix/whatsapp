@@ -375,7 +375,7 @@ func (bridge *Bridge) UpdateBotProfile() {
 
 	if botConfig.Displayname == "remove" {
 		err = bridge.Bot.SetDisplayName("")
-	} else if len(botConfig.Avatar) > 0 {
+	} else if len(botConfig.Displayname) > 0 {
 		err = bridge.Bot.SetDisplayName(botConfig.Displayname)
 	}
 	if err != nil {
