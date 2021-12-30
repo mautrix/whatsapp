@@ -245,6 +245,12 @@ func (user *User) GetSpaceRoom() id.RoomID {
 			CreationContent: map[string]interface{}{
 				"type": event.RoomTypeSpace,
 			},
+			PowerLevelOverride: &event.PowerLevelsEventContent{
+				Users: map[id.UserID]int{
+					user.bridge.Bot.UserID: 9001,
+					user.MXID:              50,
+				},
+			},
 		})
 
 		if err != nil {
