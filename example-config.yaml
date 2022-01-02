@@ -95,6 +95,7 @@ bridge:
     # {{.FirstName}} - first name from contact list
     displayname_template: "{{if .PushName}}{{.PushName}}{{else if .BusinessName}}{{.BusinessName}}{{else}}{{.JID}}{{end}} (WA)"
     # Should the bridge create a space for each logged-in user and add bridged rooms to it?
+    # Users who logged in before turning this on should run `!wa sync space` to create and fill the space for the first time.
     personal_filtering_spaces: false
     # Should the bridge send a read receipt from the bridge bot when a message has been sent to WhatsApp?
     delivery_receipts: false
