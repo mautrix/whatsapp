@@ -267,7 +267,7 @@ func containsSupportedMessage(waMsg *waProto.Message) bool {
 	return waMsg.Conversation != nil || waMsg.ExtendedTextMessage != nil || waMsg.ImageMessage != nil ||
 		waMsg.StickerMessage != nil || waMsg.AudioMessage != nil || waMsg.VideoMessage != nil ||
 		waMsg.DocumentMessage != nil || waMsg.ContactMessage != nil || waMsg.LocationMessage != nil ||
-		waMsg.LiveLocationMessage != nil || waMsg.GroupInviteMessage != nil
+		waMsg.LiveLocationMessage != nil || waMsg.GroupInviteMessage != nil || waMsg.ContactsArrayMessage != nil
 }
 
 func isPotentiallyInteresting(waMsg *waProto.Message) bool {
@@ -276,7 +276,7 @@ func isPotentiallyInteresting(waMsg *waProto.Message) bool {
 	}
 	// List of message types that aren't supported, but might potentially be interesting
 	// (so a warning should be logged if they are encountered).
-	return waMsg.Call != nil || waMsg.Chat != nil || waMsg.ContactsArrayMessage != nil ||
+	return waMsg.Call != nil || waMsg.Chat != nil ||
 		waMsg.HighlyStructuredMessage != nil || waMsg.SendPaymentMessage != nil || waMsg.LiveLocationMessage != nil ||
 		waMsg.RequestPaymentMessage != nil || waMsg.DeclinePaymentRequestMessage != nil ||
 		waMsg.CancelPaymentRequestMessage != nil || waMsg.TemplateMessage != nil ||
@@ -304,6 +304,8 @@ func getMessageType(waMsg *waProto.Message) string {
 		return fmt.Sprintf("document %s", waMsg.GetDocumentMessage().GetMimetype())
 	case waMsg.ContactMessage != nil:
 		return "contact"
+	case waMsg.ContactsArrayMessage != nil:
+		return "contact array"
 	case waMsg.LocationMessage != nil:
 		return "location"
 	case waMsg.LiveLocationMessage != nil:
@@ -342,6 +344,8 @@ func (portal *Portal) convertMessage(intent *appservice.IntentAPI, source *User,
 		return portal.convertMediaMessage(intent, source, info, waMsg.GetDocumentMessage())
 	case waMsg.ContactMessage != nil:
 		return portal.convertContactMessage(intent, waMsg.GetContactMessage())
+	case waMsg.ContactsArrayMessage != nil:
+		return portal.convertContactsArrayMessage(intent, waMsg.GetContactsArrayMessage())
 	case waMsg.LocationMessage != nil:
 		return portal.convertLocationMessage(intent, waMsg.GetLocationMessage())
 	case waMsg.LiveLocationMessage != nil:
@@ -476,6 +480,14 @@ func (portal *Portal) handleMessage(source *User, evt *events.Message) {
 				portal.log.Errorfln("Failed to send caption of %s to Matrix: %v", msgID, err)
 			} else {
 				eventID = resp.EventID
+			}
+		}
+		if converted.MultiEvent != nil && existingMsg == nil {
+			for index, subEvt := range converted.MultiEvent {
+				resp, err = portal.sendMessage(converted.Intent, converted.Type, subEvt, nil, evt.Info.Timestamp.UnixMilli())
+				if err != nil {
+					portal.log.Errorfln("Failed to send sub-event %d of %s to Matrix: %v", index+1, msgID, err)
+				}
 			}
 		}
 		if len(eventID) != 0 {
@@ -1302,6 +1314,8 @@ type ConvertedMessage struct {
 	Extra   map[string]interface{}
 	Caption *event.MessageEventContent
 
+	MultiEvent []*event.MessageEventContent
+
 	ReplyTo types.MessageID
 }
 
@@ -1452,6 +1466,30 @@ func (portal *Portal) convertContactMessage(intent *appservice.IntentAPI, msg *w
 		Type:    event.EventMessage,
 		Content: content,
 		ReplyTo: msg.GetContextInfo().GetStanzaId(),
+	}
+}
+
+func (portal *Portal) convertContactsArrayMessage(intent *appservice.IntentAPI, msg *waProto.ContactsArrayMessage) *ConvertedMessage {
+	name := msg.GetDisplayName()
+	if len(name) == 0 {
+		name = fmt.Sprintf("%d contacts", len(msg.GetContacts()))
+	}
+	contacts := make([]*event.MessageEventContent, 0, len(msg.GetContacts()))
+	for _, contact := range msg.GetContacts() {
+		converted := portal.convertContactMessage(intent, contact)
+		if converted != nil {
+			contacts = append(contacts, converted.Content)
+		}
+	}
+	return &ConvertedMessage{
+		Intent: intent,
+		Type:   event.EventMessage,
+		Content: &event.MessageEventContent{
+			MsgType: event.MsgNotice,
+			Body:    fmt.Sprintf("Sent %s", name),
+		},
+		ReplyTo:    msg.GetContextInfo().GetStanzaId(),
+		MultiEvent: contacts,
 	}
 }
 

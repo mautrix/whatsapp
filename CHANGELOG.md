@@ -4,6 +4,7 @@
 * Added overrides for mime type -> file extension mapping as some OSes have
   very obscure extensions in their mime type database.
 * Added support for personal filtering spaces (started by [@HelderFSFerreira] and [@clmnin] in [#413]).
+* Added support for multi-contact messages.
 * Fixed avatar remove events from WhatsApp being ignored.
 * Fixed the bridge using the wrong Olm session if a client established a new
   one due to corruption.

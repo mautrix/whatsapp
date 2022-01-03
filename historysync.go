@@ -23,6 +23,7 @@ import (
 
 	waProto "go.mau.fi/whatsmeow/binary/proto"
 	"go.mau.fi/whatsmeow/types"
+
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/appservice"
 	"maunium.net/go/mautrix/event"
@@ -508,6 +509,16 @@ func (portal *Portal) appendBatchEvents(converted *ConvertedMessage, info *types
 	} else {
 		*eventsArray = append(*eventsArray, mainEvt)
 		*infoArray = append(*infoArray, info)
+	}
+	if converted.MultiEvent != nil {
+		for _, subEvtContent := range converted.MultiEvent {
+			subEvt, err := portal.wrapBatchEvent(info, converted.Intent, converted.Type, subEvtContent, nil)
+			if err != nil {
+				return err
+			}
+			*eventsArray = append(*eventsArray, subEvt)
+			*infoArray = append(*infoArray, nil)
+		}
 	}
 	return nil
 }
