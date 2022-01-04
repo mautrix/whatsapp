@@ -27,13 +27,9 @@ import (
 	_ "image/gif"
 	"image/jpeg"
 	"image/png"
-	"io"
 	"math"
 	"mime"
 	"net/http"
-	"os"
-	"os/exec"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -51,6 +47,8 @@ import (
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/format"
 	"maunium.net/go/mautrix/id"
+	"maunium.net/go/mautrix/util"
+	"maunium.net/go/mautrix/util/ffmpeg"
 
 	"go.mau.fi/whatsmeow"
 	waProto "go.mau.fi/whatsmeow/binary/proto"
@@ -1315,6 +1313,13 @@ func (portal *Portal) sendMessage(intent *appservice.IntentAPI, eventType event.
 	if err != nil {
 		return nil, err
 	}
+
+	if intent.IsCustomPuppet {
+		wrappedContent.Raw = map[string]interface{}{doublePuppetKey: doublePuppetValue}
+	} else {
+		wrappedContent.Raw = nil
+	}
+
 	_, _ = intent.UserTyping(portal.MXID, false, 0)
 	if timestamp == 0 {
 		return intent.SendMessageEvent(portal.MXID, eventType, &wrappedContent)
@@ -1661,32 +1666,6 @@ type MediaMessageWithDuration interface {
 	GetSeconds() uint32
 }
 
-// MimeExtensionSanityOverrides includes extensions for various common mimetypes.
-//
-// This is necessary because sometimes the OS mimetype database and Go interact in weird ways,
-// which causes very obscure extensions to be first in the array for common mimetypes
-// (e.g. image/jpeg -> .jpe, text/plain -> ,v).
-var MimeExtensionSanityOverrides = map[string]string{
-	"image/png":  ".png",
-	"image/webp": ".webp",
-	"image/jpeg": ".jpg",
-	"image/tiff": ".tiff",
-	"image/heif": ".heic",
-	"image/heic": ".heic",
-
-	"audio/mpeg": ".mp3",
-	"audio/ogg":  ".ogg",
-	"audio/webm": ".webm",
-	"video/mp4":  ".mp4",
-	"video/mpeg": ".mpeg",
-	"video/webm": ".webm",
-
-	"text/plain": ".txt",
-	"text/html":  ".html",
-
-	"application/xml": ".xml",
-}
-
 func (portal *Portal) convertMediaMessage(intent *appservice.IntentAPI, source *User, info *types.MessageInfo, msg MediaMessage) *ConvertedMessage {
 	messageWithCaption, ok := msg.(MediaMessageWithCaption)
 	var captionContent *event.MessageEventContent
@@ -1763,14 +1742,7 @@ func (portal *Portal) convertMediaMessage(intent *appservice.IntentAPI, source *
 			content.Body = mimeClass
 		}
 
-		ext, ok := MimeExtensionSanityOverrides[strings.Split(msg.GetMimetype(), ";")[0]]
-		if !ok {
-			exts, _ := mime.ExtensionsByType(msg.GetMimetype())
-			if len(exts) > 0 {
-				ext = exts[0]
-			}
-		}
-		content.Body += ext
+		content.Body += util.ExtensionFromMimetype(msg.GetMimetype())
 	}
 
 	msgWithDuration, ok := msg.(MediaMessageWithDuration)
@@ -1829,12 +1801,24 @@ func (portal *Portal) convertMediaMessage(intent *appservice.IntentAPI, source *
 		eventType = event.EventSticker
 	}
 
+	audioMessage, ok := msg.(*waProto.AudioMessage)
+	extraContent := map[string]interface{}{}
+	if ok {
+		extraContent["org.matrix.msc1767.audio"] = map[string]interface{}{
+			"duration": int(audioMessage.GetSeconds()) * 1000,
+		}
+		if audioMessage.GetPtt() {
+			extraContent["org.matrix.msc3245.voice"] = map[string]interface{}{}
+		}
+	}
+
 	return &ConvertedMessage{
 		Intent:  intent,
 		Type:    eventType,
 		Content: content,
 		Caption: captionContent,
 		ReplyTo: msg.GetContextInfo().GetStanzaId(),
+		Extra:   extraContent,
 	}
 }
 
@@ -1909,53 +1893,6 @@ func (portal *Portal) convertWebPtoPNG(webpImage []byte) ([]byte, error) {
 	return pngBuffer.Bytes(), nil
 }
 
-func (portal *Portal) convertGifToVideo(gif []byte) ([]byte, error) {
-	dir, err := os.MkdirTemp("", "gif-convert-*")
-	if err != nil {
-		return nil, fmt.Errorf("failed to make temp dir: %w", err)
-	}
-	defer os.RemoveAll(dir)
-
-	inputFile, err := os.OpenFile(filepath.Join(dir, "input.gif"), os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
-	if err != nil {
-		return nil, fmt.Errorf("failed open input file: %w", err)
-	}
-	_, err = inputFile.Write(gif)
-	if err != nil {
-		_ = inputFile.Close()
-		return nil, fmt.Errorf("failed to write gif to input file: %w", err)
-	}
-	_ = inputFile.Close()
-
-	outputFileName := filepath.Join(dir, "output.mp4")
-	cmd := exec.Command("ffmpeg", "-hide_banner", "-loglevel", "warning",
-		"-f", "gif", "-i", inputFile.Name(),
-		"-pix_fmt", "yuv420p", "-c:v", "libx264", "-movflags", "+faststart",
-		"-filter:v", "crop='floor(in_w/2)*2:floor(in_h/2)*2'",
-		outputFileName)
-	vcLog := portal.log.Sub("VideoConverter").Writer(log.LevelWarn)
-	cmd.Stdout = vcLog
-	cmd.Stderr = vcLog
-
-	err = cmd.Run()
-	if err != nil {
-		return nil, fmt.Errorf("failed to run ffmpeg: %w", err)
-	}
-	outputFile, err := os.OpenFile(filepath.Join(dir, "output.mp4"), os.O_RDONLY, 0)
-	if err != nil {
-		return nil, fmt.Errorf("failed to open output file: %w", err)
-	}
-	defer func() {
-		_ = outputFile.Close()
-		_ = os.Remove(outputFile.Name())
-	}()
-	mp4, err := io.ReadAll(outputFile)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read mp4 from output file: %w", err)
-	}
-	return mp4, nil
-}
-
 func (portal *Portal) preprocessMatrixMedia(sender *User, relaybotFormatted bool, content *event.MessageEventContent, eventID id.EventID, mediaType whatsmeow.MediaType) *MediaUpload {
 	var caption string
 	var mentionedJIDs []string
@@ -1987,7 +1924,10 @@ func (portal *Portal) preprocessMatrixMedia(sender *User, relaybotFormatted bool
 		}
 	}
 	if mediaType == whatsmeow.MediaVideo && content.GetInfo().MimeType == "image/gif" {
-		data, err = portal.convertGifToVideo(data)
+		data, err = ffmpeg.ConvertBytes(data, ".mp4", []string{"-f", "gif"}, []string{
+			"-pix_fmt", "yuv420p", "-c:v", "libx264", "-movflags", "+faststart",
+			"-filter:v", "crop='floor(in_w/2)*2:floor(in_h/2)*2'",
+		}, content.GetInfo().MimeType)
 		if err != nil {
 			portal.log.Errorfln("Failed to convert gif to mp4 in %s: %v", eventID, err)
 			return nil
