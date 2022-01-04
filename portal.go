@@ -270,27 +270,11 @@ func containsSupportedMessage(waMsg *waProto.Message) bool {
 		waMsg.LiveLocationMessage != nil || waMsg.GroupInviteMessage != nil || waMsg.ContactsArrayMessage != nil
 }
 
-func isPotentiallyInteresting(waMsg *waProto.Message) bool {
-	if waMsg == nil {
-		return false
-	}
-	// List of message types that aren't supported, but might potentially be interesting
-	// (so a warning should be logged if they are encountered).
-	return waMsg.Call != nil || waMsg.Chat != nil ||
-		waMsg.HighlyStructuredMessage != nil || waMsg.SendPaymentMessage != nil || waMsg.LiveLocationMessage != nil ||
-		waMsg.RequestPaymentMessage != nil || waMsg.DeclinePaymentRequestMessage != nil ||
-		waMsg.CancelPaymentRequestMessage != nil || waMsg.TemplateMessage != nil ||
-		waMsg.TemplateButtonReplyMessage != nil || waMsg.ProductMessage != nil || waMsg.ListMessage != nil ||
-		waMsg.OrderMessage != nil || waMsg.ListResponseMessage != nil || waMsg.InvoiceMessage != nil ||
-		waMsg.ButtonsMessage != nil || waMsg.ButtonsResponseMessage != nil || waMsg.PaymentInviteMessage != nil ||
-		waMsg.InteractiveMessage != nil || waMsg.ReactionMessage != nil || waMsg.StickerSyncRmrMessage != nil
-}
-
 func getMessageType(waMsg *waProto.Message) string {
 	switch {
 	case waMsg == nil:
 		return "ignore"
-	case waMsg.Conversation != nil || waMsg.ExtendedTextMessage != nil:
+	case waMsg.Conversation != nil, waMsg.ExtendedTextMessage != nil:
 		return "text"
 	case waMsg.ImageMessage != nil:
 		return fmt.Sprintf("image %s", waMsg.GetImageMessage().GetMimetype())
@@ -312,6 +296,8 @@ func getMessageType(waMsg *waProto.Message) string {
 		return "live location start"
 	case waMsg.GroupInviteMessage != nil:
 		return "group invite"
+	case waMsg.ReactionMessage != nil:
+		return "reaction"
 	case waMsg.ProtocolMessage != nil:
 		switch waMsg.GetProtocolMessage().GetType() {
 		case waProto.ProtocolMessage_REVOKE:
@@ -319,12 +305,42 @@ func getMessageType(waMsg *waProto.Message) string {
 		case waProto.ProtocolMessage_APP_STATE_SYNC_KEY_SHARE, waProto.ProtocolMessage_HISTORY_SYNC_NOTIFICATION, waProto.ProtocolMessage_INITIAL_SECURITY_NOTIFICATION_SETTING_SYNC:
 			return "ignore"
 		default:
-			return "unknown_protocol"
+			return fmt.Sprintf("unknown_protocol_%d", waMsg.GetProtocolMessage().GetType())
 		}
-	case isPotentiallyInteresting(waMsg):
-		return "unknown"
-	default:
+	case waMsg.ButtonsMessage != nil:
+		return "buttons"
+	case waMsg.ButtonsResponseMessage != nil:
+		return "buttons response"
+	case waMsg.TemplateMessage != nil:
+		return "template"
+	case waMsg.HighlyStructuredMessage != nil:
+		return "highly structured template"
+	case waMsg.TemplateButtonReplyMessage != nil:
+		return "template button reply"
+	case waMsg.InteractiveMessage != nil:
+		return "interactive"
+	case waMsg.ListMessage != nil:
+		return "list"
+	case waMsg.ProductMessage != nil:
+		return "product"
+	case waMsg.ListResponseMessage != nil:
+		return "list response"
+	case waMsg.OrderMessage != nil:
+		return "order"
+	case waMsg.InvoiceMessage != nil:
+		return "invoice"
+	case waMsg.SendPaymentMessage != nil, waMsg.RequestPaymentMessage != nil,
+		waMsg.DeclinePaymentRequestMessage != nil, waMsg.CancelPaymentRequestMessage != nil,
+		waMsg.PaymentInviteMessage != nil:
+		return "payment"
+	case waMsg.Call != nil:
+		return "call"
+	case waMsg.Chat != nil:
+		return "chat"
+	case waMsg.SenderKeyDistributionMessage != nil, waMsg.StickerSyncRmrMessage != nil:
 		return "ignore"
+	default:
+		return "unknown"
 	}
 }
 
@@ -502,7 +518,7 @@ func (portal *Portal) handleMessage(source *User, evt *events.Message) {
 			existingMsg.UpdateMXID("net.maunium.whatsapp.fake::"+existingMsg.MXID, false)
 		}
 	} else {
-		portal.log.Warnfln("Unhandled message: %+v / %+v", evt.Info, evt.Message)
+		portal.log.Warnfln("Unhandled message: %+v (%s)", evt.Info, msgType)
 		if existingMsg != nil {
 			_, _ = portal.MainIntent().RedactEvent(portal.MXID, existingMsg.MXID, mautrix.ReqRedact{
 				Reason: "The undecryptable message contained an unsupported message type",
