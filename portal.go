@@ -1692,6 +1692,8 @@ func (portal *Portal) convertMediaMessage(intent *appservice.IntentAPI, source *
 	if errors.Is(err, whatsmeow.ErrNoURLPresent) {
 		portal.log.Debugfln("No URL present error for media message %s, ignoring...", info.ID)
 		return nil
+	} else if errors.Is(err, whatsmeow.ErrFileLengthMismatch) || errors.Is(err, whatsmeow.ErrInvalidMediaSHA256) {
+		portal.log.Warnfln("Mismatching media checksums in %s: %v. Ignoring because WhatsApp seems to ignore them too", info.ID, err)
 	} else if err != nil {
 		return portal.makeMediaBridgeFailureMessage(intent, info, err, captionContent)
 	}
