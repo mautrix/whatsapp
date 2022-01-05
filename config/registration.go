@@ -61,6 +61,7 @@ func (config *Config) copyToRegistration(registration *appservice.Registration) 
 	falseVal := false
 	registration.RateLimited = &falseVal
 	registration.SenderLocalpart = config.AppService.Bot.Username
+	registration.EphemeralEvents = config.AppService.EphemeralEvents
 
 	userIDRegex, err := regexp.Compile(fmt.Sprintf("^@%s:%s$",
 		config.Bridge.FormatUsername("[0-9]+"),

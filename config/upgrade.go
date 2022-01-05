@@ -26,15 +26,12 @@ import (
 	"maunium.net/go/mautrix/appservice"
 )
 
-func (helper *UpgradeHelper) TempMethod() {
-	helper.doUpgrade()
-}
-
 func (helper *UpgradeHelper) doUpgrade() {
 	helper.Copy(Str, "homeserver", "address")
 	helper.Copy(Str, "homeserver", "domain")
 	helper.Copy(Bool, "homeserver", "asmux")
 	helper.Copy(Str|Null, "homeserver", "status_endpoint")
+	helper.Copy(Str|Null, "homeserver", "message_send_checkpoint_endpoint")
 
 	helper.Copy(Str, "appservice", "address")
 	helper.Copy(Str, "appservice", "hostname")
@@ -54,6 +51,7 @@ func (helper *UpgradeHelper) doUpgrade() {
 	helper.Copy(Str, "appservice", "bot", "username")
 	helper.Copy(Str, "appservice", "bot", "displayname")
 	helper.Copy(Str, "appservice", "bot", "avatar")
+	helper.Copy(Bool, "appservice", "ephemeral_events")
 	helper.Copy(Str, "appservice", "as_token")
 	helper.Copy(Str, "appservice", "hs_token")
 
@@ -65,6 +63,7 @@ func (helper *UpgradeHelper) doUpgrade() {
 
 	helper.Copy(Str, "bridge", "username_template")
 	helper.Copy(Str, "bridge", "displayname_template")
+	helper.Copy(Bool, "bridge", "personal_filtering_spaces")
 	helper.Copy(Bool, "bridge", "delivery_receipts")
 	helper.Copy(Int, "bridge", "portal_message_buffer")
 	helper.Copy(Bool, "bridge", "call_start_notices")
@@ -98,6 +97,7 @@ func (helper *UpgradeHelper) doUpgrade() {
 	helper.Copy(Str|Null, "bridge", "pinned_tag")
 	helper.Copy(Bool, "bridge", "tag_only_on_create")
 	helper.Copy(Bool, "bridge", "enable_status_broadcast")
+	helper.Copy(Bool, "bridge", "mute_status_broadcast")
 	helper.Copy(Bool, "bridge", "whatsapp_thumbnail")
 	helper.Copy(Bool, "bridge", "allow_user_invite")
 	helper.Copy(Str, "bridge", "command_prefix")
@@ -133,6 +133,34 @@ func Upgrade(path string, save bool) ([]byte, bool, error) {
 	return upgrade(path, save, nil)
 }
 
+func (helper *UpgradeHelper) addSpaceBeforeComment(path ...string) {
+	node := helper.GetBaseNode(path...)
+	if node.Key == nil {
+		panic(fmt.Errorf("didn't find key at %+v", path))
+	}
+	node.Key.HeadComment = "\n" + node.Key.HeadComment
+}
+
+func (helper *UpgradeHelper) addSpaces() {
+	// The yaml package doesn't preserve blank lines, so re-add them manually where appropriate
+	helper.addSpaceBeforeComment("homeserver", "asmux")
+	helper.addSpaceBeforeComment("appservice")
+	helper.addSpaceBeforeComment("appservice", "hostname")
+	helper.addSpaceBeforeComment("appservice", "database")
+	helper.addSpaceBeforeComment("appservice", "provisioning")
+	helper.addSpaceBeforeComment("appservice", "id")
+	helper.addSpaceBeforeComment("appservice", "as_token")
+	helper.addSpaceBeforeComment("metrics")
+	helper.addSpaceBeforeComment("whatsapp")
+	helper.addSpaceBeforeComment("bridge")
+	helper.addSpaceBeforeComment("bridge", "command_prefix")
+	helper.addSpaceBeforeComment("bridge", "management_room_text")
+	helper.addSpaceBeforeComment("bridge", "encryption")
+	helper.addSpaceBeforeComment("bridge", "permissions")
+	helper.addSpaceBeforeComment("bridge", "relay")
+	helper.addSpaceBeforeComment("logging")
+}
+
 func upgrade(configPath string, save bool, mutate func(helper *UpgradeHelper)) ([]byte, bool, error) {
 	sourceData, err := os.ReadFile(configPath)
 	if err != nil {
@@ -153,6 +181,7 @@ func upgrade(configPath string, save bool, mutate func(helper *UpgradeHelper)) (
 	if mutate != nil {
 		mutate(helper)
 	}
+	helper.addSpaces()
 
 	output, err := yaml.Marshal(&base)
 	if err != nil {

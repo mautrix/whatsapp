@@ -20,17 +20,18 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"html"
 	"math"
 	"sort"
 	"strconv"
 	"strings"
 
 	"github.com/skip2/go-qrcode"
-	"go.mau.fi/whatsmeow/appstate"
 
 	"maunium.net/go/maulogger/v2"
 
 	"go.mau.fi/whatsmeow"
+	"go.mau.fi/whatsmeow/appstate"
 	"go.mau.fi/whatsmeow/types"
 
 	"maunium.net/go/mautrix"
@@ -135,7 +136,7 @@ func (handler *CommandHandler) CommandMux(ce *CommandEvent) {
 		handler.CommandLogout(ce)
 	case "toggle":
 		handler.CommandToggle(ce)
-	case "set-relay", "unset-relay", "login-matrix", "sync", "list", "open", "pm", "invite-link", "check-invite", "join", "create", "accept":
+	case "set-relay", "unset-relay", "login-matrix", "sync", "list", "search", "open", "pm", "invite-link", "resolve", "resolve-link", "join", "create", "accept":
 		if !ce.User.HasSession() {
 			ce.Reply("You are not logged in. Use the `login` command to log into WhatsApp.")
 			return
@@ -155,14 +156,16 @@ func (handler *CommandHandler) CommandMux(ce *CommandEvent) {
 			handler.CommandSync(ce)
 		case "list":
 			handler.CommandList(ce)
+		case "search":
+			handler.CommandSearch(ce)
 		case "open":
 			handler.CommandOpen(ce)
 		case "pm":
 			handler.CommandPM(ce)
 		case "invite-link":
 			handler.CommandInviteLink(ce)
-		case "check-invite":
-			handler.CommandCheckInvite(ce)
+		case "resolve", "resolve-link":
+			handler.CommandResolveLink(ce)
 		case "join":
 			handler.CommandJoin(ce)
 		case "create":
@@ -251,23 +254,38 @@ func (handler *CommandHandler) CommandInviteLink(ce *CommandEvent) {
 	}
 }
 
-const cmdCheckInviteHelp = `check-invite <invite link> - Resolve an invite link and check which group it points at.`
-const inviteLinkPrefix = "https://chat.whatsapp.com/"
+const cmdResolveLinkHelp = `resolve-link <group or message link> - Resolve a WhatsApp group invite or business message link.`
 
-func (handler *CommandHandler) CommandCheckInvite(ce *CommandEvent) {
+func (handler *CommandHandler) CommandResolveLink(ce *CommandEvent) {
 	if len(ce.Args) == 0 {
-		ce.Reply("**Usage:** `join <invite link>`")
-		return
-	} else if len(ce.Args[0]) <= len(inviteLinkPrefix) || ce.Args[0][:len(inviteLinkPrefix)] != inviteLinkPrefix {
-		ce.Reply("That doesn't look like a WhatsApp invite link")
+		ce.Reply("**Usage:** `resolve-link <group or message link>`")
 		return
 	}
-	group, err := ce.User.Client.GetGroupInfoFromLink(ce.Args[0])
-	if err != nil {
-		ce.Reply("Failed to get group info: %v", err)
-		return
+	if strings.HasPrefix(ce.Args[0], whatsmeow.InviteLinkPrefix) {
+		group, err := ce.User.Client.GetGroupInfoFromLink(ce.Args[0])
+		if err != nil {
+			ce.Reply("Failed to get group info: %v", err)
+			return
+		}
+		ce.Reply("That invite link points at %s (`%s`)", group.Name, group.JID)
+	} else if strings.HasPrefix(ce.Args[0], whatsmeow.BusinessMessageLinkPrefix) || strings.HasPrefix(ce.Args[0], whatsmeow.BusinessMessageLinkDirectPrefix) {
+		target, err := ce.User.Client.ResolveBusinessMessageLink(ce.Args[0])
+		if err != nil {
+			ce.Reply("Failed to get business info: %v", err)
+			return
+		}
+		message := ""
+		if len(target.Message) > 0 {
+			parts := strings.Split(target.Message, "\n")
+			for i, part := range parts {
+				parts[i] = "> " + html.EscapeString(part)
+			}
+			message = fmt.Sprintf(" The following prefilled message is attached:\n\n%s", strings.Join(parts, "\n"))
+		}
+		ce.Reply("That link points at %s (+%s).%s", target.PushName, target.JID.User, message)
+	} else {
+		ce.Reply("That doesn't look like a group invite link nor a business message link.")
 	}
-	ce.Reply("That invite link points at %s (`%s`)", group.Name, group.JID)
 }
 
 const cmdJoinHelp = `join <invite link> - Join a group chat with an invite link.`
@@ -276,7 +294,7 @@ func (handler *CommandHandler) CommandJoin(ce *CommandEvent) {
 	if len(ce.Args) == 0 {
 		ce.Reply("**Usage:** `join <invite link>`")
 		return
-	} else if len(ce.Args[0]) <= len(inviteLinkPrefix) || ce.Args[0][:len(inviteLinkPrefix)] != inviteLinkPrefix {
+	} else if !strings.HasPrefix(ce.Args[0], whatsmeow.InviteLinkPrefix) {
 		ce.Reply("That doesn't look like a WhatsApp invite link")
 		return
 	}
@@ -432,7 +450,10 @@ func parseInviteMeta(meta map[string]interface{}) (jid, inviter types.JID, code 
 const cmdSetPowerLevelHelp = `set-pl [user ID] <power level> - Change the power level in a portal room. Only for bridge admins.`
 
 func (handler *CommandHandler) CommandSetPowerLevel(ce *CommandEvent) {
-	if ce.Portal == nil {
+	if !ce.User.Admin {
+		ce.Reply("Only bridge admins can use `set-pl`")
+		return
+	} else if ce.Portal == nil {
 		ce.Reply("Not a portal room")
 		return
 	}
@@ -491,18 +512,20 @@ func (handler *CommandHandler) CommandLogin(ce *CommandEvent) {
 
 	var qrEventID id.EventID
 	for item := range qrChan {
-		switch item {
-		case whatsmeow.QRChannelSuccess:
+		switch item.Event {
+		case whatsmeow.QRChannelSuccess.Event:
 			jid := ce.User.Client.Store.ID
 			ce.Reply("Successfully logged in as +%s (device #%d)", jid.User, jid.Device)
-		case whatsmeow.QRChannelTimeout:
+		case whatsmeow.QRChannelTimeout.Event:
 			ce.Reply("QR code timed out. Please restart the login.")
-		case whatsmeow.QRChannelErrUnexpectedEvent:
+		case whatsmeow.QRChannelErrUnexpectedEvent.Event:
 			ce.Reply("Failed to log in: unexpected connection event from server")
-		case whatsmeow.QRChannelScannedWithoutMultidevice:
+		case whatsmeow.QRChannelScannedWithoutMultidevice.Event:
 			ce.Reply("Please enable the WhatsApp multidevice beta and scan the QR code again.")
-		default:
-			qrEventID = ce.User.sendQR(ce, string(item), qrEventID)
+		case "error":
+			ce.Reply("Failed to log in: %v", item.Error)
+		case "code":
+			qrEventID = ce.User.sendQR(ce, item.Code, qrEventID)
 		}
 	}
 	_, _ = ce.Bot.RedactEvent(ce.RoomID, qrEventID)
@@ -708,11 +731,12 @@ func (handler *CommandHandler) CommandHelp(ce *CommandEvent) {
 		cmdPrefix + cmdLogoutMatrixHelp,
 		cmdPrefix + cmdToggleHelp,
 		cmdPrefix + cmdListHelp,
+		cmdPrefix + cmdSearchHelp,
 		cmdPrefix + cmdSyncHelp,
 		cmdPrefix + cmdOpenHelp,
 		cmdPrefix + cmdPMHelp,
 		cmdPrefix + cmdInviteLinkHelp,
-		cmdPrefix + cmdCheckInviteHelp,
+		cmdPrefix + cmdResolveLinkHelp,
 		cmdPrefix + cmdJoinHelp,
 		cmdPrefix + cmdCreateHelp,
 		cmdPrefix + cmdSetPowerLevelHelp,
@@ -810,7 +834,15 @@ func (handler *CommandHandler) CommandDeleteAllPortals(ce *CommandEvent) {
 
 const cmdListHelp = `list <contacts|groups> [page] [items per page] - Get a list of all contacts and groups.`
 
-func formatContacts(bridge *Bridge, input map[types.JID]types.ContactInfo) (result []string) {
+func matchesQuery(str string, query string) bool {
+	if query == "" {
+		return true
+	}
+	return strings.Contains(strings.ToLower(str), query)
+}
+
+func formatContacts(bridge *Bridge, input map[types.JID]types.ContactInfo, query string) (result []string) {
+	hasQuery := len(query) > 0
 	for jid, contact := range input {
 		if len(contact.FullName) == 0 {
 			continue
@@ -820,15 +852,21 @@ func formatContacts(bridge *Bridge, input map[types.JID]types.ContactInfo) (resu
 		if len(pushName) == 0 {
 			pushName = contact.FullName
 		}
-		result = append(result, fmt.Sprintf("* %s / [%s](https://matrix.to/#/%s) - `+%s`", contact.FullName, pushName, puppet.MXID, jid.User))
+
+		if !hasQuery || matchesQuery(pushName, query) || matchesQuery(contact.FullName, query) || matchesQuery(jid.User, query) {
+			result = append(result, fmt.Sprintf("* %s / [%s](https://matrix.to/#/%s) - `+%s`", contact.FullName, pushName, puppet.MXID, jid.User))
+		}
 	}
 	sort.Sort(sort.StringSlice(result))
 	return
 }
 
-func formatGroups(input []*types.GroupInfo) (result []string) {
+func formatGroups(input []*types.GroupInfo, query string) (result []string) {
+	hasQuery := len(query) > 0
 	for _, group := range input {
-		result = append(result, fmt.Sprintf("* %s - `%s`", group.GroupName.Name, group.JID.User))
+		if !hasQuery || matchesQuery(group.GroupName.Name, query) || matchesQuery(group.JID.User, query) {
+			result = append(result, fmt.Sprintf("* %s - `%s`", group.GroupName.Name, group.JID.User))
+		}
 	}
 	sort.Sort(sort.StringSlice(result))
 	return
@@ -874,14 +912,14 @@ func (handler *CommandHandler) CommandList(ce *CommandEvent) {
 			ce.Reply("Failed to get contacts: %s", err)
 			return
 		}
-		result = formatContacts(ce.User.bridge, contactList)
+		result = formatContacts(ce.User.bridge, contactList, "")
 	} else {
 		groupList, err := ce.User.Client.GetJoinedGroups()
 		if err != nil {
 			ce.Reply("Failed to get groups: %s", err)
 			return
 		}
-		result = formatGroups(groupList)
+		result = formatGroups(groupList, "")
 	}
 
 	if len(result) == 0 {
@@ -903,6 +941,45 @@ func (handler *CommandHandler) CommandList(ce *CommandEvent) {
 	}
 	result = result[(page-1)*max : lastIndex]
 	ce.Reply("### %s (page %d of %d)\n\n%s", typeName, page, pages, strings.Join(result, "\n"))
+}
+
+const cmdSearchHelp = `search <query> - Search for contacts or groups.`
+
+func (handler *CommandHandler) CommandSearch(ce *CommandEvent) {
+	if len(ce.Args) == 0 {
+		ce.Reply("**Usage:** `search <query>`")
+		return
+	}
+
+	contactList, err := ce.User.Client.Store.Contacts.GetAllContacts()
+	if err != nil {
+		ce.Reply("Failed to get contacts: %s", err)
+		return
+	}
+	groupList, err := ce.User.Client.GetJoinedGroups()
+	if err != nil {
+		ce.Reply("Failed to get groups: %s", err)
+		return
+	}
+
+	query := strings.ToLower(strings.TrimSpace(strings.Join(ce.Args, " ")))
+	formattedContacts := strings.Join(formatContacts(ce.User.bridge, contactList, query), "\n")
+	formattedGroups := strings.Join(formatGroups(groupList, query), "\n")
+
+	result := make([]string, 0, 2)
+	if len(formattedContacts) > 0 {
+		result = append(result, "### Contacts\n\n"+formattedContacts)
+	}
+	if len(formattedGroups) > 0 {
+		result = append(result, "### Groups\n\n"+formattedGroups)
+	}
+
+	if len(result) == 0 {
+		ce.Reply("No contacts or groups found")
+		return
+	}
+
+	ce.Reply(strings.Join(result, "\n\n"))
 }
 
 const cmdOpenHelp = `open <_group JID_> - Open a group chat portal.`
@@ -991,17 +1068,18 @@ func (handler *CommandHandler) CommandPM(ce *CommandEvent) {
 	ce.Reply("Created portal room with +%s and invited you to it.", puppet.JID.User)
 }
 
-const cmdSyncHelp = `sync <appstate/contacts/groups> [--create-portals] - Synchronize data from WhatsApp.`
+const cmdSyncHelp = `sync <appstate/contacts/groups/space> [--create-portals] - Synchronize data from WhatsApp.`
 
 func (handler *CommandHandler) CommandSync(ce *CommandEvent) {
 	if len(ce.Args) == 0 {
-		ce.Reply("**Usage:** `sync <appstate/contacts/groups> [--create-portals]`")
+		ce.Reply("**Usage:** `sync <appstate/contacts/groups/space> [--create-portals]`")
 		return
 	}
 	args := strings.ToLower(strings.Join(ce.Args, " "))
 	contacts := strings.Contains(args, "contacts")
 	appState := strings.Contains(args, "appstate")
-	groups := strings.Contains(args, "groups")
+	space := strings.Contains(args, "space")
+	groups := strings.Contains(args, "groups") || space
 	createPortals := strings.Contains(args, "--create-portals")
 
 	if appState {
@@ -1022,6 +1100,24 @@ func (handler *CommandHandler) CommandSync(ce *CommandEvent) {
 		} else {
 			ce.Reply("Resynced contacts")
 		}
+	}
+	if space {
+		if !ce.Bridge.Config.Bridge.PersonalFilteringSpaces {
+			ce.Reply("Personal filtering spaces are not enabled on this instance of the bridge")
+			return
+		}
+		keys := ce.Bridge.DB.Portal.FindPrivateChatsNotInSpace(ce.User.JID)
+		count := 0
+		for _, key := range keys {
+			portal := ce.Bridge.GetPortalByJID(key)
+			portal.addToSpace(ce.User)
+			count++
+		}
+		plural := "s"
+		if count == 1 {
+			plural = ""
+		}
+		ce.Reply("Added %d DM room%s to space", count, plural)
 	}
 	if groups {
 		err := ce.User.ResyncGroups(createPortals)

@@ -24,8 +24,6 @@ import (
 	"fmt"
 	"time"
 
-	"go.mau.fi/whatsmeow/types"
-
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/appservice"
 	"maunium.net/go/mautrix/event"
@@ -139,7 +137,6 @@ func (puppet *Puppet) clearCustomMXID() {
 	puppet.CustomMXID = ""
 	puppet.AccessToken = ""
 	puppet.customIntent = nil
-	puppet.customTypingIn = nil
 	puppet.customUser = nil
 }
 
@@ -165,7 +162,6 @@ func (puppet *Puppet) StartCustomMXID(reloginOnFail bool) error {
 		return ErrMismatchingMXID
 	}
 	puppet.customIntent = intent
-	puppet.customTypingIn = make(map[id.RoomID]bool)
 	puppet.customUser = puppet.bridge.GetUserByMXID(puppet.CustomMXID)
 	puppet.startSyncing()
 	return nil
@@ -198,11 +194,8 @@ func (puppet *Puppet) ProcessResponse(resp *mautrix.RespSync, _ string) error {
 		return nil
 	}
 	for roomID, events := range resp.Rooms.Join {
-		portal := puppet.bridge.GetPortalByMXID(roomID)
-		if portal == nil || portal.IsBroadcastList() {
-			continue
-		}
 		for _, evt := range events.Ephemeral.Events {
+			evt.RoomID = roomID
 			err := evt.Content.ParseRaw(evt.Type)
 			if err != nil {
 				continue
@@ -210,10 +203,10 @@ func (puppet *Puppet) ProcessResponse(resp *mautrix.RespSync, _ string) error {
 			switch evt.Type {
 			case event.EphemeralEventReceipt:
 				if puppet.EnableReceipts {
-					go puppet.handleReceiptEvent(portal, evt)
+					go puppet.bridge.MatrixHandler.HandleReceipt(evt)
 				}
 			case event.EphemeralEventTyping:
-				go puppet.handleTypingEvent(portal, evt)
+				go puppet.bridge.MatrixHandler.HandleTyping(evt)
 			}
 		}
 	}
@@ -226,68 +219,10 @@ func (puppet *Puppet) ProcessResponse(resp *mautrix.RespSync, _ string) error {
 			if err != nil {
 				continue
 			}
-			go puppet.handlePresenceEvent(evt)
+			go puppet.bridge.MatrixHandler.HandlePresence(evt)
 		}
 	}
 	return nil
-}
-
-func (puppet *Puppet) handlePresenceEvent(event *event.Event) {
-	presence := types.PresenceAvailable
-	if event.Content.Raw["presence"].(string) != "online" {
-		presence = types.PresenceUnavailable
-		puppet.customUser.log.Debugln("Marking offline")
-	} else {
-		puppet.customUser.log.Debugln("Marking online")
-	}
-	puppet.customUser.lastPresence = presence
-	if puppet.customUser.Client.Store.PushName != "" {
-		err := puppet.customUser.Client.SendPresence(presence)
-		if err != nil {
-			puppet.customUser.log.Warnln("Failed to set presence:", err)
-		}
-	}
-}
-
-func (puppet *Puppet) handleReceiptEvent(portal *Portal, event *event.Event) {
-	for eventID, receipts := range *event.Content.AsReceipt() {
-		if receipt, ok := receipts.Read[puppet.CustomMXID]; !ok {
-			// Ignore receipt events where this user isn't present.
-		} else if isDoublePuppeted, _ := receipt.Extra[doublePuppetField].(bool); isDoublePuppeted {
-			puppet.customUser.log.Debugfln("Ignoring double puppeted read receipt %+v", event.Content.Raw)
-			// Ignore double puppeted read receipts.
-		} else if message := puppet.bridge.DB.Message.GetByMXID(eventID); message != nil {
-			puppet.customUser.log.Debugfln("Marking %s/%s in %s/%s as read", message.JID, message.MXID, portal.Key.JID, portal.MXID)
-			err := puppet.customUser.Client.MarkRead([]types.MessageID{message.JID}, time.UnixMilli(receipt.Timestamp), portal.Key.JID, message.Sender)
-			if err != nil {
-				puppet.customUser.log.Warnln("Error marking read:", err)
-			}
-		}
-	}
-}
-
-func (puppet *Puppet) handleTypingEvent(portal *Portal, evt *event.Event) {
-	isTyping := false
-	for _, userID := range evt.Content.AsTyping().UserIDs {
-		if userID == puppet.CustomMXID {
-			isTyping = true
-			break
-		}
-	}
-	if puppet.customTypingIn[evt.RoomID] != isTyping {
-		puppet.customTypingIn[evt.RoomID] = isTyping
-		presence := types.ChatPresenceComposing
-		if !isTyping {
-			puppet.customUser.log.Debugfln("Marking not typing in %s/%s", portal.Key.JID, portal.MXID)
-			presence = types.ChatPresencePaused
-		} else {
-			puppet.customUser.log.Debugfln("Marking typing in %s/%s", portal.Key.JID, portal.MXID)
-		}
-		err := puppet.customUser.Client.SendChatPresence(presence, portal.Key.JID)
-		if err != nil {
-			puppet.customUser.log.Warnln("Error setting typing:", err)
-		}
-	}
 }
 
 func (puppet *Puppet) tryRelogin(cause error, action string) bool {

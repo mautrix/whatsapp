@@ -82,6 +82,27 @@ func (pq *PortalQuery) FindPrivateChats(receiver types.JID) []*Portal {
 	return pq.getAll("SELECT * FROM portal WHERE receiver=$1 AND jid LIKE '%@s.whatsapp.net'", receiver.ToNonAD())
 }
 
+func (pq *PortalQuery) FindPrivateChatsNotInSpace(receiver types.JID) (keys []PortalKey) {
+	receiver = receiver.ToNonAD()
+	rows, err := pq.db.Query(`
+		SELECT jid FROM portal
+		    LEFT JOIN user_portal ON portal.jid=user_portal.portal_jid AND portal.receiver=user_portal.portal_receiver
+		WHERE mxid<>'' AND receiver=$1 AND (in_space=false OR in_space IS NULL)
+	`, receiver)
+	if err != nil || rows == nil {
+		return
+	}
+	for rows.Next() {
+		var key PortalKey
+		key.Receiver = receiver
+		err = rows.Scan(&key.JID)
+		if err == nil {
+			keys = append(keys, key)
+		}
+	}
+	return
+}
+
 func (pq *PortalQuery) getAll(query string, args ...interface{}) (portals []*Portal) {
 	rows, err := pq.db.Query(query, args...)
 	if err != nil || rows == nil {
