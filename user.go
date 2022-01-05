@@ -23,25 +23,25 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
 	log "maunium.net/go/maulogger/v2"
 
-	"go.mau.fi/whatsmeow/appstate"
+	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/appservice"
+	"maunium.net/go/mautrix/event"
+	"maunium.net/go/mautrix/format"
+	"maunium.net/go/mautrix/id"
 	"maunium.net/go/mautrix/pushrules"
 
 	"go.mau.fi/whatsmeow"
+	"go.mau.fi/whatsmeow/appstate"
 	"go.mau.fi/whatsmeow/store"
 	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
 	waLog "go.mau.fi/whatsmeow/util/log"
-
-	"maunium.net/go/mautrix"
-	"maunium.net/go/mautrix/event"
-	"maunium.net/go/mautrix/format"
-	"maunium.net/go/mautrix/id"
 
 	"maunium.net/go/mautrix-whatsapp/database"
 )
@@ -58,15 +58,18 @@ type User struct {
 	Whitelisted      bool
 	RelayWhitelisted bool
 
-	mgmtCreateLock sync.Mutex
-	connLock       sync.Mutex
+	mgmtCreateLock  sync.Mutex
+	spaceCreateLock sync.Mutex
+	connLock        sync.Mutex
 
 	historySyncs     chan *events.HistorySync
 	prevBridgeStatus *BridgeState
 	lastPresence     types.Presence
+
+	spaceMembershipChecked bool
 }
 
-func (bridge *Bridge) GetUserByMXID(userID id.UserID) *User {
+func (bridge *Bridge) getUserByMXID(userID id.UserID, onlyIfExists bool) *User {
 	_, isPuppet := bridge.ParsePuppetMXID(userID)
 	if isPuppet || userID == bridge.Bot.UserID {
 		return nil
@@ -75,9 +78,21 @@ func (bridge *Bridge) GetUserByMXID(userID id.UserID) *User {
 	defer bridge.usersLock.Unlock()
 	user, ok := bridge.usersByMXID[userID]
 	if !ok {
-		return bridge.loadDBUser(bridge.DB.User.GetByMXID(userID), &userID)
+		userIDPtr := &userID
+		if onlyIfExists {
+			userIDPtr = nil
+		}
+		return bridge.loadDBUser(bridge.DB.User.GetByMXID(userID), userIDPtr)
 	}
 	return user
+}
+
+func (bridge *Bridge) GetUserByMXID(userID id.UserID) *User {
+	return bridge.getUserByMXID(userID, false)
+}
+
+func (bridge *Bridge) GetUserByMXIDIfExists(userID id.UserID) *User {
+	return bridge.getUserByMXID(userID, true)
 }
 
 func (bridge *Bridge) GetUserByJID(jid types.JID) *User {
@@ -166,6 +181,91 @@ func (bridge *Bridge) NewUser(dbUser *database.User) *User {
 	user.Admin = user.bridge.Config.Bridge.Permissions.IsAdmin(user.MXID)
 	go user.handleHistorySyncsLoop()
 	return user
+}
+
+func (user *User) ensureInvited(intent *appservice.IntentAPI, roomID id.RoomID, isDirect bool) (ok bool) {
+	inviteContent := event.Content{
+		Parsed: &event.MemberEventContent{
+			Membership: event.MembershipInvite,
+			IsDirect:   isDirect,
+		},
+		Raw: map[string]interface{}{},
+	}
+	customPuppet := user.bridge.GetPuppetByCustomMXID(user.MXID)
+	if customPuppet != nil && customPuppet.CustomIntent() != nil {
+		inviteContent.Raw["fi.mau.will_auto_accept"] = true
+	}
+	_, err := intent.SendStateEvent(roomID, event.StateMember, user.MXID.String(), &inviteContent)
+	var httpErr mautrix.HTTPError
+	if err != nil && errors.As(err, &httpErr) && httpErr.RespError != nil && strings.Contains(httpErr.RespError.Err, "is already in the room") {
+		user.bridge.StateStore.SetMembership(roomID, user.MXID, event.MembershipJoin)
+		ok = true
+	} else if err != nil {
+		user.log.Warnfln("Failed to invite user to %s: %v", roomID, err)
+	} else {
+		ok = true
+	}
+
+	if customPuppet != nil && customPuppet.CustomIntent() != nil {
+		err = customPuppet.CustomIntent().EnsureJoined(roomID)
+		if err != nil {
+			user.log.Warnfln("Failed to auto-join %s: %v", roomID, err)
+			ok = false
+		} else {
+			ok = true
+		}
+	}
+	return
+}
+
+func (user *User) GetSpaceRoom() id.RoomID {
+	if !user.bridge.Config.Bridge.PersonalFilteringSpaces {
+		return ""
+	}
+
+	if len(user.SpaceRoom) == 0 {
+		user.spaceCreateLock.Lock()
+		defer user.spaceCreateLock.Unlock()
+		if len(user.SpaceRoom) > 0 {
+			return user.SpaceRoom
+		}
+
+		resp, err := user.bridge.Bot.CreateRoom(&mautrix.ReqCreateRoom{
+			Visibility: "private",
+			Name:       "WhatsApp",
+			Topic:      "Your WhatsApp bridged chats",
+			InitialState: []*event.Event{{
+				Type: event.StateRoomAvatar,
+				Content: event.Content{
+					Parsed: &event.RoomAvatarEventContent{
+						URL: user.bridge.Config.AppService.Bot.ParsedAvatar,
+					},
+				},
+			}},
+			CreationContent: map[string]interface{}{
+				"type": event.RoomTypeSpace,
+			},
+			PowerLevelOverride: &event.PowerLevelsEventContent{
+				Users: map[id.UserID]int{
+					user.bridge.Bot.UserID: 9001,
+					user.MXID:              50,
+				},
+			},
+		})
+
+		if err != nil {
+			user.log.Errorln("Failed to auto-create space room:", err)
+		} else {
+			user.SpaceRoom = resp.RoomID
+			user.Update()
+			user.ensureInvited(user.bridge.Bot, user.SpaceRoom, false)
+		}
+	} else if !user.spaceMembershipChecked && !user.bridge.StateStore.IsInRoom(user.SpaceRoom, user.MXID) {
+		user.ensureInvited(user.bridge.Bot, user.SpaceRoom, false)
+	}
+	user.spaceMembershipChecked = true
+
+	return user.SpaceRoom
 }
 
 func (user *User) GetManagementRoom() id.RoomID {
@@ -297,7 +397,7 @@ func (user *User) IsConnected() bool {
 }
 
 func (user *User) IsLoggedIn() bool {
-	return user.IsConnected() && user.Client.IsLoggedIn
+	return user.IsConnected() && user.Client.IsLoggedIn()
 }
 
 func (user *User) tryAutomaticDoublePuppeting() {
@@ -430,7 +530,7 @@ func (user *User) HandleEvent(event interface{}) {
 	case *events.ChatPresence:
 		go user.handleChatPresence(v)
 	case *events.Message:
-		portal := user.GetPortalByJID(v.Info.Chat)
+		portal := user.GetPortalByMessageSource(v.Info.MessageSource)
 		portal.messages <- PortalMessage{evt: v, source: user}
 	case *events.CallOffer:
 		user.handleCallStart(v.CallCreator, v.CallID, "", v.Timestamp)
@@ -458,7 +558,7 @@ func (user *User) HandleEvent(event interface{}) {
 	case *events.CallTerminate, *events.CallRelayLatency, *events.CallAccept, *events.UnknownCallEvent:
 		// ignore
 	case *events.UndecryptableMessage:
-		portal := user.GetPortalByJID(v.Info.Chat)
+		portal := user.GetPortalByMessageSource(v.Info.MessageSource)
 		portal.messages <- PortalMessage{undecryptable: v, source: user}
 	case *events.HistorySync:
 		user.historySyncs <- v
@@ -500,10 +600,10 @@ func (user *User) updateChatMute(intent *appservice.IntentAPI, portal *Portal, m
 	}
 	var err error
 	if mutedUntil.IsZero() && mutedUntil.Before(time.Now()) {
-		user.log.Debugfln("Portal %s is muted until %d, unmuting...", portal.MXID, mutedUntil)
+		user.log.Debugfln("Portal %s is muted until %s, unmuting...", portal.MXID, mutedUntil)
 		err = intent.DeletePushRule("global", pushrules.RoomRule, string(portal.MXID))
 	} else {
-		user.log.Debugfln("Portal %s is muted until %d, muting...", portal.MXID, mutedUntil)
+		user.log.Debugfln("Portal %s is muted until %s, muting...", portal.MXID, mutedUntil)
 		err = intent.PutPushRule("global", pushrules.RoomRule, string(portal.MXID), &mautrix.ReqPutPushRule{
 			Actions: []pushrules.PushActionType{pushrules.ActionDontNotify},
 		})
@@ -515,7 +615,7 @@ func (user *User) updateChatMute(intent *appservice.IntentAPI, portal *Portal, m
 
 type CustomTagData struct {
 	Order        json.Number `json:"order"`
-	DoublePuppet bool        `json:"net.maunium.whatsapp.puppet"`
+	DoublePuppet string      `json:"fi.mau.double_puppet_source"`
 }
 
 type CustomTagEventContent struct {
@@ -540,9 +640,9 @@ func (user *User) updateChatTag(intent *appservice.IntentAPI, portal *Portal, ta
 	currentTag, ok := existingTags.Tags[tag]
 	if active && !ok {
 		user.log.Debugln("Adding tag", tag, "to", portal.MXID)
-		data := CustomTagData{"0.5", true}
+		data := CustomTagData{"0.5", doublePuppetValue}
 		err = intent.AddTagWithCustomData(portal.MXID, tag, &data)
-	} else if !active && ok && currentTag.DoublePuppet {
+	} else if !active && ok && currentTag.DoublePuppet == doublePuppetValue {
 		user.log.Debugln("Removing tag", tag, "from", portal.MXID)
 		err = intent.RemoveTag(portal.MXID, tag)
 	} else {
@@ -555,7 +655,7 @@ func (user *User) updateChatTag(intent *appservice.IntentAPI, portal *Portal, ta
 
 type CustomReadReceipt struct {
 	Timestamp    int64 `json:"ts,omitempty"`
-	DoublePuppet bool  `json:"net.maunium.whatsapp.puppet,omitempty"`
+	DoublePuppet bool  `json:"fi.mau.double_puppet_source,omitempty"`
 }
 
 func (user *User) syncChatDoublePuppetDetails(portal *Portal, justCreated bool) {
@@ -573,6 +673,13 @@ func (user *User) syncChatDoublePuppetDetails(portal *Portal, justCreated bool) 
 			return
 		}
 		intent := doublePuppet.CustomIntent()
+		if portal.Key.JID == types.StatusBroadcastJID && justCreated && user.bridge.Config.Bridge.MuteStatusBroadcast {
+			user.updateChatMute(intent, portal, time.Now().Add(365*24*time.Hour))
+			user.updateChatTag(intent, portal, user.bridge.Config.Bridge.ArchiveTag, true)
+			return
+		} else if !chat.Found {
+			return
+		}
 		user.updateChatMute(intent, portal, chat.MutedUntil)
 		user.updateChatTag(intent, portal, user.bridge.Config.Bridge.ArchiveTag, chat.Archived)
 		user.updateChatTag(intent, portal, user.bridge.Config.Bridge.PinnedTag, chat.Pinned)
@@ -648,6 +755,21 @@ func (user *User) handleLoggedOut(onConnect bool) {
 	user.sendBridgeState(BridgeState{StateEvent: StateBadCredentials, Error: WANotLoggedIn})
 }
 
+func (user *User) GetPortalByMessageSource(ms types.MessageSource) *Portal {
+	jid := ms.Chat
+	if ms.IsIncomingBroadcast() {
+		if ms.IsFromMe {
+			jid = ms.BroadcastListOwner.ToNonAD()
+		} else {
+			jid = ms.Sender.ToNonAD()
+		}
+		if jid.IsEmpty() {
+			return nil
+		}
+	}
+	return user.bridge.GetPortalByJID(database.NewPortalKey(jid, user.JID))
+}
+
 func (user *User) GetPortalByJID(jid types.JID) *Portal {
 	return user.bridge.GetPortalByJID(database.NewPortalKey(jid, user.JID))
 }
@@ -715,10 +837,10 @@ func (user *User) handleChatPresence(presence *events.ChatPresence) {
 }
 
 func (user *User) handleReceipt(receipt *events.Receipt) {
-	if receipt.Type != events.ReceiptTypeRead {
+	if receipt.Type != events.ReceiptTypeRead && receipt.Type != events.ReceiptTypeReadSelf {
 		return
 	}
-	portal := user.GetPortalByJID(receipt.Chat)
+	portal := user.GetPortalByMessageSource(receipt.MessageSource)
 	if portal == nil || len(portal.MXID) == 0 {
 		return
 	}
@@ -738,6 +860,13 @@ func (user *User) handleReceipt(receipt *events.Receipt) {
 			markAsRead = append(markAsRead[:0], msg)
 		} else if msg != nil && msg.Timestamp.Equal(bestTimestamp) {
 			markAsRead = append(markAsRead, msg)
+		}
+	}
+	if receipt.Sender.User == user.JID.User {
+		if len(markAsRead) > 0 {
+			user.SetLastReadTS(portal.Key, markAsRead[0].Timestamp)
+		} else {
+			user.SetLastReadTS(portal.Key, receipt.Timestamp)
 		}
 	}
 	intent := user.bridge.GetPuppetByJID(receipt.Sender).IntentFor(portal)
@@ -760,6 +889,7 @@ func (user *User) markSelfReadFull(portal *Portal) {
 	if lastMessage == nil {
 		return
 	}
+	user.SetLastReadTS(portal.Key, lastMessage.Timestamp)
 	err := puppet.CustomIntent().MarkReadWithContent(portal.MXID, lastMessage.MXID, &CustomReadReceipt{DoublePuppet: true})
 	if err != nil {
 		user.log.Warnfln("Failed to mark %s (last message) in %s as read: %v", lastMessage.MXID, portal.MXID, err)

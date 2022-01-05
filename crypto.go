@@ -38,7 +38,7 @@ import (
 var NoSessionFound = crypto.NoSessionFound
 
 var levelTrace = maulogger.Level{
-	Name:     "Trace",
+	Name:     "TRACE",
 	Severity: -10,
 	Color:    -1,
 }
@@ -134,14 +134,15 @@ func (helper *CryptoHelper) loginBot() (*mautrix.Client, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to get supported login flows: %w", err)
 	}
-	if !flows.HasFlow(mautrix.AuthTypeHalfyAppservice) {
+	flow := flows.FirstFlowOfType(mautrix.AuthTypeAppservice, mautrix.AuthTypeHalfyAppservice)
+	if flow == nil {
 		return nil, fmt.Errorf("homeserver does not support appservice login")
 	}
 	// We set the API token to the AS token here to authenticate the appservice login
 	// It'll get overridden after the login
 	client.AccessToken = helper.bridge.AS.Registration.AppToken
 	resp, err := client.Login(&mautrix.ReqLogin{
-		Type:                     mautrix.AuthTypeHalfyAppservice,
+		Type:                     flow.Type,
 		Identifier:               mautrix.UserIdentifier{Type: mautrix.IdentifierTypeUser, User: string(helper.bridge.AS.BotMXID())},
 		DeviceID:                 deviceID,
 		InitialDeviceDisplayName: "WhatsApp Bridge",
@@ -198,6 +199,15 @@ func (helper *CryptoHelper) Encrypt(roomID id.RoomID, evtType event.Type, conten
 
 func (helper *CryptoHelper) WaitForSession(roomID id.RoomID, senderKey id.SenderKey, sessionID id.SessionID, timeout time.Duration) bool {
 	return helper.mach.WaitForSession(roomID, senderKey, sessionID, timeout)
+}
+
+func (helper *CryptoHelper) RequestSession(roomID id.RoomID, senderKey id.SenderKey, sessionID id.SessionID, userID id.UserID, deviceID id.DeviceID) {
+	err := helper.mach.SendRoomKeyRequest(roomID, senderKey, sessionID, "", map[id.UserID][]id.DeviceID{userID: {deviceID}})
+	if err != nil {
+		helper.log.Warnfln("Failed to send key request to %s/%s for %s in %s: %v", userID, deviceID, sessionID, roomID, err)
+	} else {
+		helper.log.Debugfln("Sent key request to %s/%s for %s in %s", userID, deviceID, sessionID, roomID)
+	}
 }
 
 func (helper *CryptoHelper) ResetSession(roomID id.RoomID) {

@@ -60,7 +60,7 @@ var (
 
 var (
 	// Version is the version number of the bridge. Changed manually when making a release.
-	Version = "0.2.1-mod-2"
+	Version = "0.2.2-mod-2"
 	// WAVersion is the version number exposed to WhatsApp. Filled in init()
 	WAVersion = ""
 	// VersionString is the bridge version, plus commit information. Filled in init() using the build-time values.
@@ -178,6 +178,8 @@ type Bridge struct {
 	usersByMXID         map[id.UserID]*User
 	usersByUsername     map[string]*User
 	usersLock           sync.Mutex
+	spaceRooms          map[id.RoomID]*User
+	spaceRoomsLock      sync.Mutex
 	managementRooms     map[id.RoomID]*User
 	managementRoomsLock sync.Mutex
 	portalsByMXID       map[id.RoomID]*Portal
@@ -193,6 +195,7 @@ type Crypto interface {
 	Decrypt(*event.Event) (*event.Event, error)
 	Encrypt(id.RoomID, event.Type, event.Content) (*event.EncryptedEventContent, error)
 	WaitForSession(id.RoomID, id.SenderKey, id.SessionID, time.Duration) bool
+	RequestSession(id.RoomID, id.SenderKey, id.SessionID, id.UserID, id.DeviceID)
 	ResetSession(id.RoomID)
 	Init() error
 	Start()
@@ -204,7 +207,10 @@ func (bridge *Bridge) ensureConnection() {
 		resp, err := bridge.Bot.Whoami()
 		if err != nil {
 			if errors.Is(err, mautrix.MUnknownToken) {
-				bridge.Log.Fatalln("Access token invalid. Is the registration installed in your homeserver correctly?")
+				bridge.Log.Fatalln("The as_token was not accepted. Is the registration file installed in your homeserver correctly?")
+				os.Exit(16)
+			} else if errors.Is(err, mautrix.MExclusive) {
+				bridge.Log.Fatalln("The as_token was accepted, but the /register request was not. Are the homeserver domain and username template in the config correct, and do they match the values in the registration?")
 				os.Exit(16)
 			}
 			bridge.Log.Errorfln("Failed to connect to homeserver: %v. Retrying in 10 seconds...", err)
@@ -378,7 +384,7 @@ func (bridge *Bridge) ResendBridgeInfo() {
 
 func (bridge *Bridge) UpdateBotProfile() {
 	bridge.Log.Debugln("Updating bot profile")
-	botConfig := bridge.Config.AppService.Bot
+	botConfig := &bridge.Config.AppService.Bot
 
 	var err error
 	var mxc id.ContentURI
@@ -389,6 +395,7 @@ func (bridge *Bridge) UpdateBotProfile() {
 		if err == nil {
 			err = bridge.Bot.SetAvatarURL(mxc)
 		}
+		botConfig.ParsedAvatar = mxc
 	}
 	if err != nil {
 		bridge.Log.Warnln("Failed to update bot avatar:", err)
@@ -396,7 +403,7 @@ func (bridge *Bridge) UpdateBotProfile() {
 
 	if botConfig.Displayname == "remove" {
 		err = bridge.Bot.SetDisplayName("")
-	} else if len(botConfig.Avatar) > 0 {
+	} else if len(botConfig.Displayname) > 0 {
 		err = bridge.Bot.SetDisplayName(botConfig.Displayname)
 	}
 	if err != nil {
@@ -503,6 +510,7 @@ func main() {
 	(&Bridge{
 		usersByMXID:         make(map[id.UserID]*User),
 		usersByUsername:     make(map[string]*User),
+		spaceRooms:          make(map[id.RoomID]*User),
 		managementRooms:     make(map[id.RoomID]*User),
 		portalsByMXID:       make(map[id.RoomID]*Portal),
 		portalsByJID:        make(map[database.PortalKey]*Portal),

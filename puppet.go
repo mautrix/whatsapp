@@ -164,9 +164,8 @@ type Puppet struct {
 
 	MXID id.UserID
 
-	customIntent   *appservice.IntentAPI
-	customTypingIn map[id.RoomID]bool
-	customUser     *User
+	customIntent *appservice.IntentAPI
+	customUser   *User
 
 	syncLock sync.Mutex
 }

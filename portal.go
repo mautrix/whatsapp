@@ -27,13 +27,9 @@ import (
 	_ "image/gif"
 	"image/jpeg"
 	"image/png"
-	"io"
 	"math"
 	"mime"
 	"net/http"
-	"os"
-	"os/exec"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -43,20 +39,21 @@ import (
 	"golang.org/x/image/webp"
 	"google.golang.org/protobuf/proto"
 
-	"maunium.net/go/mautrix/format"
-
-	"go.mau.fi/whatsmeow"
-	waProto "go.mau.fi/whatsmeow/binary/proto"
-	"go.mau.fi/whatsmeow/types"
-	"go.mau.fi/whatsmeow/types/events"
-
 	log "maunium.net/go/maulogger/v2"
 
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/appservice"
 	"maunium.net/go/mautrix/crypto/attachment"
 	"maunium.net/go/mautrix/event"
+	"maunium.net/go/mautrix/format"
 	"maunium.net/go/mautrix/id"
+	"maunium.net/go/mautrix/util"
+	"maunium.net/go/mautrix/util/ffmpeg"
+
+	"go.mau.fi/whatsmeow"
+	waProto "go.mau.fi/whatsmeow/binary/proto"
+	"go.mau.fi/whatsmeow/types"
+	"go.mau.fi/whatsmeow/types/events"
 
 	"maunium.net/go/mautrix-whatsapp/database"
 )
@@ -145,7 +142,8 @@ func (bridge *Bridge) NewManualPortal(key database.PortalKey) *Portal {
 		bridge: bridge,
 		log:    bridge.Log.Sub(fmt.Sprintf("Portal/%s", key)),
 
-		messages: make(chan PortalMessage, bridge.Config.Bridge.PortalMessageBuffer),
+		messages:       make(chan PortalMessage, bridge.Config.Bridge.PortalMessageBuffer),
+		matrixMessages: make(chan PortalMatrixMessage, bridge.Config.Bridge.PortalMessageBuffer),
 	}
 	portal.Key = key
 	go portal.handleMessageLoop()
@@ -158,7 +156,8 @@ func (bridge *Bridge) NewPortal(dbPortal *database.Portal) *Portal {
 		bridge: bridge,
 		log:    bridge.Log.Sub(fmt.Sprintf("Portal/%s", dbPortal.Key)),
 
-		messages: make(chan PortalMessage, bridge.Config.Bridge.PortalMessageBuffer),
+		messages:       make(chan PortalMessage, bridge.Config.Bridge.PortalMessageBuffer),
+		matrixMessages: make(chan PortalMatrixMessage, bridge.Config.Bridge.PortalMessageBuffer),
 	}
 	go portal.handleMessageLoop()
 	return portal
@@ -179,6 +178,11 @@ type PortalMessage struct {
 	undecryptable *events.UndecryptableMessage
 	fake          *fakeMessage
 	source        *User
+}
+
+type PortalMatrixMessage struct {
+	evt  *event.Event
+	user *User
 }
 
 type recentlyHandledWrapper struct {
@@ -202,34 +206,58 @@ type Portal struct {
 
 	privateChatBackfillInvitePuppet func()
 
-	messages chan PortalMessage
+	currentlyTyping     []id.UserID
+	currentlyTypingLock sync.Mutex
+
+	messages       chan PortalMessage
+	matrixMessages chan PortalMatrixMessage
 
 	relayUser *User
 }
 
-func (portal *Portal) handleMessageLoop() {
-	for msg := range portal.messages {
-		if len(portal.MXID) == 0 {
-			if msg.fake == nil && (msg.evt == nil || !containsSupportedMessage(msg.evt.Message)) {
-				portal.log.Debugln("Not creating portal room for incoming message: message is not a chat message")
-				continue
-			}
-			portal.log.Debugln("Creating Matrix room from incoming message")
-			err := portal.CreateMatrixRoom(msg.source, nil, false)
-			if err != nil {
-				portal.log.Errorln("Failed to create portal room:", err)
-				continue
-			}
+func (portal *Portal) handleMessageLoopItem(msg PortalMessage) {
+	if len(portal.MXID) == 0 {
+		if msg.fake == nil && msg.undecryptable == nil && (msg.evt == nil || !containsSupportedMessage(msg.evt.Message)) {
+			portal.log.Debugln("Not creating portal room for incoming message: message is not a chat message")
+			return
 		}
-		if msg.evt != nil {
-			portal.handleMessage(msg.source, msg.evt)
-		} else if msg.undecryptable != nil {
-			portal.handleUndecryptableMessage(msg.source, msg.undecryptable)
-		} else if msg.fake != nil {
-			msg.fake.ID = "FAKE::" + msg.fake.ID
-			portal.handleFakeMessage(*msg.fake)
-		} else {
-			portal.log.Warnln("Unexpected PortalMessage with no message: %+v", msg)
+		portal.log.Debugln("Creating Matrix room from incoming message")
+		err := portal.CreateMatrixRoom(msg.source, nil, false)
+		if err != nil {
+			portal.log.Errorln("Failed to create portal room:", err)
+			return
+		}
+	}
+	if msg.evt != nil {
+		portal.handleMessage(msg.source, msg.evt)
+	} else if msg.undecryptable != nil {
+		portal.handleUndecryptableMessage(msg.source, msg.undecryptable)
+	} else if msg.fake != nil {
+		msg.fake.ID = "FAKE::" + msg.fake.ID
+		portal.handleFakeMessage(*msg.fake)
+	} else {
+		portal.log.Warnln("Unexpected PortalMessage with no message: %+v", msg)
+	}
+}
+
+func (portal *Portal) handleMatrixMessageLoopItem(msg PortalMatrixMessage) {
+	switch msg.evt.Type {
+	case event.EventMessage, event.EventSticker:
+		portal.HandleMatrixMessage(msg.user, msg.evt)
+	case event.EventRedaction:
+		portal.HandleMatrixRedaction(msg.user, msg.evt)
+	default:
+		portal.log.Warnln("Unsupported event type %+v in portal message channel", msg.evt.Type)
+	}
+}
+
+func (portal *Portal) handleMessageLoop() {
+	for {
+		select {
+		case msg := <-portal.messages:
+			portal.handleMessageLoopItem(msg)
+		case msg := <-portal.matrixMessages:
+			portal.handleMatrixMessageLoopItem(msg)
 		}
 	}
 }
@@ -241,30 +269,14 @@ func containsSupportedMessage(waMsg *waProto.Message) bool {
 	return waMsg.Conversation != nil || waMsg.ExtendedTextMessage != nil || waMsg.ImageMessage != nil ||
 		waMsg.StickerMessage != nil || waMsg.AudioMessage != nil || waMsg.VideoMessage != nil ||
 		waMsg.DocumentMessage != nil || waMsg.ContactMessage != nil || waMsg.LocationMessage != nil ||
-		waMsg.GroupInviteMessage != nil
-}
-
-func isPotentiallyInteresting(waMsg *waProto.Message) bool {
-	if waMsg == nil {
-		return false
-	}
-	// List of message types that aren't supported, but might potentially be interesting
-	// (so a warning should be logged if they are encountered).
-	return waMsg.Call != nil || waMsg.Chat != nil || waMsg.ContactsArrayMessage != nil ||
-		waMsg.HighlyStructuredMessage != nil || waMsg.SendPaymentMessage != nil || waMsg.LiveLocationMessage != nil ||
-		waMsg.RequestPaymentMessage != nil || waMsg.DeclinePaymentRequestMessage != nil ||
-		waMsg.CancelPaymentRequestMessage != nil || waMsg.TemplateMessage != nil ||
-		waMsg.TemplateButtonReplyMessage != nil || waMsg.ProductMessage != nil || waMsg.ListMessage != nil ||
-		waMsg.OrderMessage != nil || waMsg.ListResponseMessage != nil || waMsg.InvoiceMessage != nil ||
-		waMsg.ButtonsMessage != nil || waMsg.ButtonsResponseMessage != nil || waMsg.PaymentInviteMessage != nil ||
-		waMsg.InteractiveMessage != nil || waMsg.ReactionMessage != nil || waMsg.StickerSyncRmrMessage != nil
+		waMsg.LiveLocationMessage != nil || waMsg.GroupInviteMessage != nil || waMsg.ContactsArrayMessage != nil
 }
 
 func getMessageType(waMsg *waProto.Message) string {
 	switch {
 	case waMsg == nil:
 		return "ignore"
-	case waMsg.Conversation != nil || waMsg.ExtendedTextMessage != nil:
+	case waMsg.Conversation != nil, waMsg.ExtendedTextMessage != nil:
 		return "text"
 	case waMsg.ImageMessage != nil:
 		return fmt.Sprintf("image %s", waMsg.GetImageMessage().GetMimetype())
@@ -278,10 +290,16 @@ func getMessageType(waMsg *waProto.Message) string {
 		return fmt.Sprintf("document %s", waMsg.GetDocumentMessage().GetMimetype())
 	case waMsg.ContactMessage != nil:
 		return "contact"
+	case waMsg.ContactsArrayMessage != nil:
+		return "contact array"
 	case waMsg.LocationMessage != nil:
 		return "location"
+	case waMsg.LiveLocationMessage != nil:
+		return "live location start"
 	case waMsg.GroupInviteMessage != nil:
 		return "group invite"
+	case waMsg.ReactionMessage != nil:
+		return "reaction"
 	case waMsg.ProtocolMessage != nil:
 		switch waMsg.GetProtocolMessage().GetType() {
 		case waProto.ProtocolMessage_REVOKE:
@@ -289,12 +307,42 @@ func getMessageType(waMsg *waProto.Message) string {
 		case waProto.ProtocolMessage_APP_STATE_SYNC_KEY_SHARE, waProto.ProtocolMessage_HISTORY_SYNC_NOTIFICATION, waProto.ProtocolMessage_INITIAL_SECURITY_NOTIFICATION_SETTING_SYNC:
 			return "ignore"
 		default:
-			return "unknown_protocol"
+			return fmt.Sprintf("unknown_protocol_%d", waMsg.GetProtocolMessage().GetType())
 		}
-	case isPotentiallyInteresting(waMsg):
-		return "unknown"
-	default:
+	case waMsg.ButtonsMessage != nil:
+		return "buttons"
+	case waMsg.ButtonsResponseMessage != nil:
+		return "buttons response"
+	case waMsg.TemplateMessage != nil:
+		return "template"
+	case waMsg.HighlyStructuredMessage != nil:
+		return "highly structured template"
+	case waMsg.TemplateButtonReplyMessage != nil:
+		return "template button reply"
+	case waMsg.InteractiveMessage != nil:
+		return "interactive"
+	case waMsg.ListMessage != nil:
+		return "list"
+	case waMsg.ProductMessage != nil:
+		return "product"
+	case waMsg.ListResponseMessage != nil:
+		return "list response"
+	case waMsg.OrderMessage != nil:
+		return "order"
+	case waMsg.InvoiceMessage != nil:
+		return "invoice"
+	case waMsg.SendPaymentMessage != nil, waMsg.RequestPaymentMessage != nil,
+		waMsg.DeclinePaymentRequestMessage != nil, waMsg.CancelPaymentRequestMessage != nil,
+		waMsg.PaymentInviteMessage != nil:
+		return "payment"
+	case waMsg.Call != nil:
+		return "call"
+	case waMsg.Chat != nil:
+		return "chat"
+	case waMsg.SenderKeyDistributionMessage != nil, waMsg.StickerSyncRmrMessage != nil:
 		return "ignore"
+	default:
+		return "unknown"
 	}
 }
 
@@ -314,8 +362,12 @@ func (portal *Portal) convertMessage(intent *appservice.IntentAPI, source *User,
 		return portal.convertMediaMessage(intent, source, info, waMsg.GetDocumentMessage())
 	case waMsg.ContactMessage != nil:
 		return portal.convertContactMessage(intent, waMsg.GetContactMessage())
+	case waMsg.ContactsArrayMessage != nil:
+		return portal.convertContactsArrayMessage(intent, waMsg.GetContactsArrayMessage())
 	case waMsg.LocationMessage != nil:
 		return portal.convertLocationMessage(intent, waMsg.GetLocationMessage())
+	case waMsg.LiveLocationMessage != nil:
+		return portal.convertLiveLocationMessage(intent, waMsg.GetLiveLocationMessage())
 	case waMsg.GroupInviteMessage != nil:
 		return portal.convertGroupInviteMessage(intent, info, waMsg.GetGroupInviteMessage())
 	default:
@@ -379,7 +431,7 @@ func (portal *Portal) handleFakeMessage(msg fakeMessage) {
 		Body:    msg.Text,
 	}, nil, msg.Time.UnixMilli())
 	if err != nil {
-		portal.log.Errorln("Failed to send %s to Matrix: %v", msg.ID, err)
+		portal.log.Errorfln("Failed to send %s to Matrix: %v", msg.ID, err)
 	} else {
 		portal.finishHandling(nil, &types.MessageInfo{
 			ID:        msg.ID,
@@ -425,6 +477,12 @@ func (portal *Portal) handleMessage(source *User, evt *events.Message) {
 	}
 	converted := portal.convertMessage(intent, source, &evt.Info, evt.Message)
 	if converted != nil {
+		if evt.Info.IsIncomingBroadcast() {
+			if converted.Extra == nil {
+				converted.Extra = map[string]interface{}{}
+			}
+			converted.Extra["fi.mau.whatsapp.source_broadcast_list"] = evt.Info.Chat.String()
+		}
 		var eventID id.EventID
 		if existingMsg != nil {
 			converted.Content.SetEdit(existingMsg.MXID)
@@ -433,7 +491,7 @@ func (portal *Portal) handleMessage(source *User, evt *events.Message) {
 		}
 		resp, err := portal.sendMessage(converted.Intent, converted.Type, converted.Content, converted.Extra, evt.Info.Timestamp.UnixMilli())
 		if err != nil {
-			portal.log.Errorln("Failed to send %s to Matrix: %v", msgID, err)
+			portal.log.Errorfln("Failed to send %s to Matrix: %v", msgID, err)
 		} else {
 			eventID = resp.EventID
 		}
@@ -441,9 +499,17 @@ func (portal *Portal) handleMessage(source *User, evt *events.Message) {
 		if converted.Caption != nil && existingMsg == nil {
 			resp, err = portal.sendMessage(converted.Intent, converted.Type, converted.Caption, nil, evt.Info.Timestamp.UnixMilli())
 			if err != nil {
-				portal.log.Errorln("Failed to send caption of %s to Matrix: %v", msgID, err)
+				portal.log.Errorfln("Failed to send caption of %s to Matrix: %v", msgID, err)
 			} else {
 				eventID = resp.EventID
+			}
+		}
+		if converted.MultiEvent != nil && existingMsg == nil {
+			for index, subEvt := range converted.MultiEvent {
+				resp, err = portal.sendMessage(converted.Intent, converted.Type, subEvt, nil, evt.Info.Timestamp.UnixMilli())
+				if err != nil {
+					portal.log.Errorfln("Failed to send sub-event %d of %s to Matrix: %v", index+1, msgID, err)
+				}
 			}
 		}
 		if len(eventID) != 0 {
@@ -458,7 +524,7 @@ func (portal *Portal) handleMessage(source *User, evt *events.Message) {
 			existingMsg.UpdateMXID("net.maunium.whatsapp.fake::"+existingMsg.MXID, false)
 		}
 	} else {
-		portal.log.Warnfln("Unhandled message: %+v", evt.Info)
+		portal.log.Warnfln("Unhandled message: %+v (%s)", evt.Info, msgType)
 		if existingMsg != nil {
 			_, _ = portal.MainIntent().RedactEvent(portal.MXID, existingMsg.MXID, mautrix.ReqRedact{
 				Reason: "The undecryptable message contained an unsupported message type",
@@ -512,6 +578,9 @@ func (portal *Portal) markHandled(msg *database.Message, info *types.MessageInfo
 		msg.Sender = info.Sender
 		msg.Sent = isSent
 		msg.DecryptionError = decryptionError
+		if info.IsIncomingBroadcast() {
+			msg.BroadcastListJID = info.Chat
+		}
 		msg.Insert()
 	} else {
 		msg.UpdateMXID(mxid, decryptionError)
@@ -787,39 +856,8 @@ func (portal *Portal) ensureMXIDInvited(mxid id.UserID) {
 	}
 }
 
-func (portal *Portal) ensureUserInvited(user *User) (ok bool) {
-	inviteContent := event.Content{
-		Parsed: &event.MemberEventContent{
-			Membership: event.MembershipInvite,
-			IsDirect:   portal.IsPrivateChat(),
-		},
-		Raw: map[string]interface{}{},
-	}
-	customPuppet := portal.bridge.GetPuppetByCustomMXID(user.MXID)
-	if customPuppet != nil && customPuppet.CustomIntent() != nil {
-		inviteContent.Raw["fi.mau.will_auto_accept"] = true
-	}
-	_, err := portal.MainIntent().SendStateEvent(portal.MXID, event.StateMember, user.MXID.String(), &inviteContent)
-	var httpErr mautrix.HTTPError
-	if err != nil && errors.As(err, &httpErr) && httpErr.RespError != nil && strings.Contains(httpErr.RespError.Err, "is already in the room") {
-		portal.bridge.StateStore.SetMembership(portal.MXID, user.MXID, event.MembershipJoin)
-		ok = true
-	} else if err != nil {
-		portal.log.Warnfln("Failed to invite %s: %v", user.MXID, err)
-	} else {
-		ok = true
-	}
-
-	if customPuppet != nil && customPuppet.CustomIntent() != nil {
-		err = customPuppet.CustomIntent().EnsureJoined(portal.MXID)
-		if err != nil {
-			portal.log.Warnfln("Failed to auto-join portal as %s: %v", user.MXID, err)
-			ok = false
-		} else {
-			ok = true
-		}
-	}
-	return
+func (portal *Portal) ensureUserInvited(user *User) bool {
+	return user.ensureInvited(portal.MainIntent(), portal.MXID, portal.IsPrivateChat())
 }
 
 func (portal *Portal) UpdateMatrixRoom(user *User, groupInfo *types.GroupInfo) bool {
@@ -829,6 +867,7 @@ func (portal *Portal) UpdateMatrixRoom(user *User, groupInfo *types.GroupInfo) b
 	portal.log.Infoln("Syncing portal for", user.MXID)
 
 	portal.ensureUserInvited(user)
+	go portal.addToSpace(user)
 
 	update := false
 	update = portal.UpdateMetadata(user, groupInfo) || update
@@ -953,7 +992,7 @@ func (portal *Portal) getBridgeInfo() (string, event.BridgeEventContent) {
 		Protocol: event.BridgeInfoSection{
 			ID:          "whatsapp",
 			DisplayName: "WhatsApp",
-			AvatarURL:   id.ContentURIString(portal.bridge.Config.AppService.Bot.Avatar),
+			AvatarURL:   portal.bridge.Config.AppService.Bot.ParsedAvatar.CUString(),
 			ExternalURL: "https://www.whatsapp.com/",
 		},
 		Channel: event.BridgeInfoSection{
@@ -1123,6 +1162,8 @@ func (portal *Portal) CreateMatrixRoom(user *User, groupInfo *types.GroupInfo, i
 	portal.ensureUserInvited(user)
 	user.syncChatDoublePuppetDetails(portal, true)
 
+	go portal.addToSpace(user)
+
 	if groupInfo != nil {
 		portal.SyncParticipants(user, groupInfo)
 		if groupInfo.IsAnnounce {
@@ -1156,6 +1197,22 @@ func (portal *Portal) CreateMatrixRoom(user *User, groupInfo *types.GroupInfo, i
 		portal.Update()
 	}
 	return nil
+}
+
+func (portal *Portal) addToSpace(user *User) {
+	spaceID := user.GetSpaceRoom()
+	if len(spaceID) == 0 || user.IsInSpace(portal.Key) {
+		return
+	}
+	_, err := portal.bridge.Bot.SendStateEvent(spaceID, event.StateSpaceChild, portal.MXID.String(), &event.SpaceChildEventContent{
+		Via: []string{portal.bridge.Config.Homeserver.Domain},
+	})
+	if err != nil {
+		portal.log.Errorfln("Failed to add room to %s's personal filtering space (%s): %v", user.MXID, spaceID, err)
+	} else {
+		portal.log.Debugfln("Added room to %s's personal filtering space (%s)", user.MXID, spaceID)
+		user.MarkInSpace(portal.Key)
+	}
 }
 
 func (portal *Portal) IsPrivateChat() bool {
@@ -1226,10 +1283,14 @@ func (portal *Portal) HandleMessageRevoke(user *User, info *types.MessageInfo, k
 		return false
 	}
 	intent := portal.bridge.GetPuppetByJID(info.Sender).IntentFor(portal)
-	_, err := intent.RedactEvent(portal.MXID, msg.MXID)
+	redactionReq := mautrix.ReqRedact{Extra: map[string]interface{}{}}
+	if intent.IsCustomPuppet {
+		redactionReq.Extra[doublePuppetKey] = doublePuppetValue
+	}
+	_, err := intent.RedactEvent(portal.MXID, msg.MXID, redactionReq)
 	if err != nil {
 		if errors.Is(err, mautrix.MForbidden) {
-			_, err = portal.MainIntent().RedactEvent(portal.MXID, msg.MXID)
+			_, err = portal.MainIntent().RedactEvent(portal.MXID, msg.MXID, redactionReq)
 			if err != nil {
 				portal.log.Errorln("Failed to redact %s: %v", msg.JID, err)
 			}
@@ -1259,7 +1320,8 @@ func (portal *Portal) encrypt(content *event.Content, eventType event.Type) (eve
 	return eventType, nil
 }
 
-const doublePuppetField = "net.maunium.whatsapp.puppet"
+const doublePuppetKey = "fi.mau.double_puppet_source"
+const doublePuppetValue = "mautrix-whatsapp"
 
 func (portal *Portal) sendMessage(intent *appservice.IntentAPI, eventType event.Type, content *event.MessageEventContent, extraContent map[string]interface{}, timestamp int64) (*mautrix.RespSendEvent, error) {
 	wrappedContent := event.Content{Parsed: content, Raw: extraContent}
@@ -1267,13 +1329,22 @@ func (portal *Portal) sendMessage(intent *appservice.IntentAPI, eventType event.
 		if wrappedContent.Raw == nil {
 			wrappedContent.Raw = map[string]interface{}{}
 		}
-		wrappedContent.Raw[doublePuppetField] = intent.IsCustomPuppet
+		if intent.IsCustomPuppet {
+			wrappedContent.Raw[doublePuppetKey] = doublePuppetValue
+		}
 	}
 	var err error
 	eventType, err = portal.encrypt(&wrappedContent, eventType)
 	if err != nil {
 		return nil, err
 	}
+
+	if intent.IsCustomPuppet {
+		wrappedContent.Raw = map[string]interface{}{doublePuppetKey: doublePuppetValue}
+	} else {
+		wrappedContent.Raw = nil
+	}
+
 	_, _ = intent.UserTyping(portal.MXID, false, 0)
 	if timestamp == 0 {
 		return intent.SendMessageEvent(portal.MXID, eventType, &wrappedContent)
@@ -1288,6 +1359,8 @@ type ConvertedMessage struct {
 	Content *event.MessageEventContent
 	Extra   map[string]interface{}
 	Caption *event.MessageEventContent
+
+	MultiEvent []*event.MessageEventContent
 
 	ReplyTo types.MessageID
 }
@@ -1309,6 +1382,22 @@ func (portal *Portal) convertTextMessage(intent *appservice.IntentAPI, msg *waPr
 	}
 
 	return &ConvertedMessage{Intent: intent, Type: event.EventMessage, Content: content, ReplyTo: replyTo}
+}
+
+func (portal *Portal) convertLiveLocationMessage(intent *appservice.IntentAPI, msg *waProto.LiveLocationMessage) *ConvertedMessage {
+	content := &event.MessageEventContent{
+		Body:    "Started sharing live location",
+		MsgType: event.MsgNotice,
+	}
+	if len(msg.GetCaption()) > 0 {
+		content.Body += ": " + msg.GetCaption()
+	}
+	return &ConvertedMessage{
+		Intent:  intent,
+		Type:    event.EventMessage,
+		Content: content,
+		ReplyTo: msg.GetContextInfo().GetStanzaId(),
+	}
 }
 
 func (portal *Portal) convertLocationMessage(intent *appservice.IntentAPI, msg *waProto.LocationMessage) *ConvertedMessage {
@@ -1426,6 +1515,30 @@ func (portal *Portal) convertContactMessage(intent *appservice.IntentAPI, msg *w
 	}
 }
 
+func (portal *Portal) convertContactsArrayMessage(intent *appservice.IntentAPI, msg *waProto.ContactsArrayMessage) *ConvertedMessage {
+	name := msg.GetDisplayName()
+	if len(name) == 0 {
+		name = fmt.Sprintf("%d contacts", len(msg.GetContacts()))
+	}
+	contacts := make([]*event.MessageEventContent, 0, len(msg.GetContacts()))
+	for _, contact := range msg.GetContacts() {
+		converted := portal.convertContactMessage(intent, contact)
+		if converted != nil {
+			contacts = append(contacts, converted.Content)
+		}
+	}
+	return &ConvertedMessage{
+		Intent: intent,
+		Type:   event.EventMessage,
+		Content: &event.MessageEventContent{
+			MsgType: event.MsgNotice,
+			Body:    fmt.Sprintf("Sent %s", name),
+		},
+		ReplyTo:    msg.GetContextInfo().GetStanzaId(),
+		MultiEvent: contacts,
+	}
+}
+
 func (portal *Portal) tryKickUser(userID id.UserID, intent *appservice.IntentAPI) error {
 	_, err := intent.KickUser(portal.MXID, &mautrix.ReqKickUser{UserID: userID})
 	if err != nil {
@@ -1485,7 +1598,7 @@ func (portal *Portal) leaveWithPuppetMeta(intent *appservice.IntentAPI) (*mautri
 			Membership: event.MembershipLeave,
 		},
 		Raw: map[string]interface{}{
-			doublePuppetField: true,
+			doublePuppetKey: doublePuppetValue,
 		},
 	}
 	// Bypass IntentAPI, we don't want to EnsureJoined here
@@ -1508,7 +1621,7 @@ func (portal *Portal) HandleWhatsAppInvite(source *User, senderJID *types.JID, j
 				AvatarURL:   puppet.AvatarURL.CUString(),
 			},
 			Raw: map[string]interface{}{
-				doublePuppetField: true,
+				doublePuppetKey: doublePuppetValue,
 			},
 		}
 		resp, err := intent.SendStateEvent(portal.MXID, event.StateMember, puppet.MXID.String(), &content)
@@ -1555,12 +1668,17 @@ type MediaMessage interface {
 type MediaMessageWithThumbnail interface {
 	MediaMessage
 	GetJpegThumbnail() []byte
-	GetCaption() string
 }
 
 type MediaMessageWithCaption interface {
 	MediaMessage
 	GetCaption() string
+}
+
+type MediaMessageWithDimensions interface {
+	MediaMessage
+	GetHeight() uint32
+	GetWidth() uint32
 }
 
 type MediaMessageWithFileName interface {
@@ -1604,7 +1722,12 @@ func (portal *Portal) convertMediaMessage(intent *appservice.IntentAPI, source *
 	}
 
 	var width, height int
-	if strings.HasPrefix(msg.GetMimetype(), "image/") {
+	messageWithDimensions, ok := msg.(MediaMessageWithDimensions)
+	if ok {
+		width = int(messageWithDimensions.GetWidth())
+		height = int(messageWithDimensions.GetHeight())
+	}
+	if width == 0 && height == 0 && strings.HasPrefix(msg.GetMimetype(), "image/") {
 		cfg, _, _ := image.DecodeConfig(bytes.NewReader(data))
 		width, height = cfg.Width, cfg.Height
 	}
@@ -1644,10 +1767,7 @@ func (portal *Portal) convertMediaMessage(intent *appservice.IntentAPI, source *
 			content.Body = mimeClass
 		}
 
-		exts, _ := mime.ExtensionsByType(msg.GetMimetype())
-		if exts != nil && len(exts) > 0 {
-			content.Body += exts[0]
-		}
+		content.Body += util.ExtensionFromMimetype(msg.GetMimetype())
 	}
 
 	msgWithDuration, ok := msg.(MediaMessageWithDuration)
@@ -1706,12 +1826,24 @@ func (portal *Portal) convertMediaMessage(intent *appservice.IntentAPI, source *
 		eventType = event.EventSticker
 	}
 
+	audioMessage, ok := msg.(*waProto.AudioMessage)
+	extraContent := map[string]interface{}{}
+	if ok {
+		extraContent["org.matrix.msc1767.audio"] = map[string]interface{}{
+			"duration": int(audioMessage.GetSeconds()) * 1000,
+		}
+		if audioMessage.GetPtt() {
+			extraContent["org.matrix.msc3245.voice"] = map[string]interface{}{}
+		}
+	}
+
 	return &ConvertedMessage{
 		Intent:  intent,
 		Type:    eventType,
 		Content: content,
 		Caption: captionContent,
 		ReplyTo: msg.GetContextInfo().GetStanzaId(),
+		Extra:   extraContent,
 	}
 }
 
@@ -1786,53 +1918,6 @@ func (portal *Portal) convertWebPtoPNG(webpImage []byte) ([]byte, error) {
 	return pngBuffer.Bytes(), nil
 }
 
-func (portal *Portal) convertGifToVideo(gif []byte) ([]byte, error) {
-	dir, err := os.MkdirTemp("", "gif-convert-*")
-	if err != nil {
-		return nil, fmt.Errorf("failed to make temp dir: %w", err)
-	}
-	defer os.RemoveAll(dir)
-
-	inputFile, err := os.OpenFile(filepath.Join(dir, "input.gif"), os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
-	if err != nil {
-		return nil, fmt.Errorf("failed open input file: %w", err)
-	}
-	_, err = inputFile.Write(gif)
-	if err != nil {
-		_ = inputFile.Close()
-		return nil, fmt.Errorf("failed to write gif to input file: %w", err)
-	}
-	_ = inputFile.Close()
-
-	outputFileName := filepath.Join(dir, "output.mp4")
-	cmd := exec.Command("ffmpeg", "-hide_banner", "-loglevel", "warning",
-		"-f", "gif", "-i", inputFile.Name(),
-		"-pix_fmt", "yuv420p", "-c:v", "libx264", "-movflags", "+faststart",
-		"-filter:v", "crop='floor(in_w/2)*2:floor(in_h/2)*2'",
-		outputFileName)
-	vcLog := portal.log.Sub("VideoConverter").Writer(log.LevelWarn)
-	cmd.Stdout = vcLog
-	cmd.Stderr = vcLog
-
-	err = cmd.Run()
-	if err != nil {
-		return nil, fmt.Errorf("failed to run ffmpeg: %w", err)
-	}
-	outputFile, err := os.OpenFile(filepath.Join(dir, "output.mp4"), os.O_RDONLY, 0)
-	if err != nil {
-		return nil, fmt.Errorf("failed to open output file: %w", err)
-	}
-	defer func() {
-		_ = outputFile.Close()
-		_ = os.Remove(outputFile.Name())
-	}()
-	mp4, err := io.ReadAll(outputFile)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read mp4 from output file: %w", err)
-	}
-	return mp4, nil
-}
-
 func (portal *Portal) preprocessMatrixMedia(sender *User, relaybotFormatted bool, content *event.MessageEventContent, eventID id.EventID, mediaType whatsmeow.MediaType) *MediaUpload {
 	var caption string
 	var mentionedJIDs []string
@@ -1864,7 +1949,10 @@ func (portal *Portal) preprocessMatrixMedia(sender *User, relaybotFormatted bool
 		}
 	}
 	if mediaType == whatsmeow.MediaVideo && content.GetInfo().MimeType == "image/gif" {
-		data, err = portal.convertGifToVideo(data)
+		data, err = ffmpeg.ConvertBytes(data, ".mp4", []string{"-f", "gif"}, []string{
+			"-pix_fmt", "yuv420p", "-c:v", "libx264", "-movflags", "+faststart",
+			"-filter:v", "crop='floor(in_w/2)*2:floor(in_h/2)*2'",
+		}, content.GetInfo().MimeType)
 		if err != nil {
 			portal.log.Errorfln("Failed to convert gif to mp4 in %s: %v", eventID, err)
 			return nil
@@ -1983,7 +2071,7 @@ func (portal *Portal) convertMatrixMessage(sender *User, evt *event.Event) (*waP
 		}
 	}
 	relaybotFormatted := false
-	if !sender.IsLoggedIn() {
+	if !sender.IsLoggedIn() || (portal.IsPrivateChat() && sender.JID.User != portal.Key.Receiver.User) {
 		if !portal.HasRelaybot() {
 			portal.log.Warnln("Ignoring message from", sender.MXID, "in chat with no relaybot (convertMatrixMessage)")
 			return nil, sender
@@ -2171,10 +2259,18 @@ func (portal *Portal) HandleMatrixMessage(sender *User, evt *event.Event) {
 	portal.log.Debugln("Sending event", evt.ID, "to WhatsApp", info.ID)
 	ts, err := sender.Client.SendMessage(portal.Key.JID, info.ID, msg)
 	if err != nil {
-		portal.log.Errorln("Error sending message: %v", err)
+		portal.log.Errorfln("Error sending message: %v", err)
 		portal.sendErrorMessage(err.Error(), true)
+		status := appservice.StatusPermFailure
+		if errors.Is(err, whatsmeow.ErrBroadcastListUnsupported) {
+			status = appservice.StatusUnsupported
+		}
+		checkpoint := appservice.NewMessageSendCheckpoint(evt, appservice.StepRemote, status, 0)
+		checkpoint.Info = err.Error()
+		go checkpoint.Send(portal.bridge.AS)
 	} else {
 		portal.log.Debugfln("Handled Matrix event %s", evt.ID)
+		portal.bridge.AS.SendMessageSendCheckpoint(evt, appservice.StepRemote, 0)
 		portal.sendDeliveryReceipt(evt.ID)
 		dbMsg.MarkSent(ts)
 	}
@@ -2194,13 +2290,16 @@ func (portal *Portal) HandleMatrixRedaction(sender *User, evt *event.Event) {
 
 	msg := portal.bridge.DB.Message.GetByMXID(evt.Redacts)
 	if msg == nil {
-		portal.log.Debugfln("Ignoring redaction %s of unknown event by %s", msg, senderLogIdentifier)
+		portal.log.Debugfln("Ignoring redaction %s of unknown event by %s", evt.ID, senderLogIdentifier)
+		portal.bridge.AS.SendErrorMessageSendCheckpoint(evt, appservice.StepRemote, errors.New("target not found"), true, 0)
 		return
 	} else if msg.IsFakeJID() {
-		portal.log.Debugfln("Ignoring redaction %s of fake event by %s", msg, senderLogIdentifier)
+		portal.log.Debugfln("Ignoring redaction %s of fake event by %s", evt.ID, senderLogIdentifier)
+		portal.bridge.AS.SendErrorMessageSendCheckpoint(evt, appservice.StepRemote, errors.New("target is a fake event"), true, 0)
 		return
 	} else if msg.Sender.User != sender.JID.User {
 		portal.log.Debugfln("Ignoring redaction %s of %s/%s by %s: message was sent by someone else (%s, not %s)", evt.ID, msg.MXID, msg.JID, senderLogIdentifier, msg.Sender, sender.JID)
+		portal.bridge.AS.SendErrorMessageSendCheckpoint(evt, appservice.StepRemote, errors.New("message was sent by someone else"), true, 0)
 		return
 	}
 
@@ -2208,10 +2307,104 @@ func (portal *Portal) HandleMatrixRedaction(sender *User, evt *event.Event) {
 	_, err := sender.Client.RevokeMessage(portal.Key.JID, msg.JID)
 	if err != nil {
 		portal.log.Errorfln("Error handling Matrix redaction %s: %v", evt.ID, err)
+		portal.bridge.AS.SendErrorMessageSendCheckpoint(evt, appservice.StepRemote, err, true, 0)
 	} else {
 		portal.log.Debugfln("Handled Matrix redaction %s of %s", evt.ID, evt.Redacts)
+		portal.bridge.AS.SendMessageSendCheckpoint(evt, appservice.StepRemote, 0)
 		portal.sendDeliveryReceipt(evt.ID)
 	}
+}
+
+func (portal *Portal) HandleMatrixReadReceipt(sender *User, eventID id.EventID, receiptTimestamp time.Time) {
+	if !sender.IsLoggedIn() {
+		portal.log.Debugfln("Ignoring read receipt by %s: user is not connected to WhatsApp", sender.JID)
+		return
+	}
+
+	maxTimestamp := receiptTimestamp
+	if message := portal.bridge.DB.Message.GetByMXID(eventID); message != nil {
+		maxTimestamp = message.Timestamp
+	}
+
+	prevTimestamp := sender.GetLastReadTS(portal.Key)
+	if prevTimestamp.IsZero() {
+		prevTimestamp = maxTimestamp.Add(-2 * time.Second)
+	}
+
+	messages := portal.bridge.DB.Message.GetMessagesBetween(portal.Key, prevTimestamp, maxTimestamp)
+	if len(messages) > 0 {
+		sender.SetLastReadTS(portal.Key, messages[len(messages)-1].Timestamp)
+	}
+	groupedMessages := make(map[types.JID][]types.MessageID)
+	for _, msg := range messages {
+		var key types.JID
+		if msg.IsFakeJID() || msg.Sender.User == sender.JID.User {
+			// Don't send read receipts for own messages or fake messages
+			continue
+		} else if !portal.IsPrivateChat() {
+			key = msg.Sender
+		} else if !msg.BroadcastListJID.IsEmpty() {
+			key = msg.BroadcastListJID
+		} // else: blank key (participant field isn't needed in direct chat read receipts)
+		groupedMessages[key] = append(groupedMessages[key], msg.JID)
+	}
+	portal.log.Debugfln("Sending read receipts by %s: %v", sender.JID, groupedMessages)
+	for messageSender, ids := range groupedMessages {
+		chatJID := portal.Key.JID
+		if messageSender.Server == types.BroadcastServer {
+			chatJID = messageSender
+			messageSender = portal.Key.JID
+		}
+		err := sender.Client.MarkRead(ids, receiptTimestamp, chatJID, messageSender)
+		if err != nil {
+			portal.log.Warnfln("Failed to mark %v as read by %s: %v", ids, sender.JID, err)
+		}
+	}
+}
+
+func typingDiff(prev, new []id.UserID) (started, stopped []id.UserID) {
+OuterNew:
+	for _, userID := range new {
+		for _, previousUserID := range prev {
+			if userID == previousUserID {
+				continue OuterNew
+			}
+		}
+		started = append(started, userID)
+	}
+OuterPrev:
+	for _, userID := range prev {
+		for _, previousUserID := range new {
+			if userID == previousUserID {
+				continue OuterPrev
+			}
+		}
+		stopped = append(stopped, userID)
+	}
+	return
+}
+
+func (portal *Portal) setTyping(userIDs []id.UserID, state types.ChatPresence) {
+	for _, userID := range userIDs {
+		user := portal.bridge.GetUserByMXIDIfExists(userID)
+		if user == nil || !user.IsLoggedIn() {
+			continue
+		}
+		portal.log.Debugfln("Bridging typing change from %s to chat presence %s", state, user.MXID)
+		err := user.Client.SendChatPresence(state, portal.Key.JID)
+		if err != nil {
+			portal.log.Warnln("Error sending chat presence:", err)
+		}
+	}
+}
+
+func (portal *Portal) HandleMatrixTyping(newTyping []id.UserID) {
+	portal.currentlyTypingLock.Lock()
+	defer portal.currentlyTypingLock.Unlock()
+	startedTyping, stoppedTyping := typingDiff(portal.currentlyTyping, newTyping)
+	portal.currentlyTyping = newTyping
+	portal.setTyping(startedTyping, types.ChatPresenceComposing)
+	portal.setTyping(stoppedTyping, types.ChatPresencePaused)
 }
 
 func (portal *Portal) canBridgeFrom(sender *User, evtType string) bool {
@@ -2230,7 +2423,7 @@ func (portal *Portal) canBridgeFrom(sender *User, evtType string) bool {
 			portal.log.Debugfln("Ignoring %s from non-logged-in user %s in chat with no relay user", evtType, sender.MXID)
 		}
 		return false
-	} else if portal.IsPrivateChat() && sender.JID.User != portal.Key.Receiver.User {
+	} else if portal.IsPrivateChat() && sender.JID.User != portal.Key.Receiver.User && !portal.HasRelaybot() {
 		portal.log.Debugfln("Ignoring %s from different user %s/%s in private chat with no relay user", evtType, sender.MXID, sender.JID)
 		return false
 	}

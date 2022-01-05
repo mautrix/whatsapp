@@ -31,6 +31,7 @@ type YAMLNode struct {
 	*yaml.Node
 	Map  YAMLMap
 	List YAMLList
+	Key  *yaml.Node
 }
 
 type YAMLType uint32
@@ -109,16 +110,17 @@ const (
 	BinaryTag    = "!!binary"
 )
 
-func fromNode(node *yaml.Node) YAMLNode {
+func fromNode(node, key *yaml.Node) YAMLNode {
 	switch node.Kind {
 	case yaml.DocumentNode:
-		return fromNode(node.Content[0])
+		return fromNode(node.Content[0], nil)
 	case yaml.AliasNode:
-		return fromNode(node.Alias)
+		return fromNode(node.Alias, nil)
 	case yaml.MappingNode:
 		return YAMLNode{
 			Node: node,
 			Map:  parseYAMLMap(node),
+			Key:  key,
 		}
 	case yaml.SequenceNode:
 		return YAMLNode{
@@ -126,7 +128,7 @@ func fromNode(node *yaml.Node) YAMLNode {
 			List: parseYAMLList(node),
 		}
 	default:
-		return YAMLNode{Node: node}
+		return YAMLNode{Node: node, Key: key}
 	}
 }
 
@@ -143,7 +145,7 @@ func (yn *YAMLNode) toNode() *yaml.Node {
 func parseYAMLList(node *yaml.Node) YAMLList {
 	data := make(YAMLList, len(node.Content))
 	for i, item := range node.Content {
-		data[i] = fromNode(item)
+		data[i] = fromNode(item, nil)
 	}
 	return data
 }
@@ -165,7 +167,7 @@ func parseYAMLMap(node *yaml.Node) YAMLMap {
 		key := node.Content[i]
 		value := node.Content[i+1]
 		if key.Kind == yaml.ScalarNode {
-			data[key.Value] = fromNode(value)
+			data[key.Value] = fromNode(value, key)
 		}
 	}
 	return data
@@ -195,8 +197,8 @@ type UpgradeHelper struct {
 
 func NewUpgradeHelper(base, cfg *yaml.Node) *UpgradeHelper {
 	return &UpgradeHelper{
-		base: fromNode(base),
-		cfg:  fromNode(cfg),
+		base: fromNode(base, nil),
+		cfg:  fromNode(cfg, nil),
 	}
 }
 
