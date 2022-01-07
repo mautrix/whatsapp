@@ -333,6 +333,7 @@ func (bridge *Bridge) Start() {
 	if bridge.Config.Bridge.ResendBridgeInfo {
 		go bridge.ResendBridgeInfo()
 	}
+	go bridge.RestartAllDisappearing()
 	bridge.AS.Ready = true
 }
 

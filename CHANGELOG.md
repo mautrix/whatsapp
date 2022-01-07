@@ -5,6 +5,7 @@
   very obscure extensions in their mime type database.
 * Added support for personal filtering spaces (started by [@HelderFSFerreira] and [@clmnin] in [#413]).
 * Added support for multi-contact messages.
+* Added support for disappearing messages.
 * Fixed avatar remove events from WhatsApp being ignored.
 * Fixed the bridge using the wrong Olm session if a client established a new
   one due to corruption.

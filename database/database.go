@@ -41,6 +41,8 @@ type Database struct {
 	Portal  *PortalQuery
 	Puppet  *PuppetQuery
 	Message *MessageQuery
+
+	DisappearingMessage *DisappearingMessageQuery
 }
 
 func New(dbType string, uri string, baseLog log.Logger) (*Database, error) {
@@ -69,6 +71,10 @@ func New(dbType string, uri string, baseLog log.Logger) (*Database, error) {
 	db.Message = &MessageQuery{
 		db:  db,
 		log: db.log.Sub("Message"),
+	}
+	db.DisappearingMessage = &DisappearingMessageQuery{
+		db:  db,
+		log: db.log.Sub("DisappearingMessage"),
 	}
 	return db, nil
 }
