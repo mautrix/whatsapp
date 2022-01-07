@@ -937,6 +937,8 @@ func (user *User) handleGroupUpdate(evt *events.GroupInfo) {
 		portal.ChangeAdminStatus(evt.Promote, true)
 	case evt.Demote != nil:
 		portal.ChangeAdminStatus(evt.Demote, false)
+	case evt.Ephemeral != nil:
+		portal.UpdateGroupDisappearingMessages(evt.Sender, evt.Timestamp, evt.Ephemeral.DisappearingTimer)
 	}
 }
 

@@ -417,22 +417,46 @@ func (portal *Portal) convertMessage(intent *appservice.IntentAPI, source *User,
 	case waMsg.ProtocolMessage != nil && waMsg.ProtocolMessage.GetType() == waProto.ProtocolMessage_EPHEMERAL_SETTING:
 		portal.ExpirationTime = waMsg.ProtocolMessage.GetEphemeralExpiration()
 		portal.Update()
-		var msg string
-		if portal.ExpirationTime == 0 {
-			msg = "Turned off disappearing messages"
-		} else {
-			msg = fmt.Sprintf("Set the disappearing message timer to %s", formatDuration(time.Duration(portal.ExpirationTime)*time.Second))
-		}
 		return &ConvertedMessage{
 			Intent: intent,
 			Type:   event.EventMessage,
 			Content: &event.MessageEventContent{
-				Body:    msg,
+				Body:    portal.formatDisappearingMessageNotice(),
 				MsgType: event.MsgNotice,
 			},
 		}
 	default:
 		return nil
+	}
+}
+
+func (portal *Portal) UpdateGroupDisappearingMessages(sender *types.JID, timestamp time.Time, timer uint32) {
+	portal.ExpirationTime = timer
+	portal.Update()
+	intent := portal.MainIntent()
+	if sender != nil {
+		intent = portal.bridge.GetPuppetByJID(sender.ToNonAD()).IntentFor(portal)
+	} else {
+		sender = &types.EmptyJID
+	}
+	_, err := portal.sendMessage(intent, event.EventMessage, &event.MessageEventContent{
+		Body:    portal.formatDisappearingMessageNotice(),
+		MsgType: event.MsgNotice,
+	}, nil, timestamp.UnixMilli())
+	if err != nil {
+		portal.log.Warnfln("Failed to notify portal about disappearing message timer change by %s to %d", *sender, timer)
+	}
+}
+
+func (portal *Portal) formatDisappearingMessageNotice() string {
+	if portal.ExpirationTime == 0 {
+		return "Turned off disappearing messages"
+	} else {
+		msg := fmt.Sprintf("Set the disappearing message timer to %s", formatDuration(time.Duration(portal.ExpirationTime)*time.Second))
+		if !portal.bridge.Config.Bridge.DisappearingMessagesInGroups && portal.IsGroupChat() {
+			msg += ". However, this bridge is not configured to disappear messages in group chats."
+		}
+		return msg
 	}
 }
 
@@ -887,6 +911,10 @@ func (portal *Portal) UpdateMetadata(user *User, groupInfo *types.GroupInfo) boo
 	update := false
 	update = portal.UpdateName(groupInfo.Name, groupInfo.NameSetBy, false) || update
 	update = portal.UpdateTopic(groupInfo.Topic, groupInfo.TopicSetBy, false) || update
+	if portal.ExpirationTime != groupInfo.DisappearingTimer {
+		update = true
+		portal.ExpirationTime = groupInfo.DisappearingTimer
+	}
 
 	portal.RestrictMessageSending(groupInfo.IsAnnounce)
 	portal.RestrictMetadataChanges(groupInfo.IsLocked)

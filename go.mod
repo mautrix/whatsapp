@@ -8,7 +8,7 @@ require (
 	github.com/mattn/go-sqlite3 v1.14.10
 	github.com/prometheus/client_golang v1.11.0
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
-	go.mau.fi/whatsmeow v0.0.0-20211231085557-666a92779bf5
+	go.mau.fi/whatsmeow v0.0.0-20220107125553-190be349f174
 	golang.org/x/image v0.0.0-20211028202545-6944b10bf410
 	google.golang.org/protobuf v1.27.1
 	gopkg.in/yaml.v3 v3.0.0-20210107192922-496545a6307b
