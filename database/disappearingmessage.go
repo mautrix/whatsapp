@@ -54,7 +54,7 @@ func (dmq *DisappearingMessageQuery) NewWithValues(roomID id.RoomID, eventID id.
 
 const (
 	getAllScheduledDisappearingMessagesQuery = `
-		SELECT room_id, event_id, expire_in, expire_at FROM disappearing_message WHERE expire_at IS NOT NULL
+		SELECT room_id, event_id, expire_in, expire_at FROM disappearing_message WHERE expire_at IS NOT NULL AND expire_at <= $1
 	`
 	startUnscheduledDisappearingMessagesInRoomQuery = `
 		UPDATE disappearing_message SET expire_at=$1+expire_in WHERE room_id=$2 AND expire_at IS NULL
@@ -62,8 +62,8 @@ const (
 	`
 )
 
-func (dmq *DisappearingMessageQuery) GetAllScheduled() (messages []*DisappearingMessage) {
-	rows, err := dmq.db.Query(getAllScheduledDisappearingMessagesQuery)
+func (dmq *DisappearingMessageQuery) GetUpcomingScheduled(duration time.Duration) (messages []*DisappearingMessage) {
+	rows, err := dmq.db.Query(getAllScheduledDisappearingMessagesQuery, time.Now().Add(duration).UnixMilli())
 	if err != nil || rows == nil {
 		return nil
 	}

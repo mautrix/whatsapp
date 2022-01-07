@@ -42,15 +42,21 @@ func (portal *Portal) ScheduleDisappearing() {
 	if !portal.bridge.Config.Bridge.DisappearingMessagesInGroups && portal.IsGroupChat() {
 		return
 	}
+	nowPlusHour := time.Now().Add(1 * time.Hour)
 	for _, msg := range portal.bridge.DB.DisappearingMessage.StartAllUnscheduledInRoom(portal.MXID) {
-		go portal.sleepAndDelete(msg)
+		if msg.ExpireAt.Before(nowPlusHour) {
+			go portal.sleepAndDelete(msg)
+		}
 	}
 }
 
-func (bridge *Bridge) RestartAllDisappearing() {
-	for _, msg := range bridge.DB.DisappearingMessage.GetAllScheduled() {
-		portal := bridge.GetPortalByMXID(msg.RoomID)
-		go portal.sleepAndDelete(msg)
+func (bridge *Bridge) DisappearingLoop() {
+	for {
+		for _, msg := range bridge.DB.DisappearingMessage.GetUpcomingScheduled(1 * time.Hour) {
+			portal := bridge.GetPortalByMXID(msg.RoomID)
+			go portal.sleepAndDelete(msg)
+		}
+		time.Sleep(1 * time.Hour)
 	}
 }
 
