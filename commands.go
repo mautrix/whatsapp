@@ -61,6 +61,7 @@ type CommandEvent struct {
 	Portal  *Portal
 	Handler *CommandHandler
 	RoomID  id.RoomID
+	EventID id.EventID
 	User    *User
 	Command string
 	Args    []string
@@ -82,7 +83,7 @@ func (ce *CommandEvent) Reply(msg string, args ...interface{}) {
 }
 
 // Handle handles messages to the bridge
-func (handler *CommandHandler) Handle(roomID id.RoomID, user *User, message string, replyTo id.EventID) {
+func (handler *CommandHandler) Handle(roomID id.RoomID, eventID id.EventID, user *User, message string, replyTo id.EventID) {
 	args := strings.Fields(message)
 	if len(args) == 0 {
 		args = []string{"unknown-command"}
@@ -93,6 +94,7 @@ func (handler *CommandHandler) Handle(roomID id.RoomID, user *User, message stri
 		Portal:  handler.bridge.GetPortalByMXID(roomID),
 		Handler: handler,
 		RoomID:  roomID,
+		EventID: eventID,
 		User:    user,
 		Command: strings.ToLower(args[0]),
 		Args:    args[1:],
@@ -454,7 +456,7 @@ func (handler *CommandHandler) CommandSetPowerLevel(ce *CommandEvent) {
 		ce.Reply("Only bridge admins can use `set-pl`")
 		return
 	} else if ce.Portal == nil {
-		ce.Reply("Not a portal room")
+		ce.Reply("This is not a portal room")
 		return
 	}
 	var level int
