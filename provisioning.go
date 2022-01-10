@@ -27,7 +27,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gorilla/mux"
 	"github.com/gorilla/websocket"
+	"go.mau.fi/whatsmeow/appstate"
 
 	"go.mau.fi/whatsmeow"
 
@@ -52,6 +54,7 @@ func (prov *ProvisioningAPI) Init() {
 	r.HandleFunc("/delete_session", prov.DeleteSession).Methods(http.MethodPost)
 	r.HandleFunc("/disconnect", prov.Disconnect).Methods(http.MethodPost)
 	r.HandleFunc("/reconnect", prov.Reconnect).Methods(http.MethodPost)
+	r.HandleFunc("/sync/appstate/{name}", prov.SyncAppState).Methods(http.MethodPost)
 	prov.bridge.AS.Router.HandleFunc("/_matrix/app/com.beeper.asmux/ping", prov.BridgeStatePing).Methods(http.MethodPost)
 	prov.bridge.AS.Router.HandleFunc("/_matrix/app/com.beeper.bridge_state", prov.BridgeStatePing).Methods(http.MethodPost)
 
@@ -168,6 +171,48 @@ func (prov *ProvisioningAPI) Reconnect(w http.ResponseWriter, r *http.Request) {
 		user.sendBridgeState(BridgeState{StateEvent: StateTransientDisconnect, Error: WANotConnected})
 		user.Connect()
 		jsonResponse(w, http.StatusAccepted, Response{true, "Restarted connection to WhatsApp"})
+	}
+}
+
+func (prov *ProvisioningAPI) SyncAppState(w http.ResponseWriter, r *http.Request) {
+	user := r.Context().Value("user").(*User)
+	if user == nil || user.Client == nil {
+		jsonResponse(w, http.StatusNotFound, Error{
+			Error:   "User is not connected to WhatsApp",
+			ErrCode: "no session",
+		})
+		return
+	}
+
+	vars := mux.Vars(r)
+	nameStr := vars["name"]
+	if len(nameStr) == 0 {
+		jsonResponse(w, http.StatusBadRequest, Error{
+			Error:   "The `name` parameter is required",
+			ErrCode: "missing-name-param",
+		})
+		return
+	}
+	var name appstate.WAPatchName
+	for _, existingName := range appstate.AllPatchNames {
+		if nameStr == string(existingName) {
+			name = existingName
+		}
+	}
+	if len(name) == 0 {
+		jsonResponse(w, http.StatusBadRequest, Error{
+			Error:   fmt.Sprintf("'%s' is not a valid app state patch name", nameStr),
+			ErrCode: "invalid-name-param",
+		})
+		return
+	}
+	fullStr := r.URL.Query().Get("full")
+	fullSync := len(fullStr) > 0 && (fullStr == "1" || strings.ToLower(fullStr)[0] == 't')
+	err := user.Client.FetchAppState(name, fullSync, false)
+	if err != nil {
+		jsonResponse(w, http.StatusInternalServerError, Error{false, err.Error(), "sync-fail"})
+	} else {
+		jsonResponse(w, http.StatusOK, Response{true, fmt.Sprintf("Synced app state %s", name)})
 	}
 }
 
