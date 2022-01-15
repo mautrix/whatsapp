@@ -208,15 +208,31 @@ func (mx *MatrixHandler) createPrivatePortalFromInvite(roomID id.RoomID, inviter
 	portal.Update()
 	portal.UpdateBridgeInfo()
 	_, _ = intent.SendNotice(roomID, "Private chat portal created")
-
-	//err := portal.FillInitialHistory(inviter)
-	//if err != nil {
-	//	portal.log.Errorln("Failed to fill history:", err)
-	//}
 }
 
 func (mx *MatrixHandler) HandlePuppetInvite(evt *event.Event, inviter *User, puppet *Puppet) {
 	intent := puppet.DefaultIntent()
+
+	if !inviter.Whitelisted {
+		puppet.log.Debugfln("Rejecting invite from %s to %s: user is not whitelisted", evt.Sender, evt.RoomID)
+		_, err := intent.LeaveRoom(evt.RoomID, &mautrix.ReqLeave{
+			Reason: "You're not whitelisted to use this bridge",
+		})
+		if err != nil {
+			puppet.log.Warnfln("Failed to reject invite from %s to %s: %v", evt.Sender, evt.RoomID, err)
+		}
+		return
+	} else if !inviter.IsLoggedIn() {
+		puppet.log.Debugfln("Rejecting invite from %s to %s: user is not logged in", evt.Sender, evt.RoomID)
+		_, err := intent.LeaveRoom(evt.RoomID, &mautrix.ReqLeave{
+			Reason: "You're not logged into this bridge",
+		})
+		if err != nil {
+			puppet.log.Warnfln("Failed to reject invite from %s to %s: %v", evt.Sender, evt.RoomID, err)
+		}
+		return
+	}
+
 	members := mx.joinAndCheckMembers(evt, intent)
 	if members == nil {
 		return
@@ -264,20 +280,20 @@ func (mx *MatrixHandler) HandleMembership(evt *event.Event) {
 	}
 
 	user := mx.bridge.GetUserByMXID(evt.Sender)
-	if user == nil || !user.Whitelisted || !user.IsLoggedIn() {
+	if user == nil {
 		return
 	}
-
+	isSelf := id.UserID(evt.GetStateKey()) == evt.Sender
+	puppet := mx.bridge.GetPuppetByMXID(id.UserID(evt.GetStateKey()))
 	portal := mx.bridge.GetPortalByMXID(evt.RoomID)
 	if portal == nil {
-		puppet := mx.bridge.GetPuppetByMXID(id.UserID(evt.GetStateKey()))
-		if content.Membership == event.MembershipInvite && puppet != nil {
+		if puppet != nil && content.Membership == event.MembershipInvite {
 			mx.HandlePuppetInvite(evt, user, puppet)
 		}
 		return
+	} else if !user.Whitelisted || !user.IsLoggedIn() {
+		return
 	}
-
-	isSelf := id.UserID(evt.GetStateKey()) == evt.Sender
 
 	if content.Membership == event.MembershipLeave {
 		if evt.Unsigned.PrevContent != nil {
@@ -289,11 +305,11 @@ func (mx *MatrixHandler) HandleMembership(evt *event.Event) {
 		}
 		if isSelf {
 			portal.HandleMatrixLeave(user)
-		} else {
-			portal.HandleMatrixKick(user, evt)
+		} else if puppet != nil {
+			portal.HandleMatrixKick(user, puppet)
 		}
-	} else if content.Membership == event.MembershipInvite && !isSelf {
-		portal.HandleMatrixInvite(user, evt)
+	} else if content.Membership == event.MembershipInvite && !isSelf && puppet != nil {
+		portal.HandleMatrixInvite(user, puppet)
 	}
 }
 

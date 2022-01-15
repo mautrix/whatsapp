@@ -9,13 +9,13 @@ require (
 	github.com/mattn/go-sqlite3 v1.14.10
 	github.com/prometheus/client_golang v1.11.0
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
-	go.mau.fi/whatsmeow v0.0.0-20220110120209-05fd944cc01e
+	go.mau.fi/whatsmeow v0.0.0-20220111203410-b078a9e90863
 	golang.org/x/image v0.0.0-20211028202545-6944b10bf410
 	google.golang.org/protobuf v1.27.1
 	gopkg.in/yaml.v3 v3.0.0-20210107192922-496545a6307b
 	maunium.net/go/mauflag v1.0.0
 	maunium.net/go/maulogger/v2 v2.3.2
-	maunium.net/go/mautrix v0.10.9
+	maunium.net/go/mautrix v0.10.10-0.20220115114638-0b31804ef8af
 )
 
 require (
