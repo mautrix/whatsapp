@@ -1,4 +1,4 @@
-# v0.2.3 (2022-01-??, unreleased)
+# v0.2.3 (2022-01-16)
 
 * Added support for bridging incoming broadcast list messages.
 * Added overrides for mime type -> file extension mapping as some OSes have
