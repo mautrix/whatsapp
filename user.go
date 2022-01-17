@@ -659,6 +659,12 @@ type CustomReadReceipt struct {
 	DoublePuppetSource string `json:"fi.mau.double_puppet_source,omitempty"`
 }
 
+type CustomReadMarkers struct {
+	mautrix.ReqSetReadMarkers
+	ReadExtra      CustomReadReceipt `json:"com.beeper.read.extra"`
+	FullyReadExtra CustomReadReceipt `json:"com.beeper.fully_read.extra"`
+}
+
 func (user *User) syncChatDoublePuppetDetails(portal *Portal, justCreated bool) {
 	doublePuppet := portal.bridge.GetPuppetByCustomMXID(user.MXID)
 	if doublePuppet == nil {
@@ -871,17 +877,28 @@ func (user *User) handleReceipt(receipt *events.Receipt) {
 		}
 	}
 	intent := user.bridge.GetPuppetByJID(receipt.Sender).IntentFor(portal)
-	var rrContent CustomReadReceipt
-	if intent.IsCustomPuppet {
-		rrContent.DoublePuppetSource = doublePuppetValue
-	}
 	for _, msg := range markAsRead {
-		err := intent.MarkReadWithContent(portal.MXID, msg.MXID, &rrContent)
+		err := intent.SetReadMarkers(portal.MXID, makeReadMarkerContent(msg.MXID, intent.IsCustomPuppet))
 		if err != nil {
 			user.log.Warnfln("Failed to mark message %s as read by %s: %v", msg.MXID, intent.UserID, err)
 		} else {
 			user.log.Debugfln("Marked %s as read by %s", msg.MXID, intent.UserID)
 		}
+	}
+}
+
+func makeReadMarkerContent(eventID id.EventID, doublePuppet bool) CustomReadMarkers {
+	var extra CustomReadReceipt
+	if doublePuppet {
+		extra.DoublePuppetSource = doublePuppetValue
+	}
+	return CustomReadMarkers{
+		ReqSetReadMarkers: mautrix.ReqSetReadMarkers{
+			Read:      eventID,
+			FullyRead: eventID,
+		},
+		ReadExtra:      extra,
+		FullyReadExtra: extra,
 	}
 }
 
@@ -895,7 +912,7 @@ func (user *User) markSelfReadFull(portal *Portal) {
 		return
 	}
 	user.SetLastReadTS(portal.Key, lastMessage.Timestamp)
-	err := puppet.CustomIntent().MarkReadWithContent(portal.MXID, lastMessage.MXID, &CustomReadReceipt{DoublePuppetSource: doublePuppetValue})
+	err := puppet.CustomIntent().SetReadMarkers(portal.MXID, makeReadMarkerContent(lastMessage.MXID, true))
 	if err != nil {
 		user.log.Warnfln("Failed to mark %s (last message) in %s as read: %v", lastMessage.MXID, portal.MXID, err)
 	} else {
