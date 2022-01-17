@@ -897,6 +897,8 @@ func (user *User) markSelfReadFull(portal *Portal) {
 	err := puppet.CustomIntent().MarkReadWithContent(portal.MXID, lastMessage.MXID, &CustomReadReceipt{DoublePuppetSource: doublePuppetValue})
 	if err != nil {
 		user.log.Warnfln("Failed to mark %s (last message) in %s as read: %v", lastMessage.MXID, portal.MXID, err)
+	} else {
+		user.log.Debugfln("Marked %s (last message) in %s as read", lastMessage.MXID, portal.MXID)
 	}
 }
 

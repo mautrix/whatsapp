@@ -2421,8 +2421,10 @@ func (portal *Portal) HandleMatrixReadReceipt(sender *User, eventID id.EventID, 
 	}
 
 	prevTimestamp := sender.GetLastReadTS(portal.Key)
+	lastReadIsZero := false
 	if prevTimestamp.IsZero() {
 		prevTimestamp = maxTimestamp.Add(-2 * time.Second)
+		lastReadIsZero = true
 	}
 
 	messages := portal.bridge.DB.Message.GetMessagesBetween(portal.Key, prevTimestamp, maxTimestamp)
@@ -2442,7 +2444,8 @@ func (portal *Portal) HandleMatrixReadReceipt(sender *User, eventID id.EventID, 
 		} // else: blank key (participant field isn't needed in direct chat read receipts)
 		groupedMessages[key] = append(groupedMessages[key], msg.JID)
 	}
-	portal.log.Debugfln("Sending read receipts by %s: %v", sender.JID, groupedMessages)
+	portal.log.Debugfln("Sending read receipts by %s (last read: %d, was zero: %t): %v",
+		sender.JID, prevTimestamp.Unix(), lastReadIsZero, groupedMessages)
 	for messageSender, ids := range groupedMessages {
 		chatJID := portal.Key.JID
 		if messageSender.Server == types.BroadcastServer {
