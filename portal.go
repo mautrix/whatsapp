@@ -743,7 +743,7 @@ func (portal *Portal) SyncParticipants(source *User, metadata *types.GroupInfo) 
 		puppet := portal.bridge.GetPuppetByJID(participant.JID)
 		puppet.SyncContact(source, true, "group participant")
 		user := portal.bridge.GetUserByJID(participant.JID)
-		if user != nil {
+		if user != nil && user != source {
 			portal.ensureUserInvited(user)
 		}
 		if user == nil || !puppet.IntentFor(portal).IsCustomPuppet {
