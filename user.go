@@ -746,6 +746,7 @@ func (user *User) UpdateDirectChats(chats map[id.UserID][]id.RoomID) {
 }
 
 func (user *User) handleLoggedOut(onConnect bool) {
+	user.sendBridgeState(BridgeState{StateEvent: StateBadCredentials, Error: WANotLoggedIn})
 	user.JID = types.EmptyJID
 	user.Update()
 	if onConnect {
@@ -753,7 +754,6 @@ func (user *User) handleLoggedOut(onConnect bool) {
 	} else {
 		user.sendMarkdownBridgeAlert("You were logged out from another device. Please link the bridge to your phone again.")
 	}
-	user.sendBridgeState(BridgeState{StateEvent: StateBadCredentials, Error: WANotLoggedIn})
 }
 
 func (user *User) GetPortalByMessageSource(ms types.MessageSource) *Portal {
