@@ -200,6 +200,7 @@ func (user *User) ensureInvited(intent *appservice.IntentAPI, roomID id.RoomID, 
 	if err != nil && errors.As(err, &httpErr) && httpErr.RespError != nil && strings.Contains(httpErr.RespError.Err, "is already in the room") {
 		user.bridge.StateStore.SetMembership(roomID, user.MXID, event.MembershipJoin)
 		ok = true
+		return
 	} else if err != nil {
 		user.log.Warnfln("Failed to invite user to %s: %v", roomID, err)
 	} else {
@@ -207,7 +208,7 @@ func (user *User) ensureInvited(intent *appservice.IntentAPI, roomID id.RoomID, 
 	}
 
 	if customPuppet != nil && customPuppet.CustomIntent() != nil {
-		err = customPuppet.CustomIntent().EnsureJoined(roomID)
+		err = customPuppet.CustomIntent().EnsureJoined(roomID, appservice.EnsureJoinedParams{IgnoreCache: true})
 		if err != nil {
 			user.log.Warnfln("Failed to auto-join %s: %v", roomID, err)
 			ok = false
