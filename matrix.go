@@ -544,7 +544,7 @@ func (mx *MatrixHandler) HandleReceipt(evt *event.Event) {
 				// But do start disappearing messages, because the user read the chat
 				portal.ScheduleDisappearing()
 			} else {
-				portal.HandleMatrixReadReceipt(user, eventID, time.UnixMilli(receipt.Timestamp))
+				portal.HandleMatrixReadReceipt(user, eventID, time.UnixMilli(receipt.Timestamp), true)
 			}
 		}
 	}

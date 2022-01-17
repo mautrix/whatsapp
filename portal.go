@@ -237,6 +237,7 @@ func (portal *Portal) handleMessageLoopItem(msg PortalMessage) {
 }
 
 func (portal *Portal) handleMatrixMessageLoopItem(msg PortalMatrixMessage) {
+	portal.HandleMatrixReadReceipt(msg.user, "", time.UnixMilli(msg.evt.Timestamp), false)
 	switch msg.evt.Type {
 	case event.EventMessage, event.EventSticker:
 		portal.HandleMatrixMessage(msg.user, msg.evt)
@@ -2409,15 +2410,20 @@ func (portal *Portal) HandleMatrixRedaction(sender *User, evt *event.Event) {
 	}
 }
 
-func (portal *Portal) HandleMatrixReadReceipt(sender *User, eventID id.EventID, receiptTimestamp time.Time) {
+func (portal *Portal) HandleMatrixReadReceipt(sender *User, eventID id.EventID, receiptTimestamp time.Time, isExplicit bool) {
 	if !sender.IsLoggedIn() {
-		portal.log.Debugfln("Ignoring read receipt by %s: user is not connected to WhatsApp", sender.JID)
+		if isExplicit {
+			portal.log.Debugfln("Ignoring read receipt by %s: user is not connected to WhatsApp", sender.JID)
+		}
 		return
 	}
 
 	maxTimestamp := receiptTimestamp
-	if message := portal.bridge.DB.Message.GetByMXID(eventID); message != nil {
-		maxTimestamp = message.Timestamp
+	// Implicit read receipts don't have an event ID that's already bridged
+	if isExplicit {
+		if message := portal.bridge.DB.Message.GetByMXID(eventID); message != nil {
+			maxTimestamp = message.Timestamp
+		}
 	}
 
 	prevTimestamp := sender.GetLastReadTS(portal.Key)
@@ -2444,8 +2450,11 @@ func (portal *Portal) HandleMatrixReadReceipt(sender *User, eventID id.EventID, 
 		} // else: blank key (participant field isn't needed in direct chat read receipts)
 		groupedMessages[key] = append(groupedMessages[key], msg.JID)
 	}
-	portal.log.Debugfln("Sending read receipts by %s (last read: %d, was zero: %t): %v",
-		sender.JID, prevTimestamp.Unix(), lastReadIsZero, groupedMessages)
+	// For explicit read receipts, log even if there are no targets. For implicit ones only log when there are targets
+	if len(groupedMessages) > 0 || isExplicit {
+		portal.log.Debugfln("Sending read receipts by %s (last read: %d, was zero: %t, explicit: %t): %v",
+			sender.JID, prevTimestamp.Unix(), lastReadIsZero, isExplicit, groupedMessages)
+	}
 	for messageSender, ids := range groupedMessages {
 		chatJID := portal.Key.JID
 		if messageSender.Server == types.BroadcastServer {
@@ -2457,7 +2466,9 @@ func (portal *Portal) HandleMatrixReadReceipt(sender *User, eventID id.EventID, 
 			portal.log.Warnfln("Failed to mark %v as read by %s: %v", ids, sender.JID, err)
 		}
 	}
-	portal.ScheduleDisappearing()
+	if isExplicit {
+		portal.ScheduleDisappearing()
+	}
 }
 
 func typingDiff(prev, new []id.UserID) (started, stopped []id.UserID) {
