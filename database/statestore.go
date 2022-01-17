@@ -1,5 +1,5 @@
 // mautrix-whatsapp - A Matrix-WhatsApp puppeting bridge.
-// Copyright (C) 2020 Tulir Asokan
+// Copyright (C) 2022 Tulir Asokan
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as published by
@@ -19,6 +19,7 @@ package database
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"sync"
 
 	log "maunium.net/go/maulogger/v2"
@@ -49,9 +50,10 @@ func NewSQLStateStore(db *Database) *SQLStateStore {
 }
 
 func (store *SQLStateStore) IsRegistered(userID id.UserID) bool {
-	row := store.db.QueryRow("SELECT EXISTS(SELECT 1 FROM mx_registrations WHERE user_id=$1)", userID)
 	var isRegistered bool
-	err := row.Scan(&isRegistered)
+	err := store.db.
+		QueryRow("SELECT EXISTS(SELECT 1 FROM mx_registrations WHERE user_id=$1)", userID).
+		Scan(&isRegistered)
 	if err != nil {
 		store.log.Warnfln("Failed to scan registration existence for %s: %v", userID, err)
 	}
@@ -74,7 +76,7 @@ func (store *SQLStateStore) GetRoomMembers(roomID id.RoomID) map[id.UserID]*even
 	var userID id.UserID
 	var member event.MemberEventContent
 	for rows.Next() {
-		err := rows.Scan(&userID, &member.Membership, &member.Displayname, &member.AvatarURL)
+		err = rows.Scan(&userID, &member.Membership, &member.Displayname, &member.AvatarURL)
 		if err != nil {
 			store.log.Warnfln("Failed to scan member in %s: %v", roomID, err)
 		} else {
@@ -85,9 +87,10 @@ func (store *SQLStateStore) GetRoomMembers(roomID id.RoomID) map[id.UserID]*even
 }
 
 func (store *SQLStateStore) GetMembership(roomID id.RoomID, userID id.UserID) event.Membership {
-	row := store.db.QueryRow("SELECT membership FROM mx_user_profile WHERE room_id=$1 AND user_id=$2", roomID, userID)
 	membership := event.MembershipLeave
-	err := row.Scan(&membership)
+	err := store.db.
+		QueryRow("SELECT membership FROM mx_user_profile WHERE room_id=$1 AND user_id=$2", roomID, userID).
+		Scan(&membership)
 	if err != nil && err != sql.ErrNoRows {
 		store.log.Warnfln("Failed to scan membership of %s in %s: %v", userID, roomID, err)
 	}
@@ -103,9 +106,10 @@ func (store *SQLStateStore) GetMember(roomID id.RoomID, userID id.UserID) *event
 }
 
 func (store *SQLStateStore) TryGetMember(roomID id.RoomID, userID id.UserID) (*event.MemberEventContent, bool) {
-	row := store.db.QueryRow("SELECT membership, displayname, avatar_url FROM mx_user_profile WHERE room_id=$1 AND user_id=$2", roomID, userID)
 	var member event.MemberEventContent
-	err := row.Scan(&member.Membership, &member.Displayname, &member.AvatarURL)
+	err := store.db.
+		QueryRow("SELECT membership, displayname, avatar_url FROM mx_user_profile WHERE room_id=$1 AND user_id=$2", roomID, userID).
+		Scan(&member.Membership, &member.Displayname, &member.AvatarURL)
 	if err != nil && err != sql.ErrNoRows {
 		store.log.Warnfln("Failed to scan member info of %s in %s: %v", userID, roomID, err)
 	}
@@ -124,7 +128,7 @@ func (store *SQLStateStore) FindSharedRooms(userID id.UserID) (rooms []id.RoomID
 	}
 	for rows.Next() {
 		var roomID id.RoomID
-		err := rows.Scan(&roomID)
+		err = rows.Scan(&roomID)
 		if err != nil {
 			store.log.Warnfln("Failed to scan room ID: %v", err)
 		} else {
@@ -188,14 +192,14 @@ func (store *SQLStateStore) SetPowerLevels(roomID id.RoomID, levels *event.Power
 }
 
 func (store *SQLStateStore) GetPowerLevels(roomID id.RoomID) (levels *event.PowerLevelsEventContent) {
-	row := store.db.QueryRow("SELECT power_levels FROM mx_room_state WHERE room_id=$1", roomID)
-	if row == nil {
-		return
-	}
 	var data []byte
-	err := row.Scan(&data)
+	err := store.db.
+		QueryRow("SELECT power_levels FROM mx_room_state WHERE room_id=$1", roomID).
+		Scan(&data)
 	if err != nil {
-		store.log.Errorfln("Failed to scan power levels of %s: %v", roomID, err)
+		if !errors.Is(err, sql.ErrNoRows) {
+			store.log.Errorfln("Failed to scan power levels of %s: %v", roomID, err)
+		}
 		return
 	}
 	levels = &event.PowerLevelsEventContent{}
@@ -209,16 +213,14 @@ func (store *SQLStateStore) GetPowerLevels(roomID id.RoomID) (levels *event.Powe
 
 func (store *SQLStateStore) GetPowerLevel(roomID id.RoomID, userID id.UserID) int {
 	if store.db.dialect == "postgres" {
-		row := store.db.QueryRow(`SELECT
-			COALESCE((power_levels->'users'->$2)::int, (power_levels->'users_default')::int, 0)
-			FROM mx_room_state WHERE room_id=$1`, roomID, userID)
-		if row == nil {
-			// Power levels not in db
-			return 0
-		}
 		var powerLevel int
-		err := row.Scan(&powerLevel)
-		if err != nil {
+		err := store.db.
+			QueryRow(`
+				SELECT COALESCE((power_levels->'users'->$2)::int, (power_levels->'users_default')::int, 0)
+				FROM mx_room_state WHERE room_id=$1
+			`, roomID, userID).
+			Scan(&powerLevel)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
 			store.log.Errorfln("Failed to scan power level of %s in %s: %v", userID, roomID, err)
 		}
 		return powerLevel
@@ -234,17 +236,18 @@ func (store *SQLStateStore) GetPowerLevelRequirement(roomID id.RoomID, eventType
 			defaultType = "state_default"
 			defaultValue = 50
 		}
-		row := store.db.QueryRow(`SELECT
-			COALESCE((power_levels->'events'->$2)::int, (power_levels->'$3')::int, $4)
-			FROM mx_room_state WHERE room_id=$1`, roomID, eventType.Type, defaultType, defaultValue)
-		if row == nil {
-			// Power levels not in db
-			return defaultValue
-		}
 		var powerLevel int
-		err := row.Scan(&powerLevel)
+		err := store.db.
+			QueryRow(`
+				SELECT COALESCE((power_levels->'events'->$2)::int, (power_levels->'$3')::int, $4)
+				FROM mx_room_state WHERE room_id=$1
+			`, roomID, eventType.Type, defaultType, defaultValue).
+			Scan(&powerLevel)
 		if err != nil {
-			store.log.Errorfln("Failed to scan power level for %s in %s: %v", eventType, roomID, err)
+			if !errors.Is(err, sql.ErrNoRows) {
+				store.log.Errorfln("Failed to scan power level for %s in %s: %v", eventType, roomID, err)
+			}
+			return defaultValue
 		}
 		return powerLevel
 	}
@@ -259,19 +262,19 @@ func (store *SQLStateStore) HasPowerLevel(roomID id.RoomID, userID id.UserID, ev
 			defaultType = "state_default"
 			defaultValue = 50
 		}
-		row := store.db.QueryRow(`SELECT
-			COALESCE((power_levels->'users'->$2)::int, (power_levels->'users_default')::int, 0)
-			>=
-			COALESCE((power_levels->'events'->$3)::int, (power_levels->'$4')::int, $5)
-			FROM mx_room_state WHERE room_id=$1`, roomID, userID, eventType.Type, defaultType, defaultValue)
-		if row == nil {
-			// Power levels not in db
-			return defaultValue == 0
-		}
 		var hasPower bool
-		err := row.Scan(&hasPower)
+		err := store.db.
+			QueryRow(`SELECT
+				COALESCE((power_levels->'users'->$2)::int, (power_levels->'users_default')::int, 0)
+				>=
+				COALESCE((power_levels->'events'->$3)::int, (power_levels->'$4')::int, $5)
+				FROM mx_room_state WHERE room_id=$1`, roomID, userID, eventType.Type, defaultType, defaultValue).
+			Scan(&hasPower)
 		if err != nil {
-			store.log.Errorfln("Failed to scan power level for %s in %s: %v", eventType, roomID, err)
+			if !errors.Is(err, sql.ErrNoRows) {
+				store.log.Errorfln("Failed to scan power level for %s in %s: %v", eventType, roomID, err)
+			}
+			return defaultValue == 0
 		}
 		return hasPower
 	}
