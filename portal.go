@@ -810,7 +810,7 @@ func (portal *Portal) UpdateAvatar(user *User, setBy types.JID, updateInfo bool)
 			_, err = portal.MainIntent().SetRoomAvatar(portal.MXID, portal.AvatarURL)
 		}
 		if err != nil {
-			portal.log.Warnln("Failed to set room topic:", err)
+			portal.log.Warnln("Failed to set room avatar:", err)
 			return false
 		}
 	}
