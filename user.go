@@ -851,40 +851,7 @@ func (user *User) handleReceipt(receipt *events.Receipt) {
 	if portal == nil || len(portal.MXID) == 0 {
 		return
 	}
-	// The order of the message ID array depends on the sender's platform, so we just have to find
-	// the last message based on timestamp. Also, timestamps only have second precision, so if
-	// there are many messages at the same second just mark them all as read, because we don't
-	// know which one is last
-	markAsRead := make([]*database.Message, 0, 1)
-	var bestTimestamp time.Time
-	for _, msgID := range receipt.MessageIDs {
-		msg := user.bridge.DB.Message.GetByJID(portal.Key, msgID)
-		if msg == nil || msg.IsFakeMXID() {
-			continue
-		}
-		if msg.Timestamp.After(bestTimestamp) {
-			bestTimestamp = msg.Timestamp
-			markAsRead = append(markAsRead[:0], msg)
-		} else if msg != nil && msg.Timestamp.Equal(bestTimestamp) {
-			markAsRead = append(markAsRead, msg)
-		}
-	}
-	if receipt.Sender.User == user.JID.User {
-		if len(markAsRead) > 0 {
-			user.SetLastReadTS(portal.Key, markAsRead[0].Timestamp)
-		} else {
-			user.SetLastReadTS(portal.Key, receipt.Timestamp)
-		}
-	}
-	intent := user.bridge.GetPuppetByJID(receipt.Sender).IntentFor(portal)
-	for _, msg := range markAsRead {
-		err := intent.SetReadMarkers(portal.MXID, makeReadMarkerContent(msg.MXID, intent.IsCustomPuppet))
-		if err != nil {
-			user.log.Warnfln("Failed to mark message %s as read by %s: %v", msg.MXID, intent.UserID, err)
-		} else {
-			user.log.Debugfln("Marked %s as read by %s", msg.MXID, intent.UserID)
-		}
-	}
+	portal.receipts <- PortalReceipt{evt: receipt, source: user}
 }
 
 func makeReadMarkerContent(eventID id.EventID, doublePuppet bool) CustomReadMarkers {

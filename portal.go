@@ -139,6 +139,7 @@ func (bridge *Bridge) NewManualPortal(key database.PortalKey) *Portal {
 		log:    bridge.Log.Sub(fmt.Sprintf("Portal/%s", key)),
 
 		messages:       make(chan PortalMessage, bridge.Config.Bridge.PortalMessageBuffer),
+		receipts:       make(chan PortalReceipt, bridge.Config.Bridge.PortalMessageBuffer),
 		matrixMessages: make(chan PortalMatrixMessage, bridge.Config.Bridge.PortalMessageBuffer),
 	}
 	portal.Key = key
@@ -153,6 +154,7 @@ func (bridge *Bridge) NewPortal(dbPortal *database.Portal) *Portal {
 		log:    bridge.Log.Sub(fmt.Sprintf("Portal/%s", dbPortal.Key)),
 
 		messages:       make(chan PortalMessage, bridge.Config.Bridge.PortalMessageBuffer),
+		receipts:       make(chan PortalReceipt, bridge.Config.Bridge.PortalMessageBuffer),
 		matrixMessages: make(chan PortalMatrixMessage, bridge.Config.Bridge.PortalMessageBuffer),
 	}
 	go portal.handleMessageLoop()
@@ -174,6 +176,11 @@ type PortalMessage struct {
 	undecryptable *events.UndecryptableMessage
 	fake          *fakeMessage
 	source        *User
+}
+
+type PortalReceipt struct {
+	evt    *events.Receipt
+	source *User
 }
 
 type PortalMatrixMessage struct {
@@ -206,6 +213,7 @@ type Portal struct {
 	currentlyTypingLock sync.Mutex
 
 	messages       chan PortalMessage
+	receipts       chan PortalReceipt
 	matrixMessages chan PortalMatrixMessage
 
 	relayUser *User
@@ -248,11 +256,50 @@ func (portal *Portal) handleMatrixMessageLoopItem(msg PortalMatrixMessage) {
 	}
 }
 
+func (portal *Portal) handleReceipt(receipt *events.Receipt, source *User) {
+	// The order of the message ID array depends on the sender's platform, so we just have to find
+	// the last message based on timestamp. Also, timestamps only have second precision, so if
+	// there are many messages at the same second just mark them all as read, because we don't
+	// know which one is last
+	markAsRead := make([]*database.Message, 0, 1)
+	var bestTimestamp time.Time
+	for _, msgID := range receipt.MessageIDs {
+		msg := portal.bridge.DB.Message.GetByJID(portal.Key, msgID)
+		if msg == nil || msg.IsFakeMXID() {
+			continue
+		}
+		if msg.Timestamp.After(bestTimestamp) {
+			bestTimestamp = msg.Timestamp
+			markAsRead = append(markAsRead[:0], msg)
+		} else if msg != nil && msg.Timestamp.Equal(bestTimestamp) {
+			markAsRead = append(markAsRead, msg)
+		}
+	}
+	if receipt.Sender.User == source.JID.User {
+		if len(markAsRead) > 0 {
+			source.SetLastReadTS(portal.Key, markAsRead[0].Timestamp)
+		} else {
+			source.SetLastReadTS(portal.Key, receipt.Timestamp)
+		}
+	}
+	intent := portal.bridge.GetPuppetByJID(receipt.Sender).IntentFor(portal)
+	for _, msg := range markAsRead {
+		err := intent.SetReadMarkers(portal.MXID, makeReadMarkerContent(msg.MXID, intent.IsCustomPuppet))
+		if err != nil {
+			portal.log.Warnfln("Failed to mark message %s as read by %s: %v", msg.MXID, intent.UserID, err)
+		} else {
+			portal.log.Debugfln("Marked %s as read by %s", msg.MXID, intent.UserID)
+		}
+	}
+}
+
 func (portal *Portal) handleMessageLoop() {
 	for {
 		select {
 		case msg := <-portal.messages:
 			portal.handleMessageLoopItem(msg)
+		case receipt := <-portal.receipts:
+			portal.handleReceipt(receipt.evt, receipt.source)
 		case msg := <-portal.matrixMessages:
 			portal.handleMatrixMessageLoopItem(msg)
 		}
