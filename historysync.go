@@ -154,6 +154,10 @@ func (user *User) handleHistorySyncConversation(index int, conv *waProto.Convers
 	}
 
 	portal := user.GetPortalByJID(jid)
+	if conv.EphemeralExpiration != nil && portal.ExpirationTime != conv.GetEphemeralExpiration() {
+		portal.ExpirationTime = conv.GetEphemeralExpiration()
+		portal.Update()
+	}
 	// Check if portal is too old or doesn't contain anything we can bridge.
 	if !user.shouldCreatePortalForHistorySync(conv, portal) {
 		return
