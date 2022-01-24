@@ -2,6 +2,7 @@ package upgrades
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -52,9 +53,9 @@ func GetVersion(db *sql.DB) (int, error) {
 	}
 
 	version := 0
-	row := db.QueryRow("SELECT version FROM version LIMIT 1")
-	if row != nil {
-		_ = row.Scan(&version)
+	err = db.QueryRow("SELECT version FROM version LIMIT 1").Scan(&version)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return -1, err
 	}
 	return version, nil
 }

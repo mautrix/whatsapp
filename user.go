@@ -654,8 +654,8 @@ func (user *User) updateChatTag(intent *appservice.IntentAPI, portal *Portal, ta
 }
 
 type CustomReadReceipt struct {
-	Timestamp    int64 `json:"ts,omitempty"`
-	DoublePuppet bool  `json:"fi.mau.double_puppet_source,omitempty"`
+	Timestamp          int64  `json:"ts,omitempty"`
+	DoublePuppetSource string `json:"fi.mau.double_puppet_source,omitempty"`
 }
 
 func (user *User) syncChatDoublePuppetDetails(portal *Portal, justCreated bool) {
@@ -870,8 +870,12 @@ func (user *User) handleReceipt(receipt *events.Receipt) {
 		}
 	}
 	intent := user.bridge.GetPuppetByJID(receipt.Sender).IntentFor(portal)
+	var rrContent CustomReadReceipt
+	if intent.IsCustomPuppet {
+		rrContent.DoublePuppetSource = doublePuppetValue
+	}
 	for _, msg := range markAsRead {
-		err := intent.MarkReadWithContent(portal.MXID, msg.MXID, &CustomReadReceipt{DoublePuppet: intent.IsCustomPuppet})
+		err := intent.MarkReadWithContent(portal.MXID, msg.MXID, &rrContent)
 		if err != nil {
 			user.log.Warnfln("Failed to mark message %s as read by %s: %v", msg.MXID, intent.UserID, err)
 		} else {
@@ -890,7 +894,7 @@ func (user *User) markSelfReadFull(portal *Portal) {
 		return
 	}
 	user.SetLastReadTS(portal.Key, lastMessage.Timestamp)
-	err := puppet.CustomIntent().MarkReadWithContent(portal.MXID, lastMessage.MXID, &CustomReadReceipt{DoublePuppet: true})
+	err := puppet.CustomIntent().MarkReadWithContent(portal.MXID, lastMessage.MXID, &CustomReadReceipt{DoublePuppetSource: doublePuppetValue})
 	if err != nil {
 		user.log.Warnfln("Failed to mark %s (last message) in %s as read: %v", lastMessage.MXID, portal.MXID, err)
 	}
@@ -933,6 +937,8 @@ func (user *User) handleGroupUpdate(evt *events.GroupInfo) {
 		portal.ChangeAdminStatus(evt.Promote, true)
 	case evt.Demote != nil:
 		portal.ChangeAdminStatus(evt.Demote, false)
+	case evt.Ephemeral != nil:
+		portal.UpdateGroupDisappearingMessages(evt.Sender, evt.Timestamp, evt.Ephemeral.DisappearingTimer)
 	}
 }
 

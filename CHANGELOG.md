@@ -1,13 +1,15 @@
-# v0.2.3 (unreleased)
+# v0.2.3 (2022-01-16)
 
 * Added support for bridging incoming broadcast list messages.
 * Added overrides for mime type -> file extension mapping as some OSes have
   very obscure extensions in their mime type database.
 * Added support for personal filtering spaces (started by [@HelderFSFerreira] and [@clmnin] in [#413]).
 * Added support for multi-contact messages.
+* Added support for disappearing messages.
 * Fixed avatar remove events from WhatsApp being ignored.
 * Fixed the bridge using the wrong Olm session if a client established a new
   one due to corruption.
+* Fixed more issues with app state syncing not working (especially related to contacts).
 
 [@HelderFSFerreira]: https://github.com/HelderFSFerreira
 [@clmnin]: https://github.com/clmnin

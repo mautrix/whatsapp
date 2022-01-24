@@ -73,6 +73,8 @@ type BridgeConfig struct {
 	AllowUserInvite       bool   `yaml:"allow_user_invite"`
 	FederateRooms         bool   `yaml:"federate_rooms"`
 
+	DisappearingMessagesInGroups bool `yaml:"disappearing_messages_in_groups"`
+
 	CommandPrefix string `yaml:"command_prefix"`
 
 	ManagementRoomText struct {

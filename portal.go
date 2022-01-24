@@ -304,6 +304,8 @@ func getMessageType(waMsg *waProto.Message) string {
 		switch waMsg.GetProtocolMessage().GetType() {
 		case waProto.ProtocolMessage_REVOKE:
 			return "revoke"
+		case waProto.ProtocolMessage_EPHEMERAL_SETTING:
+			return "disappearing timer change"
 		case waProto.ProtocolMessage_APP_STATE_SYNC_KEY_SHARE, waProto.ProtocolMessage_HISTORY_SYNC_NOTIFICATION, waProto.ProtocolMessage_INITIAL_SECURITY_NOTIFICATION_SETTING_SYNC:
 			return "ignore"
 		default:
@@ -346,6 +348,52 @@ func getMessageType(waMsg *waProto.Message) string {
 	}
 }
 
+func pluralUnit(val int, name string) string {
+	if val == 1 {
+		return fmt.Sprintf("%d %s", val, name)
+	} else if val == 0 {
+		return ""
+	}
+	return fmt.Sprintf("%d %ss", val, name)
+}
+
+func naturalJoin(parts []string) string {
+	if len(parts) == 0 {
+		return ""
+	} else if len(parts) == 1 {
+		return parts[0]
+	} else if len(parts) == 2 {
+		return fmt.Sprintf("%s and %s", parts[0], parts[1])
+	} else {
+		return fmt.Sprintf("%s and %s", strings.Join(parts[:len(parts)-1], ", "), parts[len(parts)-1])
+	}
+}
+
+func formatDuration(d time.Duration) string {
+	const Day = time.Hour * 24
+
+	var days, hours, minutes, seconds int
+	days, d = int(d/Day), d%Day
+	hours, d = int(d/time.Hour), d%time.Hour
+	minutes, d = int(d/time.Minute), d%time.Minute
+	seconds = int(d / time.Second)
+
+	parts := make([]string, 0, 4)
+	if days > 0 {
+		parts = append(parts, pluralUnit(days, "day"))
+	}
+	if hours > 0 {
+		parts = append(parts, pluralUnit(hours, "hour"))
+	}
+	if minutes > 0 {
+		parts = append(parts, pluralUnit(seconds, "minute"))
+	}
+	if seconds > 0 {
+		parts = append(parts, pluralUnit(seconds, "second"))
+	}
+	return naturalJoin(parts)
+}
+
 func (portal *Portal) convertMessage(intent *appservice.IntentAPI, source *User, info *types.MessageInfo, waMsg *waProto.Message) *ConvertedMessage {
 	switch {
 	case waMsg.Conversation != nil || waMsg.ExtendedTextMessage != nil:
@@ -370,8 +418,49 @@ func (portal *Portal) convertMessage(intent *appservice.IntentAPI, source *User,
 		return portal.convertLiveLocationMessage(intent, waMsg.GetLiveLocationMessage())
 	case waMsg.GroupInviteMessage != nil:
 		return portal.convertGroupInviteMessage(intent, info, waMsg.GetGroupInviteMessage())
+	case waMsg.ProtocolMessage != nil && waMsg.ProtocolMessage.GetType() == waProto.ProtocolMessage_EPHEMERAL_SETTING:
+		portal.ExpirationTime = waMsg.ProtocolMessage.GetEphemeralExpiration()
+		portal.Update()
+		return &ConvertedMessage{
+			Intent: intent,
+			Type:   event.EventMessage,
+			Content: &event.MessageEventContent{
+				Body:    portal.formatDisappearingMessageNotice(),
+				MsgType: event.MsgNotice,
+			},
+		}
 	default:
 		return nil
+	}
+}
+
+func (portal *Portal) UpdateGroupDisappearingMessages(sender *types.JID, timestamp time.Time, timer uint32) {
+	portal.ExpirationTime = timer
+	portal.Update()
+	intent := portal.MainIntent()
+	if sender != nil {
+		intent = portal.bridge.GetPuppetByJID(sender.ToNonAD()).IntentFor(portal)
+	} else {
+		sender = &types.EmptyJID
+	}
+	_, err := portal.sendMessage(intent, event.EventMessage, &event.MessageEventContent{
+		Body:    portal.formatDisappearingMessageNotice(),
+		MsgType: event.MsgNotice,
+	}, nil, timestamp.UnixMilli())
+	if err != nil {
+		portal.log.Warnfln("Failed to notify portal about disappearing message timer change by %s to %d", *sender, timer)
+	}
+}
+
+func (portal *Portal) formatDisappearingMessageNotice() string {
+	if portal.ExpirationTime == 0 {
+		return "Turned off disappearing messages"
+	} else {
+		msg := fmt.Sprintf("Set the disappearing message timer to %s", formatDuration(time.Duration(portal.ExpirationTime)*time.Second))
+		if !portal.bridge.Config.Bridge.DisappearingMessagesInGroups && portal.IsGroupChat() {
+			msg += ". However, this bridge is not configured to disappear messages in group chats."
+		}
+		return msg
 	}
 }
 
@@ -485,6 +574,7 @@ func (portal *Portal) handleMessage(source *User, evt *events.Message) {
 		}
 		var eventID id.EventID
 		if existingMsg != nil {
+			portal.MarkDisappearing(existingMsg.MXID, converted.ExpiresIn, false)
 			converted.Content.SetEdit(existingMsg.MXID)
 		} else if len(converted.ReplyTo) > 0 {
 			portal.SetReply(converted.Content, converted.ReplyTo)
@@ -493,6 +583,7 @@ func (portal *Portal) handleMessage(source *User, evt *events.Message) {
 		if err != nil {
 			portal.log.Errorfln("Failed to send %s to Matrix: %v", msgID, err)
 		} else {
+			portal.MarkDisappearing(resp.EventID, converted.ExpiresIn, false)
 			eventID = resp.EventID
 		}
 		// TODO figure out how to handle captions with undecryptable messages turning decryptable
@@ -501,6 +592,7 @@ func (portal *Portal) handleMessage(source *User, evt *events.Message) {
 			if err != nil {
 				portal.log.Errorfln("Failed to send caption of %s to Matrix: %v", msgID, err)
 			} else {
+				portal.MarkDisappearing(resp.EventID, converted.ExpiresIn, false)
 				eventID = resp.EventID
 			}
 		}
@@ -509,11 +601,13 @@ func (portal *Portal) handleMessage(source *User, evt *events.Message) {
 				resp, err = portal.sendMessage(converted.Intent, converted.Type, subEvt, nil, evt.Info.Timestamp.UnixMilli())
 				if err != nil {
 					portal.log.Errorfln("Failed to send sub-event %d of %s to Matrix: %v", index+1, msgID, err)
+				} else {
+					portal.MarkDisappearing(resp.EventID, converted.ExpiresIn, false)
 				}
 			}
 		}
 		if len(eventID) != 0 {
-			portal.finishHandling(existingMsg, &evt.Info, resp.EventID, false)
+			portal.finishHandling(existingMsg, &evt.Info, eventID, false)
 		}
 	} else if msgType == "revoke" {
 		portal.HandleMessageRevoke(source, &evt.Info, evt.Message.GetProtocolMessage().GetKey())
@@ -842,6 +936,10 @@ func (portal *Portal) UpdateMetadata(user *User, groupInfo *types.GroupInfo) boo
 	update := false
 	update = portal.UpdateName(groupInfo.Name, groupInfo.NameSetBy, false) || update
 	update = portal.UpdateTopic(groupInfo.Topic, groupInfo.TopicSetBy, false) || update
+	if portal.ExpirationTime != groupInfo.DisappearingTimer {
+		update = true
+		portal.ExpirationTime = groupInfo.DisappearingTimer
+	}
 
 	portal.RestrictMessageSending(groupInfo.IsAnnounce)
 	portal.RestrictMetadataChanges(groupInfo.IsLocked)
@@ -1219,6 +1317,10 @@ func (portal *Portal) IsPrivateChat() bool {
 	return portal.Key.JID.Server == types.DefaultUserServer
 }
 
+func (portal *Portal) IsGroupChat() bool {
+	return portal.Key.JID.Server == types.GroupServer
+}
+
 func (portal *Portal) IsBroadcastList() bool {
 	return portal.Key.JID.Server == types.BroadcastServer
 }
@@ -1362,7 +1464,8 @@ type ConvertedMessage struct {
 
 	MultiEvent []*event.MessageEventContent
 
-	ReplyTo types.MessageID
+	ReplyTo   types.MessageID
+	ExpiresIn uint32
 }
 
 func (portal *Portal) convertTextMessage(intent *appservice.IntentAPI, msg *waProto.Message) *ConvertedMessage {
@@ -1371,6 +1474,7 @@ func (portal *Portal) convertTextMessage(intent *appservice.IntentAPI, msg *waPr
 		MsgType: event.MsgText,
 	}
 	var replyTo types.MessageID
+	var expiresIn uint32
 	if msg.GetExtendedTextMessage() != nil {
 		content.Body = msg.GetExtendedTextMessage().GetText()
 
@@ -1379,9 +1483,16 @@ func (portal *Portal) convertTextMessage(intent *appservice.IntentAPI, msg *waPr
 			portal.bridge.Formatter.ParseWhatsApp(content, contextInfo.GetMentionedJid())
 			replyTo = contextInfo.GetStanzaId()
 		}
+		expiresIn = contextInfo.GetExpiration()
 	}
 
-	return &ConvertedMessage{Intent: intent, Type: event.EventMessage, Content: content, ReplyTo: replyTo}
+	return &ConvertedMessage{
+		Intent:    intent,
+		Type:      event.EventMessage,
+		Content:   content,
+		ReplyTo:   replyTo,
+		ExpiresIn: expiresIn,
+	}
 }
 
 func (portal *Portal) convertLiveLocationMessage(intent *appservice.IntentAPI, msg *waProto.LiveLocationMessage) *ConvertedMessage {
@@ -1393,10 +1504,11 @@ func (portal *Portal) convertLiveLocationMessage(intent *appservice.IntentAPI, m
 		content.Body += ": " + msg.GetCaption()
 	}
 	return &ConvertedMessage{
-		Intent:  intent,
-		Type:    event.EventMessage,
-		Content: content,
-		ReplyTo: msg.GetContextInfo().GetStanzaId(),
+		Intent:    intent,
+		Type:      event.EventMessage,
+		Content:   content,
+		ReplyTo:   msg.GetContextInfo().GetStanzaId(),
+		ExpiresIn: msg.GetContextInfo().GetExpiration(),
 	}
 }
 
@@ -1444,10 +1556,11 @@ func (portal *Portal) convertLocationMessage(intent *appservice.IntentAPI, msg *
 	}
 
 	return &ConvertedMessage{
-		Intent:  intent,
-		Type:    event.EventMessage,
-		Content: content,
-		ReplyTo: msg.GetContextInfo().GetStanzaId(),
+		Intent:    intent,
+		Type:      event.EventMessage,
+		Content:   content,
+		ReplyTo:   msg.GetContextInfo().GetStanzaId(),
+		ExpiresIn: msg.GetContextInfo().GetExpiration(),
 	}
 }
 
@@ -1472,11 +1585,12 @@ func (portal *Portal) convertGroupInviteMessage(intent *appservice.IntentAPI, in
 		},
 	}
 	return &ConvertedMessage{
-		Intent:  intent,
-		Type:    event.EventMessage,
-		Content: content,
-		Extra:   extraAttrs,
-		ReplyTo: msg.GetContextInfo().GetStanzaId(),
+		Intent:    intent,
+		Type:      event.EventMessage,
+		Content:   content,
+		Extra:     extraAttrs,
+		ReplyTo:   msg.GetContextInfo().GetStanzaId(),
+		ExpiresIn: msg.GetContextInfo().GetExpiration(),
 	}
 }
 
@@ -1508,10 +1622,11 @@ func (portal *Portal) convertContactMessage(intent *appservice.IntentAPI, msg *w
 	}
 
 	return &ConvertedMessage{
-		Intent:  intent,
-		Type:    event.EventMessage,
-		Content: content,
-		ReplyTo: msg.GetContextInfo().GetStanzaId(),
+		Intent:    intent,
+		Type:      event.EventMessage,
+		Content:   content,
+		ReplyTo:   msg.GetContextInfo().GetStanzaId(),
+		ExpiresIn: msg.GetContextInfo().GetExpiration(),
 	}
 }
 
@@ -1535,6 +1650,7 @@ func (portal *Portal) convertContactsArrayMessage(intent *appservice.IntentAPI, 
 			Body:    fmt.Sprintf("Sent %s", name),
 		},
 		ReplyTo:    msg.GetContextInfo().GetStanzaId(),
+		ExpiresIn:  msg.GetContextInfo().GetExpiration(),
 		MultiEvent: contacts,
 	}
 }
@@ -1717,6 +1833,8 @@ func (portal *Portal) convertMediaMessage(intent *appservice.IntentAPI, source *
 	if errors.Is(err, whatsmeow.ErrNoURLPresent) {
 		portal.log.Debugfln("No URL present error for media message %s, ignoring...", info.ID)
 		return nil
+	} else if errors.Is(err, whatsmeow.ErrFileLengthMismatch) || errors.Is(err, whatsmeow.ErrInvalidMediaSHA256) {
+		portal.log.Warnfln("Mismatching media checksums in %s: %v. Ignoring because WhatsApp seems to ignore them too", info.ID, err)
 	} else if err != nil {
 		return portal.makeMediaBridgeFailureMessage(intent, info, err, captionContent)
 	}
@@ -1838,12 +1956,13 @@ func (portal *Portal) convertMediaMessage(intent *appservice.IntentAPI, source *
 	}
 
 	return &ConvertedMessage{
-		Intent:  intent,
-		Type:    eventType,
-		Content: content,
-		Caption: captionContent,
-		ReplyTo: msg.GetContextInfo().GetStanzaId(),
-		Extra:   extraContent,
+		Intent:    intent,
+		Type:      eventType,
+		Content:   content,
+		Caption:   captionContent,
+		ReplyTo:   msg.GetContextInfo().GetStanzaId(),
+		ExpiresIn: msg.GetContextInfo().GetExpiration(),
+		Extra:     extraContent,
 	}
 }
 
@@ -2070,6 +2189,9 @@ func (portal *Portal) convertMatrixMessage(sender *User, evt *event.Event) (*waP
 			ctxInfo.QuotedMessage = &waProto.Message{Conversation: proto.String("")}
 		}
 	}
+	if portal.ExpirationTime != 0 {
+		ctxInfo.Expiration = proto.Uint32(portal.ExpirationTime)
+	}
 	relaybotFormatted := false
 	if !sender.IsLoggedIn() || (portal.IsPrivateChat() && sender.JID.User != portal.Key.Receiver.User) {
 		if !portal.HasRelaybot() {
@@ -2098,7 +2220,7 @@ func (portal *Portal) convertMatrixMessage(sender *User, evt *event.Event) (*waP
 		if content.MsgType == event.MsgEmote && !relaybotFormatted {
 			text = "/me " + text
 		}
-		if ctxInfo.StanzaId != nil || ctxInfo.MentionedJid != nil {
+		if ctxInfo.StanzaId != nil || ctxInfo.MentionedJid != nil || ctxInfo.Expiration != nil {
 			msg.ExtendedTextMessage = &waProto.ExtendedTextMessage{
 				Text:        &text,
 				ContextInfo: &ctxInfo,
@@ -2254,6 +2376,7 @@ func (portal *Portal) HandleMatrixMessage(sender *User, evt *event.Event) {
 	if msg == nil {
 		return
 	}
+	portal.MarkDisappearing(evt.ID, portal.ExpirationTime, true)
 	info := portal.generateMessageInfo(sender)
 	dbMsg := portal.markHandled(nil, info, evt.ID, false, true, false)
 	portal.log.Debugln("Sending event", evt.ID, "to WhatsApp", info.ID)
@@ -2360,6 +2483,7 @@ func (portal *Portal) HandleMatrixReadReceipt(sender *User, eventID id.EventID, 
 			portal.log.Warnfln("Failed to mark %v as read by %s: %v", ids, sender.JID, err)
 		}
 	}
+	portal.ScheduleDisappearing()
 }
 
 func typingDiff(prev, new []id.UserID) (started, stopped []id.UserID) {
@@ -2526,32 +2650,26 @@ func (portal *Portal) HandleMatrixLeave(sender *User) {
 	portal.CleanupIfEmpty()
 }
 
-func (portal *Portal) HandleMatrixKick(sender *User, evt *event.Event) {
-	puppet := portal.bridge.GetPuppetByMXID(id.UserID(evt.GetStateKey()))
-	if puppet != nil {
-		_, err := sender.Client.UpdateGroupParticipants(portal.Key.JID, map[types.JID]whatsmeow.ParticipantChange{
-			puppet.JID: whatsmeow.ParticipantChangeRemove,
-		})
-		if err != nil {
-			portal.log.Errorfln("Failed to kick %s from group as %s: %v", puppet.JID, sender.MXID, err)
-			return
-		}
-		//portal.log.Infoln("Kick %s response: %s", puppet.JID, <-resp)
+func (portal *Portal) HandleMatrixKick(sender *User, target *Puppet) {
+	_, err := sender.Client.UpdateGroupParticipants(portal.Key.JID, map[types.JID]whatsmeow.ParticipantChange{
+		target.JID: whatsmeow.ParticipantChangeRemove,
+	})
+	if err != nil {
+		portal.log.Errorfln("Failed to kick %s from group as %s: %v", target.JID, sender.MXID, err)
+		return
 	}
+	//portal.log.Infoln("Kick %s response: %s", puppet.JID, <-resp)
 }
 
-func (portal *Portal) HandleMatrixInvite(sender *User, evt *event.Event) {
-	puppet := portal.bridge.GetPuppetByMXID(id.UserID(evt.GetStateKey()))
-	if puppet != nil {
-		_, err := sender.Client.UpdateGroupParticipants(portal.Key.JID, map[types.JID]whatsmeow.ParticipantChange{
-			puppet.JID: whatsmeow.ParticipantChangeAdd,
-		})
-		if err != nil {
-			portal.log.Errorfln("Failed to add %s to group as %s: %v", puppet.JID, sender.MXID, err)
-			return
-		}
-		//portal.log.Infofln("Add %s response: %s", puppet.JID, <-resp)
+func (portal *Portal) HandleMatrixInvite(sender *User, target *Puppet) {
+	_, err := sender.Client.UpdateGroupParticipants(portal.Key.JID, map[types.JID]whatsmeow.ParticipantChange{
+		target.JID: whatsmeow.ParticipantChangeAdd,
+	})
+	if err != nil {
+		portal.log.Errorfln("Failed to add %s to group as %s: %v", target.JID, sender.MXID, err)
+		return
 	}
+	//portal.log.Infofln("Add %s response: %s", puppet.JID, <-resp)
 }
 
 func (portal *Portal) HandleMatrixMeta(sender *User, evt *event.Event) {
