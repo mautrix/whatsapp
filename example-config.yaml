@@ -191,6 +191,9 @@ bridge:
     # the messages will be determined by the first user to read the message, rather than individually.
     # If the bridge only has a single user, this can be turned on safely.
     disappearing_messages_in_groups: false
+    # Should the bridge never send alerts to the bridge management room?
+    # These are mostly things like the user being logged out.
+    disable_bridge_alerts: false
 
     # The prefix for commands. Only required in non-management rooms.
     command_prefix: "!wa"

@@ -333,8 +333,26 @@ func (bridge *Bridge) Start() {
 	if bridge.Config.Bridge.ResendBridgeInfo {
 		go bridge.ResendBridgeInfo()
 	}
-	go bridge.DisappearingLoop()
+	go bridge.Loop()
 	bridge.AS.Ready = true
+}
+
+func (bridge *Bridge) Loop() {
+	for {
+		bridge.SleepAndDeleteUpcoming()
+		time.Sleep(1 * time.Hour)
+		bridge.WarnUsersAboutDisconnection()
+	}
+}
+
+func (bridge *Bridge) WarnUsersAboutDisconnection() {
+	bridge.usersLock.Lock()
+	for _, user := range bridge.usersByUsername {
+		if user.IsConnected() && !user.PhoneRecentlySeen() {
+			go user.sendPhoneOfflineWarning()
+		}
+	}
+	bridge.usersLock.Unlock()
 }
 
 func (bridge *Bridge) ResendBridgeInfo() {

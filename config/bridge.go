@@ -75,6 +75,8 @@ type BridgeConfig struct {
 
 	DisappearingMessagesInGroups bool `yaml:"disappearing_messages_in_groups"`
 
+	DisableBridgeAlerts bool `yaml:"disable_bridge_alerts"`
+
 	CommandPrefix string `yaml:"command_prefix"`
 
 	ManagementRoomText struct {
