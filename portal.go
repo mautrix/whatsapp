@@ -1519,12 +1519,29 @@ func (portal *Portal) convertTextMessage(intent *appservice.IntentAPI, msg *waPr
 }
 
 func (portal *Portal) convertLiveLocationMessage(intent *appservice.IntentAPI, msg *waProto.LiveLocationMessage) *ConvertedMessage {
-	content := &event.MessageEventContent{
-		Body:    "Started sharing live location",
-		MsgType: event.MsgNotice,
+
+	url := fmt.Sprintf("https://maps.google.com/?q=%.5f,%.5f", msg.GetDegreesLatitude(), msg.GetDegreesLongitude())
+	latChar := 'N'
+	if msg.GetDegreesLatitude() < 0 {
+		latChar = 'S'
 	}
+	longChar := 'E'
+	if msg.GetDegreesLongitude() < 0 {
+		longChar = 'W'
+	}
+	name := fmt.Sprintf("%.4f° %c %.4f° %c", math.Abs(msg.GetDegreesLatitude()), latChar, math.Abs(msg.GetDegreesLongitude()), longChar)
+
+	caption := ""
 	if len(msg.GetCaption()) > 0 {
-		content.Body += ": " + msg.GetCaption()
+		caption = msg.GetCaption() + " "
+	}
+
+	content := &event.MessageEventContent{
+		MsgType:       event.MsgLocation,
+		Body:          fmt.Sprintf("Live Location (see your WhatsApp client for live updates): %s%s\n%s", caption, name, url),
+		Format:        event.FormatHTML,
+		FormattedBody: fmt.Sprintf("Live Location (see your WhatsApp client for live updates): <a href='%s'>%s%s</a><br>", url, caption, name),
+		GeoURI:        fmt.Sprintf("geo:%.5f,%.5f", msg.GetDegreesLatitude(), msg.GetDegreesLongitude()),
 	}
 	return &ConvertedMessage{
 		Intent:    intent,
