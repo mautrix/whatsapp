@@ -53,7 +53,11 @@ func (portal *Portal) ScheduleDisappearing() {
 func (bridge *Bridge) SleepAndDeleteUpcoming() {
 	for _, msg := range bridge.DB.DisappearingMessage.GetUpcomingScheduled(1 * time.Hour) {
 		portal := bridge.GetPortalByMXID(msg.RoomID)
-		go portal.sleepAndDelete(msg)
+		if portal == nil {
+			msg.Delete()
+		} else {
+			go portal.sleepAndDelete(msg)
+		}
 	}
 }
 
