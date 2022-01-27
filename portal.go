@@ -1521,6 +1521,7 @@ func (portal *Portal) convertTextMessage(intent *appservice.IntentAPI, msg *waPr
 func (portal *Portal) convertLiveLocationMessage(intent *appservice.IntentAPI, msg *waProto.LiveLocationMessage) *ConvertedMessage {
 
 	url := fmt.Sprintf("https://maps.google.com/?q=%.5f,%.5f", msg.GetDegreesLatitude(), msg.GetDegreesLongitude())
+	
 	latChar := 'N'
 	if msg.GetDegreesLatitude() < 0 {
 		latChar = 'S'
@@ -1531,9 +1532,9 @@ func (portal *Portal) convertLiveLocationMessage(intent *appservice.IntentAPI, m
 	}
 	name := fmt.Sprintf("%.4f° %c %.4f° %c", math.Abs(msg.GetDegreesLatitude()), latChar, math.Abs(msg.GetDegreesLongitude()), longChar)
 
-	caption := ""
-	if len(msg.GetCaption()) > 0 {
-		caption = msg.GetCaption() + " "
+	caption := msg.GetCaption()
+	if len(caption) > 0 {
+		caption = caption + " "
 	}
 
 	content := &event.MessageEventContent{
@@ -1543,6 +1544,24 @@ func (portal *Portal) convertLiveLocationMessage(intent *appservice.IntentAPI, m
 		FormattedBody: fmt.Sprintf("Live Location (see your WhatsApp client for live updates): <a href='%s'>%s%s</a><br>", url, caption, name),
 		GeoURI:        fmt.Sprintf("geo:%.5f,%.5f", msg.GetDegreesLatitude(), msg.GetDegreesLongitude()),
 	}
+
+	if len(msg.GetJpegThumbnail()) > 0 {
+		thumbnailMime := http.DetectContentType(msg.GetJpegThumbnail())
+		uploadedThumbnail, _ := intent.UploadBytes(msg.GetJpegThumbnail(), thumbnailMime)
+		if uploadedThumbnail != nil {
+			cfg, _, _ := image.DecodeConfig(bytes.NewReader(msg.GetJpegThumbnail()))
+			content.Info = &event.FileInfo{
+				ThumbnailInfo: &event.FileInfo{
+					Size:     len(msg.GetJpegThumbnail()),
+					Width:    cfg.Width,
+					Height:   cfg.Height,
+					MimeType: thumbnailMime,
+				},
+				ThumbnailURL: uploadedThumbnail.ContentURI.CUString(),
+			}
+		}
+	}
+	
 	return &ConvertedMessage{
 		Intent:    intent,
 		Type:      event.EventMessage,
