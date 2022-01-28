@@ -20,6 +20,7 @@ import (
 	"context"
 	"net/http"
 	"runtime/debug"
+	"strconv"
 	"sync"
 	"time"
 
@@ -50,6 +51,7 @@ type MetricsHandler struct {
 	whatsappMessageHandling *prometheus.HistogramVec
 	countCollection         prometheus.Histogram
 	disconnections          *prometheus.CounterVec
+	incomingRetryReceipts   *prometheus.CounterVec
 	puppetCount             prometheus.Gauge
 	userCount               prometheus.Gauge
 	messageCount            prometheus.Gauge
@@ -99,6 +101,10 @@ func NewMetricsHandler(address string, log log.Logger, db *database.Database) *M
 			Name: "whatsapp_disconnections",
 			Help: "Number of times a Matrix user has been disconnected from WhatsApp",
 		}, []string{"user_id"}),
+		incomingRetryReceipts: promauto.NewCounterVec(prometheus.CounterOpts{
+			Name: "whatsapp_incoming_retry_receipts",
+			Help: "Number of times a remote WhatsApp user has requested a retry from the bridge. retry_count = 5 is usually the last attempt (and very likely means a failed message)",
+		}, []string{"retry_count", "message_found"}),
 		puppetCount: promauto.NewGauge(prometheus.GaugeOpts{
 			Name: "whatsapp_puppets_total",
 			Help: "Number of WhatsApp users bridged into Matrix",
@@ -165,6 +171,16 @@ func (mh *MetricsHandler) TrackDisconnection(userID id.UserID) {
 		return
 	}
 	mh.disconnections.With(prometheus.Labels{"user_id": string(userID)}).Inc()
+}
+
+func (mh *MetricsHandler) TrackRetryReceipt(count int, found bool) {
+	if !mh.running {
+		return
+	}
+	mh.incomingRetryReceipts.With(prometheus.Labels{
+		"retry_count":   strconv.Itoa(count),
+		"message_found": strconv.FormatBool(found),
+	}).Inc()
 }
 
 func (mh *MetricsHandler) TrackLoginState(jid types.JID, loggedIn bool) {
