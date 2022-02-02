@@ -39,6 +39,7 @@ import (
 
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/appstate"
+	waProto "go.mau.fi/whatsmeow/binary/proto"
 	"go.mau.fi/whatsmeow/store"
 	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
@@ -318,6 +319,19 @@ func (w *waLogger) Sub(module string) waLog.Logger         { return &waLogger{l:
 
 var ErrAlreadyLoggedIn = errors.New("already logged in")
 
+func (user *User) createClient(sess *store.Device) {
+	user.Client = whatsmeow.NewClient(sess, &waLogger{user.log.Sub("Client")})
+	user.Client.AddEventHandler(user.HandleEvent)
+	user.Client.GetMessageForRetry = func(to types.JID, id types.MessageID) *waProto.Message {
+		user.bridge.Metrics.TrackRetryReceipt(0, false)
+		return nil
+	}
+	user.Client.PreRetryCallback = func(receipt *events.Receipt, retryCount int, msg *waProto.Message) bool {
+		user.bridge.Metrics.TrackRetryReceipt(retryCount, true)
+		return true
+	}
+}
+
 func (user *User) Login(ctx context.Context) (<-chan whatsmeow.QRChannelItem, error) {
 	user.connLock.Lock()
 	defer user.connLock.Unlock()
@@ -328,8 +342,7 @@ func (user *User) Login(ctx context.Context) (<-chan whatsmeow.QRChannelItem, er
 	}
 	newSession := user.bridge.WAContainer.NewDevice()
 	newSession.Log = &waLogger{user.log.Sub("Session")}
-	user.Client = whatsmeow.NewClient(newSession, &waLogger{user.log.Sub("Client")})
-	user.Client.AddEventHandler(user.HandleEvent)
+	user.createClient(newSession)
 	qrChan, err := user.Client.GetQRChannel(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get QR channel: %w", err)
@@ -351,8 +364,7 @@ func (user *User) Connect() bool {
 	}
 	user.log.Debugln("Connecting to WhatsApp")
 	user.sendBridgeState(BridgeState{StateEvent: StateConnecting, Error: WAConnecting})
-	user.Client = whatsmeow.NewClient(user.Session, &waLogger{user.log.Sub("Client")})
-	user.Client.AddEventHandler(user.HandleEvent)
+	user.createClient(user.Session)
 	err := user.Client.Connect()
 	if err != nil {
 		user.log.Warnln("Error connecting to WhatsApp:", err)
