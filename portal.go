@@ -1510,9 +1510,9 @@ func (portal *Portal) convertTextMessage(intent *appservice.IntentAPI, msg *waPr
 		}
 		expiresIn = contextInfo.GetExpiration()
 
-		preview := portal.convertUrlPreview(msg.GetExtendedTextMessage());
+		preview := portal.convertUrlPreview(msg.GetExtendedTextMessage())
 
-		if ( preview != nil ) {
+		if preview != nil {
 			extraAttrs["com.beeper.linkpreview"] = preview
 		}
 	}
@@ -2070,26 +2070,26 @@ func (portal *Portal) convertWebPtoPNG(webpImage []byte) ([]byte, error) {
 }
 
 func (portal *Portal) convertUrlPreview(source *waProto.ExtendedTextMessage) map[string]interface{} {
-	if ( source == nil ) {
+	if source == nil {
 		return nil
 	}
 
 	matchedText := source.GetMatchedText()
 
-	if ( matchedText == "" ) {
+	if matchedText == "" {
 		return nil
 	}
 
 	canonicalUrl := source.GetCanonicalUrl()
 
 	url := matchedText
-	if ( canonicalUrl != "" ) {
-			url = canonicalUrl
+	if canonicalUrl != "" {
+		url = canonicalUrl
 	}
 
 	result := map[string]interface{}{
-		"og:title": source.GetTitle(),
-		"og:url": url,
+		"og:title":       source.GetTitle(),
+		"og:url":         url,
 		"og:description": source.GetDescription(),
 	}
 
@@ -2099,9 +2099,9 @@ func (portal *Portal) convertUrlPreview(source *waProto.ExtendedTextMessage) map
 		if uploadedThumbnail != nil {
 			cfg, _, _ := image.DecodeConfig(bytes.NewReader(source.GetJpegThumbnail()))
 			result["og:image"] = uploadedThumbnail.ContentURI.CUString()
-			result["og:image:width"] = cfg.Width;
-			result["og:image:height"] = cfg.Height;
-			result["og:image:type"] = thumbnailMime;
+			result["og:image:width"] = cfg.Width
+			result["og:image:height"] = cfg.Height
+			result["og:image:type"] = thumbnailMime
 		}
 	}
 
@@ -2109,13 +2109,13 @@ func (portal *Portal) convertUrlPreview(source *waProto.ExtendedTextMessage) map
 }
 
 func (portal *Portal) updateExtendedMessageForUrlPreview(source *event.Content, dest *waProto.ExtendedTextMessage) {
-	if ( source == nil ) {
+	if source == nil {
 		return
 	}
 
-	embeddedLink, ok := source.Raw["com.beeper.linkpreview"].(map[string]interface{});
+	embeddedLink, ok := source.Raw["com.beeper.linkpreview"].(map[string]interface{})
 
-	if ( !ok || embeddedLink == nil ) {
+	if !ok || embeddedLink == nil {
 		return
 	}
 
@@ -2128,9 +2128,9 @@ func (portal *Portal) updateExtendedMessageForUrlPreview(source *event.Content, 
 	dest.MatchedText = &matchedUrl
 
 	canonical, ok := embeddedLink["og:url"].(string)
-	
+
 	if ok {
-		dest.CanonicalUrl = &canonical;
+		dest.CanonicalUrl = &canonical
 	}
 
 	description, ok := embeddedLink["og:description"].(string)
@@ -2158,7 +2158,7 @@ func (portal *Portal) updateExtendedMessageForUrlPreview(source *event.Content, 
 	}
 
 	height, ok := embeddedLink["og:image:height"].(float64)
-	
+
 	if !ok {
 		portal.log.Errorfln("Height missing or invalid %v", embeddedLink["og:image:height"])
 		return
@@ -2367,7 +2367,7 @@ func (portal *Portal) convertMatrixMessage(sender *User, evt *event.Event) (*waP
 				Text:        &text,
 				ContextInfo: &ctxInfo,
 			}
-			
+
 			portal.updateExtendedMessageForUrlPreview(&evt.Content, msg.ExtendedTextMessage)
 		} else {
 			msg.Conversation = &text
