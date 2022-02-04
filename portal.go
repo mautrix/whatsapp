@@ -1498,6 +1498,8 @@ func (portal *Portal) convertTextMessage(intent *appservice.IntentAPI, msg *waPr
 	}
 	var replyTo types.MessageID
 	var expiresIn uint32
+	extraAttrs := map[string]interface{}{}
+
 	if msg.GetExtendedTextMessage() != nil {
 		content.Body = msg.GetExtendedTextMessage().GetText()
 
@@ -1507,6 +1509,12 @@ func (portal *Portal) convertTextMessage(intent *appservice.IntentAPI, msg *waPr
 			replyTo = contextInfo.GetStanzaId()
 		}
 		expiresIn = contextInfo.GetExpiration()
+
+		preview := portal.convertUrlPreview(msg.GetExtendedTextMessage());
+
+		if ( preview != nil ) {
+			extraAttrs["com.beeper.linkpreview"] = preview
+		}
 	}
 
 	return &ConvertedMessage{
@@ -1515,6 +1523,7 @@ func (portal *Portal) convertTextMessage(intent *appservice.IntentAPI, msg *waPr
 		Content:   content,
 		ReplyTo:   replyTo,
 		ExpiresIn: expiresIn,
+		Extra:     extraAttrs,
 	}
 }
 
@@ -2060,6 +2069,116 @@ func (portal *Portal) convertWebPtoPNG(webpImage []byte) ([]byte, error) {
 	return pngBuffer.Bytes(), nil
 }
 
+func (portal *Portal) convertUrlPreview(source *waProto.ExtendedTextMessage) map[string]interface{} {
+	if ( source == nil ) {
+		return nil
+	}
+
+	matchedText := source.GetMatchedText()
+
+	if ( matchedText == "" ) {
+		return nil
+	}
+
+	canonicalUrl := source.GetCanonicalUrl()
+
+	url := matchedText
+	if ( canonicalUrl != "" ) {
+			url = canonicalUrl
+	}
+
+	result := map[string]interface{}{
+		"og:title": source.GetTitle(),
+		"og:url": url,
+		"og:description": source.GetDescription(),
+	}
+
+	if len(source.GetJpegThumbnail()) > 0 {
+		thumbnailMime := http.DetectContentType(source.GetJpegThumbnail())
+		uploadedThumbnail, _ := portal.MainIntent().UploadBytes(source.GetJpegThumbnail(), thumbnailMime)
+		if uploadedThumbnail != nil {
+			cfg, _, _ := image.DecodeConfig(bytes.NewReader(source.GetJpegThumbnail()))
+			result["og:image"] = uploadedThumbnail.ContentURI.CUString()
+			result["og:image:width"] = cfg.Width;
+			result["og:image:height"] = cfg.Height;
+			result["og:image:type"] = thumbnailMime;
+		}
+	}
+
+	return result
+}
+
+func (portal *Portal) updateExtendedMessageForUrlPreview(source *event.Content, dest *waProto.ExtendedTextMessage) {
+	if ( source == nil ) {
+		return
+	}
+
+	embeddedLink, ok := source.Raw["com.beeper.linkpreview"].(map[string]interface{});
+
+	if ( !ok || embeddedLink == nil ) {
+		return
+	}
+
+	matchedUrl, ok := embeddedLink["matchedUrl"].(string)
+
+	if !ok || matchedUrl == "" {
+		return
+	}
+
+	dest.MatchedText = &matchedUrl
+
+	canonical, ok := embeddedLink["og:url"].(string)
+	
+	if ok {
+		dest.CanonicalUrl = &canonical;
+	}
+
+	description, ok := embeddedLink["og:description"].(string)
+
+	if ok {
+		dest.Description = &description
+	}
+
+	rawMXC, ok := embeddedLink["og:image"].(string)
+
+	if !ok || rawMXC == "" {
+		return
+	}
+
+	mxc, err := id.ParseContentURI(rawMXC)
+	if err != nil {
+		portal.log.Errorln("Malformed content URL %v: %v", rawMXC, err)
+		return
+	}
+
+	data, err := portal.MainIntent().DownloadBytes(mxc)
+	if err != nil {
+		portal.log.Errorfln("Failed to download media from %s: %v", rawMXC, err)
+		return
+	}
+
+	height, ok := embeddedLink["og:image:height"].(float64)
+	
+	if !ok {
+		portal.log.Errorfln("Height missing or invalid %v", embeddedLink["og:image:height"])
+		return
+	}
+
+	width, ok := embeddedLink["og:image:width"].(float64)
+
+	if !ok {
+		portal.log.Errorfln("Width missing or invalid %v", embeddedLink["og:image:width"])
+		return
+	}
+
+	height32 := uint32(height)
+	width32 := uint32(width)
+
+	dest.JpegThumbnail = data
+	dest.ThumbnailHeight = &height32
+	dest.ThumbnailWidth = &width32
+}
+
 func (portal *Portal) preprocessMatrixMedia(sender *User, relaybotFormatted bool, content *event.MessageEventContent, eventID id.EventID, mediaType whatsmeow.MediaType) *MediaUpload {
 	var caption string
 	var mentionedJIDs []string
@@ -2243,11 +2362,13 @@ func (portal *Portal) convertMatrixMessage(sender *User, evt *event.Event) (*waP
 		if content.MsgType == event.MsgEmote && !relaybotFormatted {
 			text = "/me " + text
 		}
-		if ctxInfo.StanzaId != nil || ctxInfo.MentionedJid != nil || ctxInfo.Expiration != nil {
+		if ctxInfo.StanzaId != nil || ctxInfo.MentionedJid != nil || ctxInfo.Expiration != nil || evt.Content.Raw["com.beeper.linkpreview"] != nil {
 			msg.ExtendedTextMessage = &waProto.ExtendedTextMessage{
 				Text:        &text,
 				ContextInfo: &ctxInfo,
 			}
+			
+			portal.updateExtendedMessageForUrlPreview(&evt.Content, msg.ExtendedTextMessage)
 		} else {
 			msg.Conversation = &text
 		}
