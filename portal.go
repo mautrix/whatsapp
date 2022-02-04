@@ -441,7 +441,7 @@ func formatDuration(d time.Duration) string {
 func (portal *Portal) convertMessage(intent *appservice.IntentAPI, source *User, info *types.MessageInfo, waMsg *waProto.Message) *ConvertedMessage {
 	switch {
 	case waMsg.Conversation != nil || waMsg.ExtendedTextMessage != nil:
-		return portal.convertTextMessage(intent, waMsg)
+		return portal.convertTextMessage(intent, source, waMsg)
 	case waMsg.ImageMessage != nil:
 		return portal.convertMediaMessage(intent, source, info, waMsg.GetImageMessage())
 	case waMsg.StickerMessage != nil:
@@ -1491,7 +1491,7 @@ type ConvertedMessage struct {
 	ExpiresIn uint32
 }
 
-func (portal *Portal) convertTextMessage(intent *appservice.IntentAPI, msg *waProto.Message) *ConvertedMessage {
+func (portal *Portal) convertTextMessage(intent *appservice.IntentAPI, source *User, msg *waProto.Message) *ConvertedMessage {
 	content := &event.MessageEventContent{
 		Body:    msg.GetConversation(),
 		MsgType: event.MsgText,
@@ -1510,11 +1510,7 @@ func (portal *Portal) convertTextMessage(intent *appservice.IntentAPI, msg *waPr
 		}
 		expiresIn = contextInfo.GetExpiration()
 
-		preview := portal.convertUrlPreview(msg.GetExtendedTextMessage())
-
-		if preview != nil {
-			extraAttrs["com.beeper.linkpreview"] = preview
-		}
+		extraAttrs["com.beeper.linkpreview"] = portal.convertURLPreviewToBeeper(intent, source, msg.GetExtendedTextMessage())
 	}
 
 	return &ConvertedMessage{
@@ -2001,10 +1997,10 @@ func (portal *Portal) convertMediaMessage(intent *appservice.IntentAPI, source *
 const thumbnailMaxSize = 72
 const thumbnailMinSize = 24
 
-func createJPEGThumbnail(source []byte) ([]byte, error) {
+func createJPEGThumbnailAndGetSize(source []byte) ([]byte, int, int, error) {
 	src, _, err := image.Decode(bytes.NewReader(source))
 	if err != nil {
-		return nil, fmt.Errorf("failed to decode thumbnail: %w", err)
+		return nil, 0, 0, fmt.Errorf("failed to decode thumbnail: %w", err)
 	}
 	imageBounds := src.Bounds()
 	width, height := imageBounds.Max.X, imageBounds.Max.Y
@@ -2037,9 +2033,14 @@ func createJPEGThumbnail(source []byte) ([]byte, error) {
 	var buf bytes.Buffer
 	err = jpeg.Encode(&buf, img, &jpeg.Options{Quality: jpeg.DefaultQuality})
 	if err != nil {
-		return nil, fmt.Errorf("failed to re-encode thumbnail: %w", err)
+		return nil, width, height, fmt.Errorf("failed to re-encode thumbnail: %w", err)
 	}
-	return buf.Bytes(), nil
+	return buf.Bytes(), width, height, nil
+}
+
+func createJPEGThumbnail(source []byte) ([]byte, error) {
+	data, _, _, err := createJPEGThumbnailAndGetSize(source)
+	return data, err
 }
 
 func (portal *Portal) downloadThumbnail(original []byte, thumbnailURL id.ContentURIString, eventID id.EventID) ([]byte, error) {
@@ -2067,116 +2068,6 @@ func (portal *Portal) convertWebPtoPNG(webpImage []byte) ([]byte, error) {
 	}
 
 	return pngBuffer.Bytes(), nil
-}
-
-func (portal *Portal) convertUrlPreview(source *waProto.ExtendedTextMessage) map[string]interface{} {
-	if source == nil {
-		return nil
-	}
-
-	matchedText := source.GetMatchedText()
-
-	if matchedText == "" {
-		return nil
-	}
-
-	canonicalUrl := source.GetCanonicalUrl()
-
-	url := matchedText
-	if canonicalUrl != "" {
-		url = canonicalUrl
-	}
-
-	result := map[string]interface{}{
-		"og:title":       source.GetTitle(),
-		"og:url":         url,
-		"og:description": source.GetDescription(),
-	}
-
-	if len(source.GetJpegThumbnail()) > 0 {
-		thumbnailMime := http.DetectContentType(source.GetJpegThumbnail())
-		uploadedThumbnail, _ := portal.MainIntent().UploadBytes(source.GetJpegThumbnail(), thumbnailMime)
-		if uploadedThumbnail != nil {
-			cfg, _, _ := image.DecodeConfig(bytes.NewReader(source.GetJpegThumbnail()))
-			result["og:image"] = uploadedThumbnail.ContentURI.CUString()
-			result["og:image:width"] = cfg.Width
-			result["og:image:height"] = cfg.Height
-			result["og:image:type"] = thumbnailMime
-		}
-	}
-
-	return result
-}
-
-func (portal *Portal) updateExtendedMessageForUrlPreview(source *event.Content, dest *waProto.ExtendedTextMessage) {
-	if source == nil {
-		return
-	}
-
-	embeddedLink, ok := source.Raw["com.beeper.linkpreview"].(map[string]interface{})
-
-	if !ok || embeddedLink == nil {
-		return
-	}
-
-	matchedUrl, ok := embeddedLink["matchedUrl"].(string)
-
-	if !ok || matchedUrl == "" {
-		return
-	}
-
-	dest.MatchedText = &matchedUrl
-
-	canonical, ok := embeddedLink["og:url"].(string)
-
-	if ok {
-		dest.CanonicalUrl = &canonical
-	}
-
-	description, ok := embeddedLink["og:description"].(string)
-
-	if ok {
-		dest.Description = &description
-	}
-
-	rawMXC, ok := embeddedLink["og:image"].(string)
-
-	if !ok || rawMXC == "" {
-		return
-	}
-
-	mxc, err := id.ParseContentURI(rawMXC)
-	if err != nil {
-		portal.log.Errorln("Malformed content URL %v: %v", rawMXC, err)
-		return
-	}
-
-	data, err := portal.MainIntent().DownloadBytes(mxc)
-	if err != nil {
-		portal.log.Errorfln("Failed to download media from %s: %v", rawMXC, err)
-		return
-	}
-
-	height, ok := embeddedLink["og:image:height"].(float64)
-
-	if !ok {
-		portal.log.Errorfln("Height missing or invalid %v", embeddedLink["og:image:height"])
-		return
-	}
-
-	width, ok := embeddedLink["og:image:width"].(float64)
-
-	if !ok {
-		portal.log.Errorfln("Width missing or invalid %v", embeddedLink["og:image:width"])
-		return
-	}
-
-	height32 := uint32(height)
-	width32 := uint32(width)
-
-	dest.JpegThumbnail = data
-	dest.ThumbnailHeight = &height32
-	dest.ThumbnailWidth = &width32
 }
 
 func (portal *Portal) preprocessMatrixMedia(sender *User, relaybotFormatted bool, content *event.MessageEventContent, eventID id.EventID, mediaType whatsmeow.MediaType) *MediaUpload {
@@ -2368,7 +2259,7 @@ func (portal *Portal) convertMatrixMessage(sender *User, evt *event.Event) (*waP
 				ContextInfo: &ctxInfo,
 			}
 
-			portal.updateExtendedMessageForUrlPreview(&evt.Content, msg.ExtendedTextMessage)
+			portal.convertURLPreviewToWhatsApp(sender, evt, msg.ExtendedTextMessage)
 		} else {
 			msg.Conversation = &text
 		}
