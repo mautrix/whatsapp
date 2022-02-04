@@ -441,7 +441,7 @@ func formatDuration(d time.Duration) string {
 func (portal *Portal) convertMessage(intent *appservice.IntentAPI, source *User, info *types.MessageInfo, waMsg *waProto.Message) *ConvertedMessage {
 	switch {
 	case waMsg.Conversation != nil || waMsg.ExtendedTextMessage != nil:
-		return portal.convertTextMessage(intent, waMsg)
+		return portal.convertTextMessage(intent, source, waMsg)
 	case waMsg.ImageMessage != nil:
 		return portal.convertMediaMessage(intent, source, info, waMsg.GetImageMessage())
 	case waMsg.StickerMessage != nil:
@@ -1491,13 +1491,15 @@ type ConvertedMessage struct {
 	ExpiresIn uint32
 }
 
-func (portal *Portal) convertTextMessage(intent *appservice.IntentAPI, msg *waProto.Message) *ConvertedMessage {
+func (portal *Portal) convertTextMessage(intent *appservice.IntentAPI, source *User, msg *waProto.Message) *ConvertedMessage {
 	content := &event.MessageEventContent{
 		Body:    msg.GetConversation(),
 		MsgType: event.MsgText,
 	}
 	var replyTo types.MessageID
 	var expiresIn uint32
+	extraAttrs := map[string]interface{}{}
+
 	if msg.GetExtendedTextMessage() != nil {
 		content.Body = msg.GetExtendedTextMessage().GetText()
 
@@ -1507,6 +1509,8 @@ func (portal *Portal) convertTextMessage(intent *appservice.IntentAPI, msg *waPr
 			replyTo = contextInfo.GetStanzaId()
 		}
 		expiresIn = contextInfo.GetExpiration()
+
+		extraAttrs["com.beeper.linkpreview"] = portal.convertURLPreviewToBeeper(intent, source, msg.GetExtendedTextMessage())
 	}
 
 	return &ConvertedMessage{
@@ -1515,6 +1519,7 @@ func (portal *Portal) convertTextMessage(intent *appservice.IntentAPI, msg *waPr
 		Content:   content,
 		ReplyTo:   replyTo,
 		ExpiresIn: expiresIn,
+		Extra:     extraAttrs,
 	}
 }
 
@@ -1992,10 +1997,10 @@ func (portal *Portal) convertMediaMessage(intent *appservice.IntentAPI, source *
 const thumbnailMaxSize = 72
 const thumbnailMinSize = 24
 
-func createJPEGThumbnail(source []byte) ([]byte, error) {
+func createJPEGThumbnailAndGetSize(source []byte) ([]byte, int, int, error) {
 	src, _, err := image.Decode(bytes.NewReader(source))
 	if err != nil {
-		return nil, fmt.Errorf("failed to decode thumbnail: %w", err)
+		return nil, 0, 0, fmt.Errorf("failed to decode thumbnail: %w", err)
 	}
 	imageBounds := src.Bounds()
 	width, height := imageBounds.Max.X, imageBounds.Max.Y
@@ -2028,9 +2033,14 @@ func createJPEGThumbnail(source []byte) ([]byte, error) {
 	var buf bytes.Buffer
 	err = jpeg.Encode(&buf, img, &jpeg.Options{Quality: jpeg.DefaultQuality})
 	if err != nil {
-		return nil, fmt.Errorf("failed to re-encode thumbnail: %w", err)
+		return nil, width, height, fmt.Errorf("failed to re-encode thumbnail: %w", err)
 	}
-	return buf.Bytes(), nil
+	return buf.Bytes(), width, height, nil
+}
+
+func createJPEGThumbnail(source []byte) ([]byte, error) {
+	data, _, _, err := createJPEGThumbnailAndGetSize(source)
+	return data, err
 }
 
 func (portal *Portal) downloadThumbnail(original []byte, thumbnailURL id.ContentURIString, eventID id.EventID) ([]byte, error) {
@@ -2243,11 +2253,13 @@ func (portal *Portal) convertMatrixMessage(sender *User, evt *event.Event) (*waP
 		if content.MsgType == event.MsgEmote && !relaybotFormatted {
 			text = "/me " + text
 		}
-		if ctxInfo.StanzaId != nil || ctxInfo.MentionedJid != nil || ctxInfo.Expiration != nil {
+		if ctxInfo.StanzaId != nil || ctxInfo.MentionedJid != nil || ctxInfo.Expiration != nil || evt.Content.Raw["com.beeper.linkpreview"] != nil {
 			msg.ExtendedTextMessage = &waProto.ExtendedTextMessage{
 				Text:        &text,
 				ContextInfo: &ctxInfo,
 			}
+
+			portal.convertURLPreviewToWhatsApp(sender, evt, msg.ExtendedTextMessage)
 		} else {
 			msg.Conversation = &text
 		}

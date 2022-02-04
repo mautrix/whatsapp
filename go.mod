@@ -9,7 +9,8 @@ require (
 	github.com/mattn/go-sqlite3 v1.14.10
 	github.com/prometheus/client_golang v1.11.0
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
-	go.mau.fi/whatsmeow v0.0.0-20220128124639-e64fb976bf15
+	github.com/tidwall/gjson v1.13.0
+	go.mau.fi/whatsmeow v0.0.0-20220204210537-a425ddb0b16c
 	golang.org/x/image v0.0.0-20211028202545-6944b10bf410
 	google.golang.org/protobuf v1.27.1
 	gopkg.in/yaml.v3 v3.0.0-20210107192922-496545a6307b
@@ -29,7 +30,6 @@ require (
 	github.com/prometheus/common v0.26.0 // indirect
 	github.com/prometheus/procfs v0.6.0 // indirect
 	github.com/russross/blackfriday/v2 v2.1.0 // indirect
-	github.com/tidwall/gjson v1.13.0 // indirect
 	github.com/tidwall/match v1.1.1 // indirect
 	github.com/tidwall/pretty v1.2.0 // indirect
 	github.com/tidwall/sjson v1.2.4 // indirect
