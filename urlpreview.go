@@ -115,12 +115,17 @@ func (portal *Portal) convertURLPreviewToBeeper(intent *appservice.IntentAPI, so
 }
 
 func (portal *Portal) convertURLPreviewToWhatsApp(sender *User, evt *event.Event, dest *waProto.ExtendedTextMessage) {
-	rawPreview := gjson.GetBytes(evt.Content.VeryRaw, `com\.beeper\.linkpreview`)
-	if !rawPreview.Exists() || !rawPreview.IsObject() {
+	rawPreview := gjson.GetBytes(evt.Content.VeryRaw, `com\.beeper\.linkpreviews`)
+	if !rawPreview.Exists() || !rawPreview.IsArray() {
 		return
 	}
-	var preview BeeperLinkPreview
-	if err := json.Unmarshal([]byte(rawPreview.Raw), &preview); err != nil || len(preview.MatchedURL) == 0 {
+	var previews []BeeperLinkPreview
+	if err := json.Unmarshal([]byte(rawPreview.Raw), &previews); err != nil {
+		return
+	}
+	// WhatsApp only supports a single preview.
+	preview := previews[0]
+	if len(preview.MatchedURL) == 0 {
 		return
 	}
 
