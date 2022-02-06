@@ -96,7 +96,7 @@ func Run(log log.Logger, dialectName string, db *sql.DB) error {
 	}
 
 	if version > NumberOfUpgrades {
-		return UnsupportedDatabaseVersion
+		return fmt.Errorf("%w: currently on v%d, latest known: v%d", UnsupportedDatabaseVersion, version, NumberOfUpgrades)
 	}
 
 	log.Infofln("Database currently on v%d, latest: v%d", version, NumberOfUpgrades)
