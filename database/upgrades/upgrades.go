@@ -44,7 +44,7 @@ const NumberOfUpgrades = 36
 
 var upgrades [NumberOfUpgrades]upgrade
 
-var UnsupportedDatabaseVersion = fmt.Errorf("unsupported database version")
+var UnsupportedDatabaseVersion = fmt.Errorf("unsupported database schema version")
 
 func GetVersion(db *sql.DB) (int, error) {
 	_, err := db.Exec("CREATE TABLE IF NOT EXISTS version (version INTEGER)")
