@@ -1,3 +1,13 @@
+# unreleased
+
+* Added tracking for incoming events from the primary device to warn the user
+  if their phone is offline for too long.
+* Fixed some issues with read receipt bridging
+* Fixed `!wa open` not working with new-style group IDs.
+* Fixed panic in disappearing message handling code if a portal is deleted with
+  messages still inside.
+* Fixed disappearing message timer not being stored in post-login history sync.
+
 # v0.2.3 (2022-01-16)
 
 * Added support for bridging incoming broadcast list messages.
