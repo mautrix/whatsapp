@@ -120,7 +120,7 @@ func (portal *Portal) convertURLPreviewToWhatsApp(sender *User, evt *event.Event
 		return
 	}
 	var previews []BeeperLinkPreview
-	if err := json.Unmarshal([]byte(rawPreview.Raw), &previews); err != nil {
+	if err := json.Unmarshal([]byte(rawPreview.Raw), &previews); err != nil || len(previews) == 0 {
 		return
 	}
 	// WhatsApp only supports a single preview.
