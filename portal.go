@@ -1510,7 +1510,7 @@ func (portal *Portal) convertTextMessage(intent *appservice.IntentAPI, source *U
 		}
 		expiresIn = contextInfo.GetExpiration()
 
-		extraAttrs["com.beeper.linkpreview"] = portal.convertURLPreviewToBeeper(intent, source, msg.GetExtendedTextMessage())
+		extraAttrs["com.beeper.linkpreviews"] = portal.convertURLPreviewToBeeper(intent, source, msg.GetExtendedTextMessage())
 	}
 
 	return &ConvertedMessage{
@@ -2253,7 +2253,7 @@ func (portal *Portal) convertMatrixMessage(sender *User, evt *event.Event) (*waP
 		if content.MsgType == event.MsgEmote && !relaybotFormatted {
 			text = "/me " + text
 		}
-		if ctxInfo.StanzaId != nil || ctxInfo.MentionedJid != nil || ctxInfo.Expiration != nil || evt.Content.Raw["com.beeper.linkpreview"] != nil {
+		if ctxInfo.StanzaId != nil || ctxInfo.MentionedJid != nil || ctxInfo.Expiration != nil || evt.Content.Raw["com.beeper.linkpreviews"] != nil {
 			msg.ExtendedTextMessage = &waProto.ExtendedTextMessage{
 				Text:        &text,
 				ContextInfo: &ctxInfo,

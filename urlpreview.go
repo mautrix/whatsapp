@@ -52,12 +52,12 @@ type BeeperLinkPreview struct {
 	ImageType   string `json:"og:image:type,omitempty"`
 }
 
-func (portal *Portal) convertURLPreviewToBeeper(intent *appservice.IntentAPI, source *User, msg *waProto.ExtendedTextMessage) (output *BeeperLinkPreview) {
+func (portal *Portal) convertURLPreviewToBeeper(intent *appservice.IntentAPI, source *User, msg *waProto.ExtendedTextMessage) []*BeeperLinkPreview {
 	if msg.GetMatchedText() == "" {
-		return
+		return []*BeeperLinkPreview{}
 	}
 
-	output = &BeeperLinkPreview{
+	output := &BeeperLinkPreview{
 		MatchedURL:   msg.GetMatchedText(),
 		CanonicalURL: msg.GetCanonicalUrl(),
 		Title:        msg.GetTitle(),
@@ -111,16 +111,21 @@ func (portal *Portal) convertURLPreviewToBeeper(intent *appservice.IntentAPI, so
 		output.Type = "video.other"
 	}
 
-	return
+	return []*BeeperLinkPreview{output}
 }
 
 func (portal *Portal) convertURLPreviewToWhatsApp(sender *User, evt *event.Event, dest *waProto.ExtendedTextMessage) {
-	rawPreview := gjson.GetBytes(evt.Content.VeryRaw, `com\.beeper\.linkpreview`)
-	if !rawPreview.Exists() || !rawPreview.IsObject() {
+	rawPreview := gjson.GetBytes(evt.Content.VeryRaw, `com\.beeper\.linkpreviews`)
+	if !rawPreview.Exists() || !rawPreview.IsArray() {
 		return
 	}
-	var preview BeeperLinkPreview
-	if err := json.Unmarshal([]byte(rawPreview.Raw), &preview); err != nil || len(preview.MatchedURL) == 0 {
+	var previews []BeeperLinkPreview
+	if err := json.Unmarshal([]byte(rawPreview.Raw), &previews); err != nil || len(previews) == 0 {
+		return
+	}
+	// WhatsApp only supports a single preview.
+	preview := previews[0]
+	if len(preview.MatchedURL) == 0 {
 		return
 	}
 
