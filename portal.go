@@ -1510,9 +1510,7 @@ func (portal *Portal) convertTextMessage(intent *appservice.IntentAPI, source *U
 		}
 		expiresIn = contextInfo.GetExpiration()
 
-		extraAttrs["com.beeper.linkpreviews"] = []*BeeperLinkPreview{
-			portal.convertURLPreviewToBeeper(intent, source, msg.GetExtendedTextMessage()),
-		}
+		extraAttrs["com.beeper.linkpreviews"] = portal.convertURLPreviewToBeeper(intent, source, msg.GetExtendedTextMessage())
 	}
 
 	return &ConvertedMessage{

@@ -52,12 +52,12 @@ type BeeperLinkPreview struct {
 	ImageType   string `json:"og:image:type,omitempty"`
 }
 
-func (portal *Portal) convertURLPreviewToBeeper(intent *appservice.IntentAPI, source *User, msg *waProto.ExtendedTextMessage) (output *BeeperLinkPreview) {
+func (portal *Portal) convertURLPreviewToBeeper(intent *appservice.IntentAPI, source *User, msg *waProto.ExtendedTextMessage) []*BeeperLinkPreview {
 	if msg.GetMatchedText() == "" {
-		return
+		return []*BeeperLinkPreview{}
 	}
 
-	output = &BeeperLinkPreview{
+	output := &BeeperLinkPreview{
 		MatchedURL:   msg.GetMatchedText(),
 		CanonicalURL: msg.GetCanonicalUrl(),
 		Title:        msg.GetTitle(),
@@ -111,7 +111,7 @@ func (portal *Portal) convertURLPreviewToBeeper(intent *appservice.IntentAPI, so
 		output.Type = "video.other"
 	}
 
-	return
+	return []*BeeperLinkPreview{output}
 }
 
 func (portal *Portal) convertURLPreviewToWhatsApp(sender *User, evt *event.Event, dest *waProto.ExtendedTextMessage) {
