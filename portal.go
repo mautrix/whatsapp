@@ -1978,8 +1978,17 @@ func (portal *Portal) convertMediaMessage(intent *appservice.IntentAPI, source *
 	audioMessage, ok := msg.(*waProto.AudioMessage)
 	extraContent := map[string]interface{}{}
 	if ok {
+		var waveform []int
+		if audioMessage.Waveform != nil {
+			waveform = make([]int, len(audioMessage.Waveform))
+			for i, part := range audioMessage.Waveform {
+				// TODO is 4 the right multiplier?
+				waveform[i] = int(part) * 4
+			}
+		}
 		extraContent["org.matrix.msc1767.audio"] = map[string]interface{}{
 			"duration": int(audioMessage.GetSeconds()) * 1000,
+			"waveform": waveform,
 		}
 		if audioMessage.GetPtt() {
 			extraContent["org.matrix.msc3245.voice"] = map[string]interface{}{}
@@ -2202,6 +2211,26 @@ func parseGeoURI(uri string) (lat, long float64, err error) {
 	return
 }
 
+func getUnstableWaveform(content map[string]interface{}) []byte {
+	audioInfo, ok := content["org.matrix.msc1767.audio"].(map[string]interface{})
+	if !ok {
+		return nil
+	}
+	waveform, ok := audioInfo["waveform"].([]interface{})
+	if !ok {
+		return nil
+	}
+	output := make([]byte, len(waveform))
+	var val float64
+	for i, part := range waveform {
+		val, ok = part.(float64)
+		if ok {
+			output[i] = byte(val / 4)
+		}
+	}
+	return output
+}
+
 func (portal *Portal) convertMatrixMessage(sender *User, evt *event.Event) (*waProto.Message, *User) {
 	content, ok := evt.Content.Parsed.(*event.MessageEventContent)
 	if !ok {
@@ -2321,8 +2350,8 @@ func (portal *Portal) convertMatrixMessage(sender *User, evt *event.Event) (*waP
 			FileLength:    proto.Uint64(uint64(media.FileLength)),
 		}
 		_, isMSC3245Voice := evt.Content.Raw["org.matrix.msc3245.voice"]
-		_, isMSC2516Voice := evt.Content.Raw["org.matrix.msc2516.voice"]
-		if isMSC3245Voice || isMSC2516Voice {
+		if isMSC3245Voice {
+			msg.AudioMessage.Waveform = getUnstableWaveform(evt.Content.Raw)
 			msg.AudioMessage.Ptt = proto.Bool(true)
 			// hacky hack to add the codecs param that whatsapp seems to require
 			msg.AudioMessage.Mimetype = proto.String(addCodecToMime(content.GetInfo().MimeType, "opus"))
