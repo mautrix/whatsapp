@@ -2171,6 +2171,10 @@ func (portal *Portal) handleMediaRetry(retry *events.MediaRetry, source *User) {
 			Type:    event.RelReplace,
 		},
 	}
+	// Move the extra content into m.new_content too
+	meta.ExtraContent = map[string]interface{}{
+		"m.new_content": shallowCopyMap(meta.ExtraContent),
+	}
 	resp, err := portal.sendMessage(intent, meta.Type, replaceContent, meta.ExtraContent, time.Now().UnixMilli())
 	if err != nil {
 		portal.log.Warnfln("Failed to edit %s after retry notification for %s: %v", msg.MXID, retry.MessageID, err)
