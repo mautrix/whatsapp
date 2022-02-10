@@ -603,6 +603,10 @@ func (user *User) HandleEvent(event interface{}) {
 	case *events.Message:
 		portal := user.GetPortalByMessageSource(v.Info.MessageSource)
 		portal.messages <- PortalMessage{evt: v, source: user}
+	case *events.MediaRetry:
+		user.phoneSeen(v.Timestamp)
+		portal := user.GetPortalByJID(v.ChatID)
+		portal.mediaRetries <- PortalMediaRetry{evt: v, source: user}
 	case *events.CallOffer:
 		user.handleCallStart(v.CallCreator, v.CallID, "", v.Timestamp)
 	case *events.CallOfferNotice:
