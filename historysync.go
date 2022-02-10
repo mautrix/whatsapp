@@ -394,7 +394,7 @@ func (portal *Portal) backfill(source *User, messages []*waProto.WebMessageInfo)
 			}
 			continue
 		}
-		info := portal.parseWebMessageInfo(webMsg)
+		info := portal.parseWebMessageInfo(source, webMsg)
 		if info == nil {
 			continue
 		}
@@ -477,7 +477,7 @@ func (portal *Portal) backfill(source *User, messages []*waProto.WebMessageInfo)
 	}
 }
 
-func (portal *Portal) parseWebMessageInfo(webMsg *waProto.WebMessageInfo) *types.MessageInfo {
+func (portal *Portal) parseWebMessageInfo(source *User, webMsg *waProto.WebMessageInfo) *types.MessageInfo {
 	info := types.MessageInfo{
 		MessageSource: types.MessageSource{
 			Chat:     portal.Key.JID,
@@ -490,7 +490,7 @@ func (portal *Portal) parseWebMessageInfo(webMsg *waProto.WebMessageInfo) *types
 	}
 	var err error
 	if info.IsFromMe {
-		info.Sender = portal.Key.Receiver
+		info.Sender = source.JID.ToNonAD()
 	} else if portal.IsPrivateChat() {
 		info.Sender = portal.Key.JID
 	} else if webMsg.GetParticipant() != "" {
