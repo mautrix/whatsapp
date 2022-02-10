@@ -480,7 +480,7 @@ func (mx *MatrixHandler) HandleReaction(evt *event.Event) {
 		return
 	}
 	content := evt.Content.AsReaction()
-	if content.RelatesTo.Key == "click to retry" {
+	if content.RelatesTo.Key == "click to retry" || strings.HasPrefix(content.RelatesTo.Key, "\u267b") { // ♻️
 		portal.requestMediaRetry(user, content.RelatesTo.EventID)
 	} else if mx.bridge.Config.Bridge.ReactionNotices {
 		_, _ = portal.sendMainIntentMessage(&event.MessageEventContent{
