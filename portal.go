@@ -1898,6 +1898,7 @@ func (portal *Portal) convertMediaMessageContent(intent *appservice.IntentAPI, m
 			Size:     int(msg.GetFileLength()),
 		},
 	}
+	extraContent := map[string]interface{}{}
 
 	messageWithDimensions, ok := msg.(MediaMessageWithDimensions)
 	if ok {
@@ -1925,8 +1926,20 @@ func (portal *Portal) convertMediaMessageContent(intent *appservice.IntentAPI, m
 		content.Info.Duration = int(msgWithDuration.GetSeconds()) * 1000
 	}
 
+	videoMessage, ok := msg.(*waProto.VideoMessage)
+	var isGIF bool
+	if ok && videoMessage.GetGifPlayback() {
+		isGIF = true
+		extraContent["info"] = map[string]interface{}{
+			"fi.mau.loop":          true,
+			"fi.mau.autoplay":      true,
+			"fi.mau.hide_controls": true,
+			"fi.mau.no_audio":      true,
+		}
+	}
+
 	messageWithThumbnail, ok := msg.(MediaMessageWithThumbnail)
-	if ok && messageWithThumbnail.GetJpegThumbnail() != nil && portal.bridge.Config.Bridge.WhatsappThumbnail {
+	if ok && messageWithThumbnail.GetJpegThumbnail() != nil && (portal.bridge.Config.Bridge.WhatsappThumbnail || isGIF) {
 		thumbnailData := messageWithThumbnail.GetJpegThumbnail()
 		thumbnailMime := http.DetectContentType(thumbnailData)
 		thumbnailCfg, _, _ := image.DecodeConfig(bytes.NewReader(thumbnailData))
@@ -1971,7 +1984,6 @@ func (portal *Portal) convertMediaMessageContent(intent *appservice.IntentAPI, m
 	}
 
 	audioMessage, ok := msg.(*waProto.AudioMessage)
-	extraContent := map[string]interface{}{}
 	if ok {
 		var waveform []int
 		if audioMessage.Waveform != nil {
