@@ -19,7 +19,6 @@ package main
 import (
 	"bytes"
 	"context"
-	"encoding/gob"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -692,10 +691,6 @@ func (portal *Portal) isRecentlyHandled(id types.MessageID, error database.Messa
 		}
 	}
 	return false
-}
-
-func init() {
-	gob.Register(&waProto.Message{})
 }
 
 func (portal *Portal) markHandled(msg *database.Message, info *types.MessageInfo, mxid id.EventID, isSent, recent bool, error database.MessageErrorType) *database.Message {
