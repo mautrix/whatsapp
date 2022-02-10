@@ -2,6 +2,7 @@
 
 * Added tracking for incoming events from the primary device to warn the user
   if their phone is offline for too long.
+* (Re-)Added support for setting group avatar from Matrix.
 * Fixed some issues with read receipt bridging
 * Fixed `!wa open` not working with new-style group IDs.
 * Fixed panic in disappearing message handling code if a portal is deleted with

@@ -202,6 +202,7 @@ type Portal struct {
 	roomCreateLock sync.Mutex
 	encryptLock    sync.Mutex
 	backfillLock   sync.Mutex
+	avatarLock     sync.Mutex
 
 	recentlyHandled      [recentlyHandledLength]recentlyHandledWrapper
 	recentlyHandledLock  sync.Mutex
@@ -821,6 +822,8 @@ func (portal *Portal) SyncParticipants(source *User, metadata *types.GroupInfo) 
 }
 
 func (portal *Portal) UpdateAvatar(user *User, setBy types.JID, updateInfo bool) bool {
+	portal.avatarLock.Lock()
+	defer portal.avatarLock.Unlock()
 	avatar, err := user.Client.GetProfilePictureInfo(portal.Key.JID, false)
 	if err != nil {
 		if !errors.Is(err, whatsmeow.ErrProfilePictureUnauthorized) {
@@ -2717,28 +2720,52 @@ func (portal *Portal) HandleMatrixInvite(sender *User, target *Puppet) {
 }
 
 func (portal *Portal) HandleMatrixMeta(sender *User, evt *event.Event) {
-	var err error
 	switch content := evt.Content.Parsed.(type) {
 	case *event.RoomNameEventContent:
 		if content.Name == portal.Name {
 			return
 		}
 		portal.Name = content.Name
-		err = sender.Client.SetGroupName(portal.Key.JID, content.Name)
+		err := sender.Client.SetGroupName(portal.Key.JID, content.Name)
+		if err != nil {
+			portal.log.Errorln("Failed to update group name:", err)
+		}
 	case *event.TopicEventContent:
 		if content.Topic == portal.Topic {
 			return
 		}
 		portal.Topic = content.Topic
-		err = sender.Client.SetGroupTopic(portal.Key.JID, "", "", content.Topic)
+		err := sender.Client.SetGroupTopic(portal.Key.JID, "", "", content.Topic)
+		if err != nil {
+			portal.log.Errorln("Failed to update group description:", err)
+		}
 	case *event.RoomAvatarEventContent:
-		// TODO implement
-		return
-	}
-	if err != nil {
-		portal.log.Errorln("Failed to update metadata:", err)
-	} else {
-		//out := <-resp
-		//portal.log.Debugln("Successfully updated metadata:", out)
+		portal.avatarLock.Lock()
+		defer portal.avatarLock.Unlock()
+		if content.URL == portal.AvatarURL || (content.URL.IsEmpty() && portal.Avatar == "remove") {
+			return
+		}
+		var data []byte
+		var err error
+		if !content.URL.IsEmpty() {
+			data, err = portal.MainIntent().DownloadBytes(content.URL)
+			if err != nil {
+				portal.log.Errorfln("Failed to download updated avatar %s: %v", content.URL, err)
+				return
+			}
+			portal.log.Debugfln("%s set the group avatar to %s", sender.MXID, content.URL)
+		} else {
+			portal.log.Debugfln("%s removed the group avatar", sender.MXID)
+		}
+		newID, err := sender.Client.SetGroupPhoto(portal.Key.JID, data)
+		if err != nil {
+			portal.log.Errorfln("Failed to update group avatar: %v", err)
+			return
+		}
+		portal.log.Debugfln("Successfully updated group avatar to %s", newID)
+		portal.Avatar = newID
+		portal.AvatarURL = content.URL
+		portal.UpdateBridgeInfo()
+		portal.Update()
 	}
 }

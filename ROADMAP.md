@@ -15,9 +15,9 @@
     * [x] Invite
     * [x] Leave
     * [x] Kick
-  * [ ] Room metadata changes
+  * [x] Room metadata changes
     * [x] Name
-    * [ ] Avatar
+    * [x] Avatar
     * [x] Topic
   * [ ] Initial room metadata
 * WhatsApp → Matrix
