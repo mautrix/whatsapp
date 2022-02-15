@@ -74,7 +74,8 @@ func (portal *Portal) convertURLPreviewToBeeper(intent *appservice.IntentAPI, so
 		if err != nil {
 			portal.log.Warnfln("Failed to download thumbnail for link preview: %v", err)
 		}
-	} else if msg.JpegThumbnail != nil {
+	}
+	if thumbnailData == nil && msg.JpegThumbnail != nil {
 		thumbnailData = msg.JpegThumbnail
 	}
 	if thumbnailData != nil {
