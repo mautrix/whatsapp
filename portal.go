@@ -2492,14 +2492,14 @@ func (portal *Portal) convertMatrixMessage(sender *User, evt *event.Event) (*waP
 		if content.MsgType == event.MsgEmote && !relaybotFormatted {
 			text = "/me " + text
 		}
-		if ctxInfo.StanzaId != nil || ctxInfo.MentionedJid != nil || ctxInfo.Expiration != nil || evt.Content.Raw["com.beeper.linkpreviews"] != nil {
-			msg.ExtendedTextMessage = &waProto.ExtendedTextMessage{
-				Text:        &text,
-				ContextInfo: &ctxInfo,
-			}
-
-			portal.convertURLPreviewToWhatsApp(sender, evt, msg.ExtendedTextMessage)
-		} else {
+		msg.ExtendedTextMessage = &waProto.ExtendedTextMessage{
+			Text:        &text,
+			ContextInfo: &ctxInfo,
+		}
+		hasPreview := portal.convertURLPreviewToWhatsApp(sender, evt, msg.ExtendedTextMessage)
+		if ctxInfo.StanzaId == nil && ctxInfo.MentionedJid == nil && ctxInfo.Expiration == nil && !hasPreview {
+			// No need for extended message
+			msg.ExtendedTextMessage = nil
 			msg.Conversation = &text
 		}
 	case event.MsgImage:
