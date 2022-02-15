@@ -1517,7 +1517,7 @@ func (portal *Portal) convertTextMessage(intent *appservice.IntentAPI, source *U
 	}
 
 	contextInfo := msg.GetExtendedTextMessage().GetContextInfo()
-	portal.bridge.Formatter.ParseWhatsApp(content, contextInfo.GetMentionedJid())
+	portal.bridge.Formatter.ParseWhatsApp(portal.MXID, content, contextInfo.GetMentionedJid())
 	replyTo := contextInfo.GetStanzaId()
 	expiresIn := contextInfo.GetExpiration()
 	extraAttrs := map[string]interface{}{}
@@ -2002,7 +2002,7 @@ func (portal *Portal) convertMediaMessageContent(intent *appservice.IntentAPI, m
 			MsgType: event.MsgNotice,
 		}
 
-		portal.bridge.Formatter.ParseWhatsApp(captionContent, msg.GetContextInfo().GetMentionedJid())
+		portal.bridge.Formatter.ParseWhatsApp(portal.MXID, captionContent, msg.GetContextInfo().GetMentionedJid())
 	}
 
 	return &ConvertedMessage{
