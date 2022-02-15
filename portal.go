@@ -1509,22 +1509,16 @@ func (portal *Portal) convertTextMessage(intent *appservice.IntentAPI, source *U
 		Body:    msg.GetConversation(),
 		MsgType: event.MsgText,
 	}
-	var replyTo types.MessageID
-	var expiresIn uint32
-	extraAttrs := map[string]interface{}{}
-
-	if msg.GetExtendedTextMessage() != nil {
+	if len(msg.GetExtendedTextMessage().GetText()) > 0 {
 		content.Body = msg.GetExtendedTextMessage().GetText()
-
-		contextInfo := msg.GetExtendedTextMessage().GetContextInfo()
-		if contextInfo != nil {
-			portal.bridge.Formatter.ParseWhatsApp(content, contextInfo.GetMentionedJid())
-			replyTo = contextInfo.GetStanzaId()
-		}
-		expiresIn = contextInfo.GetExpiration()
-
-		extraAttrs["com.beeper.linkpreviews"] = portal.convertURLPreviewToBeeper(intent, source, msg.GetExtendedTextMessage())
 	}
+
+	contextInfo := msg.GetExtendedTextMessage().GetContextInfo()
+	portal.bridge.Formatter.ParseWhatsApp(content, contextInfo.GetMentionedJid())
+	replyTo := contextInfo.GetStanzaId()
+	expiresIn := contextInfo.GetExpiration()
+	extraAttrs := map[string]interface{}{}
+	extraAttrs["com.beeper.linkpreviews"] = portal.convertURLPreviewToBeeper(intent, source, msg.GetExtendedTextMessage())
 
 	return &ConvertedMessage{
 		Intent:    intent,
