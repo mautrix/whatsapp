@@ -150,7 +150,7 @@ func (msg *Message) IsFakeMXID() bool {
 }
 
 func (msg *Message) IsFakeJID() bool {
-	return strings.HasPrefix(msg.JID, "FAKE::")
+	return strings.HasPrefix(msg.JID, "FAKE::") || msg.JID == msg.MXID
 }
 
 func (msg *Message) Scan(row Scannable) *Message {
