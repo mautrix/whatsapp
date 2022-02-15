@@ -1476,10 +1476,13 @@ func (portal *Portal) sendMessage(intent *appservice.IntentAPI, eventType event.
 		return nil, err
 	}
 
-	if intent.IsCustomPuppet {
-		wrappedContent.Raw = map[string]interface{}{doublePuppetKey: doublePuppetValue}
-	} else {
-		wrappedContent.Raw = nil
+	if eventType == event.EventEncrypted {
+		// Clear other custom keys if the event was encrypted, but keep the double puppet identifier
+		if intent.IsCustomPuppet {
+			wrappedContent.Raw = map[string]interface{}{doublePuppetKey: doublePuppetValue}
+		} else {
+			wrappedContent.Raw = nil
+		}
 	}
 
 	_, _ = intent.UserTyping(portal.MXID, false, 0)
