@@ -455,6 +455,12 @@ func (prov *ProvisioningAPI) Login(w http.ResponseWriter, r *http.Request) {
 					Error:   "Got unexpected event while waiting for QRs, perhaps you're already logged in?",
 					ErrCode: "unexpected event",
 				})
+			case whatsmeow.QRChannelClientOutdated.Event:
+				user.log.Debugln("Login via provisioning API failed due to outdated client")
+				_ = c.WriteJSON(Error{
+					Error:   "Got client outdated error while waiting for QRs. The bridge must be updated to continue.",
+					ErrCode: "bridge outdated",
+				})
 			case whatsmeow.QRChannelScannedWithoutMultidevice.Event:
 				_ = c.WriteJSON(Error{
 					Error:   "Please enable the WhatsApp multidevice beta and scan the QR code again.",

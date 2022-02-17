@@ -591,6 +591,10 @@ func (user *User) HandleEvent(event interface{}) {
 	case *events.ConnectFailure:
 		go user.sendBridgeState(BridgeState{StateEvent: StateUnknownError, Message: fmt.Sprintf("Unknown connection failure: %s", v.Reason)})
 		user.bridge.Metrics.TrackConnectionState(user.JID, false)
+	case *events.ClientOutdated:
+		user.log.Errorfln("Got a client outdated connect failure. The bridge is likely out of date, please update immediately.")
+		go user.sendBridgeState(BridgeState{StateEvent: StateUnknownError, Message: "Connect failure: 405 client outdated"})
+		user.bridge.Metrics.TrackConnectionState(user.JID, false)
 	case *events.TemporaryBan:
 		go user.sendBridgeState(BridgeState{StateEvent: StateBadCredentials, Message: v.String()})
 		user.bridge.Metrics.TrackConnectionState(user.JID, false)

@@ -522,6 +522,8 @@ func (handler *CommandHandler) CommandLogin(ce *CommandEvent) {
 			ce.Reply("QR code timed out. Please restart the login.")
 		case whatsmeow.QRChannelErrUnexpectedEvent.Event:
 			ce.Reply("Failed to log in: unexpected connection event from server")
+		case whatsmeow.QRChannelClientOutdated.Event:
+			ce.Reply("Failed to log in: outdated client. The bridge must be updated to continue.")
 		case whatsmeow.QRChannelScannedWithoutMultidevice.Event:
 			ce.Reply("Please enable the WhatsApp multidevice beta and scan the QR code again.")
 		case "error":
