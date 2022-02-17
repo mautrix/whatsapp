@@ -28,6 +28,8 @@ import (
 	"maunium.net/go/mautrix/appservice"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
+
+	"maunium.net/go/mautrix-whatsapp/database"
 )
 
 // region User history sync handling
@@ -42,6 +44,11 @@ type portalToBackfill struct {
 	portal *Portal
 	conv   *waProto.Conversation
 	msgs   []*waProto.WebMessageInfo
+}
+
+type wrappedInfo struct {
+	*types.MessageInfo
+	Error database.MessageErrorType
 }
 
 type conversationList []*waProto.Conversation
@@ -310,7 +317,7 @@ func (portal *Portal) backfill(source *User, messages []*waProto.WebMessageInfo)
 	defer portal.backfillLock.Unlock()
 
 	var historyBatch, newBatch mautrix.ReqBatchSend
-	var historyBatchInfos, newBatchInfos []*types.MessageInfo
+	var historyBatchInfos, newBatchInfos []*wrappedInfo
 
 	firstMsgTimestamp := time.Unix(int64(messages[len(messages)-1].GetMessageTimestamp()), 0)
 
@@ -387,12 +394,12 @@ func (portal *Portal) backfill(source *User, messages []*waProto.WebMessageInfo)
 			}
 			continue
 		}
-		info := portal.parseWebMessageInfo(webMsg)
+		info := portal.parseWebMessageInfo(source, webMsg)
 		if info == nil {
 			continue
 		}
 		var batch *mautrix.ReqBatchSend
-		var infos *[]*types.MessageInfo
+		var infos *[]*wrappedInfo
 		if !historyMaxTs.IsZero() && info.Timestamp.Before(historyMaxTs) {
 			batch, infos = &historyBatch, &historyBatchInfos
 		} else if !newMinTs.IsZero() && info.Timestamp.After(newMinTs) {
@@ -470,7 +477,7 @@ func (portal *Portal) backfill(source *User, messages []*waProto.WebMessageInfo)
 	}
 }
 
-func (portal *Portal) parseWebMessageInfo(webMsg *waProto.WebMessageInfo) *types.MessageInfo {
+func (portal *Portal) parseWebMessageInfo(source *User, webMsg *waProto.WebMessageInfo) *types.MessageInfo {
 	info := types.MessageInfo{
 		MessageSource: types.MessageSource{
 			Chat:     portal.Key.JID,
@@ -483,7 +490,7 @@ func (portal *Portal) parseWebMessageInfo(webMsg *waProto.WebMessageInfo) *types
 	}
 	var err error
 	if info.IsFromMe {
-		info.Sender = portal.Key.Receiver
+		info.Sender = source.JID.ToNonAD()
 	} else if portal.IsPrivateChat() {
 		info.Sender = portal.Key.JID
 	} else if webMsg.GetParticipant() != "" {
@@ -498,7 +505,7 @@ func (portal *Portal) parseWebMessageInfo(webMsg *waProto.WebMessageInfo) *types
 	return &info
 }
 
-func (portal *Portal) appendBatchEvents(converted *ConvertedMessage, info *types.MessageInfo, eventsArray *[]*event.Event, infoArray *[]*types.MessageInfo) error {
+func (portal *Portal) appendBatchEvents(converted *ConvertedMessage, info *types.MessageInfo, eventsArray *[]*event.Event, infoArray *[]*wrappedInfo) error {
 	mainEvt, err := portal.wrapBatchEvent(info, converted.Intent, converted.Type, converted.Content, converted.Extra)
 	if err != nil {
 		return err
@@ -509,10 +516,10 @@ func (portal *Portal) appendBatchEvents(converted *ConvertedMessage, info *types
 			return err
 		}
 		*eventsArray = append(*eventsArray, mainEvt, captionEvt)
-		*infoArray = append(*infoArray, nil, info)
+		*infoArray = append(*infoArray, &wrappedInfo{info, converted.Error}, nil)
 	} else {
 		*eventsArray = append(*eventsArray, mainEvt)
-		*infoArray = append(*infoArray, info)
+		*infoArray = append(*infoArray, &wrappedInfo{info, converted.Error})
 	}
 	if converted.MultiEvent != nil {
 		for _, subEvtContent := range converted.MultiEvent {
@@ -553,10 +560,10 @@ func (portal *Portal) wrapBatchEvent(info *types.MessageInfo, intent *appservice
 	}, nil
 }
 
-func (portal *Portal) finishBatch(eventIDs []id.EventID, infos []*types.MessageInfo) {
+func (portal *Portal) finishBatch(eventIDs []id.EventID, infos []*wrappedInfo) {
 	if len(eventIDs) != len(infos) {
 		portal.log.Errorfln("Length of event IDs (%d) and message infos (%d) doesn't match! Using slow path for mapping event IDs", len(eventIDs), len(infos))
-		infoMap := make(map[types.MessageID]*types.MessageInfo, len(infos))
+		infoMap := make(map[types.MessageID]*wrappedInfo, len(infos))
 		for _, info := range infos {
 			infoMap[info.ID] = info
 		}
@@ -568,13 +575,13 @@ func (portal *Portal) finishBatch(eventIDs []id.EventID, infos []*types.MessageI
 			} else if info, ok := infoMap[types.MessageID(msgID)]; !ok {
 				portal.log.Warnfln("Didn't find info of message %s (event %s) to register it in the database", msgID, eventID)
 			} else {
-				portal.markHandled(nil, info, eventID, true, false, false)
+				portal.markHandled(nil, info.MessageInfo, eventID, true, false, info.Error)
 			}
 		}
 	} else {
 		for i := 0; i < len(infos); i++ {
 			if infos[i] != nil {
-				portal.markHandled(nil, infos[i], eventIDs[i], true, false, false)
+				portal.markHandled(nil, infos[i].MessageInfo, eventIDs[i], true, false, infos[i].Error)
 			}
 		}
 		portal.log.Infofln("Successfully sent %d events", len(eventIDs))

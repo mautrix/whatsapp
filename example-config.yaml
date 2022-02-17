@@ -194,6 +194,10 @@ bridge:
     # Should the bridge never send alerts to the bridge management room?
     # These are mostly things like the user being logged out.
     disable_bridge_alerts: false
+    # Should the bridge detect URLs in outgoing messages, ask the homeserver to generate a preview,
+    # and send it to WhatsApp? URL previews can always be sent using the `com.beeper.linkpreviews`
+    # key in the event content even if this is disabled.
+    url_previews: false
 
     # The prefix for commands. Only required in non-management rooms.
     command_prefix: "!wa"
