@@ -3,7 +3,7 @@ package upgrades
 import "database/sql"
 
 func init() {
-	upgrades[36] = upgrade{"Store message error type as string", func(tx *sql.Tx, ctx context) error {
+	upgrades[37] = upgrade{"Store message error type as string", func(tx *sql.Tx, ctx context) error {
 		if ctx.dialect == Postgres {
 			_, err := tx.Exec("CREATE TYPE error_type AS ENUM ('', 'decryption_failed', 'media_not_found')")
 			if err != nil {

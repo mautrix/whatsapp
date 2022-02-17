@@ -3,7 +3,7 @@ package upgrades
 import "database/sql"
 
 func init() {
-	upgrades[34] = upgrade{"Add support for disappearing messages", func(tx *sql.Tx, ctx context) error {
+	upgrades[35] = upgrade{"Add support for disappearing messages", func(tx *sql.Tx, ctx context) error {
 		_, err := tx.Exec(`ALTER TABLE portal ADD COLUMN expiration_time BIGINT NOT NULL DEFAULT 0 CHECK (expiration_time >= 0 AND expiration_time < 4294967296)`)
 		if err != nil {
 			return err
