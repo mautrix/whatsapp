@@ -103,6 +103,8 @@ func (helper *UpgradeHelper) doUpgrade() {
 	helper.Copy(Str, "bridge", "command_prefix")
 	helper.Copy(Bool, "bridge", "federate_rooms")
 	helper.Copy(Bool, "bridge", "disappearing_messages_in_groups")
+	helper.Copy(Bool, "bridge", "disable_bridge_alerts")
+	helper.Copy(Bool, "bridge", "url_previews")
 	helper.Copy(Str, "bridge", "management_room_text", "welcome")
 	helper.Copy(Str, "bridge", "management_room_text", "welcome_connected")
 	helper.Copy(Str, "bridge", "management_room_text", "welcome_unconnected")

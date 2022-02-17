@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"net/http"
 	"strconv"
 	"strings"
@@ -38,6 +39,7 @@ import (
 
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/appstate"
+	waProto "go.mau.fi/whatsmeow/binary/proto"
 	"go.mau.fi/whatsmeow/store"
 	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
@@ -66,7 +68,8 @@ type User struct {
 	prevBridgeStatus *BridgeState
 	lastPresence     types.Presence
 
-	spaceMembershipChecked bool
+	spaceMembershipChecked  bool
+	lastPhoneOfflineWarning time.Time
 }
 
 func (bridge *Bridge) getUserByMXID(userID id.UserID, onlyIfExists bool) *User {
@@ -119,7 +122,7 @@ func (user *User) removeFromJIDMap(state BridgeStateEvent) {
 	}
 	user.bridge.usersLock.Unlock()
 	user.bridge.Metrics.TrackLoginState(user.JID, false)
-	user.sendBridgeState(BridgeState{StateEvent: state, Error: WANotLoggedIn})
+	user.sendBridgeState(BridgeState{StateEvent: state})
 }
 
 func (bridge *Bridge) GetAllUsers() []*User {
@@ -200,6 +203,7 @@ func (user *User) ensureInvited(intent *appservice.IntentAPI, roomID id.RoomID, 
 	if err != nil && errors.As(err, &httpErr) && httpErr.RespError != nil && strings.Contains(httpErr.RespError.Err, "is already in the room") {
 		user.bridge.StateStore.SetMembership(roomID, user.MXID, event.MembershipJoin)
 		ok = true
+		return
 	} else if err != nil {
 		user.log.Warnfln("Failed to invite user to %s: %v", roomID, err)
 	} else {
@@ -207,7 +211,7 @@ func (user *User) ensureInvited(intent *appservice.IntentAPI, roomID id.RoomID, 
 	}
 
 	if customPuppet != nil && customPuppet.CustomIntent() != nil {
-		err = customPuppet.CustomIntent().EnsureJoined(roomID)
+		err = customPuppet.CustomIntent().EnsureJoined(roomID, appservice.EnsureJoinedParams{IgnoreCache: true})
 		if err != nil {
 			user.log.Warnfln("Failed to auto-join %s: %v", roomID, err)
 			ok = false
@@ -315,6 +319,19 @@ func (w *waLogger) Sub(module string) waLog.Logger         { return &waLogger{l:
 
 var ErrAlreadyLoggedIn = errors.New("already logged in")
 
+func (user *User) createClient(sess *store.Device) {
+	user.Client = whatsmeow.NewClient(sess, &waLogger{user.log.Sub("Client")})
+	user.Client.AddEventHandler(user.HandleEvent)
+	user.Client.GetMessageForRetry = func(to types.JID, id types.MessageID) *waProto.Message {
+		user.bridge.Metrics.TrackRetryReceipt(0, false)
+		return nil
+	}
+	user.Client.PreRetryCallback = func(receipt *events.Receipt, retryCount int, msg *waProto.Message) bool {
+		user.bridge.Metrics.TrackRetryReceipt(retryCount, true)
+		return true
+	}
+}
+
 func (user *User) Login(ctx context.Context) (<-chan whatsmeow.QRChannelItem, error) {
 	user.connLock.Lock()
 	defer user.connLock.Unlock()
@@ -325,8 +342,7 @@ func (user *User) Login(ctx context.Context) (<-chan whatsmeow.QRChannelItem, er
 	}
 	newSession := user.bridge.WAContainer.NewDevice()
 	newSession.Log = &waLogger{user.log.Sub("Session")}
-	user.Client = whatsmeow.NewClient(newSession, &waLogger{user.log.Sub("Client")})
-	user.Client.AddEventHandler(user.HandleEvent)
+	user.createClient(newSession)
 	qrChan, err := user.Client.GetQRChannel(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get QR channel: %w", err)
@@ -348,8 +364,7 @@ func (user *User) Connect() bool {
 	}
 	user.log.Debugln("Connecting to WhatsApp")
 	user.sendBridgeState(BridgeState{StateEvent: StateConnecting, Error: WAConnecting})
-	user.Client = whatsmeow.NewClient(user.Session, &waLogger{user.log.Sub("Client")})
-	user.Client.AddEventHandler(user.HandleEvent)
+	user.createClient(user.Session)
 	err := user.Client.Connect()
 	if err != nil {
 		user.log.Warnln("Error connecting to WhatsApp:", err)
@@ -424,15 +439,10 @@ func (user *User) tryAutomaticDoublePuppeting() {
 	user.log.Infoln("Successfully automatically enabled custom puppet")
 }
 
-func (user *User) sendBridgeNotice(formatString string, args ...interface{}) {
-	notice := fmt.Sprintf(formatString, args...)
-	_, err := user.bridge.Bot.SendNotice(user.GetManagementRoom(), notice)
-	if err != nil {
-		user.log.Warnf("Failed to send bridge notice \"%s\": %v", notice, err)
-	}
-}
-
 func (user *User) sendMarkdownBridgeAlert(formatString string, args ...interface{}) {
+	if user.bridge.Config.Bridge.DisableBridgeAlerts {
+		return
+	}
 	notice := fmt.Sprintf(formatString, args...)
 	content := format.RenderMarkdown(notice, true, false)
 	_, err := user.bridge.Bot.SendMessageEvent(user.GetManagementRoom(), event.EventMessage, content)
@@ -464,6 +474,49 @@ func (user *User) handleCallStart(sender types.JID, id, callType string, ts time
 	}
 }
 
+const PhoneDisconnectWarningTime = 12 * 24 * time.Hour // 12 days
+
+func (user *User) PhoneRecentlySeen() bool {
+	return user.PhoneLastSeen.IsZero() || user.PhoneLastSeen.Add(PhoneDisconnectWarningTime).After(time.Now())
+}
+
+// phoneSeen records a timestamp when the user's main device was seen online.
+// The stored timestamp can later be used to warn the user if the main device is offline for too long.
+func (user *User) phoneSeen(ts time.Time) {
+	if user.PhoneLastSeen.Add(1 * time.Hour).After(ts) {
+		// The last seen timestamp isn't going to be perfectly accurate in any case,
+		// so don't spam the database with an update every time there's an event.
+		return
+	} else if !user.PhoneRecentlySeen() && user.GetPrevBridgeState().Error == WAPhoneOffline && user.IsConnected() {
+		user.log.Debugfln("Saw phone after current bridge state said it has been offline, switching state back to connected")
+		go user.sendBridgeState(BridgeState{StateEvent: StateConnected})
+	}
+	user.PhoneLastSeen = ts
+	go user.Update()
+}
+
+func formatDisconnectTime(dur time.Duration) string {
+	days := int(math.Floor(dur.Hours() / 24))
+	hours := int(dur.Hours()) % 24
+	if hours == 0 {
+		return fmt.Sprintf("%d days", days)
+	} else if hours == 1 {
+		return fmt.Sprintf("%d days and 1 hour", days)
+	} else {
+		return fmt.Sprintf("%d days and %d hours", days, hours)
+	}
+}
+
+func (user *User) sendPhoneOfflineWarning() {
+	if user.lastPhoneOfflineWarning.Add(12 * time.Hour).After(time.Now()) {
+		// Don't spam the warning too much
+		return
+	}
+	user.lastPhoneOfflineWarning = time.Now()
+	timeSinceSeen := time.Now().Sub(user.PhoneLastSeen)
+	user.sendMarkdownBridgeAlert("Your phone hasn't been seen in %s. The server will force the bridge to log out if the phone is not active at least every 2 weeks.", formatDisconnectTime(timeSinceSeen))
+}
+
 func (user *User) HandleEvent(event interface{}) {
 	switch v := event.(type) {
 	case *events.LoggedOut:
@@ -483,6 +536,20 @@ func (user *User) HandleEvent(event interface{}) {
 			}()
 		}
 		go user.tryAutomaticDoublePuppeting()
+	case *events.OfflineSyncPreview:
+		user.log.Infofln("Server says it's going to send %d messages and %d receipts that were missed during downtime", v.Messages, v.Receipts)
+		go user.sendBridgeState(BridgeState{
+			StateEvent: StateBackfilling,
+			Message:    fmt.Sprintf("backfilling %d messages and %d receipts", v.Messages, v.Receipts),
+		})
+	case *events.OfflineSyncCompleted:
+		if !user.PhoneRecentlySeen() {
+			user.log.Infofln("Offline sync completed, but phone last seen date is still %s - sending phone offline bridge status", user.PhoneLastSeen)
+			go user.sendBridgeState(BridgeState{StateEvent: StateTransientDisconnect, Error: WAPhoneOffline})
+		} else if user.GetPrevBridgeState().StateEvent == StateBackfilling {
+			user.log.Infoln("Offline sync completed")
+			go user.sendBridgeState(BridgeState{StateEvent: StateConnected})
+		}
 	case *events.AppStateSyncComplete:
 		if len(user.Client.Store.PushName) > 0 && v.Name == appstate.WAPatchCriticalBlock {
 			err := user.Client.SendPresence(user.lastPresence)
@@ -505,6 +572,7 @@ func (user *User) HandleEvent(event interface{}) {
 			user.log.Warnln("Failed to send presence after push name update:", err)
 		}
 	case *events.PairSuccess:
+		user.PhoneLastSeen = time.Now()
 		user.Session = user.Client.Store
 		user.JID = v.ID
 		user.addToJIDMap()
@@ -526,12 +594,19 @@ func (user *User) HandleEvent(event interface{}) {
 	case *events.Picture:
 		go user.handlePictureUpdate(v)
 	case *events.Receipt:
+		if v.IsFromMe && v.Sender.Device == 0 {
+			user.phoneSeen(v.Timestamp)
+		}
 		go user.handleReceipt(v)
 	case *events.ChatPresence:
 		go user.handleChatPresence(v)
 	case *events.Message:
 		portal := user.GetPortalByMessageSource(v.Info.MessageSource)
 		portal.messages <- PortalMessage{evt: v, source: user}
+	case *events.MediaRetry:
+		user.phoneSeen(v.Timestamp)
+		portal := user.GetPortalByJID(v.ChatID)
+		portal.mediaRetries <- PortalMediaRetry{evt: v, source: user}
 	case *events.CallOffer:
 		user.handleCallStart(v.CallCreator, v.CallID, "", v.Timestamp)
 	case *events.CallOfferNotice:
@@ -658,6 +733,12 @@ type CustomReadReceipt struct {
 	DoublePuppetSource string `json:"fi.mau.double_puppet_source,omitempty"`
 }
 
+type CustomReadMarkers struct {
+	mautrix.ReqSetReadMarkers
+	ReadExtra      CustomReadReceipt `json:"com.beeper.read.extra"`
+	FullyReadExtra CustomReadReceipt `json:"com.beeper.fully_read.extra"`
+}
+
 func (user *User) syncChatDoublePuppetDetails(portal *Portal, justCreated bool) {
 	doublePuppet := portal.bridge.GetPuppetByCustomMXID(user.MXID)
 	if doublePuppet == nil {
@@ -745,6 +826,7 @@ func (user *User) UpdateDirectChats(chats map[id.UserID][]id.RoomID) {
 }
 
 func (user *User) handleLoggedOut(onConnect bool) {
+	user.sendBridgeState(BridgeState{StateEvent: StateBadCredentials, Error: WALoggedOut})
 	user.JID = types.EmptyJID
 	user.Update()
 	if onConnect {
@@ -752,7 +834,6 @@ func (user *User) handleLoggedOut(onConnect bool) {
 	} else {
 		user.sendMarkdownBridgeAlert("You were logged out from another device. Please link the bridge to your phone again.")
 	}
-	user.sendBridgeState(BridgeState{StateEvent: StateBadCredentials, Error: WANotLoggedIn})
 }
 
 func (user *User) GetPortalByMessageSource(ms types.MessageSource) *Portal {
@@ -844,43 +925,21 @@ func (user *User) handleReceipt(receipt *events.Receipt) {
 	if portal == nil || len(portal.MXID) == 0 {
 		return
 	}
-	// The order of the message ID array depends on the sender's platform, so we just have to find
-	// the last message based on timestamp. Also, timestamps only have second precision, so if
-	// there are many messages at the same second just mark them all as read, because we don't
-	// know which one is last
-	markAsRead := make([]*database.Message, 0, 1)
-	var bestTimestamp time.Time
-	for _, msgID := range receipt.MessageIDs {
-		msg := user.bridge.DB.Message.GetByJID(portal.Key, msgID)
-		if msg == nil || msg.IsFakeMXID() {
-			continue
-		}
-		if msg.Timestamp.After(bestTimestamp) {
-			bestTimestamp = msg.Timestamp
-			markAsRead = append(markAsRead[:0], msg)
-		} else if msg != nil && msg.Timestamp.Equal(bestTimestamp) {
-			markAsRead = append(markAsRead, msg)
-		}
+	portal.receipts <- PortalReceipt{evt: receipt, source: user}
+}
+
+func makeReadMarkerContent(eventID id.EventID, doublePuppet bool) CustomReadMarkers {
+	var extra CustomReadReceipt
+	if doublePuppet {
+		extra.DoublePuppetSource = doublePuppetValue
 	}
-	if receipt.Sender.User == user.JID.User {
-		if len(markAsRead) > 0 {
-			user.SetLastReadTS(portal.Key, markAsRead[0].Timestamp)
-		} else {
-			user.SetLastReadTS(portal.Key, receipt.Timestamp)
-		}
-	}
-	intent := user.bridge.GetPuppetByJID(receipt.Sender).IntentFor(portal)
-	var rrContent CustomReadReceipt
-	if intent.IsCustomPuppet {
-		rrContent.DoublePuppetSource = doublePuppetValue
-	}
-	for _, msg := range markAsRead {
-		err := intent.MarkReadWithContent(portal.MXID, msg.MXID, &rrContent)
-		if err != nil {
-			user.log.Warnfln("Failed to mark message %s as read by %s: %v", msg.MXID, intent.UserID, err)
-		} else {
-			user.log.Debugfln("Marked %s as read by %s", msg.MXID, intent.UserID)
-		}
+	return CustomReadMarkers{
+		ReqSetReadMarkers: mautrix.ReqSetReadMarkers{
+			Read:      eventID,
+			FullyRead: eventID,
+		},
+		ReadExtra:      extra,
+		FullyReadExtra: extra,
 	}
 }
 
@@ -894,9 +953,11 @@ func (user *User) markSelfReadFull(portal *Portal) {
 		return
 	}
 	user.SetLastReadTS(portal.Key, lastMessage.Timestamp)
-	err := puppet.CustomIntent().MarkReadWithContent(portal.MXID, lastMessage.MXID, &CustomReadReceipt{DoublePuppetSource: doublePuppetValue})
+	err := puppet.CustomIntent().SetReadMarkers(portal.MXID, makeReadMarkerContent(lastMessage.MXID, true))
 	if err != nil {
 		user.log.Warnfln("Failed to mark %s (last message) in %s as read: %v", lastMessage.MXID, portal.MXID, err)
+	} else {
+		user.log.Debugfln("Marked %s (last message) in %s as read", lastMessage.MXID, portal.MXID)
 	}
 }
 

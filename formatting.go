@@ -93,18 +93,22 @@ func NewFormatter(bridge *Bridge) *Formatter {
 	return formatter
 }
 
-func (formatter *Formatter) getMatrixInfoByJID(jid types.JID) (mxid id.UserID, displayname string) {
-	if user := formatter.bridge.GetUserByJID(jid); user != nil {
-		mxid = user.MXID
-		displayname = string(user.MXID)
-	} else if puppet := formatter.bridge.GetPuppetByJID(jid); puppet != nil {
+func (formatter *Formatter) getMatrixInfoByJID(roomID id.RoomID, jid types.JID) (mxid id.UserID, displayname string) {
+	if puppet := formatter.bridge.GetPuppetByJID(jid); puppet != nil {
 		mxid = puppet.MXID
 		displayname = puppet.Displayname
+	}
+	if user := formatter.bridge.GetUserByJID(jid); user != nil {
+		mxid = user.MXID
+		member := formatter.bridge.StateStore.GetMember(roomID, user.MXID)
+		if len(member.Displayname) > 0 {
+			displayname = member.Displayname
+		}
 	}
 	return
 }
 
-func (formatter *Formatter) ParseWhatsApp(content *event.MessageEventContent, mentionedJIDs []string) {
+func (formatter *Formatter) ParseWhatsApp(roomID id.RoomID, content *event.MessageEventContent, mentionedJIDs []string) {
 	output := html.EscapeString(content.Body)
 	for regex, replacement := range formatter.waReplString {
 		output = regex.ReplaceAllString(output, replacement)
@@ -119,7 +123,7 @@ func (formatter *Formatter) ParseWhatsApp(content *event.MessageEventContent, me
 		} else if jid.Server == types.LegacyUserServer {
 			jid.Server = types.DefaultUserServer
 		}
-		mxid, displayname := formatter.getMatrixInfoByJID(jid)
+		mxid, displayname := formatter.getMatrixInfoByJID(roomID, jid)
 		number := "@" + jid.User
 		output = strings.ReplaceAll(output, number, fmt.Sprintf(`<a href="https://matrix.to/#/%s">%s</a>`, mxid, displayname))
 		content.Body = strings.ReplaceAll(content.Body, number, displayname)
