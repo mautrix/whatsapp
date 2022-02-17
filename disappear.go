@@ -50,13 +50,14 @@ func (portal *Portal) ScheduleDisappearing() {
 	}
 }
 
-func (bridge *Bridge) DisappearingLoop() {
-	for {
-		for _, msg := range bridge.DB.DisappearingMessage.GetUpcomingScheduled(1 * time.Hour) {
-			portal := bridge.GetPortalByMXID(msg.RoomID)
+func (bridge *Bridge) SleepAndDeleteUpcoming() {
+	for _, msg := range bridge.DB.DisappearingMessage.GetUpcomingScheduled(1 * time.Hour) {
+		portal := bridge.GetPortalByMXID(msg.RoomID)
+		if portal == nil {
+			msg.Delete()
+		} else {
 			go portal.sleepAndDelete(msg)
 		}
-		time.Sleep(1 * time.Hour)
 	}
 }
 

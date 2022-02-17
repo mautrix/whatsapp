@@ -47,17 +47,19 @@ const (
 type BridgeErrorCode string
 
 const (
-	WANotLoggedIn   BridgeErrorCode = "wa-logged-out"
+	WALoggedOut     BridgeErrorCode = "wa-logged-out"
 	WANotConnected  BridgeErrorCode = "wa-not-connected"
 	WAConnecting    BridgeErrorCode = "wa-connecting"
 	WAServerTimeout BridgeErrorCode = "wa-server-timeout"
+	WAPhoneOffline  BridgeErrorCode = "wa-phone-offline"
 )
 
 var bridgeHumanErrors = map[BridgeErrorCode]string{
-	WANotLoggedIn:   "You're not logged into WhatsApp",
+	WALoggedOut:     "You were logged out from another device. Relogin to continue using the bridge.",
 	WANotConnected:  "You're not connected to WhatsApp",
 	WAConnecting:    "Reconnecting to WhatsApp...",
 	WAServerTimeout: "The WhatsApp web servers are not responding. The bridge will try to reconnect.",
+	WAPhoneOffline:  "Your phone hasn't been seen in over 12 days. The bridge is currently connected, but will get disconnected if you don't open the app soon.",
 }
 
 type BridgeState struct {
@@ -170,6 +172,13 @@ func (user *User) sendBridgeState(state BridgeState) {
 		user.prevBridgeStatus = &state
 		user.log.Debugfln("Sent new bridge state %+v", state)
 	}
+}
+
+func (user *User) GetPrevBridgeState() BridgeState {
+	if user.prevBridgeStatus != nil {
+		return *user.prevBridgeStatus
+	}
+	return BridgeState{}
 }
 
 func (prov *ProvisioningAPI) BridgeStatePing(w http.ResponseWriter, r *http.Request) {

@@ -476,7 +476,13 @@ func (mx *MatrixHandler) HandleReaction(evt *event.Event) {
 	}
 
 	portal := mx.bridge.GetPortalByMXID(evt.RoomID)
-	if portal != nil && (user.Whitelisted || portal.HasRelaybot()) && mx.bridge.Config.Bridge.ReactionNotices {
+	if portal == nil || (!user.Whitelisted && !portal.HasRelaybot()) {
+		return
+	}
+	content := evt.Content.AsReaction()
+	if content.RelatesTo.Key == "click to retry" || strings.HasPrefix(content.RelatesTo.Key, "\u267b") { // ♻️
+		portal.requestMediaRetry(user, content.RelatesTo.EventID)
+	} else if mx.bridge.Config.Bridge.ReactionNotices {
 		_, _ = portal.sendMainIntentMessage(&event.MessageEventContent{
 			MsgType: event.MsgNotice,
 			Body:    fmt.Sprintf("\u26a0 Reactions are not yet supported by WhatsApp."),
@@ -544,7 +550,7 @@ func (mx *MatrixHandler) HandleReceipt(evt *event.Event) {
 				// But do start disappearing messages, because the user read the chat
 				portal.ScheduleDisappearing()
 			} else {
-				portal.HandleMatrixReadReceipt(user, eventID, time.UnixMilli(receipt.Timestamp))
+				portal.HandleMatrixReadReceipt(user, eventID, time.UnixMilli(receipt.Timestamp), true)
 			}
 		}
 	}

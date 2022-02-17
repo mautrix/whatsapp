@@ -40,11 +40,11 @@ type upgrade struct {
 	fn      upgradeFunc
 }
 
-const NumberOfUpgrades = 35
+const NumberOfUpgrades = 37
 
 var upgrades [NumberOfUpgrades]upgrade
 
-var UnsupportedDatabaseVersion = fmt.Errorf("unsupported database version")
+var UnsupportedDatabaseVersion = fmt.Errorf("unsupported database schema version")
 
 func GetVersion(db *sql.DB) (int, error) {
 	_, err := db.Exec("CREATE TABLE IF NOT EXISTS version (version INTEGER)")
@@ -96,7 +96,7 @@ func Run(log log.Logger, dialectName string, db *sql.DB) error {
 	}
 
 	if version > NumberOfUpgrades {
-		return UnsupportedDatabaseVersion
+		return fmt.Errorf("%w: currently on v%d, latest known: v%d", UnsupportedDatabaseVersion, version, NumberOfUpgrades)
 	}
 
 	log.Infofln("Database currently on v%d, latest: v%d", version, NumberOfUpgrades)

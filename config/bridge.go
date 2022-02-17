@@ -72,8 +72,11 @@ type BridgeConfig struct {
 	WhatsappThumbnail     bool   `yaml:"whatsapp_thumbnail"`
 	AllowUserInvite       bool   `yaml:"allow_user_invite"`
 	FederateRooms         bool   `yaml:"federate_rooms"`
+	URLPreviews           bool   `yaml:"url_previews"`
 
 	DisappearingMessagesInGroups bool `yaml:"disappearing_messages_in_groups"`
+
+	DisableBridgeAlerts bool `yaml:"disable_bridge_alerts"`
 
 	CommandPrefix string `yaml:"command_prefix"`
 

@@ -51,6 +51,7 @@ func (user *User) SetLastReadTS(portal PortalKey, ts time.Time) {
 	if err != nil {
 		user.log.Warnfln("Failed to update last read timestamp: %v", err)
 	} else {
+		user.log.Debugfln("Set last read timestamp of %s in %s to %d", user.MXID, portal.String(), ts.Unix())
 		user.lastReadCache[portal] = ts
 	}
 }

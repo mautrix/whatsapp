@@ -998,7 +998,7 @@ func (handler *CommandHandler) CommandOpen(ce *CommandEvent) {
 	} else {
 		jid = types.NewJID(ce.Args[0], types.GroupServer)
 	}
-	if jid.Server != types.GroupServer || !strings.ContainsRune(jid.User, '-') {
+	if jid.Server != types.GroupServer || (!strings.ContainsRune(jid.User, '-') && len(jid.User) < 15) {
 		ce.Reply("That does not look like a group JID")
 		return
 	}

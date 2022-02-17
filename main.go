@@ -60,7 +60,7 @@ var (
 
 var (
 	// Version is the version number of the bridge. Changed manually when making a release.
-	Version = "0.2.3-mod-1"
+	Version = "0.2.4-mod-1"
 	// WAVersion is the version number exposed to WhatsApp. Filled in init()
 	WAVersion = ""
 	// VersionString is the bridge version, plus commit information. Filled in init() using the build-time values.
@@ -361,8 +361,26 @@ func (bridge *Bridge) Start() {
 	if bridge.Config.Bridge.ResendBridgeInfo {
 		go bridge.ResendBridgeInfo()
 	}
-	go bridge.DisappearingLoop()
+	go bridge.Loop()
 	bridge.AS.Ready = true
+}
+
+func (bridge *Bridge) Loop() {
+	for {
+		bridge.SleepAndDeleteUpcoming()
+		time.Sleep(1 * time.Hour)
+		bridge.WarnUsersAboutDisconnection()
+	}
+}
+
+func (bridge *Bridge) WarnUsersAboutDisconnection() {
+	bridge.usersLock.Lock()
+	for _, user := range bridge.usersByUsername {
+		if user.IsConnected() && !user.PhoneRecentlySeen() {
+			go user.sendPhoneOfflineWarning()
+		}
+	}
+	bridge.usersLock.Unlock()
 }
 
 func (bridge *Bridge) ResendBridgeInfo() {
