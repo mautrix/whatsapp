@@ -520,7 +520,7 @@ func (user *User) sendPhoneOfflineWarning() {
 func (user *User) HandleEvent(event interface{}) {
 	switch v := event.(type) {
 	case *events.LoggedOut:
-		go user.handleLoggedOut(v.OnConnect)
+		go user.handleLoggedOut(v.OnConnect, v.Reason)
 		user.bridge.Metrics.TrackConnectionState(user.JID, false)
 		user.bridge.Metrics.TrackLoginState(user.JID, false)
 	case *events.Connected:
@@ -577,8 +577,22 @@ func (user *User) HandleEvent(event interface{}) {
 		user.JID = v.ID
 		user.addToJIDMap()
 		user.Update()
-	case *events.ConnectFailure, *events.StreamError:
-		go user.sendBridgeState(BridgeState{StateEvent: StateUnknownError})
+	case *events.StreamError:
+		var message string
+		if v.Code != "" {
+			message = fmt.Sprintf("Unknown stream error with code %s", v.Code)
+		} else if children := v.Raw.GetChildren(); len(children) > 0 {
+			message = fmt.Sprintf("Unknown stream error (contains %s node)", children[0].Tag)
+		} else {
+			message = "Unknown stream error"
+		}
+		go user.sendBridgeState(BridgeState{StateEvent: StateUnknownError, Message: message})
+		user.bridge.Metrics.TrackConnectionState(user.JID, false)
+	case *events.ConnectFailure:
+		go user.sendBridgeState(BridgeState{StateEvent: StateUnknownError, Message: fmt.Sprintf("Unknown connection failure: %s", v.Reason)})
+		user.bridge.Metrics.TrackConnectionState(user.JID, false)
+	case *events.TemporaryBan:
+		go user.sendBridgeState(BridgeState{StateEvent: StateBadCredentials, Message: v.String()})
 		user.bridge.Metrics.TrackConnectionState(user.JID, false)
 	case *events.Disconnected:
 		go user.sendBridgeState(BridgeState{StateEvent: StateTransientDisconnect})
@@ -825,12 +839,12 @@ func (user *User) UpdateDirectChats(chats map[id.UserID][]id.RoomID) {
 	}
 }
 
-func (user *User) handleLoggedOut(onConnect bool) {
-	user.sendBridgeState(BridgeState{StateEvent: StateBadCredentials, Error: WALoggedOut})
+func (user *User) handleLoggedOut(onConnect bool, reason events.ConnectFailureReason) {
+	user.sendBridgeState(BridgeState{StateEvent: StateBadCredentials, Error: WALoggedOut, Message: reason.String()})
 	user.JID = types.EmptyJID
 	user.Update()
 	if onConnect {
-		user.sendMarkdownBridgeAlert("Connecting to WhatsApp failed as the device was logged out. Please link the bridge to your phone again.")
+		user.sendMarkdownBridgeAlert("Connecting to WhatsApp failed as the device was unlinked (error %s). Please link the bridge to your phone again.", reason)
 	} else {
 		user.sendMarkdownBridgeAlert("You were logged out from another device. Please link the bridge to your phone again.")
 	}
@@ -867,7 +881,11 @@ func (user *User) ResyncContacts() error {
 	user.log.Infofln("Resyncing displaynames with %d contacts", len(contacts))
 	for jid, contact := range contacts {
 		puppet := user.bridge.GetPuppetByJID(jid)
-		puppet.Sync(user, contact)
+		if puppet != nil {
+			puppet.Sync(user, contact)
+		} else {
+			user.log.Warnfln("Got a nil puppet for %s while syncing contacts", jid)
+		}
 	}
 	return nil
 }

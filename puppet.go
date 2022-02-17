@@ -204,6 +204,9 @@ func (puppet *Puppet) UpdateAvatar(source *User) bool {
 	if err != nil {
 		if !errors.Is(err, whatsmeow.ErrProfilePictureUnauthorized) {
 			puppet.log.Warnln("Failed to get avatar URL:", err)
+		} else if puppet.Avatar == "" {
+			puppet.Avatar = "unauthorized"
+			return true
 		}
 		return false
 	} else if avatar == nil {

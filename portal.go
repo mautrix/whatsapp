@@ -2819,7 +2819,7 @@ func (portal *Portal) canBridgeFrom(sender *User, evtType string) bool {
 		if portal.HasRelaybot() {
 			return true
 		} else if sender.Session != nil {
-			portal.log.Debugln("Ignoring %s from %s as user is not connected", evtType, sender.MXID)
+			portal.log.Debugfln("Ignoring %s from %s as user is not connected", evtType, sender.MXID)
 			msg := format.RenderMarkdown(fmt.Sprintf("\u26a0 You are not connected to WhatsApp, so your %s was not bridged.", evtType), true, false)
 			msg.MsgType = event.MsgNotice
 			_, err := portal.sendMainIntentMessage(&msg)
