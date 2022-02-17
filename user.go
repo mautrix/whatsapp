@@ -1035,3 +1035,21 @@ func (user *User) handlePictureUpdate(evt *events.Picture) {
 		}
 	}
 }
+
+func (user *User) StartPM(jid types.JID, reason string) (*Portal, *Puppet, bool, error) {
+	user.log.Debugln("Starting PM with", jid, "from", reason)
+	puppet := user.bridge.GetPuppetByJID(jid)
+	puppet.SyncContact(user, true, reason)
+	portal := user.GetPortalByJID(puppet.JID)
+	if len(portal.MXID) > 0 {
+		ok := portal.ensureUserInvited(user)
+		if !ok {
+			portal.log.Warnfln("ensureUserInvited(%s) returned false, creating new portal", user.MXID)
+			portal.MXID = ""
+		} else {
+			return portal, puppet, false, nil
+		}
+	}
+	err := portal.CreateMatrixRoom(user, nil, false)
+	return portal, puppet, true, err
+}

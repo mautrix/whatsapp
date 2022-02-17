@@ -1048,26 +1048,14 @@ func (handler *CommandHandler) CommandPM(ce *CommandEvent) {
 		return
 	}
 
-	handler.log.Debugln("Importing", targetUser.JID, "for", user)
-	puppet := user.bridge.GetPuppetByJID(targetUser.JID)
-	puppet.SyncContact(user, true, "manual pm command")
-	portal := user.GetPortalByJID(puppet.JID)
-	if len(portal.MXID) > 0 {
-		ok := portal.ensureUserInvited(user)
-		if !ok {
-			portal.log.Warnfln("ensureUserInvited(%s) returned false, creating new portal", user.MXID)
-			portal.MXID = ""
-		} else {
-			ce.Reply("You already have a private chat portal with +%s at [%s](https://matrix.to/#/%s)", puppet.JID.User, puppet.Displayname, portal.MXID)
-			return
-		}
-	}
-	err = portal.CreateMatrixRoom(user, nil, false)
+	portal, puppet, justCreated, err := user.StartPM(targetUser.JID, "manual PM command")
 	if err != nil {
 		ce.Reply("Failed to create portal room: %v", err)
-		return
+	} else if !justCreated {
+		ce.Reply("You already have a private chat portal with +%s at [%s](https://matrix.to/#/%s)", puppet.JID.User, puppet.Displayname, portal.MXID)
+	} else {
+		ce.Reply("Created portal room with +%s and invited you to it.", puppet.JID.User)
 	}
-	ce.Reply("Created portal room with +%s and invited you to it.", puppet.JID.User)
 }
 
 const cmdSyncHelp = `sync <appstate/contacts/groups/space> [--create-portals] - Synchronize data from WhatsApp.`
