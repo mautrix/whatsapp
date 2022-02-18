@@ -545,7 +545,6 @@ func (user *User) HandleEvent(event interface{}) {
 		user.bridge.Metrics.TrackConnectionState(user.JID, false)
 		user.bridge.Metrics.TrackLoginState(user.JID, false)
 	case *events.Connected:
-		go user.sendBridgeState(BridgeState{StateEvent: StateConnected})
 		user.bridge.Metrics.TrackConnectionState(user.JID, true)
 		user.bridge.Metrics.TrackLoginState(user.JID, true)
 		if len(user.Client.Store.PushName) > 0 {
@@ -567,8 +566,10 @@ func (user *User) HandleEvent(event interface{}) {
 		if !user.PhoneRecentlySeen(true) {
 			user.log.Infofln("Offline sync completed, but phone last seen date is still %s - sending phone offline bridge status", user.PhoneLastSeen)
 			go user.sendBridgeState(BridgeState{StateEvent: StateTransientDisconnect, Error: WAPhoneOffline})
-		} else if user.GetPrevBridgeState().StateEvent == StateBackfilling {
-			user.log.Infoln("Offline sync completed")
+		} else {
+			if user.GetPrevBridgeState().StateEvent == StateBackfilling {
+				user.log.Infoln("Offline sync completed")
+			}
 			go user.sendBridgeState(BridgeState{StateEvent: StateConnected})
 		}
 	case *events.AppStateSyncComplete:
