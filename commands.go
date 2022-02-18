@@ -140,7 +140,7 @@ func (handler *CommandHandler) CommandMux(ce *CommandEvent) {
 		handler.CommandToggle(ce)
 	case "set-relay", "unset-relay", "login-matrix", "sync", "list", "search", "open", "pm", "invite-link", "resolve", "resolve-link", "join", "create", "accept":
 		if !ce.User.HasSession() {
-			ce.Reply("You are not logged in. Use the `login` command to log into WhatsApp.")
+			ce.Reply("You're not logged in. Use the `login` command to log into WhatsApp.")
 			return
 		} else if !ce.User.IsLoggedIn() {
 			ce.Reply("You are not connected to WhatsApp. Use the `reconnect` command to reconnect.")
