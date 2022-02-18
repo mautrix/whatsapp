@@ -359,6 +359,9 @@ func getMessageType(waMsg *waProto.Message) string {
 	case waMsg.ProtocolMessage != nil:
 		switch waMsg.GetProtocolMessage().GetType() {
 		case waProto.ProtocolMessage_REVOKE:
+			if waMsg.GetProtocolMessage().GetKey() == nil {
+				return "ignore"
+			}
 			return "revoke"
 		case waProto.ProtocolMessage_EPHEMERAL_SETTING:
 			return "disappearing timer change"

@@ -348,7 +348,7 @@ func (bridge *Bridge) Loop() {
 func (bridge *Bridge) WarnUsersAboutDisconnection() {
 	bridge.usersLock.Lock()
 	for _, user := range bridge.usersByUsername {
-		if user.IsConnected() && !user.PhoneRecentlySeen() {
+		if user.IsConnected() && !user.PhoneRecentlySeen(true) {
 			go user.sendPhoneOfflineWarning()
 		}
 	}

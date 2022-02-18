@@ -475,8 +475,29 @@ func (user *User) handleCallStart(sender types.JID, id, callType string, ts time
 }
 
 const PhoneDisconnectWarningTime = 12 * 24 * time.Hour // 12 days
+const PhoneDisconnectPingTime = 10 * 24 * time.Hour
+const PhoneMinPingInterval = 24 * time.Hour
 
-func (user *User) PhoneRecentlySeen() bool {
+func (user *User) sendHackyPhonePing() {
+	msgID := whatsmeow.GenerateMessageID()
+	user.PhoneLastPinged = time.Now()
+	ts, err := user.Client.SendMessage(user.JID.ToNonAD(), msgID, &waProto.Message{
+		ProtocolMessage: &waProto.ProtocolMessage{},
+	})
+	if err != nil {
+		user.log.Warnfln("Failed to send hacky phone ping: %v", err)
+	} else {
+		user.log.Debugfln("Sent hacky phone ping %s/%s because phone has been offline for >10 days", msgID, ts)
+		user.PhoneLastPinged = ts
+		user.Update()
+	}
+}
+
+func (user *User) PhoneRecentlySeen(doPing bool) bool {
+	if doPing && !user.PhoneLastSeen.IsZero() && user.PhoneLastSeen.Add(PhoneDisconnectPingTime).Before(time.Now()) && user.PhoneLastPinged.Add(PhoneMinPingInterval).Before(time.Now()) {
+		// Over 10 days since the phone was seen and over a day since the last somewhat hacky ping, send a new ping.
+		go user.sendHackyPhonePing()
+	}
 	return user.PhoneLastSeen.IsZero() || user.PhoneLastSeen.Add(PhoneDisconnectWarningTime).After(time.Now())
 }
 
@@ -487,7 +508,7 @@ func (user *User) phoneSeen(ts time.Time) {
 		// The last seen timestamp isn't going to be perfectly accurate in any case,
 		// so don't spam the database with an update every time there's an event.
 		return
-	} else if !user.PhoneRecentlySeen() && user.GetPrevBridgeState().Error == WAPhoneOffline && user.IsConnected() {
+	} else if !user.PhoneRecentlySeen(false) && user.GetPrevBridgeState().Error == WAPhoneOffline && user.IsConnected() {
 		user.log.Debugfln("Saw phone after current bridge state said it has been offline, switching state back to connected")
 		go user.sendBridgeState(BridgeState{StateEvent: StateConnected})
 	}
@@ -543,7 +564,7 @@ func (user *User) HandleEvent(event interface{}) {
 			Message:    fmt.Sprintf("backfilling %d messages and %d receipts", v.Messages, v.Receipts),
 		})
 	case *events.OfflineSyncCompleted:
-		if !user.PhoneRecentlySeen() {
+		if !user.PhoneRecentlySeen(true) {
 			user.log.Infofln("Offline sync completed, but phone last seen date is still %s - sending phone offline bridge status", user.PhoneLastSeen)
 			go user.sendBridgeState(BridgeState{StateEvent: StateTransientDisconnect, Error: WAPhoneOffline})
 		} else if user.GetPrevBridgeState().StateEvent == StateBackfilling {
