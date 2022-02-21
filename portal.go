@@ -1983,9 +1983,19 @@ func (portal *Portal) convertMediaMessageContent(intent *appservice.IntentAPI, m
 		var waveform []int
 		if audioMessage.Waveform != nil {
 			waveform = make([]int, len(audioMessage.Waveform))
+			max := 0
 			for i, part := range audioMessage.Waveform {
-				// TODO is 4 the right multiplier?
-				waveform[i] = int(part) * 4
+				waveform[i] = int(part)
+				if waveform[i] > max {
+					max = waveform[i]
+				}
+			}
+			multiplier := 1024 / max
+			if multiplier > 32 {
+				multiplier = 32
+			}
+			for i := range waveform {
+				waveform[i] *= multiplier
 			}
 		}
 		extraContent["org.matrix.msc1767.audio"] = map[string]interface{}{
