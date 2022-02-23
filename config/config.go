@@ -1,5 +1,5 @@
 // mautrix-whatsapp - A Matrix-WhatsApp puppeting bridge.
-// Copyright (C) 2019 Tulir Asokan
+// Copyright (C) 2022 Tulir Asokan
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as published by
@@ -41,13 +41,7 @@ type Config struct {
 		Hostname string `yaml:"hostname"`
 		Port     uint16 `yaml:"port"`
 
-		Database struct {
-			Type string `yaml:"type"`
-			URI  string `yaml:"uri"`
-
-			MaxOpenConns int `yaml:"max_open_conns"`
-			MaxIdleConns int `yaml:"max_idle_conns"`
-		} `yaml:"database"`
+		Database DatabaseConfig `yaml:"database"`
 
 		Provisioning struct {
 			Prefix       string `yaml:"prefix"`
@@ -130,4 +124,15 @@ func (config *Config) MakeAppService() (*appservice.AppService, error) {
 	var err error
 	as.Registration, err = config.GetRegistration()
 	return as, err
+}
+
+type DatabaseConfig struct {
+	Type string `yaml:"type"`
+	URI  string `yaml:"uri"`
+
+	MaxOpenConns int `yaml:"max_open_conns"`
+	MaxIdleConns int `yaml:"max_idle_conns"`
+
+	ConnMaxIdleTime string `yaml:"conn_max_idle_time"`
+	ConnMaxLifetime string `yaml:"conn_max_lifetime"`
 }

@@ -36,6 +36,10 @@ appservice:
         # Maximum number of connections. Mostly relevant for Postgres.
         max_open_conns: 20
         max_idle_conns: 2
+        # Maximum connection idle time and lifetime before they're closed. Disabled if null.
+        # Parsed with https://pkg.go.dev/time#ParseDuration
+        max_conn_idle_time: null
+        max_conn_lifetime: null
 
     # Settings for provisioning API
     provisioning:
