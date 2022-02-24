@@ -522,6 +522,8 @@ func (handler *CommandHandler) CommandLogin(ce *CommandEvent) {
 			ce.Reply("QR code timed out. Please restart the login.")
 		case whatsmeow.QRChannelErrUnexpectedEvent.Event:
 			ce.Reply("Failed to log in: unexpected connection event from server")
+		case whatsmeow.QRChannelClientOutdated.Event:
+			ce.Reply("Failed to log in: outdated client. The bridge must be updated to continue.")
 		case whatsmeow.QRChannelScannedWithoutMultidevice.Event:
 			ce.Reply("Please enable the WhatsApp multidevice beta and scan the QR code again.")
 		case "error":
@@ -1048,26 +1050,14 @@ func (handler *CommandHandler) CommandPM(ce *CommandEvent) {
 		return
 	}
 
-	handler.log.Debugln("Importing", targetUser.JID, "for", user)
-	puppet := user.bridge.GetPuppetByJID(targetUser.JID)
-	puppet.SyncContact(user, true, "manual pm command")
-	portal := user.GetPortalByJID(puppet.JID)
-	if len(portal.MXID) > 0 {
-		ok := portal.ensureUserInvited(user)
-		if !ok {
-			portal.log.Warnfln("ensureUserInvited(%s) returned false, creating new portal", user.MXID)
-			portal.MXID = ""
-		} else {
-			ce.Reply("You already have a private chat portal with +%s at [%s](https://matrix.to/#/%s)", puppet.JID.User, puppet.Displayname, portal.MXID)
-			return
-		}
-	}
-	err = portal.CreateMatrixRoom(user, nil, false)
+	portal, puppet, justCreated, err := user.StartPM(targetUser.JID, "manual PM command")
 	if err != nil {
 		ce.Reply("Failed to create portal room: %v", err)
-		return
+	} else if !justCreated {
+		ce.Reply("You already have a private chat portal with +%s at [%s](https://matrix.to/#/%s)", puppet.JID.User, puppet.Displayname, portal.MXID)
+	} else {
+		ce.Reply("Created portal room with +%s and invited you to it.", puppet.JID.User)
 	}
-	ce.Reply("Created portal room with +%s and invited you to it.", puppet.JID.User)
 }
 
 const cmdSyncHelp = `sync <appstate/contacts/groups/space> [--create-portals] - Synchronize data from WhatsApp.`

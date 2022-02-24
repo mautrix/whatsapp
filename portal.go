@@ -363,6 +363,9 @@ func getMessageType(waMsg *waProto.Message) string {
 	case waMsg.ProtocolMessage != nil:
 		switch waMsg.GetProtocolMessage().GetType() {
 		case waProto.ProtocolMessage_REVOKE:
+			if waMsg.GetProtocolMessage().GetKey() == nil {
+				return "ignore"
+			}
 			return "revoke"
 		case waProto.ProtocolMessage_EPHEMERAL_SETTING:
 			return "disappearing timer change"
@@ -2005,9 +2008,19 @@ func (portal *Portal) convertMediaMessageContent(intent *appservice.IntentAPI, m
 		var waveform []int
 		if audioMessage.Waveform != nil {
 			waveform = make([]int, len(audioMessage.Waveform))
+			max := 0
 			for i, part := range audioMessage.Waveform {
-				// TODO is 4 the right multiplier?
-				waveform[i] = int(part) * 4
+				waveform[i] = int(part)
+				if waveform[i] > max {
+					max = waveform[i]
+				}
+			}
+			multiplier := 1024 / max
+			if multiplier > 32 {
+				multiplier = 32
+			}
+			for i := range waveform {
+				waveform[i] *= multiplier
 			}
 		}
 		extraContent["org.matrix.msc1767.audio"] = map[string]interface{}{
@@ -2848,7 +2861,7 @@ func (portal *Portal) canBridgeFrom(sender *User, evtType string) bool {
 		if portal.HasRelaybot() {
 			return true
 		} else if sender.Session != nil {
-			portal.log.Debugln("Ignoring %s from %s as user is not connected", evtType, sender.MXID)
+			portal.log.Debugfln("Ignoring %s from %s as user is not connected", evtType, sender.MXID)
 			msg := format.RenderMarkdown(fmt.Sprintf("\u26a0 You are not connected to WhatsApp, so your %s was not bridged.", evtType), true, false)
 			msg.MsgType = event.MsgNotice
 			_, err := portal.sendMainIntentMessage(&msg)

@@ -1,3 +1,13 @@
+# unreleased
+
+* Added automatic sending of hidden messages to primary device to prevent
+  false-positive disconnection warnings if there have been no messages sent or
+  received in >12 days.
+* Added proper error message when WhatsApp rejects the connection due to the
+  bridge being out of date.
+* Added experimental provisioning API to list contacts and start DMs.
+* Exposed maximum database connection idle time and lifetime options.
+
 # v0.2.4 (2022-02-16)
 
 * Added tracking for incoming events from the primary device to warn the user

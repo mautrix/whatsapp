@@ -1,5 +1,5 @@
 // mautrix-whatsapp - A Matrix-WhatsApp puppeting bridge.
-// Copyright (C) 2021 Tulir Asokan
+// Copyright (C) 2022 Tulir Asokan
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as published by
@@ -29,7 +29,9 @@ import (
 
 	"github.com/gorilla/mux"
 	"github.com/gorilla/websocket"
+
 	"go.mau.fi/whatsmeow/appstate"
+	"go.mau.fi/whatsmeow/types"
 
 	"go.mau.fi/whatsmeow"
 
@@ -55,6 +57,8 @@ func (prov *ProvisioningAPI) Init() {
 	r.HandleFunc("/disconnect", prov.Disconnect).Methods(http.MethodPost)
 	r.HandleFunc("/reconnect", prov.Reconnect).Methods(http.MethodPost)
 	r.HandleFunc("/sync/appstate/{name}", prov.SyncAppState).Methods(http.MethodPost)
+	r.HandleFunc("/contacts", prov.ListContacts).Methods(http.MethodGet)
+	r.HandleFunc("/pm/{number}", prov.StartPM).Methods(http.MethodPost)
 	prov.bridge.AS.Router.HandleFunc("/_matrix/app/com.beeper.asmux/ping", prov.BridgeStatePing).Methods(http.MethodPost)
 	prov.bridge.AS.Router.HandleFunc("/_matrix/app/com.beeper.bridge_state", prov.BridgeStatePing).Methods(http.MethodPost)
 
@@ -216,6 +220,84 @@ func (prov *ProvisioningAPI) SyncAppState(w http.ResponseWriter, r *http.Request
 	}
 }
 
+func (prov *ProvisioningAPI) ListContacts(w http.ResponseWriter, r *http.Request) {
+	if user := r.Context().Value("user").(*User); user.Session == nil {
+		jsonResponse(w, http.StatusBadRequest, Error{
+			Error:   "User is not logged into WhatsApp",
+			ErrCode: "no session",
+		})
+	} else if contacts, err := user.Session.Contacts.GetAllContacts(); err != nil {
+		prov.log.Errorfln("Failed to fetch %s's contacts: %v", user.MXID, err)
+		jsonResponse(w, http.StatusInternalServerError, Error{
+			Error:   "Internal server error while fetching contact list",
+			ErrCode: "failed to get contacts",
+		})
+	} else {
+		jsonResponse(w, http.StatusOK, contacts)
+	}
+}
+
+type OtherUserInfo struct {
+	MXID   id.UserID     `json:"mxid"`
+	JID    types.JID     `json:"jid"`
+	Name   string        `json:"displayname"`
+	Avatar id.ContentURI `json:"avatar_url"`
+}
+
+type PortalInfo struct {
+	RoomID      id.RoomID     `json:"room_id"`
+	OtherUser   OtherUserInfo `json:"other_user"`
+	JustCreated bool          `json:"just_created"`
+}
+
+func (prov *ProvisioningAPI) StartPM(w http.ResponseWriter, r *http.Request) {
+	number, _ := mux.Vars(r)["number"]
+	if strings.HasSuffix(number, "@"+types.DefaultUserServer) {
+		jid, _ := types.ParseJID(number)
+		number = "+" + jid.User
+	}
+	if user := r.Context().Value("user").(*User); !user.IsLoggedIn() {
+		jsonResponse(w, http.StatusBadRequest, Error{
+			Error:   "User is not logged into WhatsApp",
+			ErrCode: "no session",
+		})
+	} else if resp, err := user.Client.IsOnWhatsApp([]string{number}); err != nil {
+		jsonResponse(w, http.StatusInternalServerError, Error{
+			Error:   fmt.Sprintf("Failed to check if number is on WhatsApp: %v", err),
+			ErrCode: "error checking number",
+		})
+	} else if len(resp) == 0 {
+		jsonResponse(w, http.StatusInternalServerError, Error{
+			Error:   "Didn't get a response to checking if the number is on WhatsApp",
+			ErrCode: "error checking number",
+		})
+	} else if !resp[0].IsIn {
+		jsonResponse(w, http.StatusNotFound, Error{
+			Error:   fmt.Sprintf("The server said +%s is not on WhatsApp", resp[0].JID.User),
+			ErrCode: "not on whatsapp",
+		})
+	} else if portal, puppet, justCreated, err := user.StartPM(resp[0].JID, "provisioning API PM"); err != nil {
+		jsonResponse(w, http.StatusInternalServerError, Error{
+			Error: fmt.Sprintf("Failed to create portal: %v", err),
+		})
+	} else {
+		status := http.StatusOK
+		if justCreated {
+			status = http.StatusCreated
+		}
+		jsonResponse(w, status, PortalInfo{
+			RoomID: portal.MXID,
+			OtherUser: OtherUserInfo{
+				JID:    puppet.JID,
+				MXID:   puppet.MXID,
+				Name:   puppet.Displayname,
+				Avatar: puppet.AvatarURL,
+			},
+			JustCreated: justCreated,
+		})
+	}
+}
+
 func (prov *ProvisioningAPI) Ping(w http.ResponseWriter, r *http.Request) {
 	user := r.Context().Value("user").(*User)
 	wa := map[string]interface{}{
@@ -372,6 +454,12 @@ func (prov *ProvisioningAPI) Login(w http.ResponseWriter, r *http.Request) {
 				_ = c.WriteJSON(Error{
 					Error:   "Got unexpected event while waiting for QRs, perhaps you're already logged in?",
 					ErrCode: "unexpected event",
+				})
+			case whatsmeow.QRChannelClientOutdated.Event:
+				user.log.Debugln("Login via provisioning API failed due to outdated client")
+				_ = c.WriteJSON(Error{
+					Error:   "Got client outdated error while waiting for QRs. The bridge must be updated to continue.",
+					ErrCode: "bridge outdated",
 				})
 			case whatsmeow.QRChannelScannedWithoutMultidevice.Event:
 				_ = c.WriteJSON(Error{

@@ -475,8 +475,29 @@ func (user *User) handleCallStart(sender types.JID, id, callType string, ts time
 }
 
 const PhoneDisconnectWarningTime = 12 * 24 * time.Hour // 12 days
+const PhoneDisconnectPingTime = 10 * 24 * time.Hour
+const PhoneMinPingInterval = 24 * time.Hour
 
-func (user *User) PhoneRecentlySeen() bool {
+func (user *User) sendHackyPhonePing() {
+	msgID := whatsmeow.GenerateMessageID()
+	user.PhoneLastPinged = time.Now()
+	ts, err := user.Client.SendMessage(user.JID.ToNonAD(), msgID, &waProto.Message{
+		ProtocolMessage: &waProto.ProtocolMessage{},
+	})
+	if err != nil {
+		user.log.Warnfln("Failed to send hacky phone ping: %v", err)
+	} else {
+		user.log.Debugfln("Sent hacky phone ping %s/%s because phone has been offline for >10 days", msgID, ts)
+		user.PhoneLastPinged = ts
+		user.Update()
+	}
+}
+
+func (user *User) PhoneRecentlySeen(doPing bool) bool {
+	if doPing && !user.PhoneLastSeen.IsZero() && user.PhoneLastSeen.Add(PhoneDisconnectPingTime).Before(time.Now()) && user.PhoneLastPinged.Add(PhoneMinPingInterval).Before(time.Now()) {
+		// Over 10 days since the phone was seen and over a day since the last somewhat hacky ping, send a new ping.
+		go user.sendHackyPhonePing()
+	}
 	return user.PhoneLastSeen.IsZero() || user.PhoneLastSeen.Add(PhoneDisconnectWarningTime).After(time.Now())
 }
 
@@ -487,7 +508,7 @@ func (user *User) phoneSeen(ts time.Time) {
 		// The last seen timestamp isn't going to be perfectly accurate in any case,
 		// so don't spam the database with an update every time there's an event.
 		return
-	} else if !user.PhoneRecentlySeen() && user.GetPrevBridgeState().Error == WAPhoneOffline && user.IsConnected() {
+	} else if !user.PhoneRecentlySeen(false) && user.GetPrevBridgeState().Error == WAPhoneOffline && user.IsConnected() {
 		user.log.Debugfln("Saw phone after current bridge state said it has been offline, switching state back to connected")
 		go user.sendBridgeState(BridgeState{StateEvent: StateConnected})
 	}
@@ -520,11 +541,10 @@ func (user *User) sendPhoneOfflineWarning() {
 func (user *User) HandleEvent(event interface{}) {
 	switch v := event.(type) {
 	case *events.LoggedOut:
-		go user.handleLoggedOut(v.OnConnect)
+		go user.handleLoggedOut(v.OnConnect, v.Reason)
 		user.bridge.Metrics.TrackConnectionState(user.JID, false)
 		user.bridge.Metrics.TrackLoginState(user.JID, false)
 	case *events.Connected:
-		go user.sendBridgeState(BridgeState{StateEvent: StateConnected})
 		user.bridge.Metrics.TrackConnectionState(user.JID, true)
 		user.bridge.Metrics.TrackLoginState(user.JID, true)
 		if len(user.Client.Store.PushName) > 0 {
@@ -543,11 +563,13 @@ func (user *User) HandleEvent(event interface{}) {
 			Message:    fmt.Sprintf("backfilling %d messages and %d receipts", v.Messages, v.Receipts),
 		})
 	case *events.OfflineSyncCompleted:
-		if !user.PhoneRecentlySeen() {
+		if !user.PhoneRecentlySeen(true) {
 			user.log.Infofln("Offline sync completed, but phone last seen date is still %s - sending phone offline bridge status", user.PhoneLastSeen)
 			go user.sendBridgeState(BridgeState{StateEvent: StateTransientDisconnect, Error: WAPhoneOffline})
-		} else if user.GetPrevBridgeState().StateEvent == StateBackfilling {
-			user.log.Infoln("Offline sync completed")
+		} else {
+			if user.GetPrevBridgeState().StateEvent == StateBackfilling {
+				user.log.Infoln("Offline sync completed")
+			}
 			go user.sendBridgeState(BridgeState{StateEvent: StateConnected})
 		}
 	case *events.AppStateSyncComplete:
@@ -577,8 +599,26 @@ func (user *User) HandleEvent(event interface{}) {
 		user.JID = v.ID
 		user.addToJIDMap()
 		user.Update()
-	case *events.ConnectFailure, *events.StreamError:
-		go user.sendBridgeState(BridgeState{StateEvent: StateUnknownError})
+	case *events.StreamError:
+		var message string
+		if v.Code != "" {
+			message = fmt.Sprintf("Unknown stream error with code %s", v.Code)
+		} else if children := v.Raw.GetChildren(); len(children) > 0 {
+			message = fmt.Sprintf("Unknown stream error (contains %s node)", children[0].Tag)
+		} else {
+			message = "Unknown stream error"
+		}
+		go user.sendBridgeState(BridgeState{StateEvent: StateUnknownError, Message: message})
+		user.bridge.Metrics.TrackConnectionState(user.JID, false)
+	case *events.ConnectFailure:
+		go user.sendBridgeState(BridgeState{StateEvent: StateUnknownError, Message: fmt.Sprintf("Unknown connection failure: %s", v.Reason)})
+		user.bridge.Metrics.TrackConnectionState(user.JID, false)
+	case *events.ClientOutdated:
+		user.log.Errorfln("Got a client outdated connect failure. The bridge is likely out of date, please update immediately.")
+		go user.sendBridgeState(BridgeState{StateEvent: StateUnknownError, Message: "Connect failure: 405 client outdated"})
+		user.bridge.Metrics.TrackConnectionState(user.JID, false)
+	case *events.TemporaryBan:
+		go user.sendBridgeState(BridgeState{StateEvent: StateBadCredentials, Message: v.String()})
 		user.bridge.Metrics.TrackConnectionState(user.JID, false)
 	case *events.Disconnected:
 		go user.sendBridgeState(BridgeState{StateEvent: StateTransientDisconnect})
@@ -825,12 +865,12 @@ func (user *User) UpdateDirectChats(chats map[id.UserID][]id.RoomID) {
 	}
 }
 
-func (user *User) handleLoggedOut(onConnect bool) {
-	user.sendBridgeState(BridgeState{StateEvent: StateBadCredentials, Error: WALoggedOut})
+func (user *User) handleLoggedOut(onConnect bool, reason events.ConnectFailureReason) {
+	user.sendBridgeState(BridgeState{StateEvent: StateBadCredentials, Error: WALoggedOut, Message: reason.String()})
 	user.JID = types.EmptyJID
 	user.Update()
 	if onConnect {
-		user.sendMarkdownBridgeAlert("Connecting to WhatsApp failed as the device was logged out. Please link the bridge to your phone again.")
+		user.sendMarkdownBridgeAlert("Connecting to WhatsApp failed as the device was unlinked (error %s). Please link the bridge to your phone again.", reason)
 	} else {
 		user.sendMarkdownBridgeAlert("You were logged out from another device. Please link the bridge to your phone again.")
 	}
@@ -867,7 +907,11 @@ func (user *User) ResyncContacts() error {
 	user.log.Infofln("Resyncing displaynames with %d contacts", len(contacts))
 	for jid, contact := range contacts {
 		puppet := user.bridge.GetPuppetByJID(jid)
-		puppet.Sync(user, contact)
+		if puppet != nil {
+			puppet.Sync(user, contact)
+		} else {
+			user.log.Warnfln("Got a nil puppet for %s while syncing contacts", jid)
+		}
 	}
 	return nil
 }
@@ -1016,4 +1060,22 @@ func (user *User) handlePictureUpdate(evt *events.Picture) {
 			portal.UpdateAvatar(user, evt.Author, true)
 		}
 	}
+}
+
+func (user *User) StartPM(jid types.JID, reason string) (*Portal, *Puppet, bool, error) {
+	user.log.Debugln("Starting PM with", jid, "from", reason)
+	puppet := user.bridge.GetPuppetByJID(jid)
+	puppet.SyncContact(user, true, reason)
+	portal := user.GetPortalByJID(puppet.JID)
+	if len(portal.MXID) > 0 {
+		ok := portal.ensureUserInvited(user)
+		if !ok {
+			portal.log.Warnfln("ensureUserInvited(%s) returned false, creating new portal", user.MXID)
+			portal.MXID = ""
+		} else {
+			return portal, puppet, false, nil
+		}
+	}
+	err := portal.CreateMatrixRoom(user, nil, false)
+	return portal, puppet, true, err
 }

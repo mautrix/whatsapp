@@ -1,5 +1,5 @@
 // mautrix-whatsapp - A Matrix-WhatsApp puppeting bridge.
-// Copyright (C) 2021 Tulir Asokan
+// Copyright (C) 2022 Tulir Asokan
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as published by
@@ -134,7 +134,7 @@ func (bridge *Bridge) GenerateRegistration() {
 }
 
 func (bridge *Bridge) MigrateDatabase() {
-	oldDB, err := database.New(flag.Arg(0), flag.Arg(1), log.DefaultLogger)
+	oldDB, err := database.New(config.DatabaseConfig{Type: flag.Arg(0), URI: flag.Arg(1)}, log.DefaultLogger)
 	if err != nil {
 		fmt.Println("Failed to open old database:", err)
 		os.Exit(30)
@@ -145,7 +145,7 @@ func (bridge *Bridge) MigrateDatabase() {
 		os.Exit(31)
 	}
 
-	newDB, err := database.New(bridge.Config.AppService.Database.Type, bridge.Config.AppService.Database.URI, log.DefaultLogger)
+	newDB, err := database.New(bridge.Config.AppService.Database, log.DefaultLogger)
 	if err != nil {
 		fmt.Println("Failed to open new database:", err)
 		os.Exit(32)
@@ -277,7 +277,7 @@ func (bridge *Bridge) Init() {
 	bridge.Log.Infoln("Initializing", VersionString)
 
 	bridge.Log.Debugln("Initializing database connection")
-	bridge.DB, err = database.New(bridge.Config.AppService.Database.Type, bridge.Config.AppService.Database.URI, bridge.Log)
+	bridge.DB, err = database.New(bridge.Config.AppService.Database, bridge.Log)
 	if err != nil {
 		bridge.Log.Fatalln("Failed to initialize database connection:", err)
 		os.Exit(14)
@@ -286,9 +286,6 @@ func (bridge *Bridge) Init() {
 	bridge.Log.Debugln("Initializing state store")
 	bridge.StateStore = database.NewSQLStateStore(bridge.DB)
 	bridge.AS.StateStore = bridge.StateStore
-
-	bridge.DB.SetMaxOpenConns(bridge.Config.AppService.Database.MaxOpenConns)
-	bridge.DB.SetMaxIdleConns(bridge.Config.AppService.Database.MaxIdleConns)
 
 	bridge.WAContainer = sqlstore.NewWithDB(bridge.DB.DB, bridge.Config.AppService.Database.Type, nil)
 
@@ -376,7 +373,7 @@ func (bridge *Bridge) Loop() {
 func (bridge *Bridge) WarnUsersAboutDisconnection() {
 	bridge.usersLock.Lock()
 	for _, user := range bridge.usersByUsername {
-		if user.IsConnected() && !user.PhoneRecentlySeen() {
+		if user.IsConnected() && !user.PhoneRecentlySeen(true) {
 			go user.sendPhoneOfflineWarning()
 		}
 	}

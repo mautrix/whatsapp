@@ -1,5 +1,5 @@
 // mautrix-whatsapp - A Matrix-WhatsApp puppeting bridge.
-// Copyright (C) 2019 Tulir Asokan
+// Copyright (C) 2022 Tulir Asokan
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as published by
@@ -18,6 +18,8 @@ package database
 
 import (
 	"database/sql"
+	"fmt"
+	"time"
 
 	"github.com/lib/pq"
 	_ "github.com/mattn/go-sqlite3"
@@ -25,6 +27,7 @@ import (
 	log "maunium.net/go/maulogger/v2"
 
 	"go.mau.fi/whatsmeow/store/sqlstore"
+	"maunium.net/go/mautrix-whatsapp/config"
 	"maunium.net/go/mautrix-whatsapp/database/upgrades"
 )
 
@@ -45,8 +48,8 @@ type Database struct {
 	DisappearingMessage *DisappearingMessageQuery
 }
 
-func New(dbType string, uri string, baseLog log.Logger) (*Database, error) {
-	conn, err := sql.Open(dbType, uri)
+func New(cfg config.DatabaseConfig, baseLog log.Logger) (*Database, error) {
+	conn, err := sql.Open(cfg.Type, cfg.URI)
 	if err != nil {
 		return nil, err
 	}
@@ -54,7 +57,7 @@ func New(dbType string, uri string, baseLog log.Logger) (*Database, error) {
 	db := &Database{
 		DB:      conn,
 		log:     baseLog.Sub("Database"),
-		dialect: dbType,
+		dialect: cfg.Type,
 	}
 	db.User = &UserQuery{
 		db:  db,
@@ -75,6 +78,23 @@ func New(dbType string, uri string, baseLog log.Logger) (*Database, error) {
 	db.DisappearingMessage = &DisappearingMessageQuery{
 		db:  db,
 		log: db.log.Sub("DisappearingMessage"),
+	}
+
+	db.SetMaxOpenConns(cfg.MaxOpenConns)
+	db.SetMaxIdleConns(cfg.MaxIdleConns)
+	if len(cfg.ConnMaxIdleTime) > 0 {
+		maxIdleTimeDuration, err := time.ParseDuration(cfg.ConnMaxIdleTime)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse max_conn_idle_time: %w", err)
+		}
+		db.SetConnMaxIdleTime(maxIdleTimeDuration)
+	}
+	if len(cfg.ConnMaxLifetime) > 0 {
+		maxLifetimeDuration, err := time.ParseDuration(cfg.ConnMaxLifetime)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse max_conn_idle_time: %w", err)
+		}
+		db.SetConnMaxLifetime(maxLifetimeDuration)
 	}
 	return db, nil
 }
