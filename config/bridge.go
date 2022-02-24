@@ -55,6 +55,8 @@ type BridgeConfig struct {
 	DefaultBridgeReceipts bool `yaml:"default_bridge_receipts"`
 	DefaultBridgePresence bool `yaml:"default_bridge_presence"`
 
+	ForceActiveDeliveryReceipts bool `yaml:"force_active_delivery_receipts"`
+
 	DoublePuppetServerMap      map[string]string `yaml:"double_puppet_server_map"`
 	DoublePuppetAllowDiscovery bool              `yaml:"double_puppet_allow_discovery"`
 	LoginSharedSecretMap       map[string]string `yaml:"login_shared_secret_map"`

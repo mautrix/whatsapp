@@ -322,6 +322,7 @@ var ErrAlreadyLoggedIn = errors.New("already logged in")
 func (user *User) createClient(sess *store.Device) {
 	user.Client = whatsmeow.NewClient(sess, &waLogger{user.log.Sub("Client")})
 	user.Client.AddEventHandler(user.HandleEvent)
+	user.Client.SetForceActiveDeliveryReceipts(user.bridge.Config.Bridge.ForceActiveDeliveryReceipts)
 	user.Client.GetMessageForRetry = func(to types.JID, id types.MessageID) *waProto.Message {
 		user.bridge.Metrics.TrackRetryReceipt(0, false)
 		return nil

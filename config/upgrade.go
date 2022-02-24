@@ -82,6 +82,7 @@ func (helper *UpgradeHelper) doUpgrade() {
 	helper.Copy(Bool, "bridge", "sync_direct_chat_list")
 	helper.Copy(Bool, "bridge", "default_bridge_receipts")
 	helper.Copy(Bool, "bridge", "default_bridge_presence")
+	helper.Copy(Bool, "bridge", "force_active_delivery_receipts")
 	helper.Copy(Map, "bridge", "double_puppet_server_map")
 	helper.Copy(Bool, "bridge", "double_puppet_allow_discovery")
 	if legacySecret, ok := helper.Get(Str, "bridge", "login_shared_secret"); ok && len(legacySecret) > 0 {

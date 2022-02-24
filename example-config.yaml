@@ -147,6 +147,12 @@ bridge:
     # Existing users won't be affected when these are changed.
     default_bridge_receipts: true
     default_bridge_presence: true
+    # Should the bridge always send "active" delivery receipts (two gray ticks on WhatsApp)
+    # even if the user isn't marked as online (e.g. when presence bridging isn't enabled)?
+    #
+    # By default, the bridge acts like WhatsApp web, which only sends active delivery
+    # receipts when it's in the foreground.
+    force_active_delivery_receipts: false
     # Servers to always allow double puppeting from
     double_puppet_server_map:
         example.com: https://example.com
