@@ -321,20 +321,8 @@ func (portal *Portal) backfill(source *User, messages []*waProto.WebMessageInfo)
 
 	firstMsgTimestamp := time.Unix(int64(messages[len(messages)-1].GetMessageTimestamp()), 0)
 
-	historyBatch.StateEventsAtStart = make([]*event.Event, 1)
-	newBatch.StateEventsAtStart = make([]*event.Event, 1)
-
-	// TODO remove the dummy state events after https://github.com/matrix-org/synapse/pull/11188
-	emptyStr := ""
-	dummyStateEvent := event.Event{
-		Type:      BackfillDummyStateEvent,
-		Sender:    portal.MainIntent().UserID,
-		StateKey:  &emptyStr,
-		Timestamp: firstMsgTimestamp.UnixMilli(),
-		Content:   event.Content{},
-	}
-	historyBatch.StateEventsAtStart[0] = &dummyStateEvent
-	newBatch.StateEventsAtStart[0] = &dummyStateEvent
+	historyBatch.StateEventsAtStart = make([]*event.Event, 0)
+	newBatch.StateEventsAtStart = make([]*event.Event, 0)
 
 	addedMembers := make(map[id.UserID]*event.MemberEventContent)
 	addMember := func(puppet *Puppet) {
