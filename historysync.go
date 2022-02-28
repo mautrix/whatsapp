@@ -307,7 +307,6 @@ func getPartialInfoFromConversation(jid types.JID, conv *waProto.Conversation) *
 
 var (
 	PortalCreationDummyEvent = event.Type{Type: "fi.mau.dummy.portal_created", Class: event.MessageEventType}
-	BackfillDummyStateEvent  = event.Type{Type: "fi.mau.dummy.blank_backfill_state", Class: event.StateEventType}
 	BackfillEndDummyEvent    = event.Type{Type: "fi.mau.dummy.backfill_end", Class: event.MessageEventType}
 	PreBackfillDummyEvent    = event.Type{Type: "fi.mau.dummy.pre_backfill", Class: event.MessageEventType}
 )
