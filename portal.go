@@ -1990,7 +1990,10 @@ func (portal *Portal) convertMediaMessageContent(intent *appservice.IntentAPI, m
 					max = waveform[i]
 				}
 			}
-			multiplier := 1024 / max
+			multiplier := 0
+			if max > 0 {
+				multiplier = 1024 / max
+			}
 			if multiplier > 32 {
 				multiplier = 32
 			}
