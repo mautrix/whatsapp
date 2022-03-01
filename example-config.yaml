@@ -147,6 +147,10 @@ bridge:
     # Existing users won't be affected when these are changed.
     default_bridge_receipts: true
     default_bridge_presence: true
+    # Send the presence as "available" to whatsapp when users start typing on a portal. 
+    # This works as a workaround for homeservers that do not support presence, and allows 
+    # users to see when the whatsapp user on the other side is typing during a conversation.
+    send_presence_on_typing: false
     # Should the bridge always send "active" delivery receipts (two gray ticks on WhatsApp)
     # even if the user isn't marked as online (e.g. when presence bridging isn't enabled)?
     #

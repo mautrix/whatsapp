@@ -54,6 +54,7 @@ type BridgeConfig struct {
 	SyncDirectChatList    bool `yaml:"sync_direct_chat_list"`
 	DefaultBridgeReceipts bool `yaml:"default_bridge_receipts"`
 	DefaultBridgePresence bool `yaml:"default_bridge_presence"`
+	SendPresenceOnTyping  bool `yaml:"send_presence_on_typing"`
 
 	ForceActiveDeliveryReceipts bool `yaml:"force_active_delivery_receipts"`
 

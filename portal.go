@@ -2818,6 +2818,12 @@ func (portal *Portal) setTyping(userIDs []id.UserID, state types.ChatPresence) {
 		if err != nil {
 			portal.log.Warnln("Error sending chat presence:", err)
 		}
+		if portal.bridge.Config.Bridge.SendPresenceOnTyping {
+			err = user.Client.SendPresence(types.PresenceAvailable)
+			if err != nil {
+				user.log.Warnln("Failed to set presence:", err)
+			}
+		}
 	}
 }
 
