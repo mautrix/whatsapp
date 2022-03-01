@@ -58,7 +58,9 @@ func (prov *ProvisioningAPI) Init() {
 	r.HandleFunc("/reconnect", prov.Reconnect).Methods(http.MethodPost)
 	r.HandleFunc("/sync/appstate/{name}", prov.SyncAppState).Methods(http.MethodPost)
 	r.HandleFunc("/contacts", prov.ListContacts).Methods(http.MethodGet)
+	r.HandleFunc("/groups", prov.ListGroups).Methods(http.MethodGet)
 	r.HandleFunc("/pm/{number}", prov.StartPM).Methods(http.MethodPost)
+	r.HandleFunc("/open/{groupID}", prov.OpenGroup).Methods(http.MethodPost)
 	prov.bridge.AS.Router.HandleFunc("/_matrix/app/com.beeper.asmux/ping", prov.BridgeStatePing).Methods(http.MethodPost)
 	prov.bridge.AS.Router.HandleFunc("/_matrix/app/com.beeper.bridge_state", prov.BridgeStatePing).Methods(http.MethodPost)
 
@@ -237,6 +239,23 @@ func (prov *ProvisioningAPI) ListContacts(w http.ResponseWriter, r *http.Request
 	}
 }
 
+func (prov *ProvisioningAPI) ListGroups(w http.ResponseWriter, r *http.Request) {
+	if user := r.Context().Value("user").(*User); user.Session == nil {
+		jsonResponse(w, http.StatusBadRequest, Error{
+			Error:   "User is not logged into WhatsApp",
+			ErrCode: "no session",
+		})
+	} else if groups, err := user.getCachedGroupList(); err != nil {
+		prov.log.Errorfln("Failed to fetch %s's groups: %v", user.MXID, err)
+		jsonResponse(w, http.StatusInternalServerError, Error{
+			Error:   "Internal server error while fetching group list",
+			ErrCode: "failed to get groups",
+		})
+	} else {
+		jsonResponse(w, http.StatusOK, groups)
+	}
+}
+
 type OtherUserInfo struct {
 	MXID   id.UserID     `json:"mxid"`
 	JID    types.JID     `json:"jid"`
@@ -245,9 +264,10 @@ type OtherUserInfo struct {
 }
 
 type PortalInfo struct {
-	RoomID      id.RoomID     `json:"room_id"`
-	OtherUser   OtherUserInfo `json:"other_user"`
-	JustCreated bool          `json:"just_created"`
+	RoomID      id.RoomID        `json:"room_id"`
+	OtherUser   *OtherUserInfo   `json:"other_user,omitempty"`
+	GroupInfo   *types.GroupInfo `json:"group_info,omitempty"`
+	JustCreated bool             `json:"just_created"`
 }
 
 func (prov *ProvisioningAPI) StartPM(w http.ResponseWriter, r *http.Request) {
@@ -287,13 +307,53 @@ func (prov *ProvisioningAPI) StartPM(w http.ResponseWriter, r *http.Request) {
 		}
 		jsonResponse(w, status, PortalInfo{
 			RoomID: portal.MXID,
-			OtherUser: OtherUserInfo{
+			OtherUser: &OtherUserInfo{
 				JID:    puppet.JID,
 				MXID:   puppet.MXID,
 				Name:   puppet.Displayname,
 				Avatar: puppet.AvatarURL,
 			},
 			JustCreated: justCreated,
+		})
+	}
+}
+
+func (prov *ProvisioningAPI) OpenGroup(w http.ResponseWriter, r *http.Request) {
+	groupID, _ := mux.Vars(r)["groupID"]
+	if user := r.Context().Value("user").(*User); !user.IsLoggedIn() {
+		jsonResponse(w, http.StatusBadRequest, Error{
+			Error:   "User is not logged into WhatsApp",
+			ErrCode: "no session",
+		})
+	} else if jid, err := types.ParseJID(groupID); err != nil || jid.Server != types.GroupServer || (!strings.ContainsRune(jid.User, '-') && len(jid.User) < 15) {
+		jsonResponse(w, http.StatusBadRequest, Error{
+			Error:   "Invalid group ID",
+			ErrCode: "invalid group id",
+		})
+	} else if info, err := user.Client.GetGroupInfo(jid); err != nil {
+		// TODO return better responses for different errors (like ErrGroupNotFound and ErrNotInGroup)
+		jsonResponse(w, http.StatusInternalServerError, Error{
+			Error:   fmt.Sprintf("Failed to get group info: %v", err),
+			ErrCode: "error getting group info",
+		})
+	} else {
+		prov.log.Debugln("Importing", jid, "for", user.MXID)
+		portal := user.GetPortalByJID(info.JID)
+		status := http.StatusOK
+		if len(portal.MXID) == 0 {
+			err = portal.CreateMatrixRoom(user, info, true)
+			if err != nil {
+				jsonResponse(w, http.StatusInternalServerError, Error{
+					Error: fmt.Sprintf("Failed to create portal: %v", err),
+				})
+				return
+			}
+			status = http.StatusCreated
+		}
+		jsonResponse(w, status, PortalInfo{
+			RoomID:      portal.MXID,
+			GroupInfo:   info,
+			JustCreated: status == http.StatusCreated,
 		})
 	}
 }

@@ -1,5 +1,5 @@
 // mautrix-whatsapp - A Matrix-WhatsApp puppeting bridge.
-// Copyright (C) 2021 Tulir Asokan
+// Copyright (C) 2022 Tulir Asokan
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as published by
@@ -70,6 +70,10 @@ type User struct {
 
 	spaceMembershipChecked  bool
 	lastPhoneOfflineWarning time.Time
+
+	groupListCache     []*types.GroupInfo
+	groupListCacheLock sync.Mutex
+	groupListCacheTime time.Time
 }
 
 func (bridge *Bridge) getUserByMXID(userID id.UserID, onlyIfExists bool) *User {
@@ -629,8 +633,10 @@ func (user *User) HandleEvent(event interface{}) {
 	case *events.PushName:
 		go user.syncPuppet(v.JID, "push name event")
 	case *events.GroupInfo:
+		user.groupListCache = nil
 		go user.handleGroupUpdate(v)
 	case *events.JoinedGroup:
+		user.groupListCache = nil
 		go user.handleGroupCreate(v)
 	case *events.Picture:
 		go user.handlePictureUpdate(v)
@@ -1079,4 +1085,18 @@ func (user *User) StartPM(jid types.JID, reason string) (*Portal, *Puppet, bool,
 	}
 	err := portal.CreateMatrixRoom(user, nil, false)
 	return portal, puppet, true, err
+}
+
+const groupListCacheMaxAge = 24 * time.Hour
+
+func (user *User) getCachedGroupList() ([]*types.GroupInfo, error) {
+	user.groupListCacheLock.Lock()
+	defer user.groupListCacheLock.Unlock()
+	if user.groupListCache != nil && user.groupListCacheTime.Add(groupListCacheMaxAge).After(time.Now()) {
+		return user.groupListCache, nil
+	}
+	var err error
+	user.groupListCache, err = user.Client.GetJoinedGroups()
+	user.groupListCacheTime = time.Now()
+	return user.groupListCache, err
 }
