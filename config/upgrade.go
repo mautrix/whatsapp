@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"os"
 	"path"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 
@@ -42,7 +43,11 @@ func (helper *UpgradeHelper) doUpgrade() {
 	helper.Copy(Int, "appservice", "database", "max_idle_conns")
 	helper.Copy(Str|Null, "appservice", "database", "max_conn_idle_time")
 	helper.Copy(Str|Null, "appservice", "database", "max_conn_lifetime")
-	helper.Copy(Str, "appservice", "provisioning", "prefix")
+	if prefix, ok := helper.Get(Str, "appservice", "provisioning", "prefix"); ok && strings.HasSuffix(prefix, "/v1") {
+		helper.Set(Str, strings.TrimSuffix(prefix, "/v1"), "appservice", "provisioning", "prefix")
+	} else {
+		helper.Copy(Str, "appservice", "provisioning", "prefix")
+	}
 	if secret, ok := helper.Get(Str, "appservice", "provisioning", "shared_secret"); !ok || secret == "generate" {
 		sharedSecret := appservice.RandomString(64)
 		helper.Set(Str, sharedSecret, "appservice", "provisioning", "shared_secret")
