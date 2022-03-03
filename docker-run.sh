@@ -6,7 +6,7 @@ fi
 
 # Define functions.
 function fixperms {
-	chown -R $UID:$GID /data /opt/mautrix-whatsapp
+	chown -R $UID:$GID /data
 }
 
 if [[ ! -f /data/config.yaml ]]; then
