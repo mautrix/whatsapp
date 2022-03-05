@@ -48,6 +48,7 @@ type portalToBackfill struct {
 
 type wrappedInfo struct {
 	*types.MessageInfo
+	Type  database.MessageType
 	Error database.MessageErrorType
 }
 
@@ -503,10 +504,10 @@ func (portal *Portal) appendBatchEvents(converted *ConvertedMessage, info *types
 			return err
 		}
 		*eventsArray = append(*eventsArray, mainEvt, captionEvt)
-		*infoArray = append(*infoArray, &wrappedInfo{info, converted.Error}, nil)
+		*infoArray = append(*infoArray, &wrappedInfo{info, database.MsgNormal, converted.Error}, nil)
 	} else {
 		*eventsArray = append(*eventsArray, mainEvt)
-		*infoArray = append(*infoArray, &wrappedInfo{info, converted.Error})
+		*infoArray = append(*infoArray, &wrappedInfo{info, database.MsgNormal, converted.Error})
 	}
 	if converted.MultiEvent != nil {
 		for _, subEvtContent := range converted.MultiEvent {
@@ -562,13 +563,13 @@ func (portal *Portal) finishBatch(eventIDs []id.EventID, infos []*wrappedInfo) {
 			} else if info, ok := infoMap[types.MessageID(msgID)]; !ok {
 				portal.log.Warnfln("Didn't find info of message %s (event %s) to register it in the database", msgID, eventID)
 			} else {
-				portal.markHandled(nil, info.MessageInfo, eventID, true, false, info.Error)
+				portal.markHandled(nil, info.MessageInfo, eventID, true, false, info.Type, info.Error)
 			}
 		}
 	} else {
 		for i := 0; i < len(infos); i++ {
 			if infos[i] != nil {
-				portal.markHandled(nil, infos[i].MessageInfo, eventIDs[i], true, false, infos[i].Error)
+				portal.markHandled(nil, infos[i].MessageInfo, eventIDs[i], true, false, infos[i].Type, infos[i].Error)
 			}
 		}
 		portal.log.Infofln("Successfully sent %d events", len(eventIDs))

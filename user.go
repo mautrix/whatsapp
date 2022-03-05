@@ -626,7 +626,7 @@ func (user *User) HandleEvent(event interface{}) {
 		go user.sendBridgeState(BridgeState{StateEvent: StateBadCredentials, Message: v.String()})
 		user.bridge.Metrics.TrackConnectionState(user.JID, false)
 	case *events.Disconnected:
-		go user.sendBridgeState(BridgeState{StateEvent: StateTransientDisconnect})
+		go user.sendBridgeState(BridgeState{StateEvent: StateTransientDisconnect, Message: "Disconnected from WhatsApp. Trying to reconnect."})
 		user.bridge.Metrics.TrackConnectionState(user.JID, false)
 	case *events.Contact:
 		go user.syncPuppet(v.JID, "contact event")

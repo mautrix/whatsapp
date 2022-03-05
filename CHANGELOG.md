@@ -1,12 +1,31 @@
-# unreleased
+# v0.3.0 (unreleased)
 
+* Added reaction bridging in both directions.
 * Added automatic sending of hidden messages to primary device to prevent
   false-positive disconnection warnings if there have been no messages sent or
   received in >12 days.
 * Added proper error message when WhatsApp rejects the connection due to the
   bridge being out of date.
-* Added experimental provisioning API to list contacts and start DMs.
+* Added experimental provisioning API to list contacts/groups, start DMs and
+  open group portals. Note that these APIs are subject to change at any time.
+* Added option to always send "active" delivery receipts (two gray ticks), even
+  if presence bridging is disabled. By default, WhatsApp web only sends those
+  receipts when it's in the foreground (i.e. showing online status).
+* Added option to send online presence on typing notifications (thanks to
+  [@abmantis] in [#452]). This can be used to enable incoming typing
+  notifications without enabling Matrix presence (WhatsApp only sends typing
+  notifications if you're online).
 * Exposed maximum database connection idle time and lifetime options.
+* Fixed syncing group topics. To get topics into existing portals on Matrix,
+  you can use `!wa sync groups`.
+* Fixed sticker events on Matrix including a redundant `msgtype` field.
+* Disabled file logging in Docker image by default.
+  * To enable it, mount a directory for the logs that's writable for the user
+    inside the container (1337 by default), then point the bridge at it using
+    the `logging` -> `directory` field, and finally set `file_name_format` to
+    something non-empty (the default is `{{.Date}}-{{.Index}}.log`).
+
+[#452]: https://github.com/mautrix/whatsapp/pull/452
 
 # v0.2.4 (2022-02-16)
 

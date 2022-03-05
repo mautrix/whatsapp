@@ -40,10 +40,11 @@ type Database struct {
 	log     log.Logger
 	dialect string
 
-	User    *UserQuery
-	Portal  *PortalQuery
-	Puppet  *PuppetQuery
-	Message *MessageQuery
+	User     *UserQuery
+	Portal   *PortalQuery
+	Puppet   *PuppetQuery
+	Message  *MessageQuery
+	Reaction *ReactionQuery
 
 	DisappearingMessage *DisappearingMessageQuery
 }
@@ -74,6 +75,10 @@ func New(cfg config.DatabaseConfig, baseLog log.Logger) (*Database, error) {
 	db.Message = &MessageQuery{
 		db:  db,
 		log: db.log.Sub("Message"),
+	}
+	db.Reaction = &ReactionQuery{
+		db:  db,
+		log: db.log.Sub("Reaction"),
 	}
 	db.DisappearingMessage = &DisappearingMessageQuery{
 		db:  db,

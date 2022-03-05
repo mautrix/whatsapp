@@ -38,7 +38,6 @@ type BridgeConfig struct {
 	PortalMessageBuffer   int  `yaml:"portal_message_buffer"`
 	CallStartNotices      bool `yaml:"call_start_notices"`
 	IdentityChangeNotices bool `yaml:"identity_change_notices"`
-	ReactionNotices       bool `yaml:"reaction_notices"`
 
 	HistorySync struct {
 		CreatePortals        bool  `yaml:"create_portals"`

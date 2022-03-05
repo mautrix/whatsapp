@@ -475,7 +475,7 @@ func (prov *ProvisioningAPI) Login(w http.ResponseWriter, r *http.Request) {
 
 	qrChan, err := user.Login(ctx)
 	if err != nil {
-		user.log.Errorf("Failed to log in from provisioning API:", err)
+		user.log.Errorln("Failed to log in from provisioning API:", err)
 		if errors.Is(err, ErrAlreadyLoggedIn) {
 			go user.Connect()
 			_ = c.WriteJSON(Error{

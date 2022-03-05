@@ -554,7 +554,7 @@ func (portal *Portal) handleUndecryptableMessage(source *User, evt *events.Undec
 	if err != nil {
 		portal.log.Errorln("Failed to send decryption error of %s to Matrix: %v", evt.Info.ID, err)
 	}
-	portal.finishHandling(nil, &evt.Info, resp.EventID, database.MsgErrDecryptionFailed)
+	portal.finishHandling(nil, &evt.Info, resp.EventID, database.MsgUnknown, database.MsgErrDecryptionFailed)
 }
 
 func (portal *Portal) handleFakeMessage(msg fakeMessage) {
@@ -587,7 +587,7 @@ func (portal *Portal) handleFakeMessage(msg fakeMessage) {
 			MessageSource: types.MessageSource{
 				Sender: msg.Sender,
 			},
-		}, resp.EventID, database.MsgNoError)
+		}, resp.EventID, database.MsgFake, database.MsgNoError)
 	}
 }
 
@@ -662,15 +662,17 @@ func (portal *Portal) handleMessage(source *User, evt *events.Message) {
 			}
 		}
 		if len(eventID) != 0 {
-			portal.finishHandling(existingMsg, &evt.Info, eventID, converted.Error)
+			portal.finishHandling(existingMsg, &evt.Info, eventID, database.MsgNormal, converted.Error)
 		}
+	} else if msgType == "reaction" {
+		portal.HandleMessageReaction(intent, source, &evt.Info, evt.Message.GetReactionMessage(), existingMsg)
 	} else if msgType == "revoke" {
 		portal.HandleMessageRevoke(source, &evt.Info, evt.Message.GetProtocolMessage().GetKey())
 		if existingMsg != nil {
 			_, _ = portal.MainIntent().RedactEvent(portal.MXID, existingMsg.MXID, mautrix.ReqRedact{
 				Reason: "The undecryptable message was actually the deletion of another message",
 			})
-			existingMsg.UpdateMXID("net.maunium.whatsapp.fake::"+existingMsg.MXID, database.MsgNoError)
+			existingMsg.UpdateMXID("net.maunium.whatsapp.fake::"+existingMsg.MXID, database.MsgFake, database.MsgNoError)
 		}
 	} else {
 		portal.log.Warnfln("Unhandled message: %+v (%s)", evt.Info, msgType)
@@ -678,7 +680,7 @@ func (portal *Portal) handleMessage(source *User, evt *events.Message) {
 			_, _ = portal.MainIntent().RedactEvent(portal.MXID, existingMsg.MXID, mautrix.ReqRedact{
 				Reason: "The undecryptable message contained an unsupported message type",
 			})
-			existingMsg.UpdateMXID("net.maunium.whatsapp.fake::"+existingMsg.MXID, database.MsgNoError)
+			existingMsg.UpdateMXID("net.maunium.whatsapp.fake::"+existingMsg.MXID, database.MsgFake, database.MsgNoError)
 		}
 		return
 	}
@@ -696,7 +698,7 @@ func (portal *Portal) isRecentlyHandled(id types.MessageID, error database.Messa
 	return false
 }
 
-func (portal *Portal) markHandled(msg *database.Message, info *types.MessageInfo, mxid id.EventID, isSent, recent bool, error database.MessageErrorType) *database.Message {
+func (portal *Portal) markHandled(msg *database.Message, info *types.MessageInfo, mxid id.EventID, isSent, recent bool, msgType database.MessageType, error database.MessageErrorType) *database.Message {
 	if msg == nil {
 		msg = portal.bridge.DB.Message.New()
 		msg.Chat = portal.Key
@@ -705,13 +707,14 @@ func (portal *Portal) markHandled(msg *database.Message, info *types.MessageInfo
 		msg.Timestamp = info.Timestamp
 		msg.Sender = info.Sender
 		msg.Sent = isSent
+		msg.Type = msgType
 		msg.Error = error
 		if info.IsIncomingBroadcast() {
 			msg.BroadcastListJID = info.Chat
 		}
 		msg.Insert()
 	} else {
-		msg.UpdateMXID(mxid, error)
+		msg.UpdateMXID(mxid, msgType, error)
 	}
 
 	if recent {
@@ -740,8 +743,8 @@ func (portal *Portal) getMessageIntent(user *User, info *types.MessageInfo) *app
 	return portal.getMessagePuppet(user, info).IntentFor(portal)
 }
 
-func (portal *Portal) finishHandling(existing *database.Message, message *types.MessageInfo, mxid id.EventID, error database.MessageErrorType) {
-	portal.markHandled(existing, message, mxid, true, true, error)
+func (portal *Portal) finishHandling(existing *database.Message, message *types.MessageInfo, mxid id.EventID, msgType database.MessageType, error database.MessageErrorType) {
+	portal.markHandled(existing, message, mxid, true, true, msgType, error)
 	portal.sendDeliveryReceipt(mxid)
 	var suffix string
 	if error == database.MsgErrDecryptionFailed {
@@ -749,7 +752,7 @@ func (portal *Portal) finishHandling(existing *database.Message, message *types.
 	} else if error == database.MsgErrMediaNotFound {
 		suffix = "(media not found notice)"
 	}
-	portal.log.Debugln("Handled message", message.ID, "->", mxid, suffix)
+	portal.log.Debugfln("Handled message %s (%s) -> %s %s", message.ID, msgType, mxid, suffix)
 }
 
 func (portal *Portal) kickExtraUsers(participantMap map[types.JID]bool) {
@@ -1415,6 +1418,43 @@ func (portal *Portal) SetReply(content *event.MessageEventContent, replyToID typ
 	}
 	content.SetReply(evt)
 	return true
+}
+
+type sendReactionContent struct {
+	event.ReactionEventContent
+	DoublePuppet string `json:"fi.mau.double_puppet_source,omitempty"`
+}
+
+func (portal *Portal) HandleMessageReaction(intent *appservice.IntentAPI, user *User, info *types.MessageInfo, reaction *waProto.ReactionMessage, existingMsg *database.Message) {
+	if existingMsg != nil {
+		_, _ = intent.RedactEvent(portal.MXID, existingMsg.MXID, mautrix.ReqRedact{
+			Reason: "The undecryptable message was actually a reaction",
+		})
+	}
+
+	target := portal.bridge.DB.Message.GetByJID(portal.Key, reaction.GetKey().GetId())
+	if target == nil {
+		portal.log.Debugfln("Dropping reaction %s from %s to unknown message %s", info.ID, info.Sender, reaction.GetKey().GetId())
+		return
+	}
+
+	var content sendReactionContent
+	content.RelatesTo = event.RelatesTo{
+		Type:    event.RelAnnotation,
+		EventID: target.MXID,
+		Key:     reaction.GetText(),
+	}
+	if intent.IsCustomPuppet {
+		content.DoublePuppet = doublePuppetValue
+	}
+	resp, err := intent.SendMassagedMessageEvent(portal.MXID, event.EventReaction, &content, info.Timestamp.UnixMilli())
+	if err != nil {
+		portal.log.Errorfln("Failed to bridge reaction %s from %s to %s: %v", info.ID, info.Sender, target.JID, err)
+		return
+	}
+
+	portal.finishHandling(existingMsg, info, resp.EventID, database.MsgReaction, database.MsgNoError)
+	portal.upsertReaction(intent, target.JID, info.Sender, resp.EventID, info.ID)
 }
 
 func (portal *Portal) HandleMessageRevoke(user *User, info *types.MessageInfo, key *waProto.MessageKey) bool {
@@ -2194,7 +2234,7 @@ func (portal *Portal) handleMediaRetry(retry *events.MediaRetry, source *User) {
 		return
 	}
 	portal.log.Debugfln("Successfully edited %s -> %s after retry notification for %s", msg.MXID, resp.EventID, retry.MessageID)
-	msg.UpdateMXID(resp.EventID, database.MsgNoError)
+	msg.UpdateMXID(resp.EventID, database.MsgNormal, database.MsgNoError)
 }
 
 func (portal *Portal) requestMediaRetry(user *User, eventID id.EventID) {
@@ -2466,7 +2506,7 @@ func (portal *Portal) convertMatrixMessage(sender *User, evt *event.Event) (*waP
 	replyToID := content.GetReplyTo()
 	if len(replyToID) > 0 {
 		replyToMsg := portal.bridge.DB.Message.GetByMXID(replyToID)
-		if replyToMsg != nil && !replyToMsg.IsFakeJID() {
+		if replyToMsg != nil && !replyToMsg.IsFakeJID() && replyToMsg.Type == database.MsgNormal {
 			ctxInfo.StanzaId = &replyToMsg.JID
 			ctxInfo.Participant = proto.String(replyToMsg.Sender.ToNonAD().String())
 			// Using blank content here seems to work fine on all official WhatsApp apps.
@@ -2664,7 +2704,7 @@ func (portal *Portal) HandleMatrixMessage(sender *User, evt *event.Event) {
 	}
 	portal.MarkDisappearing(evt.ID, portal.ExpirationTime, true)
 	info := portal.generateMessageInfo(sender)
-	dbMsg := portal.markHandled(nil, info, evt.ID, false, true, database.MsgNoError)
+	dbMsg := portal.markHandled(nil, info, evt.ID, false, true, database.MsgNormal, database.MsgNoError)
 	portal.log.Debugln("Sending event", evt.ID, "to WhatsApp", info.ID)
 	ts, err := sender.Client.SendMessage(portal.Key.JID, info.ID, msg)
 	if err != nil {
@@ -2683,6 +2723,78 @@ func (portal *Portal) HandleMatrixMessage(sender *User, evt *event.Event) {
 		portal.sendDeliveryReceipt(evt.ID)
 		dbMsg.MarkSent(ts)
 	}
+}
+
+func (portal *Portal) HandleMatrixReaction(sender *User, evt *event.Event) {
+	// TODO checkpoints
+	portal.log.Debugfln("Received reaction event %s from %s", evt.ID, evt.Sender)
+	content, ok := evt.Content.Parsed.(*event.ReactionEventContent)
+	if !ok {
+		portal.log.Debugfln("Failed to handle reaction event %s: unexpected parsed content type %T", evt.ID, evt.Content.Parsed)
+		return
+	}
+	target := portal.bridge.DB.Message.GetByMXID(content.RelatesTo.EventID)
+	if target == nil || target.Type == database.MsgReaction {
+		portal.log.Debugfln("Dropping reaction to unknown event %s", content.RelatesTo.EventID)
+		return
+	}
+	info := portal.generateMessageInfo(sender)
+	dbMsg := portal.markHandled(nil, info, evt.ID, false, true, database.MsgReaction, database.MsgNoError)
+	portal.upsertReaction(nil, target.JID, sender.JID, evt.ID, info.ID)
+	portal.log.Debugln("Sending reaction", evt.ID, "to WhatsApp", info.ID)
+	ts, err := portal.sendReactionToWhatsApp(sender, info.ID, target, content.RelatesTo.Key, evt.Timestamp)
+	if err != nil {
+		portal.log.Errorfln("Error sending reaction: %v", err)
+	} else {
+		portal.log.Debugfln("Handled Matrix reaction %s", evt.ID)
+		portal.sendDeliveryReceipt(evt.ID)
+		dbMsg.MarkSent(ts)
+	}
+}
+
+func (portal *Portal) sendReactionToWhatsApp(sender *User, id types.MessageID, target *database.Message, key string, timestamp int64) (time.Time, error) {
+	var messageKeyParticipant *string
+	if !portal.IsPrivateChat() {
+		messageKeyParticipant = proto.String(target.Sender.ToNonAD().String())
+	}
+	return sender.Client.SendMessage(portal.Key.JID, id, &waProto.Message{
+		ReactionMessage: &waProto.ReactionMessage{
+			Key: &waProto.MessageKey{
+				RemoteJid:   proto.String(portal.Key.JID.String()),
+				FromMe:      proto.Bool(target.Sender.User == sender.JID.User),
+				Id:          proto.String(target.JID),
+				Participant: messageKeyParticipant,
+			},
+			Text:              proto.String(key),
+			GroupingKey:       proto.String(key), // TODO is this correct?
+			SenderTimestampMs: proto.Int64(timestamp),
+		},
+	})
+}
+
+func (portal *Portal) upsertReaction(intent *appservice.IntentAPI, targetJID types.MessageID, senderJID types.JID, mxid id.EventID, jid types.MessageID) {
+	dbReaction := portal.bridge.DB.Reaction.GetByTargetJID(portal.Key, targetJID, senderJID)
+	if dbReaction == nil {
+		dbReaction = portal.bridge.DB.Reaction.New()
+		dbReaction.Chat = portal.Key
+		dbReaction.TargetJID = targetJID
+		dbReaction.Sender = senderJID
+	} else {
+		portal.log.Debugfln("Redacting old Matrix reaction %s after new one (%s) was sent", dbReaction.MXID, mxid)
+		var err error
+		if intent != nil {
+			_, err = intent.RedactEvent(portal.MXID, dbReaction.MXID)
+		}
+		if intent == nil || errors.Is(err, mautrix.MForbidden) {
+			_, err = portal.MainIntent().RedactEvent(portal.MXID, dbReaction.MXID)
+		}
+		if err != nil {
+			portal.log.Warnfln("Failed to remove old reaction %s: %v", dbReaction.MXID, err)
+		}
+	}
+	dbReaction.MXID = mxid
+	dbReaction.JID = jid
+	dbReaction.Upsert()
 }
 
 func (portal *Portal) HandleMatrixRedaction(sender *User, evt *event.Event) {
@@ -2712,8 +2824,24 @@ func (portal *Portal) HandleMatrixRedaction(sender *User, evt *event.Event) {
 		return
 	}
 
-	portal.log.Debugfln("Sending redaction %s of %s/%s to WhatsApp", evt.ID, msg.MXID, msg.JID)
-	_, err := sender.Client.RevokeMessage(portal.Key.JID, msg.JID)
+	var err error
+	if msg.Type == database.MsgReaction {
+		if reaction := portal.bridge.DB.Reaction.GetByMXID(evt.Redacts); reaction == nil {
+			portal.log.Debugfln("Ignoring redaction of reaction %s: reaction database entry not found", evt.ID)
+			portal.bridge.AS.SendErrorMessageSendCheckpoint(evt, appservice.StepRemote, errors.New("reaction database entry not found"), true, 0)
+			return
+		} else if reactionTarget := reaction.GetTarget(); reactionTarget == nil {
+			portal.log.Debugfln("Ignoring redaction of reaction %s: reaction target message not found", evt.ID)
+			portal.bridge.AS.SendErrorMessageSendCheckpoint(evt, appservice.StepRemote, errors.New("reaction target message not found"), true, 0)
+			return
+		} else {
+			portal.log.Debugfln("Sending redaction reaction %s of %s/%s to WhatsApp", evt.ID, msg.MXID, msg.JID)
+			_, err = portal.sendReactionToWhatsApp(sender, "", reactionTarget, "", evt.Timestamp)
+		}
+	} else {
+		portal.log.Debugfln("Sending redaction %s of %s/%s to WhatsApp", evt.ID, msg.MXID, msg.JID)
+		_, err = sender.Client.RevokeMessage(portal.Key.JID, msg.JID)
+	}
 	if err != nil {
 		portal.log.Errorfln("Error handling Matrix redaction %s: %v", evt.ID, err)
 		portal.bridge.AS.SendErrorMessageSendCheckpoint(evt, appservice.StepRemote, err, true, 0)

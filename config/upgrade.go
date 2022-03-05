@@ -75,7 +75,6 @@ func (helper *UpgradeHelper) doUpgrade() {
 	helper.Copy(Int, "bridge", "portal_message_buffer")
 	helper.Copy(Bool, "bridge", "call_start_notices")
 	helper.Copy(Bool, "bridge", "identity_change_notices")
-	helper.Copy(Bool, "bridge", "reaction_notices")
 	helper.Copy(Bool, "bridge", "history_sync", "create_portals")
 	helper.Copy(Int, "bridge", "history_sync", "max_age")
 	helper.Copy(Bool, "bridge", "history_sync", "backfill")
