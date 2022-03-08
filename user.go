@@ -473,7 +473,7 @@ func (user *User) handleCallStart(sender types.JID, id, callType string, ts time
 			Text:      text,
 			ID:        id,
 			Time:      ts,
-			Important: true,
+			Important: false,
 		},
 		source: user,
 	}
