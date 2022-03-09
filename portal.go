@@ -2942,7 +2942,7 @@ func (portal *Portal) setTyping(userIDs []id.UserID, state types.ChatPresence) {
 			continue
 		}
 		portal.log.Debugfln("Bridging typing change from %s to chat presence %s", state, user.MXID)
-		err := user.Client.SendChatPresence(state, portal.Key.JID)
+		err := user.Client.SendChatPresence(portal.Key.JID, state, types.ChatPresenceMediaText)
 		if err != nil {
 			portal.log.Warnln("Error sending chat presence:", err)
 		}
