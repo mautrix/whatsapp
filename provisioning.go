@@ -41,12 +41,17 @@ import (
 )
 
 type ProvisioningAPI struct {
-	bridge *Bridge
-	log    log.Logger
+	bridge  *Bridge
+	log     log.Logger
+	segment *Segment
 }
 
 func (prov *ProvisioningAPI) Init() {
 	prov.log = prov.bridge.Log.Sub("Provisioning")
+
+	// Set up segment
+	prov.segment = NewSegment(prov.bridge.Config.AppService.Provisioning.SegmentKey, prov.log)
+
 	prov.log.Debugln("Enabling provisioning API at", prov.bridge.Config.AppService.Provisioning.Prefix)
 	r := prov.bridge.AS.Router.PathPrefix(prov.bridge.Config.AppService.Provisioning.Prefix).Subrouter()
 	r.Use(prov.AuthMiddleware)
@@ -490,6 +495,7 @@ func (prov *ProvisioningAPI) Login(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	user.log.Debugln("Started login via provisioning API")
+	prov.segment.Track(user.MXID, "$login_start")
 
 	for {
 		select {
@@ -498,6 +504,7 @@ func (prov *ProvisioningAPI) Login(w http.ResponseWriter, r *http.Request) {
 			case whatsmeow.QRChannelSuccess.Event:
 				jid := user.Client.Store.ID
 				user.log.Debugln("Successful login as", jid, "via provisioning API")
+				prov.segment.Track(user.MXID, "$login_success")
 				_ = c.WriteJSON(map[string]interface{}{
 					"success": true,
 					"jid":     jid,
@@ -505,34 +512,45 @@ func (prov *ProvisioningAPI) Login(w http.ResponseWriter, r *http.Request) {
 				})
 			case whatsmeow.QRChannelTimeout.Event:
 				user.log.Debugln("Login via provisioning API timed out")
+				errCode := "login timed out"
+				prov.segment.Track(user.MXID, "$login_failure", map[string]interface{}{"error": errCode})
 				_ = c.WriteJSON(Error{
 					Error:   "QR code scan timed out. Please try again.",
-					ErrCode: "login timed out",
+					ErrCode: errCode,
 				})
 			case whatsmeow.QRChannelErrUnexpectedEvent.Event:
 				user.log.Debugln("Login via provisioning API failed due to unexpected event")
+				errCode := "unexpected event"
+				prov.segment.Track(user.MXID, "$login_failure", map[string]interface{}{"error": errCode})
 				_ = c.WriteJSON(Error{
 					Error:   "Got unexpected event while waiting for QRs, perhaps you're already logged in?",
-					ErrCode: "unexpected event",
+					ErrCode: errCode,
 				})
 			case whatsmeow.QRChannelClientOutdated.Event:
 				user.log.Debugln("Login via provisioning API failed due to outdated client")
+				errCode := "bridge outdated"
+				prov.segment.Track(user.MXID, "$login_failure", map[string]interface{}{"error": errCode})
 				_ = c.WriteJSON(Error{
 					Error:   "Got client outdated error while waiting for QRs. The bridge must be updated to continue.",
-					ErrCode: "bridge outdated",
+					ErrCode: errCode,
 				})
 			case whatsmeow.QRChannelScannedWithoutMultidevice.Event:
+				errCode := "multidevice not enabled"
+				prov.segment.Track(user.MXID, "$login_failure", map[string]interface{}{"error": errCode})
 				_ = c.WriteJSON(Error{
 					Error:   "Please enable the WhatsApp multidevice beta and scan the QR code again.",
-					ErrCode: "multidevice not enabled",
+					ErrCode: errCode,
 				})
 				continue
 			case "error":
+				errCode := "fatal error"
+				prov.segment.Track(user.MXID, "$login_failure", map[string]interface{}{"error": errCode})
 				_ = c.WriteJSON(Error{
 					Error:   "Fatal error while logging in",
-					ErrCode: "fatal error",
+					ErrCode: errCode,
 				})
 			case "code":
+				prov.segment.Track(user.MXID, "$qrcode_retrieved")
 				_ = c.WriteJSON(map[string]interface{}{
 					"code":    evt.Code,
 					"timeout": int(evt.Timeout.Seconds()),
