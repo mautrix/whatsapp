@@ -48,6 +48,11 @@ appservice:
         # Shared secret for authentication. If set to "generate", a random secret will be generated,
         # or if set to "disable", the provisioning API will be disabled.
         shared_secret: generate
+        # Segment API key to enable analytics tracking for web server
+        # endpoints. Set to null to disable.
+        # Currently the only events are login start, QR code retrieve, and login
+        # success/failure.
+        segment_key: null
 
     # The unique ID of this appservice.
     id: whatsapp

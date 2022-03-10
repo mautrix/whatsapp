@@ -46,6 +46,7 @@ type Config struct {
 		Provisioning struct {
 			Prefix       string `yaml:"prefix"`
 			SharedSecret string `yaml:"shared_secret"`
+			SegmentKey   string `yaml:"segment_key"`
 		} `yaml:"provisioning"`
 
 		ID  string `yaml:"id"`

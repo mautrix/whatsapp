@@ -54,6 +54,7 @@ func (helper *UpgradeHelper) doUpgrade() {
 	} else {
 		helper.Copy(Str, "appservice", "provisioning", "shared_secret")
 	}
+	helper.Copy(Str|Null, "appservice", "provisioning", "segment_key")
 	helper.Copy(Str, "appservice", "id")
 	helper.Copy(Str, "appservice", "bot", "username")
 	helper.Copy(Str, "appservice", "bot", "displayname")
