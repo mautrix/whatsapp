@@ -148,7 +148,7 @@ func (prov *ProvisioningAPI) DeleteSession(w http.ResponseWriter, r *http.Reques
 	user.DeleteConnection()
 	user.DeleteSession()
 	jsonResponse(w, http.StatusOK, Response{true, "Session information purged"})
-	user.removeFromJIDMap(StateLoggedOut)
+	user.removeFromJIDMap(BridgeState{StateEvent: StateLoggedOut})
 }
 
 func (prov *ProvisioningAPI) Disconnect(w http.ResponseWriter, r *http.Request) {
@@ -434,7 +434,7 @@ func (prov *ProvisioningAPI) Logout(w http.ResponseWriter, r *http.Request) {
 	}
 
 	user.bridge.Metrics.TrackConnectionState(user.JID, false)
-	user.removeFromJIDMap(StateLoggedOut)
+	user.removeFromJIDMap(BridgeState{StateEvent: StateLoggedOut})
 	user.DeleteSession()
 	jsonResponse(w, http.StatusOK, Response{true, "Logged out successfully."})
 }

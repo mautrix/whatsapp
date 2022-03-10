@@ -601,7 +601,7 @@ func (handler *CommandHandler) CommandLogout(ce *CommandEvent) {
 		return
 	}
 	ce.User.Session = nil
-	ce.User.removeFromJIDMap(StateLoggedOut)
+	ce.User.removeFromJIDMap(BridgeState{StateEvent: StateLoggedOut})
 	ce.User.DeleteConnection()
 	ce.User.DeleteSession()
 	ce.Reply("Logged out successfully.")
@@ -658,7 +658,7 @@ func (handler *CommandHandler) CommandDeleteSession(ce *CommandEvent) {
 		ce.Reply("Nothing to purge: no session information stored and no active connection.")
 		return
 	}
-	ce.User.removeFromJIDMap(StateLoggedOut)
+	ce.User.removeFromJIDMap(BridgeState{StateEvent: StateLoggedOut})
 	ce.User.DeleteConnection()
 	ce.User.DeleteSession()
 	ce.Reply("Session information purged")

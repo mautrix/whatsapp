@@ -118,7 +118,7 @@ func (user *User) addToJIDMap() {
 	user.bridge.usersLock.Unlock()
 }
 
-func (user *User) removeFromJIDMap(state BridgeStateEvent) {
+func (user *User) removeFromJIDMap(state BridgeState) {
 	user.bridge.usersLock.Lock()
 	jidUser, ok := user.bridge.usersByUsername[user.JID.User]
 	if ok && user == jidUser {
@@ -126,7 +126,7 @@ func (user *User) removeFromJIDMap(state BridgeStateEvent) {
 	}
 	user.bridge.usersLock.Unlock()
 	user.bridge.Metrics.TrackLoginState(user.JID, false)
-	user.sendBridgeState(BridgeState{StateEvent: state})
+	user.sendBridgeState(state)
 }
 
 func (bridge *Bridge) GetAllUsers() []*User {
@@ -547,8 +547,6 @@ func (user *User) HandleEvent(event interface{}) {
 	switch v := event.(type) {
 	case *events.LoggedOut:
 		go user.handleLoggedOut(v.OnConnect, v.Reason)
-		user.bridge.Metrics.TrackConnectionState(user.JID, false)
-		user.bridge.Metrics.TrackLoginState(user.JID, false)
 	case *events.Connected:
 		user.bridge.Metrics.TrackConnectionState(user.JID, true)
 		user.bridge.Metrics.TrackLoginState(user.JID, true)
@@ -877,7 +875,9 @@ func (user *User) UpdateDirectChats(chats map[id.UserID][]id.RoomID) {
 }
 
 func (user *User) handleLoggedOut(onConnect bool, reason events.ConnectFailureReason) {
-	user.sendBridgeState(BridgeState{StateEvent: StateBadCredentials, Error: WALoggedOut, Message: reason.String()})
+	user.removeFromJIDMap(BridgeState{StateEvent: StateBadCredentials, Error: WALoggedOut, Message: reason.String()})
+	user.DeleteConnection()
+	user.Session = nil
 	user.JID = types.EmptyJID
 	user.Update()
 	if onConnect {
