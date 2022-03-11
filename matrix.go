@@ -75,6 +75,12 @@ func (mx *MatrixHandler) HandleEncryption(evt *event.Event) {
 		mx.log.Debugfln("%s enabled encryption in %s", evt.Sender, evt.RoomID)
 		portal.Encrypted = true
 		portal.Update()
+		if portal.IsPrivateChat() {
+			err := mx.as.BotIntent().EnsureJoined(portal.MXID, appservice.EnsureJoinedParams{BotOverride: portal.MainIntent().Client})
+			if err != nil {
+				mx.log.Errorfln("Failed to join bot to %s after encryption was enabled: %v", evt.RoomID, err)
+			}
+		}
 	}
 }
 
