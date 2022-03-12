@@ -20,6 +20,7 @@ import (
 	_ "embed"
 	"errors"
 	"fmt"
+	"net/http"
 	"os"
 	"os/signal"
 	"strconv"
@@ -30,6 +31,7 @@ import (
 
 	"google.golang.org/protobuf/proto"
 
+	"go.mau.fi/whatsmeow"
 	waProto "go.mau.fi/whatsmeow/binary/proto"
 	"go.mau.fi/whatsmeow/store"
 	"go.mau.fi/whatsmeow/store/sqlstore"
@@ -318,6 +320,7 @@ func (bridge *Bridge) Start() {
 	go bridge.AS.Start()
 	bridge.Log.Debugln("Starting event processor")
 	go bridge.EventProcessor.Start()
+	go bridge.CheckWhatsAppUpdate()
 	go bridge.UpdateBotProfile()
 	if bridge.Crypto != nil {
 		go bridge.Crypto.Start()
@@ -332,6 +335,26 @@ func (bridge *Bridge) Start() {
 	}
 	go bridge.Loop()
 	bridge.AS.Ready = true
+}
+
+func (bridge *Bridge) CheckWhatsAppUpdate() {
+	bridge.Log.Debugfln("Checking for WhatsApp web update")
+	resp, err := whatsmeow.CheckUpdate(http.DefaultClient)
+	if err != nil {
+		bridge.Log.Warnfln("Failed to check for WhatsApp web update: %v", err)
+		return
+	}
+	if store.GetWAVersion() == resp.ParsedVersion {
+		bridge.Log.Debugfln("Bridge is using latest WhatsApp web protocol")
+	} else if store.GetWAVersion().LessThan(resp.ParsedVersion) {
+		if resp.IsBelowHard || resp.IsBelowSoft || resp.IsBroken {
+			bridge.Log.Warnfln("Bridge is using outdated WhatsApp web protocol and may no longer function (%s, latest is %s)", store.GetWAVersion(), resp.ParsedVersion)
+		} else {
+			bridge.Log.Debugfln("Bridge is using outdated WhatsApp web protocol (%s, latest is %s)", store.GetWAVersion(), resp.ParsedVersion)
+		}
+	} else {
+		bridge.Log.Debugfln("Bridge is using newer than latest WhatsApp web protocol")
+	}
 }
 
 func (bridge *Bridge) Loop() {
