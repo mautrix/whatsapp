@@ -1427,34 +1427,54 @@ type sendReactionContent struct {
 
 func (portal *Portal) HandleMessageReaction(intent *appservice.IntentAPI, user *User, info *types.MessageInfo, reaction *waProto.ReactionMessage, existingMsg *database.Message) {
 	if existingMsg != nil {
-		_, _ = intent.RedactEvent(portal.MXID, existingMsg.MXID, mautrix.ReqRedact{
+		_, _ = portal.MainIntent().RedactEvent(portal.MXID, existingMsg.MXID, mautrix.ReqRedact{
 			Reason: "The undecryptable message was actually a reaction",
 		})
 	}
 
-	target := portal.bridge.DB.Message.GetByJID(portal.Key, reaction.GetKey().GetId())
-	if target == nil {
-		portal.log.Debugfln("Dropping reaction %s from %s to unknown message %s", info.ID, info.Sender, reaction.GetKey().GetId())
-		return
-	}
+	targetJID := reaction.GetKey().GetId()
+	if reaction.GetText() == "" {
+		existing := portal.bridge.DB.Reaction.GetByTargetJID(portal.Key, targetJID, info.Sender)
+		if existing == nil {
+			portal.log.Debugfln("Dropping removal %s of unknown reaction to %s from %s", info.ID, targetJID, info.Sender)
+			return
+		}
 
-	var content sendReactionContent
-	content.RelatesTo = event.RelatesTo{
-		Type:    event.RelAnnotation,
-		EventID: target.MXID,
-		Key:     reaction.GetText(),
-	}
-	if intent.IsCustomPuppet {
-		content.DoublePuppet = doublePuppetValue
-	}
-	resp, err := intent.SendMassagedMessageEvent(portal.MXID, event.EventReaction, &content, info.Timestamp.UnixMilli())
-	if err != nil {
-		portal.log.Errorfln("Failed to bridge reaction %s from %s to %s: %v", info.ID, info.Sender, target.JID, err)
-		return
-	}
+		extra := make(map[string]interface{})
+		if intent.IsCustomPuppet {
+			extra[doublePuppetKey] = doublePuppetValue
+		}
+		resp, err := intent.RedactEvent(portal.MXID, existing.MXID, mautrix.ReqRedact{Extra: extra})
+		if err != nil {
+			portal.log.Errorfln("Failed to redact reaction %s/%s from %s to %s: %v", existing.MXID, existing.JID, info.Sender, targetJID, err)
+		}
+		portal.finishHandling(existingMsg, info, resp.EventID, database.MsgReaction, database.MsgNoError)
+		existing.Delete()
+	} else {
+		target := portal.bridge.DB.Message.GetByJID(portal.Key, targetJID)
+		if target == nil {
+			portal.log.Debugfln("Dropping reaction %s from %s to unknown message %s", info.ID, info.Sender, targetJID)
+			return
+		}
 
-	portal.finishHandling(existingMsg, info, resp.EventID, database.MsgReaction, database.MsgNoError)
-	portal.upsertReaction(intent, target.JID, info.Sender, resp.EventID, info.ID)
+		var content sendReactionContent
+		content.RelatesTo = event.RelatesTo{
+			Type:    event.RelAnnotation,
+			EventID: target.MXID,
+			Key:     reaction.GetText(),
+		}
+		if intent.IsCustomPuppet {
+			content.DoublePuppet = doublePuppetValue
+		}
+		resp, err := intent.SendMassagedMessageEvent(portal.MXID, event.EventReaction, &content, info.Timestamp.UnixMilli())
+		if err != nil {
+			portal.log.Errorfln("Failed to bridge reaction %s from %s to %s: %v", info.ID, info.Sender, target.JID, err)
+			return
+		}
+
+		portal.finishHandling(existingMsg, info, resp.EventID, database.MsgReaction, database.MsgNoError)
+		portal.upsertReaction(intent, target.JID, info.Sender, resp.EventID, info.ID)
+	}
 }
 
 func (portal *Portal) HandleMessageRevoke(user *User, info *types.MessageInfo, key *waProto.MessageKey) bool {
@@ -2783,7 +2803,11 @@ func (portal *Portal) upsertReaction(intent *appservice.IntentAPI, targetJID typ
 		portal.log.Debugfln("Redacting old Matrix reaction %s after new one (%s) was sent", dbReaction.MXID, mxid)
 		var err error
 		if intent != nil {
-			_, err = intent.RedactEvent(portal.MXID, dbReaction.MXID)
+			extra := make(map[string]interface{})
+			if intent.IsCustomPuppet {
+				extra[doublePuppetKey] = doublePuppetValue
+			}
+			_, err = intent.RedactEvent(portal.MXID, dbReaction.MXID, mautrix.ReqRedact{Extra: extra})
 		}
 		if intent == nil || errors.Is(err, mautrix.MForbidden) {
 			_, err = portal.MainIntent().RedactEvent(portal.MXID, dbReaction.MXID)

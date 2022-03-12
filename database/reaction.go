@@ -54,6 +54,9 @@ const (
 		ON CONFLICT (chat_jid, chat_receiver, target_jid, sender)
 			DO UPDATE SET mxid=excluded.mxid, jid=excluded.jid
 	`
+	deleteReactionQuery = `
+		DELETE FROM reaction WHERE chat_jid=$1 AND chat_receiver=$2 AND target_jid=$3 AND sender=$4 AND mxid=$5
+	`
 )
 
 func (rq *ReactionQuery) GetByTargetJID(chat PortalKey, jid types.MessageID, sender types.JID) *Reaction {
@@ -103,4 +106,11 @@ func (reaction *Reaction) Upsert() {
 
 func (reaction *Reaction) GetTarget() *Message {
 	return reaction.db.Message.GetByJID(reaction.Chat, reaction.TargetJID)
+}
+
+func (reaction *Reaction) Delete() {
+	_, err := reaction.db.Exec(deleteReactionQuery, reaction.Chat.JID, reaction.Chat.Receiver, reaction.TargetJID, reaction.Sender, reaction.MXID)
+	if err != nil {
+		reaction.log.Warnfln("Failed to delete reaction %s: %v", reaction.MXID, err)
+	}
 }
