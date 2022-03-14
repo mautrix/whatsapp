@@ -1,6 +1,7 @@
 # Homeserver details.
 homeserver:
     # The address that this appservice can use to connect to the homeserver.
+    # default: address: https://example.com
     address: https://example.com
     # The domain of the homeserver (for MXIDs, etc).
     domain: example.com
@@ -18,10 +19,14 @@ homeserver:
 # Changing these values requires regeneration of the registration.
 appservice:
     # The address that the homeserver can use to connect to this appservice.
+    # You can use either http:// or https://
+    # You must specify a port at the end for example 29318 or 80
+    # default: http://localhost:29318
     address: http://localhost:29318
 
     # The hostname and port where this appservice should listen.
     hostname: 0.0.0.0
+    # default: 29318
     port: 29318
 
     # Database config.
