@@ -1667,6 +1667,14 @@ func (portal *Portal) convertLocationMessage(intent *appservice.IntentAPI, msg *
 
 const inviteMsg = `%s<hr/>This invitation to join "%s" expires at %s. Reply to this message with <code>!wa accept</code> to accept the invite.`
 const inviteMetaField = "fi.mau.whatsapp.invite"
+const escapedInviteMetaField = `fi\.mau\.whatsapp\.invite`
+
+type InviteMeta struct {
+	JID        types.JID `json:"jid"`
+	Code       string    `json:"code"`
+	Expiration int64     `json:"expiration,string"`
+	Inviter    types.JID `json:"inviter"`
+}
 
 func (portal *Portal) convertGroupInviteMessage(intent *appservice.IntentAPI, info *types.MessageInfo, msg *waProto.GroupInviteMessage) *ConvertedMessage {
 	expiry := time.Unix(msg.GetInviteExpiration(), 0)
@@ -1677,12 +1685,16 @@ func (portal *Portal) convertGroupInviteMessage(intent *appservice.IntentAPI, in
 		Format:        event.FormatHTML,
 		FormattedBody: htmlMessage,
 	}
+	groupJID, err := types.ParseJID(msg.GetGroupJid())
+	if err != nil {
+		portal.log.Errorfln("Failed to parse invite group JID: %v", err)
+	}
 	extraAttrs := map[string]interface{}{
-		inviteMetaField: map[string]interface{}{
-			"jid":        msg.GetGroupJid(),
-			"code":       msg.GetInviteCode(),
-			"expiration": strconv.FormatInt(msg.GetInviteExpiration(), 10),
-			"inviter":    info.Sender.ToNonAD().String(),
+		inviteMetaField: InviteMeta{
+			JID:        groupJID,
+			Code:       msg.GetInviteCode(),
+			Expiration: msg.GetInviteExpiration(),
+			Inviter:    info.Sender.ToNonAD(),
 		},
 	}
 	return &ConvertedMessage{
