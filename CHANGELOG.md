@@ -1,4 +1,4 @@
-# v0.3.0 (unreleased)
+# v0.3.0 (2022-03-16)
 
 * Added reaction bridging in both directions.
 * Added automatic sending of hidden messages to primary device to prevent
