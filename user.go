@@ -875,7 +875,13 @@ func (user *User) UpdateDirectChats(chats map[id.UserID][]id.RoomID) {
 }
 
 func (user *User) handleLoggedOut(onConnect bool, reason events.ConnectFailureReason) {
-	user.removeFromJIDMap(BridgeState{StateEvent: StateBadCredentials, Error: WALoggedOut, Message: reason.String()})
+	errorCode := WAUnknownLogout
+	if reason == events.ConnectFailureLoggedOut {
+		errorCode = WALoggedOut
+	} else if reason == events.ConnectFailureBanned {
+		errorCode = WAAccountBanned
+	}
+	user.removeFromJIDMap(BridgeState{StateEvent: StateBadCredentials, Error: errorCode})
 	user.DeleteConnection()
 	user.Session = nil
 	user.JID = types.EmptyJID
