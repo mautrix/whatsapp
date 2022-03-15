@@ -103,7 +103,8 @@ var dontSaveConfig = flag.MakeFull("n", "no-update", "Don't save updated config 
 var registrationPath = flag.MakeFull("r", "registration", "The path where to save the appservice registration.", "registration.yaml").String()
 var generateRegistration = flag.MakeFull("g", "generate-registration", "Generate registration and quit.", "false").Bool()
 var version = flag.MakeFull("v", "version", "View bridge version and quit.", "false").Bool()
-var ignoreUnsupportedDatabase = flag.Make().LongKey("ignore-unsupported-database").Usage("Run even if database is too new").Default("false").Bool()
+var ignoreUnsupportedDatabase = flag.Make().LongKey("ignore-unsupported-database").Usage("Run even if the database schema is too new").Default("false").Bool()
+var ignoreForeignTables = flag.Make().LongKey("ignore-foreign-tables").Usage("Run even if the database contains tables from other programs (like Synapse)").Default("false").Bool()
 var migrateFrom = flag.Make().LongKey("migrate-db").Usage("Source database type and URI to migrate from.").Bool()
 var wantHelp, _ = flag.MakeHelpFlag()
 
@@ -299,8 +300,15 @@ func (bridge *Bridge) Init() {
 func (bridge *Bridge) Start() {
 	bridge.Log.Debugln("Running database upgrades")
 	err := bridge.DB.Init()
-	if err != nil && (err != upgrades.UnsupportedDatabaseVersion || !*ignoreUnsupportedDatabase) {
+	if err != nil && (!errors.Is(err, upgrades.ErrUnsupportedDatabaseVersion) || !*ignoreUnsupportedDatabase) {
 		bridge.Log.Fatalln("Failed to initialize database:", err)
+		if errors.Is(err, upgrades.ErrForeignTables) {
+			bridge.Log.Infoln("You can use --ignore-foreign-tables to ignore this error")
+		} else if errors.Is(err, upgrades.ErrNotOwned) {
+			bridge.Log.Infoln("Sharing the same database with different programs is not supported")
+		} else if errors.Is(err, upgrades.ErrUnsupportedDatabaseVersion) {
+			bridge.Log.Infoln("Downgrading the bridge is not supported")
+		}
 		os.Exit(15)
 	}
 	bridge.Log.Debugln("Checking connection to homeserver")
@@ -517,6 +525,7 @@ func main() {
 		fmt.Println(VersionString)
 		return
 	}
+	upgrades.IgnoreForeignTables = *ignoreForeignTables
 
 	(&Bridge{
 		usersByMXID:         make(map[id.UserID]*User),

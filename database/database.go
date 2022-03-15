@@ -23,10 +23,9 @@ import (
 
 	"github.com/lib/pq"
 	_ "github.com/mattn/go-sqlite3"
-
+	"go.mau.fi/whatsmeow/store/sqlstore"
 	log "maunium.net/go/maulogger/v2"
 
-	"go.mau.fi/whatsmeow/store/sqlstore"
 	"maunium.net/go/mautrix-whatsapp/config"
 	"maunium.net/go/mautrix-whatsapp/database/upgrades"
 )

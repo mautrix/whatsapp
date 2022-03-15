@@ -15,6 +15,7 @@
   [@abmantis] in [#452]). This can be used to enable incoming typing
   notifications without enabling Matrix presence (WhatsApp only sends typing
   notifications if you're online).
+* Added checks to prevent sharing the database with unrelated software.
 * Exposed maximum database connection idle time and lifetime options.
 * Fixed syncing group topics. To get topics into existing portals on Matrix,
   you can use `!wa sync groups`.
