@@ -90,10 +90,10 @@ func (user *User) handleHistorySync(evt *waProto.HistorySync) {
 
 	var backfillWait sync.WaitGroup
 	backfillWait.Add(1)
-	go user.backfillLoop(portalsToBackfill, backfillWait.Done)
 	for _, conv := range conversations {
 		user.handleHistorySyncConversation(conv, portalsToBackfill)
 	}
+	go user.backfillLoop(portalsToBackfill, backfillWait.Done)
 	close(portalsToBackfill)
 	backfillWait.Wait()
 	user.log.Infoln("Finished handling history sync with", description)
