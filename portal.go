@@ -50,6 +50,7 @@ import (
 	"maunium.net/go/mautrix/id"
 	"maunium.net/go/mautrix/util"
 	"maunium.net/go/mautrix/util/ffmpeg"
+	"maunium.net/go/mautrix/util/variationselector"
 
 	"go.mau.fi/whatsmeow"
 	waProto "go.mau.fi/whatsmeow/binary/proto"
@@ -1461,7 +1462,7 @@ func (portal *Portal) HandleMessageReaction(intent *appservice.IntentAPI, user *
 		content.RelatesTo = event.RelatesTo{
 			Type:    event.RelAnnotation,
 			EventID: target.MXID,
-			Key:     reaction.GetText(),
+			Key:     variationselector.Add(reaction.GetText()),
 		}
 		if intent.IsCustomPuppet {
 			content.DoublePuppet = doublePuppetValue
@@ -2789,6 +2790,7 @@ func (portal *Portal) sendReactionToWhatsApp(sender *User, id types.MessageID, t
 	if !portal.IsPrivateChat() {
 		messageKeyParticipant = proto.String(target.Sender.ToNonAD().String())
 	}
+	key = variationselector.Remove(key)
 	return sender.Client.SendMessage(portal.Key.JID, id, &waProto.Message{
 		ReactionMessage: &waProto.ReactionMessage{
 			Key: &waProto.MessageKey{
