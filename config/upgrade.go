@@ -33,6 +33,7 @@ func (helper *UpgradeHelper) doUpgrade() {
 	helper.Copy(Bool, "homeserver", "asmux")
 	helper.Copy(Str|Null, "homeserver", "status_endpoint")
 	helper.Copy(Str|Null, "homeserver", "message_send_checkpoint_endpoint")
+	helper.Copy(Bool, "homeserver", "async_media")
 
 	helper.Copy(Str, "appservice", "address")
 	helper.Copy(Str, "appservice", "hostname")

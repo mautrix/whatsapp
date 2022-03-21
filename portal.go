@@ -2108,16 +2108,30 @@ func (portal *Portal) convertMediaMessageContent(intent *appservice.IntentAPI, m
 func (portal *Portal) uploadMedia(intent *appservice.IntentAPI, data []byte, content *event.MessageEventContent) error {
 	data, uploadMimeType, file := portal.encryptFile(data, content.Info.MimeType)
 
-	uploaded, err := intent.UploadBytes(data, uploadMimeType)
-	if err != nil {
-		return err
+	req := mautrix.ReqUploadMedia{
+		ContentBytes: data,
+		ContentType:  uploadMimeType,
+	}
+	var mxc id.ContentURI
+	if portal.bridge.Config.Homeserver.AsyncMedia {
+		uploaded, err := intent.UnstableUploadAsync(req)
+		if err != nil {
+			return err
+		}
+		mxc = uploaded.ContentURI
+	} else {
+		uploaded, err := intent.UploadMedia(req)
+		if err != nil {
+			return err
+		}
+		mxc = uploaded.ContentURI
 	}
 
 	if file != nil {
-		file.URL = uploaded.ContentURI.CUString()
+		file.URL = mxc.CUString()
 		content.File = file
 	} else {
-		content.URL = uploaded.ContentURI.CUString()
+		content.URL = mxc.CUString()
 	}
 
 	content.Info.Size = len(data)
