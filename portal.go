@@ -1257,6 +1257,9 @@ func (portal *Portal) CreateMatrixRoom(user *User, groupInfo *types.GroupInfo, i
 	}
 
 	var invite []id.UserID
+	if portal.IsPrivateChat() {
+		invite = append(invite, portal.bridge.Bot.UserID)
+	}
 
 	if portal.bridge.Config.Bridge.Encryption.Default {
 		initialState = append(initialState, &event.Event{
@@ -1266,9 +1269,6 @@ func (portal *Portal) CreateMatrixRoom(user *User, groupInfo *types.GroupInfo, i
 			},
 		})
 		portal.Encrypted = true
-		if portal.IsPrivateChat() {
-			invite = append(invite, portal.bridge.Bot.UserID)
-		}
 	}
 
 	creationContent := make(map[string]interface{})
