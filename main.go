@@ -355,8 +355,10 @@ func (bridge *Bridge) CheckWhatsAppUpdate() {
 	if store.GetWAVersion() == resp.ParsedVersion {
 		bridge.Log.Debugfln("Bridge is using latest WhatsApp web protocol")
 	} else if store.GetWAVersion().LessThan(resp.ParsedVersion) {
-		if resp.IsBelowHard || resp.IsBelowSoft || resp.IsBroken {
-			bridge.Log.Warnfln("Bridge is using outdated WhatsApp web protocol and may no longer function (%s, latest is %s)", store.GetWAVersion(), resp.ParsedVersion)
+		if resp.IsBelowHard || resp.IsBroken {
+			bridge.Log.Warnfln("Bridge is using outdated WhatsApp web protocol and probably doesn't work anymore (%s, latest is %s)", store.GetWAVersion(), resp.ParsedVersion)
+		} else if resp.IsBelowSoft {
+			bridge.Log.Infofln("Bridge is using outdated WhatsApp web protocol (%s, latest is %s)", store.GetWAVersion(), resp.ParsedVersion)
 		} else {
 			bridge.Log.Debugfln("Bridge is using outdated WhatsApp web protocol (%s, latest is %s)", store.GetWAVersion(), resp.ParsedVersion)
 		}
