@@ -117,7 +117,10 @@ func (hsc *HistorySyncConversation) Upsert() {
 		DO UPDATE SET
 			portal_jid=EXCLUDED.portal_jid,
 			portal_receiver=EXCLUDED.portal_receiver,
-			last_message_timestamp=EXCLUDED.last_message_timestamp,
+			last_message_timestamp=CASE
+				WHEN EXCLUDED.last_message_timestamp > history_sync_conversation.last_message_timestamp THEN EXCLUDED.last_message_timestamp
+				ELSE history_sync_conversation.last_message_timestamp
+			END,
 			archived=EXCLUDED.archived,
 			pinned=EXCLUDED.pinned,
 			mute_end_time=EXCLUDED.mute_end_time,

@@ -74,6 +74,8 @@ type User struct {
 	groupListCache     []*types.GroupInfo
 	groupListCacheLock sync.Mutex
 	groupListCacheTime time.Time
+
+	BackfillQueue *BackfillQueue
 }
 
 func (bridge *Bridge) getUserByMXID(userID id.UserID, onlyIfExists bool) *User {
@@ -561,18 +563,11 @@ func (user *User) HandleEvent(event interface{}) {
 		go user.tryAutomaticDoublePuppeting()
 	case *events.OfflineSyncPreview:
 		user.log.Infofln("Server says it's going to send %d messages and %d receipts that were missed during downtime", v.Messages, v.Receipts)
-		go user.sendBridgeState(BridgeState{
-			StateEvent: StateBackfilling,
-			Message:    fmt.Sprintf("backfilling %d messages and %d receipts", v.Messages, v.Receipts),
-		})
 	case *events.OfflineSyncCompleted:
 		if !user.PhoneRecentlySeen(true) {
 			user.log.Infofln("Offline sync completed, but phone last seen date is still %s - sending phone offline bridge status", user.PhoneLastSeen)
 			go user.sendBridgeState(BridgeState{StateEvent: StateTransientDisconnect, Error: WAPhoneOffline})
 		} else {
-			if user.GetPrevBridgeState().StateEvent == StateBackfilling {
-				user.log.Infoln("Offline sync completed")
-			}
 			go user.sendBridgeState(BridgeState{StateEvent: StateConnected})
 		}
 	case *events.AppStateSyncComplete:
