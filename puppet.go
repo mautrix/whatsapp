@@ -245,6 +245,7 @@ func (puppet *Puppet) UpdateName(source *User, contact types.ContactInfo) bool {
 	if puppet.Displayname != newName && quality >= puppet.NameQuality {
 		err := puppet.DefaultIntent().SetDisplayName(newName)
 		if err == nil {
+			puppet.log.Debugln("Updated name", puppet.Displayname, "->", newName)
 			puppet.Displayname = newName
 			puppet.NameQuality = quality
 			go puppet.updatePortalName()
@@ -260,7 +261,10 @@ func (puppet *Puppet) UpdateName(source *User, contact types.ContactInfo) bool {
 func (puppet *Puppet) updatePortalMeta(meta func(portal *Portal)) {
 	if puppet.bridge.Config.Bridge.PrivateChatPortalMeta {
 		for _, portal := range puppet.bridge.GetAllPortalsByJID(puppet.JID) {
+			// Get room create lock to prevent races between receiving contact info and room creation.
+			portal.roomCreateLock.Lock()
 			meta(portal)
+			portal.roomCreateLock.Unlock()
 		}
 	}
 }
