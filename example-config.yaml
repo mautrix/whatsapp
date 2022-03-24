@@ -115,14 +115,10 @@ bridge:
     # Should another user's cryptographic identity changing send a message to Matrix?
     identity_change_notices: false
     portal_message_buffer: 128
-    # Settings for handling history sync payloads. These settings only apply right after login,
-    # because the phone only sends the history sync data once, and there's no way to re-request it
-    # (other than logging out and back in again).
+    # Settings for handling history sync payloads.
     history_sync:
         # Should the bridge create portals for chats in the history sync payload?
         create_portals: true
-        # Maximum age of chats in seconds to create portals for. Set to 0 to create portals for all chats in sync payload.
-        max_age: 604800
         # Enable backfilling history sync payloads from WhatsApp using batch sending?
         # This requires a server with MSC2716 support, which is currently an experimental feature in synapse.
         # It can be enabled by setting experimental_features -> msc2716_enabled to true in homeserver.yaml.
@@ -137,6 +133,52 @@ bridge:
         # Should the bridge request a full sync from the phone when logging in?
         # This bumps the size of history syncs from 3 months to 1 year.
         request_full_sync: false
+        # The maximum number of initial conversations that should be synced.
+        # Other conversations will be backfilled on demand when the start PM
+        # provisioning endpoint is used or when a message comes in from that
+        # chat.
+        max_initial_conversations: 10
+        # Settings for immediate backfills. These backfills should generally be
+        # small and their main purpose is to populate each of the initial chats
+        # (as configured by max_initial_conversations) with a few messages so
+        # that you can continue conversations without loosing context.
+        immediate:
+            # The number of concurrent backfill workers to create for immediate
+            # backfills. Note that using more than one worker could cause the
+            # room list to jump around since there are no guarantees about the
+            # order in which the backfills will complete.
+            worker_count: 1
+            # The maximum number of events to backfill initially.
+            max_events: 10
+        # Settings for deferred backfills. The purpose of these backfills are
+        # to fill in the rest of the chat history that was not covered by the
+        # immediate backfills. These backfills generally should happen at a
+        # slower pace so as not to overload the homeserver.
+        # Each deferred backfill config should define a "stage" of backfill
+        # (i.e. the last week of messages). The fields are as follows:
+        # - start_days_ago: the number of days ago to start backfilling from.
+        #   To indicate the start of time, use -1. For example, for a week ago,
+        #   use 7.
+        # - max_batch_events: the number of events to send per batch.
+        # - batch_delay: the number of seconds to wait before backfilling each
+        #   batch.
+        deferred:
+            # Last Week
+            - start_days_ago: 7
+              max_batch_events: 20
+              batch_delay: 5
+            # Last Month
+            - start_days_ago: 30
+              max_batch_events: 50
+              batch_delay: 10
+            # Last 3 months
+            - start_days_ago: 90
+              max_batch_events: 100
+              batch_delay: 10
+            # The start of time
+            - start_days_ago: -1
+              max_batch_events: 500
+              batch_delay: 10
     # Should puppet avatars be fetched from the server even if an avatar is already set?
     user_avatar_sync: true
     # Should Matrix users leaving groups be bridged to WhatsApp?
