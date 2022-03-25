@@ -78,6 +78,10 @@ func (user *User) handleBackfillRequestsLoop(backfillRequests chan *database.Bac
 	for req := range backfillRequests {
 		user.log.Infof("Backfill request: %v", req)
 		conv := user.bridge.DB.HistorySyncQuery.GetConversation(user.MXID, req.Portal)
+		if conv == nil {
+			user.log.Errorf("Could not find conversation for %s in %s", user.MXID, req.Portal.String())
+			continue
+		}
 
 		// Update the client store with basic chat settings.
 		if conv.MuteEndTime.After(time.Now()) {
@@ -102,7 +106,7 @@ func (user *User) handleBackfillRequestsLoop(backfillRequests chan *database.Bac
 
 		if len(portal.MXID) == 0 {
 			user.log.Debugln("Creating portal for", portal.Key.JID, "as part of history sync handling")
-			err := portal.CreateMatrixRoom(user, nil, true)
+			err := portal.CreateMatrixRoom(user, nil, true, false)
 			if err != nil {
 				user.log.Warnfln("Failed to create room for %s during backfill: %v", portal.Key.JID, err)
 				continue
@@ -122,8 +126,6 @@ func (user *User) handleBackfillRequestsLoop(backfillRequests chan *database.Bac
 					break
 				}
 
-				time.Sleep(time.Duration(req.BatchDelay) * time.Second)
-
 				var msgs []*waProto.WebMessageInfo
 				if len(toBackfill) <= req.MaxBatchEvents {
 					msgs = toBackfill
@@ -134,6 +136,7 @@ func (user *User) handleBackfillRequestsLoop(backfillRequests chan *database.Bac
 				}
 
 				if len(msgs) > 0 {
+					time.Sleep(time.Duration(req.BatchDelay) * time.Second)
 					user.log.Debugf("Backfilling %d messages in %s", len(msgs), portal.Key.JID)
 					insertionEventIds = append(insertionEventIds, portal.backfill(user, msgs)...)
 				}
@@ -224,8 +227,7 @@ func (user *User) handleHistorySync(reCheckQueue chan bool, evt *waProto.History
 	// If this was the initial bootstrap, enqueue immediate backfills for the
 	// most recent portals. If it's the last history sync event, start
 	// backfilling the rest of the history of the portals.
-	historySyncConfig := user.bridge.Config.Bridge.HistorySync
-	if historySyncConfig.Backfill && (evt.GetSyncType() == waProto.HistorySync_FULL || evt.GetSyncType() == waProto.HistorySync_INITIAL_BOOTSTRAP) {
+	if user.bridge.Config.Bridge.HistorySync.Backfill && evt.GetSyncType() == waProto.HistorySync_FULL {
 		nMostRecent := user.bridge.DB.HistorySyncQuery.GetNMostRecentConversations(user.MXID, user.bridge.Config.Bridge.HistorySync.MaxInitialConversations)
 		for i, conv := range nMostRecent {
 			jid, err := types.ParseJID(conv.ConversationID)
@@ -235,26 +237,10 @@ func (user *User) handleHistorySync(reCheckQueue chan bool, evt *waProto.History
 			}
 			portal := user.GetPortalByJID(jid)
 
-			switch evt.GetSyncType() {
-			case waProto.HistorySync_INITIAL_BOOTSTRAP:
-				// Enqueue immediate backfills for the most recent messages first.
-				maxMessages := historySyncConfig.Immediate.MaxEvents
-				initialBackfill := user.bridge.DB.BackfillQuery.NewWithValues(user.MXID, database.BackfillImmediate, i, &portal.Key, nil, nil, maxMessages, maxMessages, 0)
-				initialBackfill.Insert()
-
-			case waProto.HistorySync_FULL:
-				// Enqueue deferred backfills as configured.
-				for j, backfillStage := range historySyncConfig.Deferred {
-					var startDate *time.Time = nil
-					if backfillStage.StartDaysAgo > 0 {
-						startDaysAgo := time.Now().AddDate(0, 0, -backfillStage.StartDaysAgo)
-						startDate = &startDaysAgo
-					}
-					backfill := user.bridge.DB.BackfillQuery.NewWithValues(
-						user.MXID, database.BackfillDeferred, j*len(nMostRecent)+i, &portal.Key, startDate, nil, backfillStage.MaxBatchEvents, -1, backfillStage.BatchDelay)
-					backfill.Insert()
-				}
-			}
+			// Enqueue immediate backfills for the most recent messages first.
+			user.EnqueueImmedateBackfill(portal, i)
+			// Enqueue deferred backfills as configured.
+			user.EnqueueDeferredBackfills(portal, len(nMostRecent), i)
 		}
 
 		// Tell the queue to check for new backfill requests.

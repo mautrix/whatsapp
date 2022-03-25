@@ -237,7 +237,7 @@ func (portal *Portal) handleMessageLoopItem(msg PortalMessage) {
 			return
 		}
 		portal.log.Debugln("Creating Matrix room from incoming message")
-		err := portal.CreateMatrixRoom(msg.source, nil, false)
+		err := portal.CreateMatrixRoom(msg.source, nil, false, true)
 		if err != nil {
 			portal.log.Errorln("Failed to create portal room:", err)
 			return
@@ -1163,7 +1163,7 @@ func (portal *Portal) UpdateBridgeInfo() {
 	}
 }
 
-func (portal *Portal) CreateMatrixRoom(user *User, groupInfo *types.GroupInfo, isFullInfo bool) error {
+func (portal *Portal) CreateMatrixRoom(user *User, groupInfo *types.GroupInfo, isFullInfo, backfill bool) error {
 	portal.roomCreateLock.Lock()
 	defer portal.roomCreateLock.Unlock()
 	if len(portal.MXID) > 0 {
@@ -1335,6 +1335,12 @@ func (portal *Portal) CreateMatrixRoom(user *User, groupInfo *types.GroupInfo, i
 	} else {
 		portal.FirstEventID = firstEventResp.EventID
 		portal.Update()
+	}
+
+	if user.bridge.Config.Bridge.HistorySync.Backfill && backfill {
+		user.EnqueueImmedateBackfill(portal, 0)
+		user.EnqueueDeferredBackfills(portal, 1, 0)
+		user.BackfillQueue.ReCheckQueue <- true
 	}
 	return nil
 }

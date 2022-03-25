@@ -1059,7 +1059,7 @@ func (handler *CommandHandler) CommandOpen(ce *CommandEvent) {
 		portal.UpdateMatrixRoom(ce.User, info)
 		ce.Reply("Portal room synced.")
 	} else {
-		err = portal.CreateMatrixRoom(ce.User, info, true)
+		err = portal.CreateMatrixRoom(ce.User, info, true, true)
 		if err != nil {
 			ce.Reply("Failed to create room: %v", err)
 		} else {
