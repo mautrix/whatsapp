@@ -6,7 +6,12 @@ fi
 
 # Define functions.
 function fixperms {
-	chown -R $UID:$GID /data /opt/mautrix-whatsapp
+	chown -R $UID:$GID /data
+
+	# /opt/mautrix-whatsapp is read-only, so disable file logging if it's pointing there.
+	if [[ "$(yq e '.logging.directory' /data/config.yaml)" == "./logs" ]]; then
+		yq -I4 e -i '.logging.file_name_format = ""' /data/config.yaml
+	fi
 }
 
 if [[ ! -f /data/config.yaml ]]; then
@@ -22,7 +27,7 @@ if [[ ! -f /data/registration.yaml ]]; then
 	/usr/bin/mautrix-whatsapp -g -c /data/config.yaml -r /data/registration.yaml
 	echo "Didn't find a registration file."
 	echo "Generated one for you."
-	echo "Copy that over to synapses app service directory."
+	echo "See https://docs.mau.fi/bridges/general/registering-appservices.html on how to use it."
 	exit
 fi
 

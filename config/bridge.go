@@ -38,7 +38,6 @@ type BridgeConfig struct {
 	PortalMessageBuffer   int  `yaml:"portal_message_buffer"`
 	CallStartNotices      bool `yaml:"call_start_notices"`
 	IdentityChangeNotices bool `yaml:"identity_change_notices"`
-	ReactionNotices       bool `yaml:"reaction_notices"`
 
 	HistorySync struct {
 		CreatePortals        bool  `yaml:"create_portals"`
@@ -54,6 +53,9 @@ type BridgeConfig struct {
 	SyncDirectChatList    bool `yaml:"sync_direct_chat_list"`
 	DefaultBridgeReceipts bool `yaml:"default_bridge_receipts"`
 	DefaultBridgePresence bool `yaml:"default_bridge_presence"`
+	SendPresenceOnTyping  bool `yaml:"send_presence_on_typing"`
+
+	ForceActiveDeliveryReceipts bool `yaml:"force_active_delivery_receipts"`
 
 	DoublePuppetServerMap      map[string]string `yaml:"double_puppet_server_map"`
 	DoublePuppetAllowDiscovery bool              `yaml:"double_puppet_allow_discovery"`

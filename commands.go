@@ -18,6 +18,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"html"
@@ -27,6 +28,7 @@ import (
 	"strings"
 
 	"github.com/skip2/go-qrcode"
+	"github.com/tidwall/gjson"
 
 	"maunium.net/go/maulogger/v2"
 
@@ -310,19 +312,51 @@ func (handler *CommandHandler) CommandJoin(ce *CommandEvent) {
 	ce.Reply("Successfully joined group `%s`, the portal should be created momentarily", jid)
 }
 
+func tryDecryptEvent(crypto Crypto, evt *event.Event) (json.RawMessage, error) {
+	var data json.RawMessage
+	if evt.Type != event.EventEncrypted {
+		data = evt.Content.VeryRaw
+	} else {
+		err := evt.Content.ParseRaw(evt.Type)
+		if err != nil && !errors.Is(err, event.ErrContentAlreadyParsed) {
+			return nil, err
+		}
+		decrypted, err := crypto.Decrypt(evt)
+		if err != nil {
+			return nil, err
+		}
+		data = decrypted.Content.VeryRaw
+	}
+	return data, nil
+}
+
+func parseInviteMeta(data json.RawMessage) (*InviteMeta, error) {
+	result := gjson.GetBytes(data, escapedInviteMetaField)
+	if !result.Exists() || !result.IsObject() {
+		return nil, nil
+	}
+	var meta InviteMeta
+	err := json.Unmarshal([]byte(result.Raw), &meta)
+	if err != nil {
+		return nil, nil
+	}
+	return &meta, nil
+}
+
 func (handler *CommandHandler) CommandAccept(ce *CommandEvent) {
 	if ce.Portal == nil || len(ce.ReplyTo) == 0 {
 		ce.Reply("You must reply to a group invite message when using this command.")
 	} else if evt, err := ce.Portal.MainIntent().GetEvent(ce.RoomID, ce.ReplyTo); err != nil {
 		handler.log.Errorln("Failed to get event %s to handle !wa accept command: %v", ce.ReplyTo, err)
 		ce.Reply("Failed to get reply event")
-	} else if meta, ok := evt.Content.Raw[inviteMetaField].(map[string]interface{}); !ok {
+	} else if rawContent, err := tryDecryptEvent(ce.Bridge.Crypto, evt); err != nil {
+		handler.log.Errorln("Failed to decrypt event %s to handle !wa accept command: %v", ce.ReplyTo, err)
+		ce.Reply("Failed to decrypt reply event")
+	} else if meta, err := parseInviteMeta(rawContent); err != nil || meta == nil {
 		ce.Reply("That doesn't look like a group invite message.")
-	} else if jid, inviter, code, expiration, ok := parseInviteMeta(meta); !ok {
-		ce.Reply("That doesn't look like a group invite message.")
-	} else if inviter.User == ce.User.JID.User {
+	} else if meta.Inviter.User == ce.User.JID.User {
 		ce.Reply("You can't accept your own invites")
-	} else if err = ce.User.Client.JoinGroupWithInvite(jid, inviter, code, expiration); err != nil {
+	} else if err = ce.User.Client.JoinGroupWithInvite(meta.JID, meta.Inviter, meta.Code, meta.Expiration); err != nil {
 		ce.Reply("Failed to accept group invite: %v", err)
 	} else {
 		ce.Reply("Successfully accepted the invite, the portal should be created momentarily")
@@ -412,41 +446,6 @@ func (handler *CommandHandler) CommandCreate(ce *CommandEvent) {
 	portal.UpdateBridgeInfo()
 
 	ce.Reply("Successfully created WhatsApp group %s", portal.Key.JID)
-}
-
-func parseInviteMeta(meta map[string]interface{}) (jid, inviter types.JID, code string, expiration int64, ok bool) {
-	var fieldFound bool
-	code, fieldFound = meta["code"].(string)
-	if !fieldFound {
-		return
-	}
-	expirationStr, fieldFound := meta["expiration"].(string)
-	if !fieldFound {
-		return
-	}
-	inviterStr, fieldFound := meta["inviter"].(string)
-	if !fieldFound {
-		return
-	}
-	jidStr, fieldFound := meta["jid"].(string)
-	if !fieldFound {
-		return
-	}
-	var err error
-	expiration, err = strconv.ParseInt(expirationStr, 10, 64)
-	if err != nil {
-		return
-	}
-	inviter, err = types.ParseJID(inviterStr)
-	if err != nil {
-		return
-	}
-	jid, err = types.ParseJID(jidStr)
-	if err != nil {
-		return
-	}
-	ok = true
-	return
 }
 
 const cmdSetPowerLevelHelp = `set-pl [user ID] <power level> - Change the power level in a portal room. Only for bridge admins.`
@@ -601,7 +600,7 @@ func (handler *CommandHandler) CommandLogout(ce *CommandEvent) {
 		return
 	}
 	ce.User.Session = nil
-	ce.User.removeFromJIDMap(StateLoggedOut)
+	ce.User.removeFromJIDMap(BridgeState{StateEvent: StateLoggedOut})
 	ce.User.DeleteConnection()
 	ce.User.DeleteSession()
 	ce.Reply("Logged out successfully.")
@@ -658,7 +657,7 @@ func (handler *CommandHandler) CommandDeleteSession(ce *CommandEvent) {
 		ce.Reply("Nothing to purge: no session information stored and no active connection.")
 		return
 	}
-	ce.User.removeFromJIDMap(StateLoggedOut)
+	ce.User.removeFromJIDMap(BridgeState{StateEvent: StateLoggedOut})
 	ce.User.DeleteConnection()
 	ce.User.DeleteSession()
 	ce.Reply("Session information purged")

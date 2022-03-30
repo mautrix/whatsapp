@@ -1,6 +1,7 @@
 .idea
 
 *.yaml
+!.pre-commit-config.yaml
 !example-config.yaml
 
 *.session

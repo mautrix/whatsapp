@@ -7,6 +7,7 @@
     * [x] Media/files
     * [x] Replies
   * [x] Message redactions
+  * [x] Reactions
   * [x] Presence
   * [x] Typing notifications
   * [x] Read receipts
@@ -34,6 +35,7 @@
     * [x] Status broadcast
     * [ ] Broadcast list (not currently supported on WhatsApp web)
   * [x] Message deletions
+  * [x] Reactions
   * [x] Avatars
   * [ ] Presence
   * [x] Typing notifications
