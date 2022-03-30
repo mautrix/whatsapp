@@ -34,6 +34,7 @@ func init() {
 			}
 			_, err = tx.Exec(`
 				CREATE TABLE history_sync_message (
+					id                       SERIAL PRIMARY KEY,
 					user_mxid                TEXT,
 					conversation_id          TEXT,
 					timestamp                TIMESTAMP,
@@ -74,6 +75,7 @@ func init() {
 			}
 			_, err = tx.Exec(`
 				CREATE TABLE history_sync_message (
+					id                       INTEGER PRIMARY KEY,
 					user_mxid                TEXT,
 					conversation_id          TEXT,
 					timestamp                DATETIME,

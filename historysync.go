@@ -126,7 +126,7 @@ func (user *User) handleBackfillRequestsLoop(backfillRequests chan *database.Bac
 					break
 				}
 
-				var msgs []*waProto.WebMessageInfo
+				var msgs []*database.WrappedWebMessageInfo
 				if len(toBackfill) <= req.MaxBatchEvents {
 					msgs = toBackfill
 					toBackfill = toBackfill[0:0]
@@ -144,8 +144,13 @@ func (user *User) handleBackfillRequestsLoop(backfillRequests chan *database.Bac
 			user.log.Debugf("Finished backfilling %d messages in %s", len(allMsgs), portal.Key.JID)
 			if len(insertionEventIds) > 0 {
 				portal.sendPostBackfillDummy(
-					time.Unix(int64(allMsgs[len(allMsgs)-1].GetMessageTimestamp()), 0),
+					time.Unix(int64(allMsgs[len(allMsgs)-1].Message.GetMessageTimestamp()), 0),
 					insertionEventIds[0])
+			}
+			user.log.Debugf("Deleting %d history sync messages after backfilling", len(allMsgs))
+			err := user.bridge.DB.HistorySyncQuery.DeleteMessages(allMsgs)
+			if err != nil {
+				user.log.Warnf("Failed to delete %d history sync messages after backfilling: %v", len(allMsgs), err)
 			}
 		} else {
 			user.log.Debugfln("Not backfilling %s: no bridgeable messages found", portal.Key.JID)
@@ -288,14 +293,14 @@ var (
 	MSC2716Marker         = event.Type{Type: "org.matrix.msc2716.marker", Class: event.MessageEventType}
 )
 
-func (portal *Portal) backfill(source *User, messages []*waProto.WebMessageInfo) []id.EventID {
+func (portal *Portal) backfill(source *User, messages []*database.WrappedWebMessageInfo) []id.EventID {
 	portal.backfillLock.Lock()
 	defer portal.backfillLock.Unlock()
 
 	var historyBatch, newBatch mautrix.ReqBatchSend
 	var historyBatchInfos, newBatchInfos []*wrappedInfo
 
-	firstMsgTimestamp := time.Unix(int64(messages[len(messages)-1].GetMessageTimestamp()), 0)
+	firstMsgTimestamp := time.Unix(int64(messages[len(messages)-1].Message.GetMessageTimestamp()), 0)
 
 	historyBatch.StateEventsAtStart = make([]*event.Event, 0)
 	newBatch.StateEventsAtStart = make([]*event.Event, 0)
@@ -350,7 +355,7 @@ func (portal *Portal) backfill(source *User, messages []*waProto.WebMessageInfo)
 	portal.log.Infofln("Processing history sync with %d messages", len(messages))
 	// The messages are ordered newest to oldest, so iterate them in reverse order.
 	for i := len(messages) - 1; i >= 0; i-- {
-		webMsg := messages[i]
+		webMsg := messages[i].Message
 		msgType := getMessageType(webMsg.GetMessage())
 		if msgType == "unknown" || msgType == "ignore" || msgType == "unknown_protocol" {
 			if msgType != "ignore" {

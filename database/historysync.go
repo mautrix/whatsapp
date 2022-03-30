@@ -20,6 +20,8 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strconv"
+	"strings"
 	"time"
 
 	waProto "go.mau.fi/whatsmeow/binary/proto"
@@ -203,7 +205,7 @@ func (hsq *HistorySyncQuery) DeleteAllConversations(userID id.UserID) error {
 
 const (
 	getMessagesBetween = `
-		SELECT data
+		SELECT id, data
 		  FROM history_sync_message
 		 WHERE user_mxid=$1
 		   AND conversation_id=$2
@@ -211,16 +213,26 @@ const (
 		 ORDER BY timestamp DESC
 		 %s
 	`
+	deleteMessages = `
+		DELETE FROM history_sync_message
+		 WHERE id IN (%s)
+	`
 )
 
 type HistorySyncMessage struct {
 	db  *Database
 	log log.Logger
 
+	ID             int
 	UserID         id.UserID
 	ConversationID string
 	Timestamp      time.Time
 	Data           []byte
+}
+
+type WrappedWebMessageInfo struct {
+	ID      int
+	Message *waProto.WebMessageInfo
 }
 
 func (hsq *HistorySyncQuery) NewMessageWithValues(userID id.UserID, conversationID string, message *waProto.HistorySyncMsg) (*HistorySyncMessage, error) {
@@ -248,7 +260,7 @@ func (hsm *HistorySyncMessage) Insert() {
 	}
 }
 
-func (hsq *HistorySyncQuery) GetMessagesBetween(userID id.UserID, conversationID string, startTime, endTime *time.Time, limit int) (messages []*waProto.WebMessageInfo) {
+func (hsq *HistorySyncQuery) GetMessagesBetween(userID id.UserID, conversationID string, startTime, endTime *time.Time, limit int) (messages []*WrappedWebMessageInfo) {
 	whereClauses := ""
 	args := []interface{}{userID, conversationID}
 	argNum := 3
@@ -272,9 +284,10 @@ func (hsq *HistorySyncQuery) GetMessagesBetween(userID id.UserID, conversationID
 	if err != nil || rows == nil {
 		return nil
 	}
+	var msgID int
 	var msgData []byte
 	for rows.Next() {
-		err := rows.Scan(&msgData)
+		err := rows.Scan(&msgID, &msgData)
 		if err != nil {
 			hsq.log.Error("Database scan failed: %v", err)
 			continue
@@ -285,9 +298,22 @@ func (hsq *HistorySyncQuery) GetMessagesBetween(userID id.UserID, conversationID
 			hsq.log.Errorf("Failed to unmarshal history sync message: %v", err)
 			continue
 		}
-		messages = append(messages, historySyncMsg.Message)
+		messages = append(messages, &WrappedWebMessageInfo{
+			ID:      msgID,
+			Message: historySyncMsg.Message,
+		})
 	}
 	return
+}
+
+func (hsq *HistorySyncQuery) DeleteMessages(messages []*WrappedWebMessageInfo) error {
+	messageIDs := make([]string, len(messages))
+	for i, msg := range messages {
+		messageIDs[i] = strconv.Itoa(msg.ID)
+	}
+
+	_, err := hsq.db.Exec(fmt.Sprintf(deleteMessages, strings.Join(messageIDs, ",")))
+	return err
 }
 
 func (hsq *HistorySyncQuery) DeleteAllMessages(userID id.UserID) error {
