@@ -3,7 +3,7 @@ package upgrades
 import "database/sql"
 
 func init() {
-	upgrades[38] = upgrade{"Add support for reactions", func(tx *sql.Tx, ctx context) error {
+	upgrades[39] = upgrade{"Add support for reactions", func(tx *sql.Tx, ctx context) error {
 		_, err := tx.Exec(`ALTER TABLE message ADD COLUMN type TEXT NOT NULL DEFAULT 'message'`)
 		if err != nil {
 			return err

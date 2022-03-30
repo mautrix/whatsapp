@@ -40,7 +40,7 @@ type upgrade struct {
 	fn      upgradeFunc
 }
 
-const NumberOfUpgrades = 39
+const NumberOfUpgrades = 40
 
 var upgrades [NumberOfUpgrades]upgrade
 
@@ -153,30 +153,6 @@ func Run(log log.Logger, dialectName string, db *sql.DB) error {
 	}
 
 	log.Infofln("Database currently on v%d, latest: v%d", version, NumberOfUpgrades)
-
-	if version == 35 {
-		tx, err := db.Begin()
-		_, err = tx.Exec(`ALTER TABLE "user" ADD COLUMN space_room TEXT NOT NULL DEFAULT '';`)
-		if err != nil {
-			return err
-		}
-		_, err = tx.Exec(`ALTER TABLE user_portal ADD COLUMN in_space BOOLEAN NOT NULL DEFAULT false;`)
-		if err != nil {
-			return err
-		}
-
-		_, err = tx.Exec(`update version set version = 36;`)
-		if err != nil {
-			return err
-		}
-
-		err = tx.Commit()
-		if err != nil {
-			return err
-		}
-
-		version = 36
-	}
 
 	for i, upgradeItem := range upgrades[version:] {
 		if upgradeItem.fn == nil {
