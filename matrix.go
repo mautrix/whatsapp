@@ -75,6 +75,12 @@ func (mx *MatrixHandler) HandleEncryption(evt *event.Event) {
 		mx.log.Debugfln("%s enabled encryption in %s", evt.Sender, evt.RoomID)
 		portal.Encrypted = true
 		portal.Update()
+		if portal.IsPrivateChat() {
+			err := mx.as.BotIntent().EnsureJoined(portal.MXID, appservice.EnsureJoinedParams{BotOverride: portal.MainIntent().Client})
+			if err != nil {
+				mx.log.Errorfln("Failed to join bot to %s after encryption was enabled: %v", evt.RoomID, err)
+			}
+		}
 	}
 }
 
@@ -471,22 +477,24 @@ func (mx *MatrixHandler) HandleReaction(evt *event.Event) {
 	}
 
 	user := mx.bridge.GetUserByMXID(evt.Sender)
-	if user == nil || !user.RelayWhitelisted {
+	if user == nil || !user.Whitelisted || !user.IsLoggedIn() {
 		return
 	}
 
 	portal := mx.bridge.GetPortalByMXID(evt.RoomID)
-	if portal == nil || (!user.Whitelisted && !portal.HasRelaybot()) {
+	if portal == nil {
 		return
 	}
+
 	content := evt.Content.AsReaction()
 	if content.RelatesTo.Key == "click to retry" || strings.HasPrefix(content.RelatesTo.Key, "\u267b") { // ♻️
 		portal.requestMediaRetry(user, content.RelatesTo.EventID)
-	} else if mx.bridge.Config.Bridge.ReactionNotices {
-		_, _ = portal.sendMainIntentMessage(&event.MessageEventContent{
-			MsgType: event.MsgNotice,
-			Body:    fmt.Sprintf("\u26a0 Reactions are not yet supported by WhatsApp."),
-		})
+	} else {
+		if portal.IsPrivateChat() && user.JID.User != portal.Key.Receiver.User {
+			// One user can only react once, so we don't use the relay user for reactions
+			return
+		}
+		portal.HandleMatrixReaction(user, evt)
 	}
 }
 

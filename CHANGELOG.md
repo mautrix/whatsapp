@@ -1,12 +1,40 @@
 # unreleased
 
+* Added emoji normalization for reactions in both directions to add/remove
+  variation selector 16 as appropriate.
+* Added option to use [MSC2246] async media uploads.
+
+[MSC2246]: https://github.com/matrix-org/matrix-spec-proposals/pull/2246
+
+# v0.3.0 (2022-03-16)
+
+* Added reaction bridging in both directions.
 * Added automatic sending of hidden messages to primary device to prevent
   false-positive disconnection warnings if there have been no messages sent or
   received in >12 days.
 * Added proper error message when WhatsApp rejects the connection due to the
   bridge being out of date.
-* Added experimental provisioning API to list contacts and start DMs.
+* Added experimental provisioning API to list contacts/groups, start DMs and
+  open group portals. Note that these APIs are subject to change at any time.
+* Added option to always send "active" delivery receipts (two gray ticks), even
+  if presence bridging is disabled. By default, WhatsApp web only sends those
+  receipts when it's in the foreground (i.e. showing online status).
+* Added option to send online presence on typing notifications (thanks to
+  [@abmantis] in [#452]). This can be used to enable incoming typing
+  notifications without enabling Matrix presence (WhatsApp only sends typing
+  notifications if you're online).
+* Added checks to prevent sharing the database with unrelated software.
 * Exposed maximum database connection idle time and lifetime options.
+* Fixed syncing group topics. To get topics into existing portals on Matrix,
+  you can use `!wa sync groups`.
+* Fixed sticker events on Matrix including a redundant `msgtype` field.
+* Disabled file logging in Docker image by default.
+  * To enable it, mount a directory for the logs that's writable for the user
+    inside the container (1337 by default), then point the bridge at it using
+    the `logging` -> `directory` field, and finally set `file_name_format` to
+    something non-empty (the default is `{{.Date}}-{{.Index}}.log`).
+
+[#452]: https://github.com/mautrix/whatsapp/pull/452
 
 # v0.2.4 (2022-02-16)
 
@@ -72,7 +100,7 @@ are trusted, then you're not affected.
   (especially related to contacts).
 * Fixed responding to retry receipts not working correctly.
 
-[MSC2409]: https://github.com/matrix-org/matrix-doc/pull/2409
+[MSC2409]: https://github.com/matrix-org/matrix-spec-proposals/pull/2409
 [#387]: https://github.com/mautrix/whatsapp/pull/387
 
 # v0.2.1 (2021-11-10)
@@ -126,7 +154,7 @@ have changed as mentioned in the [v0.1.8](#v018-2021-08-07) release notes.
 * Many config fields have been changed/renamed/removed, so it is recommended to
   look through the example config and update your config.
 
-[MSC2716]: https://github.com/matrix-org/matrix-doc/pull/2716
+[MSC2716]: https://github.com/matrix-org/matrix-spec-proposals/pull/2716
 
 # v0.1.10 (2021-11-02)
 
@@ -184,7 +212,7 @@ path.
   checksum mismatches. WhatsApp clients don't seem to care, so the bridge also
   ignores those errors now.
 
-[MSC3245]: https://github.com/matrix-org/matrix-doc/pull/3245
+[MSC3245]: https://github.com/matrix-org/matrix-spec-proposals/pull/3245
 
 # v0.1.7 (2021-06-15)
 
@@ -255,7 +283,7 @@ path.
 * Fixed bridging names of files that were sent from another bridge.
 * Fixed handling empty commands.
 
-[MSC2778]: https://github.com/matrix-org/matrix-doc/pull/2778
+[MSC2778]: https://github.com/matrix-org/matrix-spec-proposals/pull/2778
 [@rreuvekamp]: https://github.com/rreuvekamp
 [#232]: https://github.com/mautrix/whatsapp/pull/232
 

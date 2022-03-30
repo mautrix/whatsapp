@@ -20,6 +20,7 @@ import (
 	_ "embed"
 	"errors"
 	"fmt"
+	"net/http"
 	"os"
 	"os/signal"
 	"strconv"
@@ -30,6 +31,7 @@ import (
 
 	"google.golang.org/protobuf/proto"
 
+	"go.mau.fi/whatsmeow"
 	waProto "go.mau.fi/whatsmeow/binary/proto"
 	"go.mau.fi/whatsmeow/store"
 	"go.mau.fi/whatsmeow/store/sqlstore"
@@ -60,7 +62,7 @@ var (
 
 var (
 	// Version is the version number of the bridge. Changed manually when making a release.
-	Version = "0.2.4-mod-2"
+	Version = "0.3.0"
 	// WAVersion is the version number exposed to WhatsApp. Filled in init()
 	WAVersion = ""
 	// VersionString is the bridge version, plus commit information. Filled in init() using the build-time values.
@@ -99,7 +101,8 @@ var dontSaveConfig = flag.MakeFull("n", "no-update", "Don't save updated config 
 var registrationPath = flag.MakeFull("r", "registration", "The path where to save the appservice registration.", "registration.yaml").String()
 var generateRegistration = flag.MakeFull("g", "generate-registration", "Generate registration and quit.", "false").Bool()
 var version = flag.MakeFull("v", "version", "View bridge version and quit.", "false").Bool()
-var ignoreUnsupportedDatabase = flag.Make().LongKey("ignore-unsupported-database").Usage("Run even if database is too new").Default("false").Bool()
+var ignoreUnsupportedDatabase = flag.Make().LongKey("ignore-unsupported-database").Usage("Run even if the database schema is too new").Default("false").Bool()
+var ignoreForeignTables = flag.Make().LongKey("ignore-foreign-tables").Usage("Run even if the database contains tables from other programs (like Synapse)").Default("false").Bool()
 var migrateFrom = flag.Make().LongKey("migrate-db").Usage("Source database type and URI to migrate from.").Bool()
 var wantHelp, _ = flag.MakeHelpFlag()
 
@@ -324,8 +327,15 @@ func (bridge *Bridge) Init() {
 func (bridge *Bridge) Start() {
 	bridge.Log.Debugln("Running database upgrades")
 	err := bridge.DB.Init()
-	if err != nil && (err != upgrades.UnsupportedDatabaseVersion || !*ignoreUnsupportedDatabase) {
+	if err != nil && (!errors.Is(err, upgrades.ErrUnsupportedDatabaseVersion) || !*ignoreUnsupportedDatabase) {
 		bridge.Log.Fatalln("Failed to initialize database:", err)
+		if errors.Is(err, upgrades.ErrForeignTables) {
+			bridge.Log.Infoln("You can use --ignore-foreign-tables to ignore this error")
+		} else if errors.Is(err, upgrades.ErrNotOwned) {
+			bridge.Log.Infoln("Sharing the same database with different programs is not supported")
+		} else if errors.Is(err, upgrades.ErrUnsupportedDatabaseVersion) {
+			bridge.Log.Infoln("Downgrading the bridge is not supported")
+		}
 		os.Exit(15)
 	}
 	bridge.Log.Debugln("Checking connection to homeserver")
@@ -345,6 +355,7 @@ func (bridge *Bridge) Start() {
 	go bridge.AS.Start()
 	bridge.Log.Debugln("Starting event processor")
 	go bridge.EventProcessor.Start()
+	go bridge.CheckWhatsAppUpdate()
 	go bridge.UpdateBotProfile()
 	if bridge.Crypto != nil {
 		go bridge.Crypto.Start()
@@ -360,6 +371,28 @@ func (bridge *Bridge) Start() {
 	}
 	go bridge.Loop()
 	bridge.AS.Ready = true
+}
+
+func (bridge *Bridge) CheckWhatsAppUpdate() {
+	bridge.Log.Debugfln("Checking for WhatsApp web update")
+	resp, err := whatsmeow.CheckUpdate(http.DefaultClient)
+	if err != nil {
+		bridge.Log.Warnfln("Failed to check for WhatsApp web update: %v", err)
+		return
+	}
+	if store.GetWAVersion() == resp.ParsedVersion {
+		bridge.Log.Debugfln("Bridge is using latest WhatsApp web protocol")
+	} else if store.GetWAVersion().LessThan(resp.ParsedVersion) {
+		if resp.IsBelowHard || resp.IsBroken {
+			bridge.Log.Warnfln("Bridge is using outdated WhatsApp web protocol and probably doesn't work anymore (%s, latest is %s)", store.GetWAVersion(), resp.ParsedVersion)
+		} else if resp.IsBelowSoft {
+			bridge.Log.Infofln("Bridge is using outdated WhatsApp web protocol (%s, latest is %s)", store.GetWAVersion(), resp.ParsedVersion)
+		} else {
+			bridge.Log.Debugfln("Bridge is using outdated WhatsApp web protocol (%s, latest is %s)", store.GetWAVersion(), resp.ParsedVersion)
+		}
+	} else {
+		bridge.Log.Debugfln("Bridge is using newer than latest WhatsApp web protocol")
+	}
 }
 
 func (bridge *Bridge) Loop() {
@@ -522,6 +555,7 @@ func main() {
 		fmt.Println(VersionString)
 		return
 	}
+	upgrades.IgnoreForeignTables = *ignoreForeignTables
 
 	(&Bridge{
 		usersByMXID:         make(map[id.UserID]*User),

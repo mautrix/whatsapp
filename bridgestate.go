@@ -48,6 +48,8 @@ type BridgeErrorCode string
 
 const (
 	WALoggedOut     BridgeErrorCode = "wa-logged-out"
+	WAAccountBanned BridgeErrorCode = "wa-account-banned"
+	WAUnknownLogout BridgeErrorCode = "wa-unknown-logout"
 	WANotConnected  BridgeErrorCode = "wa-not-connected"
 	WAConnecting    BridgeErrorCode = "wa-connecting"
 	WAServerTimeout BridgeErrorCode = "wa-server-timeout"
@@ -56,6 +58,8 @@ const (
 
 var bridgeHumanErrors = map[BridgeErrorCode]string{
 	WALoggedOut:     "You were logged out from another device. Relogin to continue using the bridge.",
+	WAAccountBanned: "Your account was banned from WhatsApp. You can contact support from the WhatsApp mobile app on your phone.",
+	WAUnknownLogout: "You were logged out for an unknown reason. Relogin to continue using the bridge.",
 	WANotConnected:  "You're not connected to WhatsApp",
 	WAConnecting:    "Reconnecting to WhatsApp...",
 	WAServerTimeout: "The WhatsApp web servers are not responding. The bridge will try to reconnect.",

@@ -1,5 +1,5 @@
 // mautrix-whatsapp - A Matrix-WhatsApp puppeting bridge.
-// Copyright (C) 2021 Tulir Asokan
+// Copyright (C) 2022 Tulir Asokan
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as published by
@@ -70,6 +70,10 @@ type User struct {
 
 	spaceMembershipChecked  bool
 	lastPhoneOfflineWarning time.Time
+
+	groupListCache     []*types.GroupInfo
+	groupListCacheLock sync.Mutex
+	groupListCacheTime time.Time
 }
 
 func (bridge *Bridge) getUserByMXID(userID id.UserID, onlyIfExists bool) *User {
@@ -114,7 +118,7 @@ func (user *User) addToJIDMap() {
 	user.bridge.usersLock.Unlock()
 }
 
-func (user *User) removeFromJIDMap(state BridgeStateEvent) {
+func (user *User) removeFromJIDMap(state BridgeState) {
 	user.bridge.usersLock.Lock()
 	jidUser, ok := user.bridge.usersByUsername[user.JID.User]
 	if ok && user == jidUser {
@@ -122,7 +126,7 @@ func (user *User) removeFromJIDMap(state BridgeStateEvent) {
 	}
 	user.bridge.usersLock.Unlock()
 	user.bridge.Metrics.TrackLoginState(user.JID, false)
-	user.sendBridgeState(BridgeState{StateEvent: state})
+	user.sendBridgeState(state)
 }
 
 func (bridge *Bridge) GetAllUsers() []*User {
@@ -322,6 +326,7 @@ var ErrAlreadyLoggedIn = errors.New("already logged in")
 func (user *User) createClient(sess *store.Device) {
 	user.Client = whatsmeow.NewClient(sess, &waLogger{user.log.Sub("Client")})
 	user.Client.AddEventHandler(user.HandleEvent)
+	user.Client.SetForceActiveDeliveryReceipts(user.bridge.Config.Bridge.ForceActiveDeliveryReceipts)
 	user.Client.GetMessageForRetry = func(to types.JID, id types.MessageID) *waProto.Message {
 		user.bridge.Metrics.TrackRetryReceipt(0, false)
 		return nil
@@ -542,8 +547,6 @@ func (user *User) HandleEvent(event interface{}) {
 	switch v := event.(type) {
 	case *events.LoggedOut:
 		go user.handleLoggedOut(v.OnConnect, v.Reason)
-		user.bridge.Metrics.TrackConnectionState(user.JID, false)
-		user.bridge.Metrics.TrackLoginState(user.JID, false)
 	case *events.Connected:
 		user.bridge.Metrics.TrackConnectionState(user.JID, true)
 		user.bridge.Metrics.TrackLoginState(user.JID, true)
@@ -621,15 +624,21 @@ func (user *User) HandleEvent(event interface{}) {
 		go user.sendBridgeState(BridgeState{StateEvent: StateBadCredentials, Message: v.String()})
 		user.bridge.Metrics.TrackConnectionState(user.JID, false)
 	case *events.Disconnected:
-		go user.sendBridgeState(BridgeState{StateEvent: StateTransientDisconnect})
+		// Don't send the normal transient disconnect state if we're already in a different transient disconnect state.
+		// TODO remove this if/when the phone offline state is moved to a sub-state of CONNECTED
+		if user.GetPrevBridgeState().Error != WAPhoneOffline && user.PhoneRecentlySeen(false) {
+			go user.sendBridgeState(BridgeState{StateEvent: StateTransientDisconnect, Message: "Disconnected from WhatsApp. Trying to reconnect."})
+		}
 		user.bridge.Metrics.TrackConnectionState(user.JID, false)
 	case *events.Contact:
 		go user.syncPuppet(v.JID, "contact event")
 	case *events.PushName:
 		go user.syncPuppet(v.JID, "push name event")
 	case *events.GroupInfo:
+		user.groupListCache = nil
 		go user.handleGroupUpdate(v)
 	case *events.JoinedGroup:
+		user.groupListCache = nil
 		go user.handleGroupCreate(v)
 	case *events.Picture:
 		go user.handlePictureUpdate(v)
@@ -866,7 +875,15 @@ func (user *User) UpdateDirectChats(chats map[id.UserID][]id.RoomID) {
 }
 
 func (user *User) handleLoggedOut(onConnect bool, reason events.ConnectFailureReason) {
-	user.sendBridgeState(BridgeState{StateEvent: StateBadCredentials, Error: WALoggedOut, Message: reason.String()})
+	errorCode := WAUnknownLogout
+	if reason == events.ConnectFailureLoggedOut {
+		errorCode = WALoggedOut
+	} else if reason == events.ConnectFailureBanned {
+		errorCode = WAAccountBanned
+	}
+	user.removeFromJIDMap(BridgeState{StateEvent: StateBadCredentials, Error: errorCode})
+	user.DeleteConnection()
+	user.Session = nil
 	user.JID = types.EmptyJID
 	user.Update()
 	if onConnect {
@@ -1078,4 +1095,18 @@ func (user *User) StartPM(jid types.JID, reason string) (*Portal, *Puppet, bool,
 	}
 	err := portal.CreateMatrixRoom(user, nil, false)
 	return portal, puppet, true, err
+}
+
+const groupListCacheMaxAge = 24 * time.Hour
+
+func (user *User) getCachedGroupList() ([]*types.GroupInfo, error) {
+	user.groupListCacheLock.Lock()
+	defer user.groupListCacheLock.Unlock()
+	if user.groupListCache != nil && user.groupListCacheTime.Add(groupListCacheMaxAge).After(time.Now()) {
+		return user.groupListCache, nil
+	}
+	var err error
+	user.groupListCache, err = user.Client.GetJoinedGroups()
+	user.groupListCacheTime = time.Now()
+	return user.groupListCache, err
 }

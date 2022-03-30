@@ -41,29 +41,36 @@ import (
 )
 
 type ProvisioningAPI struct {
-	bridge *Bridge
-	log    log.Logger
+	bridge  *Bridge
+	log     log.Logger
+	segment *Segment
 }
 
 func (prov *ProvisioningAPI) Init() {
 	prov.log = prov.bridge.Log.Sub("Provisioning")
+
+	// Set up segment
+	prov.segment = NewSegment(prov.bridge.Config.AppService.Provisioning.SegmentKey, prov.log)
+
 	prov.log.Debugln("Enabling provisioning API at", prov.bridge.Config.AppService.Provisioning.Prefix)
 	r := prov.bridge.AS.Router.PathPrefix(prov.bridge.Config.AppService.Provisioning.Prefix).Subrouter()
 	r.Use(prov.AuthMiddleware)
-	r.HandleFunc("/ping", prov.Ping).Methods(http.MethodGet)
-	r.HandleFunc("/login", prov.Login).Methods(http.MethodGet)
-	r.HandleFunc("/logout", prov.Logout).Methods(http.MethodPost)
-	r.HandleFunc("/delete_session", prov.DeleteSession).Methods(http.MethodPost)
-	r.HandleFunc("/disconnect", prov.Disconnect).Methods(http.MethodPost)
-	r.HandleFunc("/reconnect", prov.Reconnect).Methods(http.MethodPost)
-	r.HandleFunc("/sync/appstate/{name}", prov.SyncAppState).Methods(http.MethodPost)
-	r.HandleFunc("/contacts", prov.ListContacts).Methods(http.MethodGet)
-	r.HandleFunc("/pm/{number}", prov.StartPM).Methods(http.MethodPost)
+	r.HandleFunc("/v1/ping", prov.Ping).Methods(http.MethodGet)
+	r.HandleFunc("/v1/login", prov.Login).Methods(http.MethodGet)
+	r.HandleFunc("/v1/logout", prov.Logout).Methods(http.MethodPost)
+	r.HandleFunc("/v1/delete_session", prov.DeleteSession).Methods(http.MethodPost)
+	r.HandleFunc("/v1/disconnect", prov.Disconnect).Methods(http.MethodPost)
+	r.HandleFunc("/v1/reconnect", prov.Reconnect).Methods(http.MethodPost)
+	r.HandleFunc("/v1/sync/appstate/{name}", prov.SyncAppState).Methods(http.MethodPost)
+	r.HandleFunc("/v1/contacts", prov.ListContacts).Methods(http.MethodGet)
+	r.HandleFunc("/v1/groups", prov.ListGroups).Methods(http.MethodGet)
+	r.HandleFunc("/v1/pm/{number}", prov.StartPM).Methods(http.MethodPost)
+	r.HandleFunc("/v1/open/{groupID}", prov.OpenGroup).Methods(http.MethodPost)
 	prov.bridge.AS.Router.HandleFunc("/_matrix/app/com.beeper.asmux/ping", prov.BridgeStatePing).Methods(http.MethodPost)
 	prov.bridge.AS.Router.HandleFunc("/_matrix/app/com.beeper.bridge_state", prov.BridgeStatePing).Methods(http.MethodPost)
 
 	// Deprecated, just use /disconnect
-	r.HandleFunc("/delete_connection", prov.Disconnect).Methods(http.MethodPost)
+	r.HandleFunc("/v1/delete_connection", prov.Disconnect).Methods(http.MethodPost)
 }
 
 type responseWrap struct {
@@ -141,7 +148,7 @@ func (prov *ProvisioningAPI) DeleteSession(w http.ResponseWriter, r *http.Reques
 	user.DeleteConnection()
 	user.DeleteSession()
 	jsonResponse(w, http.StatusOK, Response{true, "Session information purged"})
-	user.removeFromJIDMap(StateLoggedOut)
+	user.removeFromJIDMap(BridgeState{StateEvent: StateLoggedOut})
 }
 
 func (prov *ProvisioningAPI) Disconnect(w http.ResponseWriter, r *http.Request) {
@@ -237,6 +244,23 @@ func (prov *ProvisioningAPI) ListContacts(w http.ResponseWriter, r *http.Request
 	}
 }
 
+func (prov *ProvisioningAPI) ListGroups(w http.ResponseWriter, r *http.Request) {
+	if user := r.Context().Value("user").(*User); user.Session == nil {
+		jsonResponse(w, http.StatusBadRequest, Error{
+			Error:   "User is not logged into WhatsApp",
+			ErrCode: "no session",
+		})
+	} else if groups, err := user.getCachedGroupList(); err != nil {
+		prov.log.Errorfln("Failed to fetch %s's groups: %v", user.MXID, err)
+		jsonResponse(w, http.StatusInternalServerError, Error{
+			Error:   "Internal server error while fetching group list",
+			ErrCode: "failed to get groups",
+		})
+	} else {
+		jsonResponse(w, http.StatusOK, groups)
+	}
+}
+
 type OtherUserInfo struct {
 	MXID   id.UserID     `json:"mxid"`
 	JID    types.JID     `json:"jid"`
@@ -245,9 +269,10 @@ type OtherUserInfo struct {
 }
 
 type PortalInfo struct {
-	RoomID      id.RoomID     `json:"room_id"`
-	OtherUser   OtherUserInfo `json:"other_user"`
-	JustCreated bool          `json:"just_created"`
+	RoomID      id.RoomID        `json:"room_id"`
+	OtherUser   *OtherUserInfo   `json:"other_user,omitempty"`
+	GroupInfo   *types.GroupInfo `json:"group_info,omitempty"`
+	JustCreated bool             `json:"just_created"`
 }
 
 func (prov *ProvisioningAPI) StartPM(w http.ResponseWriter, r *http.Request) {
@@ -287,13 +312,53 @@ func (prov *ProvisioningAPI) StartPM(w http.ResponseWriter, r *http.Request) {
 		}
 		jsonResponse(w, status, PortalInfo{
 			RoomID: portal.MXID,
-			OtherUser: OtherUserInfo{
+			OtherUser: &OtherUserInfo{
 				JID:    puppet.JID,
 				MXID:   puppet.MXID,
 				Name:   puppet.Displayname,
 				Avatar: puppet.AvatarURL,
 			},
 			JustCreated: justCreated,
+		})
+	}
+}
+
+func (prov *ProvisioningAPI) OpenGroup(w http.ResponseWriter, r *http.Request) {
+	groupID, _ := mux.Vars(r)["groupID"]
+	if user := r.Context().Value("user").(*User); !user.IsLoggedIn() {
+		jsonResponse(w, http.StatusBadRequest, Error{
+			Error:   "User is not logged into WhatsApp",
+			ErrCode: "no session",
+		})
+	} else if jid, err := types.ParseJID(groupID); err != nil || jid.Server != types.GroupServer || (!strings.ContainsRune(jid.User, '-') && len(jid.User) < 15) {
+		jsonResponse(w, http.StatusBadRequest, Error{
+			Error:   "Invalid group ID",
+			ErrCode: "invalid group id",
+		})
+	} else if info, err := user.Client.GetGroupInfo(jid); err != nil {
+		// TODO return better responses for different errors (like ErrGroupNotFound and ErrNotInGroup)
+		jsonResponse(w, http.StatusInternalServerError, Error{
+			Error:   fmt.Sprintf("Failed to get group info: %v", err),
+			ErrCode: "error getting group info",
+		})
+	} else {
+		prov.log.Debugln("Importing", jid, "for", user.MXID)
+		portal := user.GetPortalByJID(info.JID)
+		status := http.StatusOK
+		if len(portal.MXID) == 0 {
+			err = portal.CreateMatrixRoom(user, info, true)
+			if err != nil {
+				jsonResponse(w, http.StatusInternalServerError, Error{
+					Error: fmt.Sprintf("Failed to create portal: %v", err),
+				})
+				return
+			}
+			status = http.StatusCreated
+		}
+		jsonResponse(w, status, PortalInfo{
+			RoomID:      portal.MXID,
+			GroupInfo:   info,
+			JustCreated: status == http.StatusCreated,
 		})
 	}
 }
@@ -369,7 +434,7 @@ func (prov *ProvisioningAPI) Logout(w http.ResponseWriter, r *http.Request) {
 	}
 
 	user.bridge.Metrics.TrackConnectionState(user.JID, false)
-	user.removeFromJIDMap(StateLoggedOut)
+	user.removeFromJIDMap(BridgeState{StateEvent: StateLoggedOut})
 	user.DeleteSession()
 	jsonResponse(w, http.StatusOK, Response{true, "Logged out successfully."})
 }
@@ -415,7 +480,7 @@ func (prov *ProvisioningAPI) Login(w http.ResponseWriter, r *http.Request) {
 
 	qrChan, err := user.Login(ctx)
 	if err != nil {
-		user.log.Errorf("Failed to log in from provisioning API:", err)
+		user.log.Errorln("Failed to log in from provisioning API:", err)
 		if errors.Is(err, ErrAlreadyLoggedIn) {
 			go user.Connect()
 			_ = c.WriteJSON(Error{
@@ -430,6 +495,7 @@ func (prov *ProvisioningAPI) Login(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	user.log.Debugln("Started login via provisioning API")
+	prov.segment.Track(user.MXID, "$login_start")
 
 	for {
 		select {
@@ -438,6 +504,7 @@ func (prov *ProvisioningAPI) Login(w http.ResponseWriter, r *http.Request) {
 			case whatsmeow.QRChannelSuccess.Event:
 				jid := user.Client.Store.ID
 				user.log.Debugln("Successful login as", jid, "via provisioning API")
+				prov.segment.Track(user.MXID, "$login_success")
 				_ = c.WriteJSON(map[string]interface{}{
 					"success": true,
 					"jid":     jid,
@@ -445,34 +512,45 @@ func (prov *ProvisioningAPI) Login(w http.ResponseWriter, r *http.Request) {
 				})
 			case whatsmeow.QRChannelTimeout.Event:
 				user.log.Debugln("Login via provisioning API timed out")
+				errCode := "login timed out"
+				prov.segment.Track(user.MXID, "$login_failure", map[string]interface{}{"error": errCode})
 				_ = c.WriteJSON(Error{
 					Error:   "QR code scan timed out. Please try again.",
-					ErrCode: "login timed out",
+					ErrCode: errCode,
 				})
 			case whatsmeow.QRChannelErrUnexpectedEvent.Event:
 				user.log.Debugln("Login via provisioning API failed due to unexpected event")
+				errCode := "unexpected event"
+				prov.segment.Track(user.MXID, "$login_failure", map[string]interface{}{"error": errCode})
 				_ = c.WriteJSON(Error{
 					Error:   "Got unexpected event while waiting for QRs, perhaps you're already logged in?",
-					ErrCode: "unexpected event",
+					ErrCode: errCode,
 				})
 			case whatsmeow.QRChannelClientOutdated.Event:
 				user.log.Debugln("Login via provisioning API failed due to outdated client")
+				errCode := "bridge outdated"
+				prov.segment.Track(user.MXID, "$login_failure", map[string]interface{}{"error": errCode})
 				_ = c.WriteJSON(Error{
 					Error:   "Got client outdated error while waiting for QRs. The bridge must be updated to continue.",
-					ErrCode: "bridge outdated",
+					ErrCode: errCode,
 				})
 			case whatsmeow.QRChannelScannedWithoutMultidevice.Event:
+				errCode := "multidevice not enabled"
+				prov.segment.Track(user.MXID, "$login_failure", map[string]interface{}{"error": errCode})
 				_ = c.WriteJSON(Error{
 					Error:   "Please enable the WhatsApp multidevice beta and scan the QR code again.",
-					ErrCode: "multidevice not enabled",
+					ErrCode: errCode,
 				})
 				continue
 			case "error":
+				errCode := "fatal error"
+				prov.segment.Track(user.MXID, "$login_failure", map[string]interface{}{"error": errCode})
 				_ = c.WriteJSON(Error{
 					Error:   "Fatal error while logging in",
-					ErrCode: "fatal error",
+					ErrCode: errCode,
 				})
 			case "code":
+				prov.segment.Track(user.MXID, "$qrcode_retrieved")
 				_ = c.WriteJSON(map[string]interface{}{
 					"code":    evt.Code,
 					"timeout": int(evt.Timeout.Seconds()),

@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"os"
 	"path"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 
@@ -32,6 +33,7 @@ func (helper *UpgradeHelper) doUpgrade() {
 	helper.Copy(Bool, "homeserver", "asmux")
 	helper.Copy(Str|Null, "homeserver", "status_endpoint")
 	helper.Copy(Str|Null, "homeserver", "message_send_checkpoint_endpoint")
+	helper.Copy(Bool, "homeserver", "async_media")
 
 	helper.Copy(Str, "appservice", "address")
 	helper.Copy(Str, "appservice", "hostname")
@@ -42,13 +44,18 @@ func (helper *UpgradeHelper) doUpgrade() {
 	helper.Copy(Int, "appservice", "database", "max_idle_conns")
 	helper.Copy(Str|Null, "appservice", "database", "max_conn_idle_time")
 	helper.Copy(Str|Null, "appservice", "database", "max_conn_lifetime")
-	helper.Copy(Str, "appservice", "provisioning", "prefix")
+	if prefix, ok := helper.Get(Str, "appservice", "provisioning", "prefix"); ok && strings.HasSuffix(prefix, "/v1") {
+		helper.Set(Str, strings.TrimSuffix(prefix, "/v1"), "appservice", "provisioning", "prefix")
+	} else {
+		helper.Copy(Str, "appservice", "provisioning", "prefix")
+	}
 	if secret, ok := helper.Get(Str, "appservice", "provisioning", "shared_secret"); !ok || secret == "generate" {
 		sharedSecret := appservice.RandomString(64)
 		helper.Set(Str, sharedSecret, "appservice", "provisioning", "shared_secret")
 	} else {
 		helper.Copy(Str, "appservice", "provisioning", "shared_secret")
 	}
+	helper.Copy(Str|Null, "appservice", "provisioning", "segment_key")
 	helper.Copy(Str, "appservice", "id")
 	helper.Copy(Str, "appservice", "bot", "username")
 	helper.Copy(Str, "appservice", "bot", "displayname")
@@ -70,7 +77,6 @@ func (helper *UpgradeHelper) doUpgrade() {
 	helper.Copy(Int, "bridge", "portal_message_buffer")
 	helper.Copy(Bool, "bridge", "call_start_notices")
 	helper.Copy(Bool, "bridge", "identity_change_notices")
-	helper.Copy(Bool, "bridge", "reaction_notices")
 	helper.Copy(Bool, "bridge", "history_sync", "create_portals")
 	helper.Copy(Int, "bridge", "history_sync", "max_age")
 	helper.Copy(Bool, "bridge", "history_sync", "backfill")
@@ -82,6 +88,8 @@ func (helper *UpgradeHelper) doUpgrade() {
 	helper.Copy(Bool, "bridge", "sync_direct_chat_list")
 	helper.Copy(Bool, "bridge", "default_bridge_receipts")
 	helper.Copy(Bool, "bridge", "default_bridge_presence")
+	helper.Copy(Bool, "bridge", "send_presence_on_typing")
+	helper.Copy(Bool, "bridge", "force_active_delivery_receipts")
 	helper.Copy(Map, "bridge", "double_puppet_server_map")
 	helper.Copy(Bool, "bridge", "double_puppet_allow_discovery")
 	if legacySecret, ok := helper.Get(Str, "bridge", "login_shared_secret"); ok && len(legacySecret) > 0 {
