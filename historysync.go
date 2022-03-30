@@ -232,7 +232,7 @@ func (user *User) handleHistorySync(reCheckQueue chan bool, evt *waProto.History
 	// If this was the initial bootstrap, enqueue immediate backfills for the
 	// most recent portals. If it's the last history sync event, start
 	// backfilling the rest of the history of the portals.
-	if user.bridge.Config.Bridge.HistorySync.Backfill && evt.GetSyncType() == waProto.HistorySync_FULL {
+	if user.bridge.Config.Bridge.HistorySync.Backfill && (evt.GetSyncType() == waProto.HistorySync_INITIAL_BOOTSTRAP || evt.GetSyncType() == waProto.HistorySync_FULL) {
 		nMostRecent := user.bridge.DB.HistorySyncQuery.GetNMostRecentConversations(user.MXID, user.bridge.Config.Bridge.HistorySync.MaxInitialConversations)
 		for i, conv := range nMostRecent {
 			jid, err := types.ParseJID(conv.ConversationID)
@@ -242,10 +242,14 @@ func (user *User) handleHistorySync(reCheckQueue chan bool, evt *waProto.History
 			}
 			portal := user.GetPortalByJID(jid)
 
-			// Enqueue immediate backfills for the most recent messages first.
-			user.EnqueueImmedateBackfill(portal, i)
-			// Enqueue deferred backfills as configured.
-			user.EnqueueDeferredBackfills(portal, len(nMostRecent), i)
+			switch evt.GetSyncType() {
+			case waProto.HistorySync_INITIAL_BOOTSTRAP:
+				// Enqueue immediate backfills for the most recent messages first.
+				user.EnqueueImmedateBackfill(portal, i)
+			case waProto.HistorySync_FULL:
+				// Enqueue deferred backfills as configured.
+				user.EnqueueDeferredBackfills(portal, len(nMostRecent), i)
+			}
 		}
 
 		// Tell the queue to check for new backfill requests.
