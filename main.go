@@ -62,7 +62,7 @@ var (
 
 var (
 	// Version is the version number of the bridge. Changed manually when making a release.
-	Version = "0.3.0"
+	Version = "0.3.0-mod-1"
 	// WAVersion is the version number exposed to WhatsApp. Filled in init()
 	WAVersion = ""
 	// VersionString is the bridge version, plus commit information. Filled in init() using the build-time values.
