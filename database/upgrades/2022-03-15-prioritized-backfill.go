@@ -17,6 +17,7 @@ func init() {
 				max_batch_events    INTEGER NOT NULL,
 				max_total_events    INTEGER,
 				batch_delay         INTEGER,
+				completed_at        TIMESTAMP,
 
 				FOREIGN KEY (user_mxid) REFERENCES "user"(mxid) ON DELETE CASCADE ON UPDATE CASCADE,
 				FOREIGN KEY (portal_jid, portal_receiver) REFERENCES portal(jid, receiver) ON DELETE CASCADE

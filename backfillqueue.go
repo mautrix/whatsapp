@@ -41,7 +41,7 @@ func (bq *BackfillQueue) immediateBackfillLoop(user *User) {
 	for {
 		if backfill := bq.BackfillQuery.GetNext(user.MXID, database.BackfillImmediate); backfill != nil {
 			bq.ImmediateBackfillRequests <- backfill
-			backfill.Delete()
+			backfill.MarkDone()
 		} else {
 			select {
 			case <-bq.ReCheckQueue:
@@ -61,7 +61,7 @@ func (bq *BackfillQueue) deferredBackfillLoop(user *User) {
 
 		if backfill := bq.BackfillQuery.GetNext(user.MXID, database.BackfillDeferred); backfill != nil {
 			bq.DeferredBackfillRequests <- backfill
-			backfill.Delete()
+			backfill.MarkDone()
 		} else {
 			time.Sleep(10 * time.Second)
 		}
