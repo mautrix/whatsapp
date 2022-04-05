@@ -20,7 +20,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"strconv"
 	"strings"
 	"time"
 
@@ -205,7 +204,7 @@ func (hsq *HistorySyncQuery) DeleteAllConversations(userID id.UserID) error {
 
 const (
 	getMessagesBetween = `
-		SELECT id, data
+		SELECT data
 		  FROM history_sync_message
 		 WHERE user_mxid=$1
 		   AND conversation_id=$2
@@ -215,7 +214,7 @@ const (
 	`
 	deleteMessages = `
 		DELETE FROM history_sync_message
-		 WHERE id IN (%s)
+		 WHERE %s
 	`
 )
 
@@ -223,19 +222,14 @@ type HistorySyncMessage struct {
 	db  *Database
 	log log.Logger
 
-	ID             int
 	UserID         id.UserID
 	ConversationID string
+	MessageID      string
 	Timestamp      time.Time
 	Data           []byte
 }
 
-type WrappedWebMessageInfo struct {
-	ID      int
-	Message *waProto.WebMessageInfo
-}
-
-func (hsq *HistorySyncQuery) NewMessageWithValues(userID id.UserID, conversationID string, message *waProto.HistorySyncMsg) (*HistorySyncMessage, error) {
+func (hsq *HistorySyncQuery) NewMessageWithValues(userID id.UserID, conversationID, messageID string, message *waProto.HistorySyncMsg) (*HistorySyncMessage, error) {
 	msgData, err := proto.Marshal(message)
 	if err != nil {
 		return nil, err
@@ -245,6 +239,7 @@ func (hsq *HistorySyncQuery) NewMessageWithValues(userID id.UserID, conversation
 		log:            hsq.log,
 		UserID:         userID,
 		ConversationID: conversationID,
+		MessageID:      messageID,
 		Timestamp:      time.Unix(int64(message.Message.GetMessageTimestamp()), 0),
 		Data:           msgData,
 	}, nil
@@ -252,15 +247,16 @@ func (hsq *HistorySyncQuery) NewMessageWithValues(userID id.UserID, conversation
 
 func (hsm *HistorySyncMessage) Insert() {
 	_, err := hsm.db.Exec(`
-		INSERT INTO history_sync_message (user_mxid, conversation_id, timestamp, data)
-		VALUES ($1, $2, $3, $4)
-	`, hsm.UserID, hsm.ConversationID, hsm.Timestamp, hsm.Data)
+		INSERT INTO history_sync_message (user_mxid, conversation_id, message_id, timestamp, data)
+		VALUES ($1, $2, $3, $4, $5)
+		ON CONFLICT (user_mxid, conversation_id, message_id) DO NOTHING
+	`, hsm.UserID, hsm.ConversationID, hsm.MessageID, hsm.Timestamp, hsm.Data)
 	if err != nil {
 		hsm.log.Warnfln("Failed to insert history sync message %s/%s: %v", hsm.ConversationID, hsm.Timestamp, err)
 	}
 }
 
-func (hsq *HistorySyncQuery) GetMessagesBetween(userID id.UserID, conversationID string, startTime, endTime *time.Time, limit int) (messages []*WrappedWebMessageInfo) {
+func (hsq *HistorySyncQuery) GetMessagesBetween(userID id.UserID, conversationID string, startTime, endTime *time.Time, limit int) (messages []*waProto.WebMessageInfo) {
 	whereClauses := ""
 	args := []interface{}{userID, conversationID}
 	argNum := 3
@@ -284,10 +280,10 @@ func (hsq *HistorySyncQuery) GetMessagesBetween(userID id.UserID, conversationID
 	if err != nil || rows == nil {
 		return nil
 	}
-	var msgID int
+
 	var msgData []byte
 	for rows.Next() {
-		err := rows.Scan(&msgID, &msgData)
+		err := rows.Scan(&msgData)
 		if err != nil {
 			hsq.log.Error("Database scan failed: %v", err)
 			continue
@@ -298,21 +294,20 @@ func (hsq *HistorySyncQuery) GetMessagesBetween(userID id.UserID, conversationID
 			hsq.log.Errorf("Failed to unmarshal history sync message: %v", err)
 			continue
 		}
-		messages = append(messages, &WrappedWebMessageInfo{
-			ID:      msgID,
-			Message: historySyncMsg.Message,
-		})
+		messages = append(messages, historySyncMsg.Message)
 	}
 	return
 }
 
-func (hsq *HistorySyncQuery) DeleteMessages(messages []*WrappedWebMessageInfo) error {
-	messageIDs := make([]string, len(messages))
+func (hsq *HistorySyncQuery) DeleteMessages(userID id.UserID, conversationID string, messages []*waProto.WebMessageInfo) error {
+	whereClauses := []string{}
+	preparedStatementArgs := []interface{}{userID, conversationID}
 	for i, msg := range messages {
-		messageIDs[i] = strconv.Itoa(msg.ID)
+		whereClauses = append(whereClauses, fmt.Sprintf("(user_mxid=$1 AND conversation_id=$2 AND message_id=$%d)", i+3))
+		preparedStatementArgs = append(preparedStatementArgs, msg.GetKey().GetId())
 	}
 
-	_, err := hsq.db.Exec(fmt.Sprintf(deleteMessages, strings.Join(messageIDs, ",")))
+	_, err := hsq.db.Exec(fmt.Sprintf(deleteMessages, strings.Join(whereClauses, " OR ")), preparedStatementArgs...)
 	return err
 }
 

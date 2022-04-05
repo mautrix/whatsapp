@@ -134,7 +134,7 @@ func (user *User) createOrUpdatePortalAndBackfillWithLock(req *database.Backfill
 				break
 			}
 
-			var msgs []*database.WrappedWebMessageInfo
+			var msgs []*waProto.WebMessageInfo
 			if len(toBackfill) <= req.MaxBatchEvents {
 				msgs = toBackfill
 				toBackfill = toBackfill[0:0]
@@ -152,11 +152,11 @@ func (user *User) createOrUpdatePortalAndBackfillWithLock(req *database.Backfill
 		user.log.Debugf("Finished backfilling %d messages in %s", len(allMsgs), portal.Key.JID)
 		if len(insertionEventIds) > 0 {
 			portal.sendPostBackfillDummy(
-				time.Unix(int64(allMsgs[len(allMsgs)-1].Message.GetMessageTimestamp()), 0),
+				time.Unix(int64(allMsgs[len(allMsgs)-1].GetMessageTimestamp()), 0),
 				insertionEventIds[0])
 		}
 		user.log.Debugf("Deleting %d history sync messages after backfilling", len(allMsgs))
-		err := user.bridge.DB.HistorySyncQuery.DeleteMessages(allMsgs)
+		err := user.bridge.DB.HistorySyncQuery.DeleteMessages(user.MXID, conv.ConversationID, allMsgs)
 		if err != nil {
 			user.log.Warnf("Failed to delete %d history sync messages after backfilling: %v", len(allMsgs), err)
 		}
@@ -227,7 +227,7 @@ func (user *User) handleHistorySync(reCheckQueue chan bool, evt *waProto.History
 				continue
 			}
 
-			message, err := user.bridge.DB.HistorySyncQuery.NewMessageWithValues(user.MXID, conv.GetId(), msg)
+			message, err := user.bridge.DB.HistorySyncQuery.NewMessageWithValues(user.MXID, conv.GetId(), msg.Message.GetKey().GetId(), msg)
 			if err != nil {
 				user.log.Warnf("Failed to save message %s in %s. Error: %+v", msg.Message.Key.Id, conv.GetId(), err)
 				continue
@@ -306,11 +306,11 @@ var (
 	MSC2716Marker         = event.Type{Type: "org.matrix.msc2716.marker", Class: event.MessageEventType}
 )
 
-func (portal *Portal) backfill(source *User, messages []*database.WrappedWebMessageInfo) []id.EventID {
+func (portal *Portal) backfill(source *User, messages []*waProto.WebMessageInfo) []id.EventID {
 	var historyBatch, newBatch mautrix.ReqBatchSend
 	var historyBatchInfos, newBatchInfos []*wrappedInfo
 
-	firstMsgTimestamp := time.Unix(int64(messages[len(messages)-1].Message.GetMessageTimestamp()), 0)
+	firstMsgTimestamp := time.Unix(int64(messages[len(messages)-1].GetMessageTimestamp()), 0)
 
 	historyBatch.StateEventsAtStart = make([]*event.Event, 0)
 	newBatch.StateEventsAtStart = make([]*event.Event, 0)
@@ -365,7 +365,7 @@ func (portal *Portal) backfill(source *User, messages []*database.WrappedWebMess
 	portal.log.Infofln("Processing history sync with %d messages", len(messages))
 	// The messages are ordered newest to oldest, so iterate them in reverse order.
 	for i := len(messages) - 1; i >= 0; i-- {
-		webMsg := messages[i].Message
+		webMsg := messages[i]
 		msgType := getMessageType(webMsg.GetMessage())
 		if msgType == "unknown" || msgType == "ignore" || msgType == "unknown_protocol" {
 			if msgType != "ignore" {

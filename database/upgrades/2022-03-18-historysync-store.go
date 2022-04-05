@@ -24,7 +24,6 @@ func init() {
 					unread_count                    INTEGER,
 
 					PRIMARY KEY (user_mxid, conversation_id),
-					UNIQUE (conversation_id),
 					FOREIGN KEY (user_mxid) REFERENCES "user"(mxid) ON DELETE CASCADE ON UPDATE CASCADE,
 					FOREIGN KEY (portal_jid, portal_receiver) REFERENCES portal(jid, receiver) ON DELETE CASCADE ON UPDATE CASCADE
 				)
@@ -34,14 +33,15 @@ func init() {
 			}
 			_, err = tx.Exec(`
 				CREATE TABLE history_sync_message (
-					id                       SERIAL PRIMARY KEY,
 					user_mxid                TEXT,
 					conversation_id          TEXT,
+					message_id               TEXT,
 					timestamp                TIMESTAMP,
 					data                     BYTEA,
 
+					PRIMARY KEY (user_mxid, conversation_id, message_id),
 					FOREIGN KEY (user_mxid) REFERENCES "user"(mxid) ON DELETE CASCADE ON UPDATE CASCADE,
-					FOREIGN KEY (conversation_id) REFERENCES history_sync_conversation(conversation_id) ON DELETE CASCADE
+					FOREIGN KEY (user_mxid, conversation_id) REFERENCES history_sync_conversation(user_mxid, conversation_id) ON DELETE CASCADE
 				)
 			`)
 			if err != nil {
@@ -65,7 +65,6 @@ func init() {
 					unread_count                    INTEGER,
 
 					PRIMARY KEY (user_mxid, conversation_id),
-					UNIQUE (conversation_id),
 					FOREIGN KEY (user_mxid) REFERENCES "user"(mxid) ON DELETE CASCADE ON UPDATE CASCADE,
 					FOREIGN KEY (portal_jid, portal_receiver) REFERENCES portal(jid, receiver) ON DELETE CASCADE ON UPDATE CASCADE
 				)
@@ -75,14 +74,15 @@ func init() {
 			}
 			_, err = tx.Exec(`
 				CREATE TABLE history_sync_message (
-					id                       INTEGER PRIMARY KEY,
 					user_mxid                TEXT,
 					conversation_id          TEXT,
+					message_id               TEXT,
 					timestamp                DATETIME,
 					data                     BLOB,
 
+					PRIMARY KEY (user_mxid, conversation_id, message_id),
 					FOREIGN KEY (user_mxid) REFERENCES "user"(mxid) ON DELETE CASCADE ON UPDATE CASCADE,
-					FOREIGN KEY (conversation_id) REFERENCES history_sync_conversation(conversation_id) ON DELETE CASCADE
+					FOREIGN KEY (user_mxid, conversation_id) REFERENCES history_sync_conversation(user_mxid, conversation_id) ON DELETE CASCADE
 				)
 			`)
 			if err != nil {
