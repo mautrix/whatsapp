@@ -43,29 +43,31 @@ type wrappedInfo struct {
 }
 
 func (user *User) handleHistorySyncsLoop() {
-	reCheckQueue := make(chan bool, 1)
-	if user.bridge.Config.Bridge.HistorySync.Backfill {
-		// Start the backfill queue.
-		user.BackfillQueue = &BackfillQueue{
-			BackfillQuery:             user.bridge.DB.BackfillQuery,
-			ImmediateBackfillRequests: make(chan *database.Backfill, 1),
-			DeferredBackfillRequests:  make(chan *database.Backfill, 1),
-			ReCheckQueue:              make(chan bool, 1),
-			log:                       user.log.Sub("BackfillQueue"),
-		}
-		reCheckQueue = user.BackfillQueue.ReCheckQueue
-
-		// Immediate backfills can be done in parallel
-		for i := 0; i < user.bridge.Config.Bridge.HistorySync.Immediate.WorkerCount; i++ {
-			go user.handleBackfillRequestsLoop(user.BackfillQueue.ImmediateBackfillRequests)
-		}
-
-		// Deferred backfills should be handled synchronously so as not to
-		// overload the homeserver. Users can configure their backfill stages
-		// to be more or less aggressive with backfilling at this stage.
-		go user.handleBackfillRequestsLoop(user.BackfillQueue.DeferredBackfillRequests)
-		go user.BackfillQueue.RunLoops(user)
+	if !user.bridge.Config.Bridge.HistorySync.Backfill {
+		return
 	}
+
+	reCheckQueue := make(chan bool, 1)
+	// Start the backfill queue.
+	user.BackfillQueue = &BackfillQueue{
+		BackfillQuery:             user.bridge.DB.BackfillQuery,
+		ImmediateBackfillRequests: make(chan *database.Backfill, 1),
+		DeferredBackfillRequests:  make(chan *database.Backfill, 1),
+		ReCheckQueue:              make(chan bool, 1),
+		log:                       user.log.Sub("BackfillQueue"),
+	}
+	reCheckQueue = user.BackfillQueue.ReCheckQueue
+
+	// Immediate backfills can be done in parallel
+	for i := 0; i < user.bridge.Config.Bridge.HistorySync.Immediate.WorkerCount; i++ {
+		go user.handleBackfillRequestsLoop(user.BackfillQueue.ImmediateBackfillRequests)
+	}
+
+	// Deferred backfills should be handled synchronously so as not to
+	// overload the homeserver. Users can configure their backfill stages
+	// to be more or less aggressive with backfilling at this stage.
+	go user.handleBackfillRequestsLoop(user.BackfillQueue.DeferredBackfillRequests)
+	go user.BackfillQueue.RunLoops(user)
 
 	// Always save the history syncs for the user. If they want to enable
 	// backfilling in the future, we will have it in the database.

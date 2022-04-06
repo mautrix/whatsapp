@@ -188,7 +188,9 @@ func (bridge *Bridge) NewUser(dbUser *database.User) *User {
 	user.RelayWhitelisted = user.bridge.Config.Bridge.Permissions.IsRelayWhitelisted(user.MXID)
 	user.Whitelisted = user.bridge.Config.Bridge.Permissions.IsWhitelisted(user.MXID)
 	user.Admin = user.bridge.Config.Bridge.Permissions.IsAdmin(user.MXID)
-	go user.handleHistorySyncsLoop()
+	if user.bridge.Config.Bridge.HistorySync.Backfill {
+		go user.handleHistorySyncsLoop()
+	}
 	return user
 }
 
@@ -692,7 +694,9 @@ func (user *User) HandleEvent(event interface{}) {
 		portal := user.GetPortalByMessageSource(v.Info.MessageSource)
 		portal.messages <- PortalMessage{undecryptable: v, source: user}
 	case *events.HistorySync:
-		user.historySyncs <- v
+		if user.bridge.Config.Bridge.HistorySync.Backfill {
+			user.historySyncs <- v
+		}
 	case *events.Mute:
 		portal := user.GetPortalByJID(v.JID)
 		if portal != nil {
