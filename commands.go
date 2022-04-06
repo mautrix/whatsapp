@@ -606,9 +606,6 @@ func (handler *CommandHandler) CommandLogout(ce *CommandEvent) {
 	ce.User.removeFromJIDMap(BridgeState{StateEvent: StateLoggedOut})
 	ce.User.DeleteConnection()
 	ce.User.DeleteSession()
-	ce.Bridge.DB.BackfillQuery.DeleteAll(ce.User.MXID)
-	ce.Bridge.DB.HistorySyncQuery.DeleteAllConversations(ce.User.MXID)
-	ce.Bridge.DB.HistorySyncQuery.DeleteAllMessages(ce.User.MXID)
 	ce.Reply("Logged out successfully.")
 }
 
@@ -850,10 +847,7 @@ func (handler *CommandHandler) CommandBackfill(ce *CommandEvent) {
 		return
 	}
 	if !ce.Bridge.Config.Bridge.HistorySync.Backfill {
-		ce.Bot.SendMessageEvent(ce.RoomID, event.EventMessage, &event.MessageEventContent{
-			MsgType: event.MsgNotice,
-			Body:    "Backfill is not enabled for this bridge.",
-		})
+		ce.Reply("Backfill is not enabled for this bridge.")
 		return
 	}
 	batchSize := 100

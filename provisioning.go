@@ -436,9 +436,6 @@ func (prov *ProvisioningAPI) Logout(w http.ResponseWriter, r *http.Request) {
 	user.bridge.Metrics.TrackConnectionState(user.JID, false)
 	user.removeFromJIDMap(BridgeState{StateEvent: StateLoggedOut})
 	user.DeleteSession()
-	prov.bridge.DB.BackfillQuery.DeleteAll(user.MXID)
-	prov.bridge.DB.HistorySyncQuery.DeleteAllConversations(user.MXID)
-	prov.bridge.DB.HistorySyncQuery.DeleteAllMessages(user.MXID)
 	jsonResponse(w, http.StatusOK, Response{true, "Logged out successfully."})
 }
 
