@@ -554,6 +554,7 @@ func (portal *Portal) handleUndecryptableMessage(source *User, evt *events.Undec
 	resp, err := portal.sendMessage(intent, event.EventMessage, &content, nil, evt.Info.Timestamp.UnixMilli())
 	if err != nil {
 		portal.log.Errorln("Failed to send decryption error of %s to Matrix: %v", evt.Info.ID, err)
+		return
 	}
 	portal.finishHandling(nil, &evt.Info, resp.EventID, database.MsgUnknown, database.MsgErrDecryptionFailed)
 }
