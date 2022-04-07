@@ -143,7 +143,6 @@ type Message struct {
 	db  *Database
 	log log.Logger
 
-	ID        int
 	Chat      PortalKey
 	JID       types.MessageID
 	MXID      id.EventID
