@@ -31,6 +31,7 @@ import (
 	"github.com/tidwall/gjson"
 
 	"maunium.net/go/maulogger/v2"
+	"maunium.net/go/mautrix-whatsapp/database"
 
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/appstate"
@@ -140,7 +141,7 @@ func (handler *CommandHandler) CommandMux(ce *CommandEvent) {
 		handler.CommandLogout(ce)
 	case "toggle":
 		handler.CommandToggle(ce)
-	case "set-relay", "unset-relay", "login-matrix", "sync", "list", "search", "open", "pm", "invite-link", "resolve", "resolve-link", "join", "create", "accept":
+	case "set-relay", "unset-relay", "login-matrix", "sync", "list", "search", "open", "pm", "invite-link", "resolve", "resolve-link", "join", "create", "accept", "backfill":
 		if !ce.User.HasSession() {
 			ce.Reply("You are not logged in. Use the `login` command to log into WhatsApp.")
 			return
@@ -176,6 +177,8 @@ func (handler *CommandHandler) CommandMux(ce *CommandEvent) {
 			handler.CommandCreate(ce)
 		case "accept":
 			handler.CommandAccept(ce)
+		case "backfill":
+			handler.CommandBackfill(ce)
 		}
 	default:
 		ce.Reply("Unknown command, use the `help` command for help.")
@@ -745,6 +748,7 @@ func (handler *CommandHandler) CommandHelp(ce *CommandEvent) {
 		cmdPrefix + cmdSetPowerLevelHelp,
 		cmdPrefix + cmdDeletePortalHelp,
 		cmdPrefix + cmdDeleteAllPortalsHelp,
+		cmdPrefix + cmdBackfillHelp,
 	}, "\n* "))
 }
 
@@ -833,6 +837,40 @@ func (handler *CommandHandler) CommandDeleteAllPortals(ce *CommandEvent) {
 		}
 		ce.Reply("Finished background cleanup of deleted portal rooms.")
 	}()
+}
+
+const cmdBackfillHelp = `backfill [batch size] [batch delay] - Backfill all messages the portal.`
+
+func (handler *CommandHandler) CommandBackfill(ce *CommandEvent) {
+	if ce.Portal == nil {
+		ce.Reply("This is not a portal room")
+		return
+	}
+	if !ce.Bridge.Config.Bridge.HistorySync.Backfill {
+		ce.Reply("Backfill is not enabled for this bridge.")
+		return
+	}
+	batchSize := 100
+	batchDelay := 5
+	if len(ce.Args) >= 1 {
+		var err error
+		batchSize, err = strconv.Atoi(ce.Args[0])
+		if err != nil || batchSize < 1 {
+			ce.Reply("\"%s\" isn't a valid batch size", ce.Args[0])
+			return
+		}
+	}
+	if len(ce.Args) >= 2 {
+		var err error
+		batchDelay, err = strconv.Atoi(ce.Args[0])
+		if err != nil || batchSize < 0 {
+			ce.Reply("\"%s\" isn't a valid batch delay", ce.Args[1])
+			return
+		}
+	}
+	backfill := ce.Portal.bridge.DB.BackfillQuery.NewWithValues(ce.User.MXID, database.BackfillImmediate, 0, &ce.Portal.Key, nil, nil, batchSize, -1, batchDelay)
+	backfill.Insert()
+	ce.User.BackfillQueue.ReCheckQueue <- true
 }
 
 const cmdListHelp = `list <contacts|groups> [page] [items per page] - Get a list of all contacts and groups.`
@@ -1015,7 +1053,7 @@ func (handler *CommandHandler) CommandOpen(ce *CommandEvent) {
 		portal.UpdateMatrixRoom(ce.User, info)
 		ce.Reply("Portal room synced.")
 	} else {
-		err = portal.CreateMatrixRoom(ce.User, info, true)
+		err = portal.CreateMatrixRoom(ce.User, info, true, true)
 		if err != nil {
 			ce.Reply("Failed to create room: %v", err)
 		} else {

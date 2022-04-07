@@ -74,6 +74,8 @@ type User struct {
 	groupListCache     []*types.GroupInfo
 	groupListCacheLock sync.Mutex
 	groupListCacheTime time.Time
+
+	BackfillQueue *BackfillQueue
 }
 
 func (bridge *Bridge) getUserByMXID(userID id.UserID, onlyIfExists bool) *User {
@@ -186,7 +188,9 @@ func (bridge *Bridge) NewUser(dbUser *database.User) *User {
 	user.RelayWhitelisted = user.bridge.Config.Bridge.Permissions.IsRelayWhitelisted(user.MXID)
 	user.Whitelisted = user.bridge.Config.Bridge.Permissions.IsWhitelisted(user.MXID)
 	user.Admin = user.bridge.Config.Bridge.Permissions.IsAdmin(user.MXID)
-	go user.handleHistorySyncsLoop()
+	if user.bridge.Config.Bridge.HistorySync.Backfill {
+		go user.handleHistorySyncsLoop()
+	}
 	return user
 }
 
@@ -410,6 +414,11 @@ func (user *User) DeleteSession() {
 		user.JID = types.EmptyJID
 		user.Update()
 	}
+
+	// Delete all of the backfill and history sync data.
+	user.bridge.DB.BackfillQuery.DeleteAll(user.MXID)
+	user.bridge.DB.HistorySyncQuery.DeleteAllConversations(user.MXID)
+	user.bridge.DB.HistorySyncQuery.DeleteAllMessages(user.MXID)
 }
 
 func (user *User) IsConnected() bool {
@@ -685,7 +694,9 @@ func (user *User) HandleEvent(event interface{}) {
 		portal := user.GetPortalByMessageSource(v.Info.MessageSource)
 		portal.messages <- PortalMessage{undecryptable: v, source: user}
 	case *events.HistorySync:
-		user.historySyncs <- v
+		if user.bridge.Config.Bridge.HistorySync.Backfill {
+			user.historySyncs <- v
+		}
 	case *events.Mute:
 		portal := user.GetPortalByJID(v.JID)
 		if portal != nil {
@@ -942,7 +953,7 @@ func (user *User) ResyncGroups(createPortals bool) error {
 		portal := user.GetPortalByJID(group.JID)
 		if len(portal.MXID) == 0 {
 			if createPortals {
-				err = portal.CreateMatrixRoom(user, group, true)
+				err = portal.CreateMatrixRoom(user, group, true, true)
 				if err != nil {
 					return fmt.Errorf("failed to create room for %s: %w", group.JID, err)
 				}
@@ -1025,7 +1036,7 @@ func (user *User) markSelfReadFull(portal *Portal) {
 func (user *User) handleGroupCreate(evt *events.JoinedGroup) {
 	portal := user.GetPortalByJID(evt.JID)
 	if len(portal.MXID) == 0 {
-		err := portal.CreateMatrixRoom(user, &evt.GroupInfo, true)
+		err := portal.CreateMatrixRoom(user, &evt.GroupInfo, true, true)
 		if err != nil {
 			user.log.Errorln("Failed to create Matrix room after join notification: %v", err)
 		}
@@ -1093,7 +1104,7 @@ func (user *User) StartPM(jid types.JID, reason string) (*Portal, *Puppet, bool,
 			return portal, puppet, false, nil
 		}
 	}
-	err := portal.CreateMatrixRoom(user, nil, false)
+	err := portal.CreateMatrixRoom(user, nil, false, true)
 	return portal, puppet, true, err
 }
 

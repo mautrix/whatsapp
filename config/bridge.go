@@ -28,6 +28,12 @@ import (
 	"maunium.net/go/mautrix/id"
 )
 
+type DeferredConfig struct {
+	StartDaysAgo   int `yaml:"start_days_ago"`
+	MaxBatchEvents int `yaml:"max_batch_events"`
+	BatchDelay     int `yaml:"batch_delay"`
+}
+
 type BridgeConfig struct {
 	UsernameTemplate    string `yaml:"username_template"`
 	DisplaynameTemplate string `yaml:"displayname_template"`
@@ -40,11 +46,18 @@ type BridgeConfig struct {
 	IdentityChangeNotices bool `yaml:"identity_change_notices"`
 
 	HistorySync struct {
-		CreatePortals        bool  `yaml:"create_portals"`
-		MaxAge               int64 `yaml:"max_age"`
-		Backfill             bool  `yaml:"backfill"`
-		DoublePuppetBackfill bool  `yaml:"double_puppet_backfill"`
-		RequestFullSync      bool  `yaml:"request_full_sync"`
+		CreatePortals           bool `yaml:"create_portals"`
+		Backfill                bool `yaml:"backfill"`
+		DoublePuppetBackfill    bool `yaml:"double_puppet_backfill"`
+		RequestFullSync         bool `yaml:"request_full_sync"`
+		MaxInitialConversations int  `yaml:"max_initial_conversations"`
+
+		Immediate struct {
+			WorkerCount int `yaml:"worker_count"`
+			MaxEvents   int `yaml:"max_events"`
+		} `yaml:"immediate"`
+
+		Deferred []DeferredConfig `yaml:"deferred"`
 	} `yaml:"history_sync"`
 	UserAvatarSync    bool `yaml:"user_avatar_sync"`
 	BridgeMatrixLeave bool `yaml:"bridge_matrix_leave"`

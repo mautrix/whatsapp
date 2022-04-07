@@ -46,6 +46,8 @@ type Database struct {
 	Reaction *ReactionQuery
 
 	DisappearingMessage *DisappearingMessageQuery
+	BackfillQuery       *BackfillQuery
+	HistorySyncQuery    *HistorySyncQuery
 }
 
 func New(cfg config.DatabaseConfig, baseLog log.Logger) (*Database, error) {
@@ -82,6 +84,14 @@ func New(cfg config.DatabaseConfig, baseLog log.Logger) (*Database, error) {
 	db.DisappearingMessage = &DisappearingMessageQuery{
 		db:  db,
 		log: db.log.Sub("DisappearingMessage"),
+	}
+	db.BackfillQuery = &BackfillQuery{
+		db:  db,
+		log: db.log.Sub("Backfill"),
+	}
+	db.HistorySyncQuery = &HistorySyncQuery{
+		db:  db,
+		log: db.log.Sub("HistorySync"),
 	}
 
 	db.SetMaxOpenConns(cfg.MaxOpenConns)

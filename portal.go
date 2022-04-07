@@ -237,7 +237,7 @@ func (portal *Portal) handleMessageLoopItem(msg PortalMessage) {
 			return
 		}
 		portal.log.Debugln("Creating Matrix room from incoming message")
-		err := portal.CreateMatrixRoom(msg.source, nil, false)
+		err := portal.CreateMatrixRoom(msg.source, nil, false, true)
 		if err != nil {
 			portal.log.Errorln("Failed to create portal room:", err)
 			return
@@ -1164,7 +1164,7 @@ func (portal *Portal) UpdateBridgeInfo() {
 	}
 }
 
-func (portal *Portal) CreateMatrixRoom(user *User, groupInfo *types.GroupInfo, isFullInfo bool) error {
+func (portal *Portal) CreateMatrixRoom(user *User, groupInfo *types.GroupInfo, isFullInfo, backfill bool) error {
 	portal.roomCreateLock.Lock()
 	defer portal.roomCreateLock.Unlock()
 	if len(portal.MXID) > 0 {
@@ -1336,6 +1336,12 @@ func (portal *Portal) CreateMatrixRoom(user *User, groupInfo *types.GroupInfo, i
 	} else {
 		portal.FirstEventID = firstEventResp.EventID
 		portal.Update()
+	}
+
+	if user.bridge.Config.Bridge.HistorySync.Backfill && backfill {
+		user.EnqueueImmedateBackfill(portal, 0)
+		user.EnqueueDeferredBackfills(portal, 1, 0)
+		user.BackfillQueue.ReCheckQueue <- true
 	}
 	return nil
 }
@@ -1895,7 +1901,7 @@ func shallowCopyMap(data map[string]interface{}) map[string]interface{} {
 	return newMap
 }
 
-func (portal *Portal) makeMediaBridgeFailureMessage(info *types.MessageInfo, bridgeErr error, converted *ConvertedMessage, keys *FailedMediaKeys) *ConvertedMessage {
+func (portal *Portal) makeMediaBridgeFailureMessage(info *types.MessageInfo, bridgeErr error, converted *ConvertedMessage, keys *FailedMediaKeys, userFriendlyError string) *ConvertedMessage {
 	portal.log.Errorfln("Failed to bridge media for %s: %v", info.ID, bridgeErr)
 	if keys != nil {
 		meta := &FailedMediaMeta{
@@ -1908,9 +1914,13 @@ func (portal *Portal) makeMediaBridgeFailureMessage(info *types.MessageInfo, bri
 		portal.mediaErrorCache[info.ID] = meta
 	}
 	converted.Type = event.EventMessage
+	body := userFriendlyError
+	if body == "" {
+		body = fmt.Sprintf("Failed to bridge media: %v", bridgeErr)
+	}
 	converted.Content = &event.MessageEventContent{
 		MsgType: event.MsgNotice,
-		Body:    fmt.Sprintf("Failed to bridge media: %v", bridgeErr),
+		Body:    body,
 	}
 	return converted
 }
@@ -2159,24 +2169,24 @@ func (portal *Portal) convertMediaMessage(intent *appservice.IntentAPI, source *
 			Type:      whatsmeow.GetMediaType(msg),
 			SHA256:    msg.GetFileSha256(),
 			EncSHA256: msg.GetFileEncSha256(),
-		})
+		}, "Old photo or attachment. This will sync in a future update.")
 	} else if errors.Is(err, whatsmeow.ErrNoURLPresent) {
 		portal.log.Debugfln("No URL present error for media message %s, ignoring...", info.ID)
 		return nil
 	} else if errors.Is(err, whatsmeow.ErrFileLengthMismatch) || errors.Is(err, whatsmeow.ErrInvalidMediaSHA256) {
 		portal.log.Warnfln("Mismatching media checksums in %s: %v. Ignoring because WhatsApp seems to ignore them too", info.ID, err)
 	} else if err != nil {
-		return portal.makeMediaBridgeFailureMessage(info, err, converted, nil)
+		return portal.makeMediaBridgeFailureMessage(info, err, converted, nil, "")
 	}
 
 	err = portal.uploadMedia(intent, data, converted.Content)
 	if err != nil {
 		if errors.Is(err, mautrix.MTooLarge) {
-			return portal.makeMediaBridgeFailureMessage(info, errors.New("homeserver rejected too large file"), converted, nil)
+			return portal.makeMediaBridgeFailureMessage(info, errors.New("homeserver rejected too large file"), converted, nil, "")
 		} else if httpErr, ok := err.(mautrix.HTTPError); ok && httpErr.IsStatus(413) {
-			return portal.makeMediaBridgeFailureMessage(info, errors.New("proxy rejected too large file"), converted, nil)
+			return portal.makeMediaBridgeFailureMessage(info, errors.New("proxy rejected too large file"), converted, nil, "")
 		} else {
-			return portal.makeMediaBridgeFailureMessage(info, fmt.Errorf("failed to upload media: %w", err), converted, nil)
+			return portal.makeMediaBridgeFailureMessage(info, fmt.Errorf("failed to upload media: %w", err), converted, nil, "")
 		}
 	}
 	return converted
