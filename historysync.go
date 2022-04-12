@@ -190,7 +190,7 @@ func (user *User) handleHistorySync(reCheckQueue chan bool, evt *waProto.History
 	if evt == nil || evt.SyncType == nil || evt.GetSyncType() == waProto.HistorySync_INITIAL_STATUS_V3 || evt.GetSyncType() == waProto.HistorySync_PUSH_NAME {
 		return
 	}
-	description := fmt.Sprintf("type %s, %d conversations, chunk order %d", evt.GetSyncType(), len(evt.GetConversations()), evt.GetChunkOrder())
+	description := fmt.Sprintf("type %s, %d conversations, chunk order %d, progress: %d", evt.GetSyncType(), len(evt.GetConversations()), evt.GetChunkOrder(), evt.GetProgress())
 	user.log.Infoln("Storing history sync with", description)
 
 	for _, conv := range evt.GetConversations() {
