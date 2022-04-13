@@ -242,16 +242,7 @@ func (user *User) handleHistorySync(reCheckQueue chan bool, evt *waProto.History
 	// most recent portals. If it's the last history sync event, start
 	// backfilling the rest of the history of the portals.
 	if user.bridge.Config.Bridge.HistorySync.Backfill {
-		if evt.GetProgress() < 99 {
-			return
-		}
-
-		doneSyncType := waProto.HistorySync_RECENT
-		if user.bridge.Config.Bridge.HistorySync.RequestFullSync {
-			doneSyncType = waProto.HistorySync_FULL
-		}
-
-		if evt.GetSyncType() != waProto.HistorySync_INITIAL_BOOTSTRAP && evt.GetSyncType() != doneSyncType {
+		if evt.GetSyncType() != waProto.HistorySync_INITIAL_BOOTSTRAP && evt.GetProgress() < 98 {
 			return
 		}
 
