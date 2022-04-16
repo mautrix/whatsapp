@@ -142,8 +142,8 @@ func (user *User) createOrUpdatePortalAndBackfillWithLock(req *database.Backfill
 			msgs = toBackfill
 			toBackfill = toBackfill[0:0]
 		} else {
-			msgs = toBackfill[:len(toBackfill)-req.MaxBatchEvents]
-			toBackfill = toBackfill[len(toBackfill)-req.MaxBatchEvents:]
+			msgs = toBackfill[:req.MaxBatchEvents]
+			toBackfill = toBackfill[req.MaxBatchEvents:]
 		}
 
 		if len(msgs) > 0 {
@@ -155,7 +155,7 @@ func (user *User) createOrUpdatePortalAndBackfillWithLock(req *database.Backfill
 	user.log.Debugfln("Finished backfilling %d messages in %s (queue ID: %d)", len(allMsgs), portal.Key.JID, req.QueueID)
 	if len(insertionEventIds) > 0 {
 		portal.sendPostBackfillDummy(
-			time.Unix(int64(allMsgs[len(allMsgs)-1].GetMessageTimestamp()), 0),
+			time.Unix(int64(allMsgs[0].GetMessageTimestamp()), 0),
 			insertionEventIds[0])
 	}
 	user.log.Debugfln("Deleting %d history sync messages after backfilling", len(allMsgs))
@@ -432,7 +432,7 @@ func (portal *Portal) backfill(source *User, messages []*waProto.WebMessageInfo)
 		}
 	}
 
-	insertionEventIds := []id.EventID{}
+	var insertionEventIds []id.EventID
 
 	if len(historyBatch.Events) > 0 && len(historyBatch.PrevEventID) > 0 {
 		portal.log.Infofln("Sending %d historical messages...", len(historyBatch.Events))
