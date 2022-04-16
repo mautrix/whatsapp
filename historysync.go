@@ -478,6 +478,13 @@ func (portal *Portal) wrapBatchEvent(info *types.MessageInfo, intent *appservice
 	if err != nil {
 		return nil, err
 	}
+	if newEventType == event.EventEncrypted {
+		// Clear other custom keys if the event was encrypted, but keep the double puppet identifier
+		wrappedContent.Raw = map[string]interface{}{backfillIDField: info.ID}
+		if intent.IsCustomPuppet {
+			wrappedContent.Raw[doublePuppetKey] = doublePuppetValue
+		}
+	}
 	return &event.Event{
 		Sender:    intent.UserID,
 		Type:      newEventType,
