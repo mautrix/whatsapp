@@ -137,7 +137,7 @@ bridge:
         # Other conversations will be backfilled on demand when the start PM
         # provisioning endpoint is used or when a message comes in from that
         # chat.
-        max_initial_conversations: 10
+        max_initial_conversations: -1
         # Settings for immediate backfills. These backfills should generally be
         # small and their main purpose is to populate each of the initial chats
         # (as configured by max_initial_conversations) with a few messages so

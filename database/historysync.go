@@ -174,7 +174,12 @@ func (hsc *HistorySyncConversation) Scan(row Scannable) *HistorySyncConversation
 }
 
 func (hsq *HistorySyncQuery) GetNMostRecentConversations(userID id.UserID, n int) (conversations []*HistorySyncConversation) {
-	rows, err := hsq.db.Query(getNMostRecentConversations, userID, n)
+	nPtr := &n
+	// Negative limit on SQLite means unlimited, but Postgres prefers a NULL limit.
+	if n < 0 && hsq.db.dialect == "postgres" {
+		nPtr = nil
+	}
+	rows, err := hsq.db.Query(getNMostRecentConversations, userID, nPtr)
 	defer rows.Close()
 	if err != nil || rows == nil {
 		return nil
