@@ -1,8 +1,9 @@
-# unreleased
+# v0.3.1 (2022-04-16)
 
 * Added emoji normalization for reactions in both directions to add/remove
   variation selector 16 as appropriate.
 * Added option to use [MSC2246] async media uploads.
+* Fixed custom fields in messages being unencrypted in history syncs.
 
 [MSC2246]: https://github.com/matrix-org/matrix-spec-proposals/pull/2246
 
