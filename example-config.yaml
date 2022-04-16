@@ -157,11 +157,9 @@ bridge:
         # Each deferred backfill config should define a "stage" of backfill
         # (i.e. the last week of messages). The fields are as follows:
         # - start_days_ago: the number of days ago to start backfilling from.
-        #   To indicate the start of time, use -1. For example, for a week ago,
-        #   use 7.
+        #     To indicate the start of time, use -1. For example, for a week ago, use 7.
         # - max_batch_events: the number of events to send per batch.
-        # - batch_delay: the number of seconds to wait before backfilling each
-        #   batch.
+        # - batch_delay: the number of seconds to wait before backfilling each batch.
         deferred:
             # Last Week
             - start_days_ago: 7

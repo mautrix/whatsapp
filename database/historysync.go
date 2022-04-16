@@ -288,15 +288,15 @@ func (hsq *HistorySyncQuery) GetMessagesBetween(userID id.UserID, conversationID
 
 	var msgData []byte
 	for rows.Next() {
-		err := rows.Scan(&msgData)
+		err = rows.Scan(&msgData)
 		if err != nil {
-			hsq.log.Error("Database scan failed: %v", err)
+			hsq.log.Errorfln("Database scan failed: %v", err)
 			continue
 		}
 		var historySyncMsg waProto.HistorySyncMsg
 		err = proto.Unmarshal(msgData, &historySyncMsg)
 		if err != nil {
-			hsq.log.Errorf("Failed to unmarshal history sync message: %v", err)
+			hsq.log.Errorfln("Failed to unmarshal history sync message: %v", err)
 			continue
 		}
 		messages = append(messages, historySyncMsg.Message)
