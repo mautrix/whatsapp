@@ -142,8 +142,8 @@ func (user *User) createOrUpdatePortalAndBackfillWithLock(req *database.Backfill
 			msgs = toBackfill
 			toBackfill = toBackfill[0:0]
 		} else {
-			msgs = toBackfill[len(toBackfill)-req.MaxBatchEvents:]
-			toBackfill = toBackfill[:len(toBackfill)-req.MaxBatchEvents]
+			msgs = toBackfill[:len(toBackfill)-req.MaxBatchEvents]
+			toBackfill = toBackfill[len(toBackfill)-req.MaxBatchEvents:]
 		}
 
 		if len(msgs) > 0 {
