@@ -10,14 +10,14 @@ require (
 	github.com/prometheus/client_golang v1.11.1
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
 	github.com/tidwall/gjson v1.14.0
-	go.mau.fi/whatsmeow v0.0.0-20220412075936-8f75ccfd2425
+	go.mau.fi/whatsmeow v0.0.0-20220416192948-8b34d886d543
 	golang.org/x/image v0.0.0-20220321031419-a8550c1d254a
 	golang.org/x/net v0.0.0-20220407224826-aac1ed45d8e3
 	google.golang.org/protobuf v1.27.1
 	gopkg.in/yaml.v3 v3.0.0-20210107192922-496545a6307b
 	maunium.net/go/mauflag v1.0.0
 	maunium.net/go/maulogger/v2 v2.3.2
-	maunium.net/go/mautrix v0.10.13-0.20220409135345-cbe2dbaef0e9
+	maunium.net/go/mautrix v0.10.13-0.20220415172627-597a9560f721
 )
 
 require (
@@ -29,10 +29,10 @@ require (
 	github.com/prometheus/client_model v0.2.0 // indirect
 	github.com/prometheus/common v0.26.0 // indirect
 	github.com/prometheus/procfs v0.6.0 // indirect
-	github.com/russross/blackfriday/v2 v2.1.0 // indirect
 	github.com/tidwall/match v1.1.1 // indirect
 	github.com/tidwall/pretty v1.2.0 // indirect
 	github.com/tidwall/sjson v1.2.4 // indirect
+	github.com/yuin/goldmark v1.4.11 // indirect
 	go.mau.fi/libsignal v0.0.0-20220315232917-871a40435d3b // indirect
 	golang.org/x/crypto v0.0.0-20220408190544-5352b0902921 // indirect
 	golang.org/x/sys v0.0.0-20211216021012-1d35b9e2eb4e // indirect
