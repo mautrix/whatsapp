@@ -2787,7 +2787,7 @@ func (portal *Portal) HandleMatrixReaction(sender *User, evt *event.Event) {
 	portal.log.Debugfln("Received reaction event %s from %s", evt.ID, evt.Sender)
 	err := portal.handleMatrixReaction(sender, evt)
 	if err != nil {
-		portal.log.Errorfln("Error sending reaction: %v", err)
+		portal.log.Errorfln("Error sending reaction %s: %v", evt.ID, err)
 		checkpoint := appservice.NewMessageSendCheckpoint(evt, appservice.StepRemote, appservice.StatusPermFailure, 0)
 		checkpoint.Info = err.Error()
 		go checkpoint.Send(portal.bridge.AS)
@@ -2801,13 +2801,11 @@ func (portal *Portal) HandleMatrixReaction(sender *User, evt *event.Event) {
 func (portal *Portal) handleMatrixReaction(sender *User, evt *event.Event) error {
 	content, ok := evt.Content.Parsed.(*event.ReactionEventContent)
 	if !ok {
-		errorText := fmt.Sprintf("Failed to handle reaction event %s: unexpected parsed content type %T", evt.ID, evt.Content.Parsed)
-		return errors.New(errorText)
+		return fmt.Errorf("unexpected parsed content type %T", evt.Content.Parsed)
 	}
 	target := portal.bridge.DB.Message.GetByMXID(content.RelatesTo.EventID)
 	if target == nil || target.Type == database.MsgReaction {
-		errorText := fmt.Sprintf("Dropping reaction to unknown event %s", content.RelatesTo.EventID)
-		return errors.New(errorText)
+		return fmt.Errorf("unknown target event %s", content.RelatesTo.EventID)
 	}
 	info := portal.generateMessageInfo(sender)
 	dbMsg := portal.markHandled(nil, info, evt.ID, false, true, database.MsgReaction, database.MsgNoError)
