@@ -2784,17 +2784,26 @@ func (portal *Portal) HandleMatrixMessage(sender *User, evt *event.Event) {
 }
 
 func (portal *Portal) HandleMatrixReaction(sender *User, evt *event.Event) {
-	// TODO checkpoints
 	portal.log.Debugfln("Received reaction event %s from %s", evt.ID, evt.Sender)
+	err := portal.handleMatrixReaction(sender, evt)
+	if err != nil {
+		portal.log.Errorfln("Error sending reaction %s: %v", evt.ID, err)
+		portal.bridge.AS.SendErrorMessageSendCheckpoint(evt, appservice.StepRemote, err, true, 0)
+	} else {
+		portal.log.Debugfln("Handled Matrix reaction %s", evt.ID)
+		portal.bridge.AS.SendMessageSendCheckpoint(evt, appservice.StepRemote, 0)
+		portal.sendDeliveryReceipt(evt.ID)
+	}
+}
+
+func (portal *Portal) handleMatrixReaction(sender *User, evt *event.Event) error {
 	content, ok := evt.Content.Parsed.(*event.ReactionEventContent)
 	if !ok {
-		portal.log.Debugfln("Failed to handle reaction event %s: unexpected parsed content type %T", evt.ID, evt.Content.Parsed)
-		return
+		return fmt.Errorf("unexpected parsed content type %T", evt.Content.Parsed)
 	}
 	target := portal.bridge.DB.Message.GetByMXID(content.RelatesTo.EventID)
 	if target == nil || target.Type == database.MsgReaction {
-		portal.log.Debugfln("Dropping reaction to unknown event %s", content.RelatesTo.EventID)
-		return
+		return fmt.Errorf("unknown target event %s", content.RelatesTo.EventID)
 	}
 	info := portal.generateMessageInfo(sender)
 	dbMsg := portal.markHandled(nil, info, evt.ID, false, true, database.MsgReaction, database.MsgNoError)
@@ -2802,12 +2811,9 @@ func (portal *Portal) HandleMatrixReaction(sender *User, evt *event.Event) {
 	portal.log.Debugln("Sending reaction", evt.ID, "to WhatsApp", info.ID)
 	ts, err := portal.sendReactionToWhatsApp(sender, info.ID, target, content.RelatesTo.Key, evt.Timestamp)
 	if err != nil {
-		portal.log.Errorfln("Error sending reaction: %v", err)
-	} else {
-		portal.log.Debugfln("Handled Matrix reaction %s", evt.ID)
-		portal.sendDeliveryReceipt(evt.ID)
 		dbMsg.MarkSent(ts)
 	}
+	return err
 }
 
 func (portal *Portal) sendReactionToWhatsApp(sender *User, id types.MessageID, target *database.Message, key string, timestamp int64) (time.Time, error) {
