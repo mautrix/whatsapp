@@ -64,16 +64,16 @@ func (bq *BackfillQuery) NewWithValues(userID id.UserID, backfillType BackfillTy
 const (
 	getNextBackfillQuery = `
 		SELECT queue_id, user_mxid, type, priority, portal_jid, portal_receiver, time_start, time_end, max_batch_events, max_total_events, batch_delay
-		  FROM backfill_queue
-		 WHERE user_mxid=$1
-		   AND type=$2
-		   AND completed_at IS NULL
-	  ORDER BY priority, queue_id
-	     LIMIT 1
+		FROM backfill_queue
+		WHERE user_mxid=$1
+			AND type=$2
+			AND completed_at IS NULL
+		ORDER BY priority, queue_id
+		LIMIT 1
 	`
 )
 
-/// Returns the next backfill to perform
+// GetNext returns the next backfill to perform
 func (bq *BackfillQuery) GetNext(userID id.UserID, backfillType BackfillType) (backfill *Backfill) {
 	rows, err := bq.db.Query(getNextBackfillQuery, userID, backfillType)
 	defer rows.Close()
