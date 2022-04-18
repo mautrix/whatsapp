@@ -2788,9 +2788,7 @@ func (portal *Portal) HandleMatrixReaction(sender *User, evt *event.Event) {
 	err := portal.handleMatrixReaction(sender, evt)
 	if err != nil {
 		portal.log.Errorfln("Error sending reaction %s: %v", evt.ID, err)
-		checkpoint := appservice.NewMessageSendCheckpoint(evt, appservice.StepRemote, appservice.StatusPermFailure, 0)
-		checkpoint.Info = err.Error()
-		go checkpoint.Send(portal.bridge.AS)
+		portal.bridge.AS.SendErrorMessageSendCheckpoint(evt, appservice.StepRemote, err, true, 0)
 	} else {
 		portal.log.Debugfln("Handled Matrix reaction %s", evt.ID)
 		portal.bridge.AS.SendMessageSendCheckpoint(evt, appservice.StepRemote, 0)
