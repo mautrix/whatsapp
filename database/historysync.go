@@ -20,7 +20,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	waProto "go.mau.fi/whatsmeow/binary/proto"
@@ -209,17 +208,15 @@ func (hsq *HistorySyncQuery) DeleteAllConversations(userID id.UserID) error {
 
 const (
 	getMessagesBetween = `
-		SELECT data
-		  FROM history_sync_message
-		 WHERE user_mxid=$1
-		   AND conversation_id=$2
-		 %s
-		 ORDER BY timestamp DESC
-		 %s
+		SELECT data FROM history_sync_message
+		WHERE user_mxid=$1 AND conversation_id=$2
+			%s
+		ORDER BY timestamp DESC
+		%s
 	`
-	deleteMessages = `
+	deleteMessagesBetweenExclusive = `
 		DELETE FROM history_sync_message
-		 WHERE %s
+		WHERE user_mxid=$1 AND conversation_id=$2 AND timestamp<$3 AND timestamp>$4
 	`
 )
 
@@ -305,14 +302,11 @@ func (hsq *HistorySyncQuery) GetMessagesBetween(userID id.UserID, conversationID
 }
 
 func (hsq *HistorySyncQuery) DeleteMessages(userID id.UserID, conversationID string, messages []*waProto.WebMessageInfo) error {
-	whereClauses := []string{}
-	preparedStatementArgs := []interface{}{userID, conversationID}
-	for i, msg := range messages {
-		whereClauses = append(whereClauses, fmt.Sprintf("(user_mxid=$1 AND conversation_id=$2 AND message_id=$%d)", i+3))
-		preparedStatementArgs = append(preparedStatementArgs, msg.GetKey().GetId())
-	}
-
-	_, err := hsq.db.Exec(fmt.Sprintf(deleteMessages, strings.Join(whereClauses, " OR ")), preparedStatementArgs...)
+	newest := messages[0]
+	beforeTS := time.Unix(int64(newest.GetMessageTimestamp())+1, 0)
+	oldest := messages[len(messages)-1]
+	afterTS := time.Unix(int64(oldest.GetMessageTimestamp())-1, 0)
+	_, err := hsq.db.Exec(deleteMessagesBetweenExclusive, userID, conversationID, beforeTS, afterTS)
 	return err
 }
 
