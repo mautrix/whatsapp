@@ -30,6 +30,7 @@ type BackfillType int
 const (
 	BackfillImmediate BackfillType = 0
 	BackfillDeferred               = 1
+	BackfillMedia                  = 2
 )
 
 type BackfillQuery struct {

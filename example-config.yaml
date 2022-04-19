@@ -125,6 +125,13 @@ bridge:
         # Note that prior to Synapse 1.49, there were some bugs with the implementation, especially if using event persistence workers.
         # There are also still some issues in Synapse's federation implementation.
         backfill: false
+        # Enable requesting media that was not found on the WhatsApp server.
+        # Only applies if backfill is true.
+        backfill_media: false
+        # Enqueue backfilling of media that was not found on the WhatsApp
+        # server on next startup for all portals.
+        # Only applies if backfill and backfill_media are true.
+        enqueue_backfill_media_next_start: false
         # Use double puppets for backfilling?
         # In order to use this, the double puppets must be in the appservice's user ID namespace
         # (because the bridge can't use the double puppet access token with batch sending).
@@ -177,6 +184,25 @@ bridge:
             - start_days_ago: -1
               max_batch_events: 500
               batch_delay: 10
+        # Settings for automatically requesting all media that was not found on
+        # the WhatsApp server. This process happens after the deferred
+        # backfills are completed.
+        # The config is the same as for deferred backfills, except the
+        # max_batch_events represents the maximum number of media messages to
+        # request.
+        media:
+            # Last Month
+            - start_days_ago: 30
+              max_batch_events: 5
+              batch_delay: 10
+            # Last 3 months
+            - start_days_ago: 90
+              max_batch_events: 5
+              batch_delay: 10
+            # The start of time
+            - start_days_ago: -1
+              max_batch_events: 10
+              batch_delay: 20
     # Should puppet avatars be fetched from the server even if an avatar is already set?
     user_avatar_sync: true
     # Should Matrix users leaving groups be bridged to WhatsApp?

@@ -56,12 +56,12 @@ func (bq *BackfillQueue) deferredBackfillLoop(user *User) {
 		// Finish all immediate backfills before doing the deferred ones.
 		if immediate := bq.BackfillQuery.GetNext(user.MXID, database.BackfillImmediate); immediate != nil {
 			time.Sleep(10 * time.Second)
-			continue
-		}
-
-		if backfill := bq.BackfillQuery.GetNext(user.MXID, database.BackfillDeferred); backfill != nil {
+		} else if backfill := bq.BackfillQuery.GetNext(user.MXID, database.BackfillDeferred); backfill != nil {
 			bq.DeferredBackfillRequests <- backfill
 			backfill.MarkDone()
+		} else if mediaBackfill := bq.BackfillQuery.GetNext(user.MXID, database.BackfillMedia); mediaBackfill != nil {
+			bq.DeferredBackfillRequests <- mediaBackfill
+			mediaBackfill.MarkDone()
 		} else {
 			time.Sleep(10 * time.Second)
 		}

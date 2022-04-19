@@ -46,8 +46,12 @@ type BridgeConfig struct {
 	IdentityChangeNotices bool `yaml:"identity_change_notices"`
 
 	HistorySync struct {
-		CreatePortals           bool `yaml:"create_portals"`
-		Backfill                bool `yaml:"backfill"`
+		CreatePortals bool `yaml:"create_portals"`
+
+		Backfill                      bool `yaml:"backfill"`
+		BackfillMedia                 bool `yaml:"backfill_media"`
+		EnqueueBackfillMediaNextStart bool `yaml:"enqueue_backfill_media_next_start"`
+
 		DoublePuppetBackfill    bool `yaml:"double_puppet_backfill"`
 		RequestFullSync         bool `yaml:"request_full_sync"`
 		MaxInitialConversations int  `yaml:"max_initial_conversations"`
@@ -58,6 +62,7 @@ type BridgeConfig struct {
 		} `yaml:"immediate"`
 
 		Deferred []DeferredConfig `yaml:"deferred"`
+		Media    []DeferredConfig `yaml:"media"`
 	} `yaml:"history_sync"`
 	UserAvatarSync    bool `yaml:"user_avatar_sync"`
 	BridgeMatrixLeave bool `yaml:"bridge_matrix_leave"`

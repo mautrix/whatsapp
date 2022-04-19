@@ -84,25 +84,51 @@ func (user *User) handleBackfillRequestsLoop(backfillRequests chan *database.Bac
 			user.log.Debugfln("Could not find history sync conversation data for %s", req.Portal.String())
 			continue
 		}
-
-		// Update the client store with basic chat settings.
-		if conv.MuteEndTime.After(time.Now()) {
-			user.Client.Store.ChatSettings.PutMutedUntil(conv.PortalKey.JID, conv.MuteEndTime)
-		}
-		if conv.Archived {
-			user.Client.Store.ChatSettings.PutArchived(conv.PortalKey.JID, true)
-		}
-		if conv.Pinned > 0 {
-			user.Client.Store.ChatSettings.PutPinned(conv.PortalKey.JID, true)
-		}
-
 		portal := user.GetPortalByJID(conv.PortalKey.JID)
-		if conv.EphemeralExpiration != nil && portal.ExpirationTime != *conv.EphemeralExpiration {
-			portal.ExpirationTime = *conv.EphemeralExpiration
-			portal.Update()
-		}
 
-		user.createOrUpdatePortalAndBackfillWithLock(req, conv, portal)
+		if req.BackfillType == database.BackfillMedia {
+			startTime := time.Unix(0, 0)
+			if req.TimeStart != nil {
+				startTime = *req.TimeStart
+			}
+			endTime := time.Now()
+			if req.TimeEnd != nil {
+				endTime = *req.TimeEnd
+			}
+
+			user.log.Debugfln("Backfilling media from %v to %v for %s", startTime, endTime, portal.Key.String())
+
+			// Go through all of the messages in the given time range,
+			// requesting any media that errored.
+			requested := 0
+			for _, msg := range user.bridge.DB.Message.GetMessagesBetween(portal.Key, startTime, endTime) {
+				if requested > 0 && requested%req.MaxBatchEvents == 0 {
+					time.Sleep(time.Duration(req.BatchDelay) * time.Second)
+				}
+				if msg.Error == database.MsgErrMediaNotFound {
+					portal.requestMediaRetry(user, msg.MXID)
+					requested += 1
+				}
+			}
+		} else {
+			// Update the client store with basic chat settings.
+			if conv.MuteEndTime.After(time.Now()) {
+				user.Client.Store.ChatSettings.PutMutedUntil(conv.PortalKey.JID, conv.MuteEndTime)
+			}
+			if conv.Archived {
+				user.Client.Store.ChatSettings.PutArchived(conv.PortalKey.JID, true)
+			}
+			if conv.Pinned > 0 {
+				user.Client.Store.ChatSettings.PutPinned(conv.PortalKey.JID, true)
+			}
+
+			if conv.EphemeralExpiration != nil && portal.ExpirationTime != *conv.EphemeralExpiration {
+				portal.ExpirationTime = *conv.EphemeralExpiration
+				portal.Update()
+			}
+
+			user.createOrUpdatePortalAndBackfillWithLock(req, conv, portal)
+		}
 	}
 }
 
@@ -245,7 +271,8 @@ func (user *User) handleHistorySync(reCheckQueue chan bool, evt *waProto.History
 		}
 
 		nMostRecent := user.bridge.DB.HistorySyncQuery.GetNMostRecentConversations(user.MXID, user.bridge.Config.Bridge.HistorySync.MaxInitialConversations)
-		for i, conv := range nMostRecent {
+		var priorityCounter int
+		for _, conv := range nMostRecent {
 			jid, err := types.ParseJID(conv.ConversationID)
 			if err != nil {
 				user.log.Warnfln("Failed to parse chat JID '%s' in history sync: %v", conv.ConversationID, err)
@@ -256,10 +283,11 @@ func (user *User) handleHistorySync(reCheckQueue chan bool, evt *waProto.History
 			switch evt.GetSyncType() {
 			case waProto.HistorySync_INITIAL_BOOTSTRAP:
 				// Enqueue immediate backfills for the most recent messages first.
-				user.EnqueueImmedateBackfill(portal, i)
+				user.EnqueueImmedateBackfill(portal, &priorityCounter)
 			case waProto.HistorySync_FULL, waProto.HistorySync_RECENT:
 				// Enqueue deferred backfills as configured.
-				user.EnqueueDeferredBackfills(portal, len(nMostRecent), i)
+				user.EnqueueDeferredBackfills(portal, &priorityCounter)
+				user.EnqueueMediaBackfills(portal, &priorityCounter)
 			}
 		}
 
@@ -276,22 +304,38 @@ func getConversationTimestamp(conv *waProto.Conversation) uint64 {
 	return convTs
 }
 
-func (user *User) EnqueueImmedateBackfill(portal *Portal, priority int) {
+func (user *User) EnqueueImmedateBackfill(portal *Portal, priorityCounter *int) {
 	maxMessages := user.bridge.Config.Bridge.HistorySync.Immediate.MaxEvents
-	initialBackfill := user.bridge.DB.BackfillQuery.NewWithValues(user.MXID, database.BackfillImmediate, priority, &portal.Key, nil, nil, maxMessages, maxMessages, 0)
+	initialBackfill := user.bridge.DB.BackfillQuery.NewWithValues(user.MXID, database.BackfillImmediate, *priorityCounter, &portal.Key, nil, nil, maxMessages, maxMessages, 0)
 	initialBackfill.Insert()
+	*priorityCounter++
 }
 
-func (user *User) EnqueueDeferredBackfills(portal *Portal, numConversations, priority int) {
-	for j, backfillStage := range user.bridge.Config.Bridge.HistorySync.Deferred {
+func (user *User) EnqueueDeferredBackfills(portal *Portal, priorityCounter *int) {
+	for _, backfillStage := range user.bridge.Config.Bridge.HistorySync.Deferred {
+		var startDate *time.Time = nil
+		if backfillStage.StartDaysAgo > 0 {
+			startDaysAgo := time.Now().AddDate(0, 0, -backfillStage.StartDaysAgo)
+			startDate = &startDaysAgo
+		}
+		backfillMessages := user.bridge.DB.BackfillQuery.NewWithValues(
+			user.MXID, database.BackfillDeferred, *priorityCounter, &portal.Key, startDate, nil, backfillStage.MaxBatchEvents, -1, backfillStage.BatchDelay)
+		backfillMessages.Insert()
+		*priorityCounter++
+	}
+}
+
+func (user *User) EnqueueMediaBackfills(portal *Portal, priorityCounter *int) {
+	for _, backfillStage := range user.bridge.Config.Bridge.HistorySync.Media {
 		var startDate *time.Time = nil
 		if backfillStage.StartDaysAgo > 0 {
 			startDaysAgo := time.Now().AddDate(0, 0, -backfillStage.StartDaysAgo)
 			startDate = &startDaysAgo
 		}
 		backfill := user.bridge.DB.BackfillQuery.NewWithValues(
-			user.MXID, database.BackfillDeferred, j*numConversations+priority, &portal.Key, startDate, nil, backfillStage.MaxBatchEvents, -1, backfillStage.BatchDelay)
+			user.MXID, database.BackfillMedia, *priorityCounter, &portal.Key, startDate, nil, backfillStage.MaxBatchEvents, -1, backfillStage.BatchDelay)
 		backfill.Insert()
+		*priorityCounter++
 	}
 }
 

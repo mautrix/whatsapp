@@ -66,6 +66,14 @@ func (pq *PortalQuery) GetAll() []*Portal {
 	return pq.getAll("SELECT * FROM portal")
 }
 
+func (pq *PortalQuery) GetAllForUser(userID id.UserID) []*Portal {
+	return pq.getAll(`
+		SELECT p.* FROM portal p
+		LEFT JOIN user_portal up ON p.jid=up.portal_jid AND p.receiver=up.portal_receiver
+		WHERE mxid<>'' AND up.user_mxid=$1
+	`, userID)
+}
+
 func (pq *PortalQuery) GetByJID(key PortalKey) *Portal {
 	return pq.get("SELECT * FROM portal WHERE jid=$1 AND receiver=$2", key.JID, key.Receiver)
 }

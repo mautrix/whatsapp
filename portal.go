@@ -92,6 +92,10 @@ func (bridge *Bridge) GetAllPortals() []*Portal {
 	return bridge.dbPortalsToPortals(bridge.DB.Portal.GetAll())
 }
 
+func (bridge *Bridge) GetAllPortalsForUser(userID id.UserID) []*Portal {
+	return bridge.dbPortalsToPortals(bridge.DB.Portal.GetAllForUser(userID))
+}
+
 func (bridge *Bridge) GetAllPortalsByJID(jid types.JID) []*Portal {
 	return bridge.dbPortalsToPortals(bridge.DB.Portal.GetAllByJID(jid))
 }
@@ -1339,8 +1343,10 @@ func (portal *Portal) CreateMatrixRoom(user *User, groupInfo *types.GroupInfo, i
 	}
 
 	if user.bridge.Config.Bridge.HistorySync.Backfill && backfill {
-		user.EnqueueImmedateBackfill(portal, 0)
-		user.EnqueueDeferredBackfills(portal, 1, 0)
+		var priorityCounter int
+		user.EnqueueImmedateBackfill(portal, &priorityCounter)
+		user.EnqueueDeferredBackfills(portal, &priorityCounter)
+		user.EnqueueMediaBackfills(portal, &priorityCounter)
 		user.BackfillQueue.ReCheckQueue <- true
 	}
 	return nil
