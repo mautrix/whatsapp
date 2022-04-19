@@ -433,10 +433,10 @@ func (portal *Portal) backfill(source *User, messages []*waProto.WebMessageInfo)
 	if len(historyBatch.Events) > 0 && len(historyBatch.PrevEventID) > 0 {
 		portal.log.Infofln("Sending %d historical messages...", len(historyBatch.Events))
 		historyResp, err := portal.MainIntent().BatchSend(portal.MXID, &historyBatch)
-		insertionEventIds = append(insertionEventIds, historyResp.BaseInsertionEventID)
 		if err != nil {
 			portal.log.Errorln("Error sending batch of historical messages:", err)
 		} else {
+			insertionEventIds = append(insertionEventIds, historyResp.BaseInsertionEventID)
 			portal.finishBatch(historyResp.EventIDs, historyBatchInfos)
 			portal.NextBatchID = historyResp.NextBatchID
 			portal.Update()
@@ -446,10 +446,10 @@ func (portal *Portal) backfill(source *User, messages []*waProto.WebMessageInfo)
 	if len(newBatch.Events) > 0 && len(newBatch.PrevEventID) > 0 {
 		portal.log.Infofln("Sending %d new messages...", len(newBatch.Events))
 		newResp, err := portal.MainIntent().BatchSend(portal.MXID, &newBatch)
-		insertionEventIds = append(insertionEventIds, newResp.BaseInsertionEventID)
 		if err != nil {
 			portal.log.Errorln("Error sending batch of new messages:", err)
 		} else {
+			insertionEventIds = append(insertionEventIds, newResp.BaseInsertionEventID)
 			portal.finishBatch(newResp.EventIDs, newBatchInfos)
 		}
 	}
