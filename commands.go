@@ -868,8 +868,14 @@ func (handler *CommandHandler) CommandBackfill(ce *CommandEvent) {
 			return
 		}
 	}
-	backfill := ce.Portal.bridge.DB.BackfillQuery.NewWithValues(ce.User.MXID, database.BackfillImmediate, 0, &ce.Portal.Key, nil, nil, batchSize, -1, batchDelay)
-	backfill.Insert()
+	backfillMessages := ce.Portal.bridge.DB.BackfillQuery.NewWithValues(ce.User.MXID, database.BackfillImmediate, 0, &ce.Portal.Key, nil, nil, batchSize, -1, batchDelay)
+	backfillMessages.Insert()
+
+	if ce.Bridge.Config.Bridge.HistorySync.BackfillMedia {
+		backfillMedia := ce.Portal.bridge.DB.BackfillQuery.NewWithValues(ce.User.MXID, database.BackfillMedia, 1, &ce.Portal.Key, nil, nil, batchSize, -1, batchDelay)
+		backfillMedia.Insert()
+	}
+
 	ce.User.BackfillQueue.ReCheckQueue <- true
 }
 
