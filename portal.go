@@ -2169,13 +2169,25 @@ func (portal *Portal) convertMediaMessage(intent *appservice.IntentAPI, source *
 		//	portal.log.Errorfln("Failed to send media retry receipt for %s: %v", info.ID, err)
 		//}
 		converted.Error = database.MsgErrMediaNotFound
+
+		errorText := "Old photo or attachment."
+		if portal.bridge.Config.Bridge.HistorySync.BackfillMedia {
+			if len(portal.bridge.Config.Bridge.HistorySync.Media) > 0 {
+				errorText += " Media will be requested from your phone later."
+			} else {
+				errorText += ` React with the \u267b (recycle) emoji or the text "click to retry" to request this media from your phone or use the backfill command to request all missing media for this chat.`
+			}
+		} else {
+			errorText += ` Automatic media backfill is disabled. React with the \u267b (recycle) emoji or the text "click to retry" to request this media from your phone.`
+		}
+
 		return portal.makeMediaBridgeFailureMessage(info, err, converted, &FailedMediaKeys{
 			Key:       msg.GetMediaKey(),
 			Length:    int(msg.GetFileLength()),
 			Type:      whatsmeow.GetMediaType(msg),
 			SHA256:    msg.GetFileSha256(),
 			EncSHA256: msg.GetFileEncSha256(),
-		}, "Old photo or attachment. This will sync in a future update.")
+		}, errorText)
 	} else if errors.Is(err, whatsmeow.ErrNoURLPresent) {
 		portal.log.Debugfln("No URL present error for media message %s, ignoring...", info.ID)
 		return nil
