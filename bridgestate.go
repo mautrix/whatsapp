@@ -47,23 +47,25 @@ const (
 type BridgeErrorCode string
 
 const (
-	WALoggedOut     BridgeErrorCode = "wa-logged-out"
-	WAAccountBanned BridgeErrorCode = "wa-account-banned"
-	WAUnknownLogout BridgeErrorCode = "wa-unknown-logout"
-	WANotConnected  BridgeErrorCode = "wa-not-connected"
-	WAConnecting    BridgeErrorCode = "wa-connecting"
-	WAServerTimeout BridgeErrorCode = "wa-server-timeout"
-	WAPhoneOffline  BridgeErrorCode = "wa-phone-offline"
+	WALoggedOut        BridgeErrorCode = "wa-logged-out"
+	WAAccountBanned    BridgeErrorCode = "wa-account-banned"
+	WAUnknownLogout    BridgeErrorCode = "wa-unknown-logout"
+	WANotConnected     BridgeErrorCode = "wa-not-connected"
+	WAConnecting       BridgeErrorCode = "wa-connecting"
+	WAServerTimeout    BridgeErrorCode = "wa-server-timeout"
+	WAPhoneOffline     BridgeErrorCode = "wa-phone-offline"
+	WAConnectionFailed BridgeErrorCode = "wa-connection-failed"
 )
 
 var bridgeHumanErrors = map[BridgeErrorCode]string{
-	WALoggedOut:     "You were logged out from another device. Relogin to continue using the bridge.",
-	WAAccountBanned: "Your account was banned from WhatsApp. You can contact support from the WhatsApp mobile app on your phone.",
-	WAUnknownLogout: "You were logged out for an unknown reason. Relogin to continue using the bridge.",
-	WANotConnected:  "You're not connected to WhatsApp",
-	WAConnecting:    "Reconnecting to WhatsApp...",
-	WAServerTimeout: "The WhatsApp web servers are not responding. The bridge will try to reconnect.",
-	WAPhoneOffline:  "Your phone hasn't been seen in over 12 days. The bridge is currently connected, but will get disconnected if you don't open the app soon.",
+	WALoggedOut:        "You were logged out from another device. Relogin to continue using the bridge.",
+	WAAccountBanned:    "Your account was banned from WhatsApp. You can contact support from the WhatsApp mobile app on your phone.",
+	WAUnknownLogout:    "You were logged out for an unknown reason. Relogin to continue using the bridge.",
+	WANotConnected:     "You're not connected to WhatsApp",
+	WAConnecting:       "Reconnecting to WhatsApp...",
+	WAServerTimeout:    "The WhatsApp web servers are not responding. The bridge will try to reconnect.",
+	WAPhoneOffline:     "Your phone hasn't been seen in over 12 days. The bridge is currently connected, but will get disconnected if you don't open the app soon.",
+	WAConnectionFailed: "Connecting to the WhatsApp web servers failed.",
 }
 
 type BridgeState struct {
@@ -78,6 +80,9 @@ type BridgeState struct {
 	UserID     id.UserID `json:"user_id,omitempty"`
 	RemoteID   string    `json:"remote_id,omitempty"`
 	RemoteName string    `json:"remote_name,omitempty"`
+
+	Reason string                 `json:"reason,omitempty"`
+	Info   map[string]interface{} `json:"info,omitempty"`
 }
 
 type GlobalBridgeState struct {

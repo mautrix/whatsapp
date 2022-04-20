@@ -375,6 +375,13 @@ func (user *User) Connect() bool {
 	err := user.Client.Connect()
 	if err != nil {
 		user.log.Warnln("Error connecting to WhatsApp:", err)
+		user.sendBridgeState(BridgeState{
+			StateEvent: StateUnknownError,
+			Error:      WAConnectionFailed,
+			Info: map[string]interface{}{
+				"go_error": err.Error(),
+			},
+		})
 		return false
 	}
 	return true
