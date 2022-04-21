@@ -64,6 +64,8 @@ func (prov *ProvisioningAPI) Init() {
 	r.HandleFunc("/v1/sync/appstate/{name}", prov.SyncAppState).Methods(http.MethodPost)
 	r.HandleFunc("/v1/contacts", prov.ListContacts).Methods(http.MethodGet)
 	r.HandleFunc("/v1/groups", prov.ListGroups).Methods(http.MethodGet)
+	r.HandleFunc("/v1/resolve_identifier/{number}", prov.ResolveIdentifier).Methods(http.MethodGet)
+	r.HandleFunc("/v1/bulk_resolve_identifier", prov.BulkResolveIdentifier).Methods(http.MethodPost)
 	r.HandleFunc("/v1/pm/{number}", prov.StartPM).Methods(http.MethodPost)
 	r.HandleFunc("/v1/open/{groupID}", prov.OpenGroup).Methods(http.MethodPost)
 	prov.bridge.AS.Router.HandleFunc("/_matrix/app/com.beeper.asmux/ping", prov.BridgeStatePing).Methods(http.MethodPost)
@@ -275,7 +277,7 @@ type PortalInfo struct {
 	JustCreated bool             `json:"just_created"`
 }
 
-func (prov *ProvisioningAPI) StartPM(w http.ResponseWriter, r *http.Request) {
+func (prov *ProvisioningAPI) resolveIdentifier(w http.ResponseWriter, r *http.Request) (types.JID, *User) {
 	number, _ := mux.Vars(r)["number"]
 	if strings.HasSuffix(number, "@"+types.DefaultUserServer) {
 		jid, _ := types.ParseJID(number)
@@ -301,25 +303,83 @@ func (prov *ProvisioningAPI) StartPM(w http.ResponseWriter, r *http.Request) {
 			Error:   fmt.Sprintf("The server said +%s is not on WhatsApp", resp[0].JID.User),
 			ErrCode: "not on whatsapp",
 		})
-	} else if portal, puppet, justCreated, err := user.StartPM(resp[0].JID, "provisioning API PM"); err != nil {
+	} else {
+		return resp[0].JID, user
+	}
+	return types.EmptyJID, nil
+}
+
+func (prov *ProvisioningAPI) StartPM(w http.ResponseWriter, r *http.Request) {
+	jid, user := prov.resolveIdentifier(w, r)
+	if jid.IsEmpty() || user == nil {
+		// resolveIdentifier already responded with an error
+		return
+	}
+	portal, puppet, justCreated, err := user.StartPM(jid, "provisioning API PM")
+	if err != nil {
 		jsonResponse(w, http.StatusInternalServerError, Error{
 			Error: fmt.Sprintf("Failed to create portal: %v", err),
 		})
-	} else {
-		status := http.StatusOK
-		if justCreated {
-			status = http.StatusCreated
-		}
-		jsonResponse(w, status, PortalInfo{
-			RoomID: portal.MXID,
-			OtherUser: &OtherUserInfo{
-				JID:    puppet.JID,
-				MXID:   puppet.MXID,
-				Name:   puppet.Displayname,
-				Avatar: puppet.AvatarURL,
-			},
-			JustCreated: justCreated,
+	}
+	status := http.StatusOK
+	if justCreated {
+		status = http.StatusCreated
+	}
+	jsonResponse(w, status, PortalInfo{
+		RoomID: portal.MXID,
+		OtherUser: &OtherUserInfo{
+			JID:    puppet.JID,
+			MXID:   puppet.MXID,
+			Name:   puppet.Displayname,
+			Avatar: puppet.AvatarURL,
+		},
+		JustCreated: justCreated,
+	})
+}
+
+func (prov *ProvisioningAPI) ResolveIdentifier(w http.ResponseWriter, r *http.Request) {
+	jid, user := prov.resolveIdentifier(w, r)
+	if jid.IsEmpty() || user == nil {
+		// resolveIdentifier already responded with an error
+		return
+	}
+	portal := user.GetPortalByJID(jid)
+	puppet := user.bridge.GetPuppetByJID(jid)
+	jsonResponse(w, http.StatusOK, PortalInfo{
+		RoomID: portal.MXID,
+		OtherUser: &OtherUserInfo{
+			JID:    puppet.JID,
+			MXID:   puppet.MXID,
+			Name:   puppet.Displayname,
+			Avatar: puppet.AvatarURL,
+		},
+	})
+}
+
+type ReqBulkResolveIdentifier struct {
+	Numbers []string `json:"numbers"`
+}
+
+func (prov *ProvisioningAPI) BulkResolveIdentifier(w http.ResponseWriter, r *http.Request) {
+	var req ReqBulkResolveIdentifier
+	var resp []types.IsOnWhatsAppResponse
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		jsonResponse(w, http.StatusBadRequest, Error{
+			Error:   "Failed to parse request JSON",
+			ErrCode: "bad json",
 		})
+	} else if user := r.Context().Value("user").(*User); !user.IsLoggedIn() {
+		jsonResponse(w, http.StatusBadRequest, Error{
+			Error:   "User is not logged into WhatsApp",
+			ErrCode: "no session",
+		})
+	} else if resp, err = user.Client.IsOnWhatsApp(req.Numbers); err != nil {
+		jsonResponse(w, http.StatusInternalServerError, Error{
+			Error:   fmt.Sprintf("Failed to check if number is on WhatsApp: %v", err),
+			ErrCode: "error checking number",
+		})
+	} else {
+		jsonResponse(w, http.StatusOK, resp)
 	}
 }
 

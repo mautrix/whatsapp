@@ -5,6 +5,8 @@
     and Conduit 0.4.0. Servers older than these are no longer supported.
 * Added new deferred backfill system to allow backfilling historical messages
   later instead of doing everything at login.
+* Added experimental provisioning API to check if a phone number is registered
+  on WhatsApp.
 
 # v0.3.1 (2022-04-16)
 
