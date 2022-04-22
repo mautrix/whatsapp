@@ -1310,6 +1310,10 @@ func (portal *Portal) CreateMatrixRoom(user *User, groupInfo *types.GroupInfo, i
 	go portal.addToSpace(user)
 
 	if groupInfo != nil {
+		if groupInfo.IsEphemeral {
+			portal.ExpirationTime = groupInfo.DisappearingTimer
+			portal.Update()
+		}
 		portal.SyncParticipants(user, groupInfo)
 		if groupInfo.IsAnnounce {
 			portal.RestrictMessageSending(groupInfo.IsAnnounce)
