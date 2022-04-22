@@ -240,22 +240,30 @@ func (user *User) handleHistorySync(reCheckQueue chan bool, evt *waProto.History
 			conv.GetUnreadCount())
 		historySyncConversation.Upsert()
 
-		for _, msg := range conv.GetMessages() {
+		for _, rawMsg := range conv.GetMessages() {
 			// Don't store messages that will just be skipped.
-			wmi := msg.GetMessage()
-			msgType := getMessageType(wmi.GetMessage())
+			wmi := rawMsg.GetMessage()
+			msg := wmi.GetMessage()
+			if msg.GetEphemeralMessage().GetMessage() != nil {
+				msg = msg.GetEphemeralMessage().GetMessage()
+			}
+			if msg.GetViewOnceMessage().GetMessage() != nil {
+				msg = msg.GetViewOnceMessage().GetMessage()
+			}
+
+			msgType := getMessageType(msg)
 			if msgType == "unknown" || msgType == "ignore" || msgType == "unknown_protocol" {
 				continue
 			}
 
 			// Don't store unsupported messages.
-			if !containsSupportedMessage(msg.GetMessage().GetMessage()) {
+			if !containsSupportedMessage(msg) {
 				continue
 			}
 
-			message, err := user.bridge.DB.HistorySyncQuery.NewMessageWithValues(user.MXID, conv.GetId(), msg.Message.GetKey().GetId(), msg)
+			message, err := user.bridge.DB.HistorySyncQuery.NewMessageWithValues(user.MXID, conv.GetId(), wmi.GetKey().GetId(), rawMsg)
 			if err != nil {
-				user.log.Warnfln("Failed to save message %s in %s. Error: %+v", msg.Message.Key.Id, conv.GetId(), err)
+				user.log.Warnfln("Failed to save message %s in %s. Error: %+v", wmi.GetKey().Id, conv.GetId(), err)
 				continue
 			}
 			message.Insert()
@@ -410,7 +418,15 @@ func (portal *Portal) backfill(source *User, messages []*waProto.WebMessageInfo)
 	// The messages are ordered newest to oldest, so iterate them in reverse order.
 	for i := len(messages) - 1; i >= 0; i-- {
 		webMsg := messages[i]
-		msgType := getMessageType(webMsg.GetMessage())
+		msg := webMsg.GetMessage()
+		if msg.GetEphemeralMessage().GetMessage() != nil {
+			msg = msg.GetEphemeralMessage().GetMessage()
+		}
+		if msg.GetViewOnceMessage().GetMessage() != nil {
+			msg = msg.GetViewOnceMessage().GetMessage()
+		}
+
+		msgType := getMessageType(msg)
 		if msgType == "unknown" || msgType == "ignore" || msgType == "unknown_protocol" {
 			if msgType != "ignore" {
 				portal.log.Debugfln("Skipping message %s with unknown type in backfill", webMsg.GetKey().GetId())
@@ -446,7 +462,8 @@ func (portal *Portal) backfill(source *User, messages []*waProto.WebMessageInfo)
 		if intent.IsCustomPuppet && !portal.bridge.Config.CanDoublePuppetBackfill(puppet.CustomMXID) {
 			intent = puppet.DefaultIntent()
 		}
-		converted := portal.convertMessage(intent, source, info, webMsg.GetMessage())
+
+		converted := portal.convertMessage(intent, source, info, msg)
 		if converted == nil {
 			portal.log.Debugfln("Skipping unsupported message %s in backfill", info.ID)
 			continue
