@@ -76,6 +76,8 @@ type User struct {
 	groupListCacheLock sync.Mutex
 	groupListCacheTime time.Time
 
+	bridgeStateQueue chan BridgeState
+
 	BackfillQueue *BackfillQueue
 }
 
@@ -189,6 +191,10 @@ func (bridge *Bridge) NewUser(dbUser *database.User) *User {
 	user.RelayWhitelisted = user.bridge.Config.Bridge.Permissions.IsRelayWhitelisted(user.MXID)
 	user.Whitelisted = user.bridge.Config.Bridge.Permissions.IsWhitelisted(user.MXID)
 	user.Admin = user.bridge.Config.Bridge.Permissions.IsAdmin(user.MXID)
+	if len(user.bridge.Config.Homeserver.StatusEndpoint) > 0 {
+		user.bridgeStateQueue = make(chan BridgeState, 10)
+		go user.bridgeStateLoop()
+	}
 	return user
 }
 
