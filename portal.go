@@ -1347,10 +1347,10 @@ func (portal *Portal) CreateMatrixRoom(user *User, groupInfo *types.GroupInfo, i
 	}
 
 	if user.bridge.Config.Bridge.HistorySync.Backfill && backfill {
-		var priorityCounter int
-		user.EnqueueImmedateBackfill(portal, &priorityCounter)
-		user.EnqueueDeferredBackfills(portal, &priorityCounter)
-		user.EnqueueMediaBackfills(portal, &priorityCounter)
+		portals := []*Portal{portal}
+		user.EnqueueImmedateBackfills(portals)
+		user.EnqueueDeferredBackfills(portals)
+		user.EnqueueMediaBackfills(portals)
 		user.BackfillQueue.ReCheckQueue <- true
 	}
 	return nil
