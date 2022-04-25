@@ -586,10 +586,7 @@ func (user *User) HandleEvent(event interface{}) {
 			user.historySyncLoopsStarted = true
 
 			if user.bridge.Config.Bridge.HistorySync.BackfillMedia && user.bridge.Config.Bridge.HistorySync.EnqueueBackfillMediaNextStart {
-				var priorityCounter int
-				for _, portal := range user.bridge.GetAllPortalsForUser(user.MXID) {
-					user.EnqueueMediaBackfills(portal, &priorityCounter)
-				}
+				user.EnqueueMediaBackfills(user.bridge.GetAllPortalsForUser(user.MXID))
 			}
 		}
 	case *events.OfflineSyncPreview:
