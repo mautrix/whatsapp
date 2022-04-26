@@ -1221,7 +1221,13 @@ func (portal *Portal) CreateMatrixRoom(user *User, groupInfo *types.GroupInfo, i
 	} else {
 		if groupInfo == nil || !isFullInfo {
 			foundInfo, err := user.Client.GetGroupInfo(portal.Key.JID)
-			if err != nil {
+
+			// Ensure that the user is actually a participant in the conversation
+			// before creating the matrix room
+			if errors.Is(err, whatsmeow.ErrNotInGroup) {
+				user.log.Debugfln("Skipping creating matrix room for %s because the user is not a participant", portal.Key.JID)
+				return err
+			} else if err != nil {
 				portal.log.Warnfln("Failed to get group info through %s: %v", user.JID, err)
 			} else {
 				groupInfo = foundInfo
