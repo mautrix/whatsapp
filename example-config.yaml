@@ -263,8 +263,10 @@ bridge:
     # Disabling this won't affect already created status broadcast rooms.
     enable_status_broadcast: true
     # Should the status broadcast room be muted and moved into low priority by default?
-    # This is only applied when creating the room, the user can unmute/untag it later.
+    # This is only applied when creating the room, the user can unmute it later.
     mute_status_broadcast: true
+    # Tag to apply to the status broadcast room.
+    status_broadcast_tag: m.lowpriority
     # Should the bridge use thumbnails from WhatsApp?
     # They're disabled by default due to very low resolution.
     whatsapp_thumbnail: false
