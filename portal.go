@@ -1729,7 +1729,7 @@ func (portal *Portal) convertContactMessage(intent *appservice.IntentAPI, msg *w
 	fileName := fmt.Sprintf("%s.vcf", msg.GetDisplayName())
 	data := []byte(msg.GetVcard())
 	mimeType := "text/vcard"
-	data, uploadMimeType, file := portal.encryptFile(data, mimeType)
+	uploadMimeType, file := portal.encryptFileInPlace(data, mimeType)
 
 	uploadResp, err := intent.UploadBytesWithName(data, uploadMimeType, fileName)
 	if err != nil {
@@ -1935,16 +1935,17 @@ func (portal *Portal) makeMediaBridgeFailureMessage(info *types.MessageInfo, bri
 	return converted
 }
 
-func (portal *Portal) encryptFile(data []byte, mimeType string) ([]byte, string, *event.EncryptedFileInfo) {
+func (portal *Portal) encryptFileInPlace(data []byte, mimeType string) (string, *event.EncryptedFileInfo) {
 	if !portal.Encrypted {
-		return data, mimeType, nil
+		return mimeType, nil
 	}
 
 	file := &event.EncryptedFileInfo{
 		EncryptedFile: *attachment.NewEncryptedFile(),
 		URL:           "",
 	}
-	return file.Encrypt(data), "application/octet-stream", file
+	file.Encrypt(data)
+	return "application/octet-stream", file
 }
 
 type MediaMessage interface {
@@ -2033,8 +2034,8 @@ func (portal *Portal) convertMediaMessageContent(intent *appservice.IntentAPI, m
 		thumbnailMime := http.DetectContentType(thumbnailData)
 		thumbnailCfg, _, _ := image.DecodeConfig(bytes.NewReader(thumbnailData))
 		thumbnailSize := len(thumbnailData)
-		thumbnail, thumbnailUploadMime, thumbnailFile := portal.encryptFile(thumbnailData, thumbnailMime)
-		uploadedThumbnail, err := intent.UploadBytes(thumbnail, thumbnailUploadMime)
+		thumbnailUploadMime, thumbnailFile := portal.encryptFileInPlace(thumbnailData, thumbnailMime)
+		uploadedThumbnail, err := intent.UploadBytes(thumbnailData, thumbnailUploadMime)
 		if err != nil {
 			portal.log.Warnfln("Failed to upload thumbnail: %v", err)
 		} else if uploadedThumbnail != nil {
@@ -2127,7 +2128,7 @@ func (portal *Portal) convertMediaMessageContent(intent *appservice.IntentAPI, m
 }
 
 func (portal *Portal) uploadMedia(intent *appservice.IntentAPI, data []byte, content *event.MessageEventContent) error {
-	data, uploadMimeType, file := portal.encryptFile(data, content.Info.MimeType)
+	uploadMimeType, file := portal.encryptFileInPlace(data, content.Info.MimeType)
 
 	req := mautrix.ReqUploadMedia{
 		ContentBytes: data,
@@ -2449,7 +2450,7 @@ func (portal *Portal) preprocessMatrixMedia(sender *User, relaybotFormatted bool
 		return nil
 	}
 	if file != nil {
-		data, err = file.Decrypt(data)
+		err = file.Decrypt(data)
 		if err != nil {
 			portal.log.Errorfln("Failed to decrypt media in %s: %v", eventID, err)
 			return nil
