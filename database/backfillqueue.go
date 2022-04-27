@@ -106,6 +106,16 @@ func (bq *BackfillQuery) DeleteAll(userID id.UserID) error {
 	return err
 }
 
+func (bq *BackfillQuery) DeleteAllForPortal(userID id.UserID, portalKey PortalKey) error {
+	_, err := bq.db.Exec(`
+		DELETE FROM backfill_queue
+		WHERE user_mxid=$1
+			AND portal_jid=$2
+			AND portal_receiver=$3
+	`, userID, portalKey.JID, portalKey.Receiver)
+	return err
+}
+
 type Backfill struct {
 	db  *Database
 	log log.Logger
