@@ -89,7 +89,7 @@ func (portal *Portal) convertURLPreviewToBeeper(intent *appservice.IntentAPI, so
 		uploadData, uploadMime := thumbnailData, output.ImageType
 		if portal.Encrypted {
 			crypto := attachment.NewEncryptedFile()
-			crypto.Encrypt(uploadData)
+			crypto.EncryptInPlace(uploadData)
 			uploadMime = "application/octet-stream"
 			output.ImageEncryption = &event.EncryptedFileInfo{EncryptedFile: *crypto}
 		}
@@ -169,7 +169,7 @@ func (portal *Portal) convertURLPreviewToWhatsApp(sender *User, evt *event.Event
 			return true
 		}
 		if preview.ImageEncryption != nil {
-			err = preview.ImageEncryption.Decrypt(data)
+			err = preview.ImageEncryption.DecryptInPlace(data)
 			if err != nil {
 				portal.log.Errorfln("Failed to decrypt URL preview image in %s: %v", evt.ID, err)
 				return true

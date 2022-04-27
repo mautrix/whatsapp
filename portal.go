@@ -1952,7 +1952,7 @@ func (portal *Portal) encryptFileInPlace(data []byte, mimeType string) (string, 
 		EncryptedFile: *attachment.NewEncryptedFile(),
 		URL:           "",
 	}
-	file.Encrypt(data)
+	file.EncryptInPlace(data)
 	return "application/octet-stream", file
 }
 
@@ -2458,7 +2458,7 @@ func (portal *Portal) preprocessMatrixMedia(sender *User, relaybotFormatted bool
 		return nil
 	}
 	if file != nil {
-		err = file.Decrypt(data)
+		err = file.DecryptInPlace(data)
 		if err != nil {
 			portal.log.Errorfln("Failed to decrypt media in %s: %v", eventID, err)
 			return nil
