@@ -102,10 +102,11 @@ func (user *User) handleBackfillRequestsLoop(backfillRequests chan *database.Bac
 			// requesting any media that errored.
 			requested := 0
 			for _, msg := range user.bridge.DB.Message.GetMessagesBetween(portal.Key, startTime, endTime) {
-				if requested > 0 && requested%req.MaxBatchEvents == 0 {
-					time.Sleep(time.Duration(req.BatchDelay) * time.Second)
-				}
 				if msg.Error == database.MsgErrMediaNotFound {
+					if requested > 0 && requested%req.MaxBatchEvents == 0 {
+						time.Sleep(time.Duration(req.BatchDelay) * time.Second)
+					}
+
 					portal.requestMediaRetry(user, msg.MXID)
 					requested += 1
 				}
