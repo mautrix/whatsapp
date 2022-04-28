@@ -914,8 +914,8 @@ func (user *User) handleLoggedOut(onConnect bool, reason events.ConnectFailureRe
 	errorCode := WAUnknownLogout
 	if reason == events.ConnectFailureLoggedOut {
 		errorCode = WALoggedOut
-	} else if reason == events.ConnectFailureBanned {
-		errorCode = WAAccountBanned
+	} else if reason == events.ConnectFailureMainDeviceGone {
+		errorCode = WAMainDeviceGone
 	}
 	user.removeFromJIDMap(BridgeState{StateEvent: StateBadCredentials, Error: errorCode})
 	user.DeleteConnection()
