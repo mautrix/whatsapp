@@ -78,7 +78,7 @@ func (user *User) handleHistorySyncsLoop() {
 
 func (user *User) handleBackfillRequestsLoop(backfillRequests chan *database.Backfill) {
 	for req := range backfillRequests {
-		user.log.Debugfln("Handling backfill request %s", req)
+		user.log.Infofln("Handling backfill request %s", req)
 		conv := user.bridge.DB.HistorySyncQuery.GetConversation(user.MXID, req.Portal)
 		if conv == nil {
 			user.log.Debugfln("Could not find history sync conversation data for %s", req.Portal.String())
@@ -96,7 +96,7 @@ func (user *User) handleBackfillRequestsLoop(backfillRequests chan *database.Bac
 				endTime = *req.TimeEnd
 			}
 
-			user.log.Debugfln("Backfilling media from %v to %v for %s", startTime, endTime, portal.Key.String())
+			user.log.Infofln("Backfilling media from %v to %v for %s", startTime, endTime, portal.Key.String())
 
 			// Go through all of the messages in the given time range,
 			// requesting any media that errored.
@@ -155,7 +155,7 @@ func (user *User) createOrUpdatePortalAndBackfillWithLock(req *database.Backfill
 		}
 	}
 
-	user.log.Debugfln("Backfilling %d messages in %s, %d messages at a time", len(allMsgs), portal.Key.JID, req.MaxBatchEvents)
+	user.log.Infofln("Backfilling %d messages in %s, %d messages at a time (queue ID: %d)", len(allMsgs), portal.Key.JID, req.MaxBatchEvents, req.QueueID)
 	toBackfill := allMsgs[0:]
 	var insertionEventIds []id.EventID
 	for len(toBackfill) > 0 {
@@ -180,10 +180,10 @@ func (user *User) createOrUpdatePortalAndBackfillWithLock(req *database.Backfill
 			time.Unix(int64(allMsgs[0].GetMessageTimestamp()), 0),
 			insertionEventIds[0])
 	}
-	user.log.Debugfln("Deleting %d history sync messages after backfilling", len(allMsgs))
+	user.log.Debugfln("Deleting %d history sync messages after backfilling (queue ID: %d)", len(allMsgs), req.QueueID)
 	err := user.bridge.DB.HistorySyncQuery.DeleteMessages(user.MXID, conv.ConversationID, allMsgs)
 	if err != nil {
-		user.log.Warnfln("Failed to delete %d history sync messages after backfilling: %v", len(allMsgs), err)
+		user.log.Warnfln("Failed to delete %d history sync messages after backfilling (queue ID: %d): %v", len(allMsgs), req.QueueID, err)
 	}
 
 	if !conv.MarkedAsUnread && conv.UnreadCount == 0 {
@@ -422,7 +422,7 @@ func (portal *Portal) backfill(source *User, messages []*waProto.WebMessageInfo)
 		newMinTs = lastMessage.Timestamp
 	}
 
-	portal.log.Infofln("Processing history sync with %d messages", len(messages))
+	portal.log.Debugfln("Processing backfill with %d messages", len(messages))
 	// The messages are ordered newest to oldest, so iterate them in reverse order.
 	for i := len(messages) - 1; i >= 0; i-- {
 		webMsg := messages[i]
