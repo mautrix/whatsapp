@@ -32,33 +32,13 @@ type BackfillQueue struct {
 	log log.Logger
 }
 
-func (bq *BackfillQueue) RunLoops(user *User) {
-	go bq.immediateBackfillLoop(user)
-	bq.deferredBackfillLoop(user)
-}
-
-func (bq *BackfillQueue) immediateBackfillLoop(user *User) {
+// Immediate backfills should happen first, then deferred backfills and lastly
+// media backfills.
+func (bq *BackfillQueue) RunLoop(user *User) {
 	for {
-		if backfill := bq.BackfillQuery.GetNext(user.MXID, database.BackfillImmediate); backfill != nil {
-			bq.ImmediateBackfillRequests <- backfill
-			backfill.MarkDone()
-		} else {
-			select {
-			case <-bq.ReCheckQueue:
-				bq.log.Debugfln("Re-checking infinite backfill queue due to forced re-check")
-			case <-time.After(10 * time.Second):
-				bq.log.Debugfln("Re-checking infinite backfill queue due to timeout")
-			}
-		}
-	}
-}
-
-func (bq *BackfillQueue) deferredBackfillLoop(user *User) {
-	for {
-		// Finish all immediate backfills before doing the deferred ones.
 		if immediate := bq.BackfillQuery.GetNext(user.MXID, database.BackfillImmediate); immediate != nil {
-			bq.log.Debugfln("Not doing any deferred or media backfill since there are immediate backfills to do")
-			time.Sleep(10 * time.Second)
+			bq.ImmediateBackfillRequests <- immediate
+			immediate.MarkDone()
 		} else if backfill := bq.BackfillQuery.GetNext(user.MXID, database.BackfillDeferred); backfill != nil {
 			bq.DeferredBackfillRequests <- backfill
 			backfill.MarkDone()

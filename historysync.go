@@ -67,7 +67,7 @@ func (user *User) handleHistorySyncsLoop() {
 	// overload the homeserver. Users can configure their backfill stages
 	// to be more or less aggressive with backfilling at this stage.
 	go user.handleBackfillRequestsLoop(user.BackfillQueue.DeferredBackfillRequests)
-	go user.BackfillQueue.RunLoops(user)
+	go user.BackfillQueue.RunLoop(user)
 
 	// Always save the history syncs for the user. If they want to enable
 	// backfilling in the future, we will have it in the database.
