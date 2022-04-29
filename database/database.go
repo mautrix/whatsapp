@@ -18,13 +18,17 @@ package database
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
+	"net"
 	"time"
 
 	"github.com/lib/pq"
 	_ "github.com/mattn/go-sqlite3"
-	"go.mau.fi/whatsmeow/store/sqlstore"
 	log "maunium.net/go/maulogger/v2"
+
+	"go.mau.fi/whatsmeow/store"
+	"go.mau.fi/whatsmeow/store/sqlstore"
 
 	"maunium.net/go/mautrix-whatsapp/config"
 	"maunium.net/go/mautrix-whatsapp/database/upgrades"
@@ -119,4 +123,29 @@ func (db *Database) Init() error {
 
 type Scannable interface {
 	Scan(...interface{}) error
+}
+
+func isRetryableError(err error) bool {
+	if pqError := (&pq.Error{}); errors.As(err, &pqError) {
+		switch pqError.Code.Class() {
+		case "08", // Connection Exception
+			"53", // Insufficient Resources (e.g. too many connections)
+			"57": // Operator Intervention (e.g. server restart)
+			return true
+		}
+	} else if netError := (&net.OpError{}); errors.As(err, &netError) {
+		return true
+	}
+	return false
+}
+
+func (db *Database) HandleSignalStoreError(device *store.Device, action string, attemptIndex int, err error) (retry bool) {
+	if db.dialect != "sqlite" && isRetryableError(err) {
+		sleepTime := time.Duration(attemptIndex*2) * time.Second
+		device.Log.Warnf("Failed to %s (attempt #%d): %v - retrying in %v", action, attemptIndex+1, err, sleepTime)
+		time.Sleep(sleepTime)
+		return true
+	}
+	device.Log.Errorf("Failed to %s: %v", action, err)
+	return false
 }

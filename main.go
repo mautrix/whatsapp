@@ -264,6 +264,7 @@ func (bridge *Bridge) Init() {
 	bridge.AS.StateStore = bridge.StateStore
 
 	bridge.WAContainer = sqlstore.NewWithDB(bridge.DB.DB, bridge.Config.AppService.Database.Type, nil)
+	bridge.WAContainer.DatabaseErrorHandler = bridge.DB.HandleSignalStoreError
 
 	ss := bridge.Config.AppService.Provisioning.SharedSecret
 	if len(ss) > 0 && ss != "disable" {

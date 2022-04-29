@@ -170,6 +170,7 @@ func (bridge *Bridge) loadDBUser(dbUser *database.User, mxid *id.UserID) *User {
 			user.JID = types.EmptyJID
 			user.Update()
 		} else {
+			user.Session.Log = &waLogger{user.log.Sub("Session")}
 			bridge.usersByUsername[user.JID.User] = user
 		}
 	}
