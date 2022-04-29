@@ -20,6 +20,7 @@ import (
 	"time"
 
 	log "maunium.net/go/maulogger/v2"
+
 	"maunium.net/go/mautrix-whatsapp/database"
 )
 
@@ -32,19 +33,16 @@ type BackfillQueue struct {
 	log log.Logger
 }
 
-// Immediate backfills should happen first, then deferred backfills and lastly
-// media backfills.
+// RunLoop fetches backfills from the database, prioritizing immediate and forward backfills
 func (bq *BackfillQueue) RunLoop(user *User) {
 	for {
-		if immediate := bq.BackfillQuery.GetNext(user.MXID, database.BackfillImmediate); immediate != nil {
-			bq.ImmediateBackfillRequests <- immediate
-			immediate.MarkDone()
-		} else if backfill := bq.BackfillQuery.GetNext(user.MXID, database.BackfillDeferred); backfill != nil {
-			bq.DeferredBackfillRequests <- backfill
+		if backfill := bq.BackfillQuery.GetNext(user.MXID); backfill != nil {
+			if backfill.BackfillType == database.BackfillImmediate || backfill.BackfillType == database.BackfillForward {
+				bq.ImmediateBackfillRequests <- backfill
+			} else {
+				bq.DeferredBackfillRequests <- backfill
+			}
 			backfill.MarkDone()
-		} else if mediaBackfill := bq.BackfillQuery.GetNext(user.MXID, database.BackfillMedia); mediaBackfill != nil {
-			bq.DeferredBackfillRequests <- mediaBackfill
-			mediaBackfill.MarkDone()
 		} else {
 			select {
 			case <-bq.ReCheckQueue:

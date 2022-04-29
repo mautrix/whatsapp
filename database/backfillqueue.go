@@ -30,14 +30,17 @@ type BackfillType int
 
 const (
 	BackfillImmediate BackfillType = 0
-	BackfillDeferred               = 1
-	BackfillMedia                  = 2
+	BackfillForward   BackfillType = 100
+	BackfillDeferred  BackfillType = 200
+	BackfillMedia     BackfillType = 300
 )
 
 func (bt BackfillType) String() string {
 	switch bt {
 	case BackfillImmediate:
 		return "IMMEDIATE"
+	case BackfillForward:
+		return "FORWARD"
 	case BackfillDeferred:
 		return "DEFERRED"
 	case BackfillMedia:
@@ -80,16 +83,15 @@ const (
 		SELECT queue_id, user_mxid, type, priority, portal_jid, portal_receiver, time_start, time_end, max_batch_events, max_total_events, batch_delay
 		FROM backfill_queue
 		WHERE user_mxid=$1
-			AND type=$2
 			AND completed_at IS NULL
-		ORDER BY priority, queue_id
+		ORDER BY type, priority, queue_id
 		LIMIT 1
 	`
 )
 
 // GetNext returns the next backfill to perform
-func (bq *BackfillQuery) GetNext(userID id.UserID, backfillType BackfillType) (backfill *Backfill) {
-	rows, err := bq.db.Query(getNextBackfillQuery, userID, backfillType)
+func (bq *BackfillQuery) GetNext(userID id.UserID) (backfill *Backfill) {
+	rows, err := bq.db.Query(getNextBackfillQuery, userID)
 	defer rows.Close()
 	if err != nil || rows == nil {
 		bq.log.Error(err)
