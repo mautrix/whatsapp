@@ -158,7 +158,19 @@ func (user *User) backfillInChunks(req *database.Backfill, conv *database.Histor
 		}
 	}
 	allMsgs := user.bridge.DB.HistorySyncQuery.GetMessagesBetween(user.MXID, conv.ConversationID, req.TimeStart, req.TimeEnd, req.MaxTotalEvents)
-	if len(allMsgs) == 0 {
+
+	sendDisappearedNotice := false
+	// If expired messages are on, and a notice has not been sent to this chat
+	// about it having disappeared messages at the conversation timestamp, send
+	// a notice indicating so.
+	if len(allMsgs) == 0 && conv.EphemeralExpiration != nil && *conv.EphemeralExpiration > 0 {
+		lastMessage := portal.bridge.DB.Message.GetLastInChat(portal.Key)
+		if lastMessage == nil || !conv.LastMessageTimestamp.Equal(lastMessage.Timestamp) {
+			sendDisappearedNotice = true
+		}
+	}
+
+	if !sendDisappearedNotice && len(allMsgs) == 0 {
 		user.log.Debugfln("Not backfilling %s: no bridgeable messages found", portal.Key.JID)
 		return
 	}
@@ -170,6 +182,28 @@ func (user *User) backfillInChunks(req *database.Backfill, conv *database.Histor
 			user.log.Errorfln("Failed to create room for %s during backfill: %v", portal.Key.JID, err)
 			return
 		}
+	}
+
+	if sendDisappearedNotice {
+		user.log.Debugfln("Sending notice to %s that there are disappeared messages ending at %v", portal.Key.JID, conv.LastMessageTimestamp)
+		resp, err := portal.sendMessage(portal.MainIntent(), event.EventMessage, &event.MessageEventContent{
+			MsgType: event.MsgNotice,
+			Body:    portal.formatDisappearingMessageNotice(),
+		}, nil, conv.LastMessageTimestamp.UnixMilli())
+
+		if err != nil {
+			portal.log.Errorln("Error sending disappearing messages notice event")
+			return
+		}
+
+		msg := portal.bridge.DB.Message.New()
+		msg.Chat = portal.Key
+		msg.MXID = resp.EventID
+		msg.JID = types.MessageID(resp.EventID)
+		msg.Timestamp = conv.LastMessageTimestamp
+		msg.Sent = true
+		msg.Insert()
+		return
 	}
 
 	user.log.Infofln("Backfilling %d messages in %s, %d messages at a time (queue ID: %d)", len(allMsgs), portal.Key.JID, req.MaxBatchEvents, req.QueueID)
