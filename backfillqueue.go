@@ -40,7 +40,14 @@ func (bq *BackfillQueue) RunLoop(user *User) {
 			if backfill.BackfillType == database.BackfillImmediate || backfill.BackfillType == database.BackfillForward {
 				bq.ImmediateBackfillRequests <- backfill
 			} else {
-				bq.DeferredBackfillRequests <- backfill
+				select {
+				case <-bq.ReCheckQueue:
+					// If a queue re-check is requested, interrupt sending the
+					// backfill request to the deferred channel so that
+					// immediate backfills can happen ASAP.
+					continue
+				case bq.DeferredBackfillRequests <- backfill:
+				}
 			}
 			backfill.MarkDone()
 		} else {
