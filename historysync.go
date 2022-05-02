@@ -517,7 +517,9 @@ func (portal *Portal) backfill(source *User, messages []*waProto.WebMessageInfo,
 		}
 		puppet := portal.getMessagePuppet(source, info)
 		intent := puppet.IntentFor(portal)
-		if intent.IsCustomPuppet && !portal.bridge.Config.CanDoublePuppetBackfill(puppet.CustomMXID) {
+
+		canDoublePuppetBackfill := portal.bridge.Config.CanDoublePuppetBackfill(puppet.CustomMXID)
+		if intent.IsCustomPuppet && !canDoublePuppetBackfill {
 			intent = puppet.DefaultIntent()
 		}
 
@@ -526,7 +528,7 @@ func (portal *Portal) backfill(source *User, messages []*waProto.WebMessageInfo,
 			portal.log.Debugfln("Skipping unsupported message %s in backfill", info.ID)
 			continue
 		}
-		if !intent.IsCustomPuppet && !portal.bridge.StateStore.IsInRoom(portal.MXID, puppet.MXID) {
+		if (!intent.IsCustomPuppet || !canDoublePuppetBackfill) && !portal.bridge.StateStore.IsInRoom(portal.MXID, puppet.MXID) {
 			addMember(puppet)
 		}
 		// TODO this won't work for history
