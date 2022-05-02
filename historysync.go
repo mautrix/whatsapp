@@ -527,7 +527,7 @@ func (portal *Portal) backfill(source *User, messages []*waProto.WebMessageInfo,
 
 func (portal *Portal) requestMediaRetries(source *User, infos []*wrappedInfo) {
 	for _, info := range infos {
-		if info.Error == database.MsgErrMediaNotFound && info.MediaKey != nil {
+		if info != nil && info.Error == database.MsgErrMediaNotFound && info.MediaKey != nil {
 			err := source.Client.SendMediaRetryReceipt(info.MessageInfo, info.MediaKey)
 			if err != nil {
 				portal.log.Warnfln("Failed to send post-backfill media retry request for %s: %v", info.ID, err)
