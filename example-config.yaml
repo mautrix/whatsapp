@@ -182,25 +182,6 @@ bridge:
             - start_days_ago: -1
               max_batch_events: 500
               batch_delay: 10
-        # Settings for automatically requesting all media that was not found on
-        # the WhatsApp server. This process happens after the deferred
-        # backfills are completed.
-        # The config is the same as for deferred backfills, except the
-        # max_batch_events represents the maximum number of media messages to
-        # request.
-        media:
-            # Last Month
-            - start_days_ago: 30
-              max_batch_events: 5
-              batch_delay: 10
-            # Last 3 months
-            - start_days_ago: 90
-              max_batch_events: 5
-              batch_delay: 10
-            # The start of time
-            - start_days_ago: -1
-              max_batch_events: 10
-              batch_delay: 20
     # Should puppet avatars be fetched from the server even if an avatar is already set?
     user_avatar_sync: true
     # Should Matrix users leaving groups be bridged to WhatsApp?

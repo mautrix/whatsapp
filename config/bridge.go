@@ -60,7 +60,6 @@ type BridgeConfig struct {
 		} `yaml:"immediate"`
 
 		Deferred []DeferredConfig `yaml:"deferred"`
-		Media    []DeferredConfig `yaml:"media"`
 	} `yaml:"history_sync"`
 	UserAvatarSync    bool `yaml:"user_avatar_sync"`
 	BridgeMatrixLeave bool `yaml:"bridge_matrix_leave"`

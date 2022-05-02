@@ -87,7 +87,6 @@ func (helper *UpgradeHelper) doUpgrade() {
 	helper.Copy(Int, "bridge", "history_sync", "immediate", "worker_count")
 	helper.Copy(Int, "bridge", "history_sync", "immediate", "max_events")
 	helper.Copy(List, "bridge", "history_sync", "deferred")
-	helper.Copy(List, "bridge", "history_sync", "media")
 	helper.Copy(Bool, "bridge", "user_avatar_sync")
 	helper.Copy(Bool, "bridge", "bridge_matrix_leave")
 	helper.Copy(Bool, "bridge", "sync_with_custom_puppets")
