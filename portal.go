@@ -2255,6 +2255,26 @@ func (portal *Portal) fetchMediaRetryEvent(msg *database.Message) (*FailedMediaM
 	return errorMeta, nil
 }
 
+func (portal *Portal) sendMediaRetryFailureEdit(intent *appservice.IntentAPI, msg *database.Message, err error) {
+	content := event.MessageEventContent{
+		MsgType: event.MsgNotice,
+		Body:    fmt.Sprintf("Failed to bridge media after re-requesting it from your phone: %v", err),
+	}
+	contentCopy := content
+	content.NewContent = &contentCopy
+	content.RelatesTo = &event.RelatesTo{
+		EventID: msg.MXID,
+		Type:    event.RelReplace,
+	}
+	resp, sendErr := portal.sendMessage(intent, event.EventMessage, &content, nil, time.Now().UnixMilli())
+	if sendErr != nil {
+		portal.log.Warnfln("Failed to edit %s after retry failure for %s: %v", msg.MXID, msg.JID, sendErr)
+	} else {
+		portal.log.Debugfln("Successfully edited %s -> %s after retry failure for %s", msg.MXID, resp.EventID, msg.JID)
+	}
+
+}
+
 func (portal *Portal) handleMediaRetry(retry *events.MediaRetry, source *User) {
 	msg := portal.bridge.DB.Message.GetByJID(portal.Key, retry.MessageID)
 	if msg == nil {
@@ -2271,15 +2291,6 @@ func (portal *Portal) handleMediaRetry(retry *events.MediaRetry, source *User) {
 		return
 	}
 
-	retryData, err := whatsmeow.DecryptMediaRetryNotification(retry, meta.Media.Key)
-	if err != nil {
-		portal.log.Warnfln("Failed to handle media retry notification for %s: %v", retry.MessageID, err)
-		return
-	} else if retryData.GetResult() != waProto.MediaRetryNotification_SUCCESS {
-		portal.log.Warnfln("Got error response in media retry notification for %s: %s", retry.MessageID, waProto.MediaRetryNotification_MediaRetryNotificationResultType_name[int32(retryData.GetResult())])
-		return
-	}
-
 	var puppet *Puppet
 	if retry.FromMe {
 		puppet = portal.bridge.GetPuppetByJID(source.JID)
@@ -2290,14 +2301,29 @@ func (portal *Portal) handleMediaRetry(retry *events.MediaRetry, source *User) {
 	}
 	intent := puppet.IntentFor(portal)
 
+	retryData, err := whatsmeow.DecryptMediaRetryNotification(retry, meta.Media.Key)
+	if err != nil {
+		portal.log.Warnfln("Failed to handle media retry notification for %s: %v", retry.MessageID, err)
+		portal.sendMediaRetryFailureEdit(intent, msg, err)
+		return
+	} else if retryData.GetResult() != waProto.MediaRetryNotification_SUCCESS {
+		errorName := waProto.MediaRetryNotification_MediaRetryNotificationResultType_name[int32(retryData.GetResult())]
+		portal.log.Warnfln("Got error response in media retry notification for %s: %s", retry.MessageID, errorName)
+		portal.log.Debugfln("Error response contents: %s / %s", retryData.GetStanzaId(), retryData.GetDirectPath())
+		portal.sendMediaRetryFailureEdit(intent, msg, fmt.Errorf("phone sent error response: %s", errorName))
+		return
+	}
+
 	data, err := source.Client.DownloadMediaWithPath(retryData.GetDirectPath(), meta.Media.EncSHA256, meta.Media.SHA256, meta.Media.Key, meta.Media.Length, meta.Media.Type, "")
 	if err != nil {
 		portal.log.Warnfln("Failed to download media in %s after retry notification: %v", retry.MessageID, err)
+		portal.sendMediaRetryFailureEdit(intent, msg, err)
 		return
 	}
 	err = portal.uploadMedia(intent, data, meta.Content)
 	if err != nil {
 		portal.log.Warnfln("Failed to re-upload media for %s after retry notification: %v", retry.MessageID, err)
+		portal.sendMediaRetryFailureEdit(intent, msg, fmt.Errorf("re-uploading media failed: %v", err))
 		return
 	}
 	replaceContent := &event.MessageEventContent{
