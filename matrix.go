@@ -492,6 +492,9 @@ func (mx *MatrixHandler) HandleReaction(evt *event.Event) {
 	content := evt.Content.AsReaction()
 	if strings.Contains(content.RelatesTo.Key, "retry") || strings.HasPrefix(content.RelatesTo.Key, "\u267b") { // ♻️
 		if portal.requestMediaRetry(user, content.RelatesTo.EventID) {
+			_, _ = portal.MainIntent().RedactEvent(portal.MXID, evt.ID, mautrix.ReqRedact{
+				Reason: "requested media from phone",
+			})
 			// Errored media, don't try to send as reaction
 			return
 		}
