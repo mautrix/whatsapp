@@ -47,13 +47,11 @@ type BridgeConfig struct {
 
 	HistorySync struct {
 		CreatePortals bool `yaml:"create_portals"`
-
-		Backfill                      bool `yaml:"backfill"`
-		BackfillMedia                 bool `yaml:"backfill_media"`
-		EnqueueBackfillMediaNextStart bool `yaml:"enqueue_backfill_media_next_start"`
+		Backfill      bool `yaml:"backfill"`
 
 		DoublePuppetBackfill    bool `yaml:"double_puppet_backfill"`
 		RequestFullSync         bool `yaml:"request_full_sync"`
+		AutoRequestMedia        bool `yaml:"auto_request_media"`
 		MaxInitialConversations int  `yaml:"max_initial_conversations"`
 
 		Immediate struct {

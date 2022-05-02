@@ -38,6 +38,8 @@ type wrappedInfo struct {
 	Type  database.MessageType
 	Error database.MessageErrorType
 
+	MediaKey []byte
+
 	ExpirationStart uint64
 	ExpiresIn       uint32
 }
@@ -86,50 +88,23 @@ func (user *User) handleBackfillRequestsLoop(backfillRequests chan *database.Bac
 		}
 		portal := user.GetPortalByJID(conv.PortalKey.JID)
 
-		if req.BackfillType == database.BackfillMedia {
-			startTime := time.Unix(0, 0)
-			if req.TimeStart != nil {
-				startTime = *req.TimeStart
-			}
-			endTime := time.Now()
-			if req.TimeEnd != nil {
-				endTime = *req.TimeEnd
-			}
-
-			user.log.Infofln("Backfilling media from %v to %v for %s", startTime, endTime, portal.Key.String())
-
-			// Go through all of the messages in the given time range,
-			// requesting any media that errored.
-			requested := 0
-			for _, msg := range user.bridge.DB.Message.GetMessagesBetween(portal.Key, startTime, endTime) {
-				if msg.Error == database.MsgErrMediaNotFound {
-					if requested > 0 && requested%req.MaxBatchEvents == 0 {
-						time.Sleep(time.Duration(req.BatchDelay) * time.Second)
-					}
-
-					portal.requestMediaRetry(user, msg.MXID)
-					requested += 1
-				}
-			}
-		} else {
-			// Update the client store with basic chat settings.
-			if conv.MuteEndTime.After(time.Now()) {
-				user.Client.Store.ChatSettings.PutMutedUntil(conv.PortalKey.JID, conv.MuteEndTime)
-			}
-			if conv.Archived {
-				user.Client.Store.ChatSettings.PutArchived(conv.PortalKey.JID, true)
-			}
-			if conv.Pinned > 0 {
-				user.Client.Store.ChatSettings.PutPinned(conv.PortalKey.JID, true)
-			}
-
-			if conv.EphemeralExpiration != nil && portal.ExpirationTime != *conv.EphemeralExpiration {
-				portal.ExpirationTime = *conv.EphemeralExpiration
-				portal.Update()
-			}
-
-			user.backfillInChunks(req, conv, portal)
+		// Update the client store with basic chat settings.
+		if conv.MuteEndTime.After(time.Now()) {
+			user.Client.Store.ChatSettings.PutMutedUntil(conv.PortalKey.JID, conv.MuteEndTime)
 		}
+		if conv.Archived {
+			user.Client.Store.ChatSettings.PutArchived(conv.PortalKey.JID, true)
+		}
+		if conv.Pinned > 0 {
+			user.Client.Store.ChatSettings.PutPinned(conv.PortalKey.JID, true)
+		}
+
+		if conv.EphemeralExpiration != nil && portal.ExpirationTime != *conv.EphemeralExpiration {
+			portal.ExpirationTime = *conv.EphemeralExpiration
+			portal.Update()
+		}
+
+		user.backfillInChunks(req, conv, portal)
 	}
 }
 
@@ -353,7 +328,6 @@ func (user *User) handleHistorySync(reCheckQueue chan bool, evt *waProto.History
 				user.EnqueueForwardBackfills(portals)
 				// Enqueue deferred backfills as configured.
 				user.EnqueueDeferredBackfills(portals)
-				user.EnqueueMediaBackfills(portals)
 			}
 
 			// Tell the queue to check for new backfill requests.
@@ -403,22 +377,6 @@ func (user *User) EnqueueForwardBackfills(portals []*Portal) {
 		backfill := user.bridge.DB.BackfillQuery.NewWithValues(
 			user.MXID, database.BackfillForward, priority, &portal.Key, &lastMsg.Timestamp, nil, -1, -1, 0)
 		backfill.Insert()
-	}
-}
-
-func (user *User) EnqueueMediaBackfills(portals []*Portal) {
-	numPortals := len(portals)
-	for stageIdx, backfillStage := range user.bridge.Config.Bridge.HistorySync.Media {
-		for portalIdx, portal := range portals {
-			var startDate *time.Time = nil
-			if backfillStage.StartDaysAgo > 0 {
-				startDaysAgo := time.Now().AddDate(0, 0, -backfillStage.StartDaysAgo)
-				startDate = &startDaysAgo
-			}
-			backfill := user.bridge.DB.BackfillQuery.NewWithValues(
-				user.MXID, database.BackfillMedia, stageIdx*numPortals+portalIdx, &portal.Key, startDate, nil, backfillStage.MaxBatchEvents, -1, backfillStage.BatchDelay)
-			backfill.Insert()
-		}
 	}
 }
 
@@ -521,7 +479,7 @@ func (portal *Portal) backfill(source *User, messages []*waProto.WebMessageInfo,
 			intent = puppet.DefaultIntent()
 		}
 
-		converted := portal.convertMessage(intent, source, info, msg)
+		converted := portal.convertMessage(intent, source, info, msg, true)
 		if converted == nil {
 			portal.log.Debugfln("Skipping unsupported message %s in backfill", info.ID)
 			continue
@@ -560,7 +518,23 @@ func (portal *Portal) backfill(source *User, messages []*waProto.WebMessageInfo,
 		portal.finishBatch(resp.EventIDs, infos)
 		portal.NextBatchID = resp.NextBatchID
 		portal.Update()
+		if portal.bridge.Config.Bridge.HistorySync.AutoRequestMedia {
+			go portal.requestMediaRetries(source, infos)
+		}
 		return resp
+	}
+}
+
+func (portal *Portal) requestMediaRetries(source *User, infos []*wrappedInfo) {
+	for _, info := range infos {
+		if info.Error == database.MsgErrMediaNotFound && info.MediaKey != nil {
+			err := source.Client.SendMediaRetryReceipt(info.MessageInfo, info.MediaKey)
+			if err != nil {
+				portal.log.Warnfln("Failed to send post-backfill media retry request for %s: %v", info.ID, err)
+			} else {
+				portal.log.Debugfln("Sent post-backfill media retry request for %s", info.ID)
+			}
+		}
 	}
 }
 
@@ -603,10 +577,10 @@ func (portal *Portal) appendBatchEvents(converted *ConvertedMessage, info *types
 			return err
 		}
 		*eventsArray = append(*eventsArray, mainEvt, captionEvt)
-		*infoArray = append(*infoArray, &wrappedInfo{info, database.MsgNormal, converted.Error, expirationStart, converted.ExpiresIn}, nil)
+		*infoArray = append(*infoArray, &wrappedInfo{info, database.MsgNormal, converted.Error, converted.MediaKey, expirationStart, converted.ExpiresIn}, nil)
 	} else {
 		*eventsArray = append(*eventsArray, mainEvt)
-		*infoArray = append(*infoArray, &wrappedInfo{info, database.MsgNormal, converted.Error, expirationStart, converted.ExpiresIn})
+		*infoArray = append(*infoArray, &wrappedInfo{info, database.MsgNormal, converted.Error, converted.MediaKey, expirationStart, converted.ExpiresIn})
 	}
 	if converted.MultiEvent != nil {
 		for _, subEvtContent := range converted.MultiEvent {

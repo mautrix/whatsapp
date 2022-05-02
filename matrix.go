@@ -484,18 +484,19 @@ func (mx *MatrixHandler) HandleReaction(evt *event.Event) {
 	portal := mx.bridge.GetPortalByMXID(evt.RoomID)
 	if portal == nil {
 		return
+	} else if portal.IsPrivateChat() && user.JID.User != portal.Key.Receiver.User {
+		// One user can only react once, so we don't use the relay user for reactions
+		return
 	}
 
 	content := evt.Content.AsReaction()
-	if content.RelatesTo.Key == "click to retry" || strings.HasPrefix(content.RelatesTo.Key, "\u267b") { // ♻️
-		portal.requestMediaRetry(user, content.RelatesTo.EventID)
-	} else {
-		if portal.IsPrivateChat() && user.JID.User != portal.Key.Receiver.User {
-			// One user can only react once, so we don't use the relay user for reactions
+	if strings.Contains(content.RelatesTo.Key, "retry") || strings.HasPrefix(content.RelatesTo.Key, "\u267b") { // ♻️
+		if portal.requestMediaRetry(user, content.RelatesTo.EventID) {
+			// Errored media, don't try to send as reaction
 			return
 		}
-		portal.HandleMatrixReaction(user, evt)
 	}
+	portal.HandleMatrixReaction(user, evt)
 }
 
 func (mx *MatrixHandler) HandleRedaction(evt *event.Event) {

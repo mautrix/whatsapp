@@ -39,7 +39,7 @@ func (bq *BackfillQueue) RunLoop(user *User) {
 		if backfill := bq.BackfillQuery.GetNext(user.MXID); backfill != nil {
 			if backfill.BackfillType == database.BackfillImmediate || backfill.BackfillType == database.BackfillForward {
 				bq.ImmediateBackfillRequests <- backfill
-			} else {
+			} else if backfill.BackfillType == database.BackfillDeferred {
 				select {
 				case <-bq.ReCheckQueue:
 					// If a queue re-check is requested, interrupt sending the
@@ -48,6 +48,8 @@ func (bq *BackfillQueue) RunLoop(user *User) {
 					continue
 				case bq.DeferredBackfillRequests <- backfill:
 				}
+			} else {
+				bq.log.Debugfln("Unrecognized backfill type %d in queue", backfill.BackfillType)
 			}
 			backfill.MarkDone()
 		} else {

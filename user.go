@@ -585,10 +585,6 @@ func (user *User) HandleEvent(event interface{}) {
 		if user.bridge.Config.Bridge.HistorySync.Backfill && !user.historySyncLoopsStarted {
 			go user.handleHistorySyncsLoop()
 			user.historySyncLoopsStarted = true
-
-			if user.bridge.Config.Bridge.HistorySync.BackfillMedia && user.bridge.Config.Bridge.HistorySync.EnqueueBackfillMediaNextStart {
-				user.EnqueueMediaBackfills(user.bridge.GetAllPortalsForUser(user.MXID))
-			}
 		}
 	case *events.OfflineSyncPreview:
 		user.log.Infofln("Server says it's going to send %d messages and %d receipts that were missed during downtime", v.Messages, v.Receipts)

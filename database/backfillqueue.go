@@ -32,7 +32,6 @@ const (
 	BackfillImmediate BackfillType = 0
 	BackfillForward   BackfillType = 100
 	BackfillDeferred  BackfillType = 200
-	BackfillMedia     BackfillType = 300
 )
 
 func (bt BackfillType) String() string {
@@ -43,8 +42,6 @@ func (bt BackfillType) String() string {
 		return "FORWARD"
 	case BackfillDeferred:
 		return "DEFERRED"
-	case BackfillMedia:
-		return "MEDIA"
 	}
 	return "UNKNOWN"
 }

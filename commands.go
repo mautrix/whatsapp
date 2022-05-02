@@ -31,7 +31,6 @@ import (
 	"github.com/tidwall/gjson"
 
 	"maunium.net/go/maulogger/v2"
-	"maunium.net/go/mautrix-whatsapp/database"
 
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/appstate"
@@ -42,6 +41,8 @@ import (
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/format"
 	"maunium.net/go/mautrix/id"
+
+	"maunium.net/go/mautrix-whatsapp/database"
 )
 
 type CommandHandler struct {
@@ -870,11 +871,6 @@ func (handler *CommandHandler) CommandBackfill(ce *CommandEvent) {
 	}
 	backfillMessages := ce.Portal.bridge.DB.BackfillQuery.NewWithValues(ce.User.MXID, database.BackfillImmediate, 0, &ce.Portal.Key, nil, nil, batchSize, -1, batchDelay)
 	backfillMessages.Insert()
-
-	if ce.Bridge.Config.Bridge.HistorySync.BackfillMedia {
-		backfillMedia := ce.Portal.bridge.DB.BackfillQuery.NewWithValues(ce.User.MXID, database.BackfillMedia, 1, &ce.Portal.Key, nil, nil, batchSize, -1, batchDelay)
-		backfillMedia.Insert()
-	}
 
 	ce.User.BackfillQueue.ReCheckQueue <- true
 }

@@ -458,20 +458,24 @@ func formatDuration(d time.Duration) string {
 	return naturalJoin(parts)
 }
 
-func (portal *Portal) convertMessage(intent *appservice.IntentAPI, source *User, info *types.MessageInfo, waMsg *waProto.Message) *ConvertedMessage {
+func (portal *Portal) convertMessage(intent *appservice.IntentAPI, source *User, info *types.MessageInfo, waMsg *waProto.Message, isBackfill bool) *ConvertedMessage {
 	switch {
 	case waMsg.Conversation != nil || waMsg.ExtendedTextMessage != nil:
 		return portal.convertTextMessage(intent, source, waMsg)
 	case waMsg.ImageMessage != nil:
-		return portal.convertMediaMessage(intent, source, info, waMsg.GetImageMessage())
+		return portal.convertMediaMessage(intent, source, info, waMsg.GetImageMessage(), "photo", isBackfill)
 	case waMsg.StickerMessage != nil:
-		return portal.convertMediaMessage(intent, source, info, waMsg.GetStickerMessage())
+		return portal.convertMediaMessage(intent, source, info, waMsg.GetStickerMessage(), "sticker", isBackfill)
 	case waMsg.VideoMessage != nil:
-		return portal.convertMediaMessage(intent, source, info, waMsg.GetVideoMessage())
+		return portal.convertMediaMessage(intent, source, info, waMsg.GetVideoMessage(), "video attachment", isBackfill)
 	case waMsg.AudioMessage != nil:
-		return portal.convertMediaMessage(intent, source, info, waMsg.GetAudioMessage())
+		typeName := "audio attachment"
+		if waMsg.GetAudioMessage().GetPtt() {
+			typeName = "voice message"
+		}
+		return portal.convertMediaMessage(intent, source, info, waMsg.GetAudioMessage(), typeName, isBackfill)
 	case waMsg.DocumentMessage != nil:
-		return portal.convertMediaMessage(intent, source, info, waMsg.GetDocumentMessage())
+		return portal.convertMediaMessage(intent, source, info, waMsg.GetDocumentMessage(), "file attachment", isBackfill)
 	case waMsg.ContactMessage != nil:
 		return portal.convertContactMessage(intent, waMsg.GetContactMessage())
 	case waMsg.ContactsArrayMessage != nil:
@@ -625,7 +629,7 @@ func (portal *Portal) handleMessage(source *User, evt *events.Message) {
 		portal.log.Debugfln("Not handling %s (%s): user doesn't have double puppeting enabled", msgID, msgType)
 		return
 	}
-	converted := portal.convertMessage(intent, source, &evt.Info, evt.Message)
+	converted := portal.convertMessage(intent, source, &evt.Info, evt.Message, false)
 	if converted != nil {
 		if evt.Info.IsIncomingBroadcast() {
 			if converted.Extra == nil {
@@ -1358,7 +1362,6 @@ func (portal *Portal) CreateMatrixRoom(user *User, groupInfo *types.GroupInfo, i
 		portals := []*Portal{portal}
 		user.EnqueueImmedateBackfills(portals)
 		user.EnqueueDeferredBackfills(portals)
-		user.EnqueueMediaBackfills(portals)
 		user.BackfillQueue.ReCheckQueue <- true
 	}
 	return nil
@@ -1594,6 +1597,7 @@ type ConvertedMessage struct {
 	ReplyTo   types.MessageID
 	ExpiresIn uint32
 	Error     database.MessageErrorType
+	MediaKey  []byte
 }
 
 func (portal *Portal) convertTextMessage(intent *appservice.IntentAPI, source *User, msg *waProto.Message) *ConvertedMessage {
@@ -2172,26 +2176,18 @@ func (portal *Portal) uploadMedia(intent *appservice.IntentAPI, data []byte, con
 	return nil
 }
 
-func (portal *Portal) convertMediaMessage(intent *appservice.IntentAPI, source *User, info *types.MessageInfo, msg MediaMessage) *ConvertedMessage {
+func (portal *Portal) convertMediaMessage(intent *appservice.IntentAPI, source *User, info *types.MessageInfo, msg MediaMessage, typeName string, isBackfill bool) *ConvertedMessage {
 	converted := portal.convertMediaMessageContent(intent, msg)
 	data, err := source.Client.Download(msg)
 	if errors.Is(err, whatsmeow.ErrMediaDownloadFailedWith404) || errors.Is(err, whatsmeow.ErrMediaDownloadFailedWith410) {
-		//portal.log.Warnfln("Failed to download media for %s: %v. Requesting retry", info.ID, err)
-		//err = source.Client.SendMediaRetryReceipt(info, msg.GetMediaKey())
-		//if err != nil {
-		//	portal.log.Errorfln("Failed to send media retry receipt for %s: %v", info.ID, err)
-		//}
 		converted.Error = database.MsgErrMediaNotFound
+		converted.MediaKey = msg.GetMediaKey()
 
-		errorText := "Old photo or attachment."
-		if portal.bridge.Config.Bridge.HistorySync.BackfillMedia {
-			if len(portal.bridge.Config.Bridge.HistorySync.Media) > 0 {
-				errorText += " Media will be requested from your phone later."
-			} else {
-				errorText += ` React with the \u267b (recycle) emoji or the text "click to retry" to request this media from your phone or use the backfill command to request all missing media for this chat.`
-			}
+		errorText := fmt.Sprintf("Old %s.", typeName)
+		if portal.bridge.Config.Bridge.HistorySync.AutoRequestMedia && isBackfill {
+			errorText += " Media will be automatically requested from your phone later."
 		} else {
-			errorText += ` Automatic media backfill is disabled. React with the \u267b (recycle) emoji or the text "click to retry" to request this media from your phone.`
+			errorText += ` React with the \u267b (recycle) emoji to request this media from your phone.`
 		}
 
 		return portal.makeMediaBridgeFailureMessage(info, err, converted, &FailedMediaKeys{
@@ -2326,20 +2322,20 @@ func (portal *Portal) handleMediaRetry(retry *events.MediaRetry, source *User) {
 	msg.UpdateMXID(resp.EventID, database.MsgNormal, database.MsgNoError)
 }
 
-func (portal *Portal) requestMediaRetry(user *User, eventID id.EventID) {
+func (portal *Portal) requestMediaRetry(user *User, eventID id.EventID) bool {
 	msg := portal.bridge.DB.Message.GetByMXID(eventID)
 	if msg == nil {
 		portal.log.Debugfln("%s requested a media retry for unknown event %s", user.MXID, eventID)
-		return
+		return false
 	} else if msg.Error != database.MsgErrMediaNotFound {
 		portal.log.Debugfln("%s requested a media retry for non-errored event %s", user.MXID, eventID)
-		return
+		return false
 	}
 
 	evt, err := portal.fetchMediaRetryEvent(msg)
 	if err != nil {
 		portal.log.Warnfln("Can't send media retry request for %s: %v", msg.JID, err)
-		return
+		return true
 	}
 
 	err = user.Client.SendMediaRetryReceipt(&types.MessageInfo{
@@ -2356,6 +2352,7 @@ func (portal *Portal) requestMediaRetry(user *User, eventID id.EventID) {
 	} else {
 		portal.log.Debugfln("Sent media retry request for %s", msg.JID)
 	}
+	return true
 }
 
 const thumbnailMaxSize = 72
