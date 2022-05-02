@@ -144,7 +144,6 @@ func (bridge *Bridge) newBlankPortal(key database.PortalKey) *Portal {
 		log:    bridge.Log.Sub(fmt.Sprintf("Portal/%s", key)),
 
 		messages:       make(chan PortalMessage, bridge.Config.Bridge.PortalMessageBuffer),
-		receipts:       make(chan PortalReceipt, bridge.Config.Bridge.PortalMessageBuffer),
 		matrixMessages: make(chan PortalMatrixMessage, bridge.Config.Bridge.PortalMessageBuffer),
 		mediaRetries:   make(chan PortalMediaRetry, bridge.Config.Bridge.PortalMessageBuffer),
 
@@ -180,13 +179,9 @@ type fakeMessage struct {
 type PortalMessage struct {
 	evt           *events.Message
 	undecryptable *events.UndecryptableMessage
+	receipt       *events.Receipt
 	fake          *fakeMessage
 	source        *User
-}
-
-type PortalReceipt struct {
-	evt    *events.Receipt
-	source *User
 }
 
 type PortalMatrixMessage struct {
@@ -225,7 +220,6 @@ type Portal struct {
 	currentlyTypingLock sync.Mutex
 
 	messages       chan PortalMessage
-	receipts       chan PortalReceipt
 	matrixMessages chan PortalMatrixMessage
 	mediaRetries   chan PortalMediaRetry
 
@@ -249,6 +243,8 @@ func (portal *Portal) handleMessageLoopItem(msg PortalMessage) {
 	}
 	if msg.evt != nil {
 		portal.handleMessage(msg.source, msg.evt)
+	} else if msg.receipt != nil {
+		portal.handleReceipt(msg.receipt, msg.source)
 	} else if msg.undecryptable != nil {
 		portal.handleUndecryptableMessage(msg.source, msg.undecryptable)
 	} else if msg.fake != nil {
@@ -313,8 +309,6 @@ func (portal *Portal) handleMessageLoop() {
 		select {
 		case msg := <-portal.messages:
 			portal.handleMessageLoopItem(msg)
-		case receipt := <-portal.receipts:
-			portal.handleReceipt(receipt.evt, receipt.source)
 		case msg := <-portal.matrixMessages:
 			portal.handleMatrixMessageLoopItem(msg)
 		case retry := <-portal.mediaRetries:

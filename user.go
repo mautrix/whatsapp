@@ -1019,7 +1019,7 @@ func (user *User) handleReceipt(receipt *events.Receipt) {
 	if portal == nil || len(portal.MXID) == 0 {
 		return
 	}
-	portal.receipts <- PortalReceipt{evt: receipt, source: user}
+	portal.messages <- PortalMessage{receipt: receipt, source: user}
 }
 
 func makeReadMarkerContent(eventID id.EventID, doublePuppet bool) CustomReadMarkers {
