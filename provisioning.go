@@ -434,6 +434,9 @@ func (prov *ProvisioningAPI) Ping(w http.ResponseWriter, r *http.Request) {
 		wa["jid"] = user.JID.String()
 		wa["phone"] = "+" + user.JID.User
 		wa["device"] = user.JID.Device
+		if user.Session != nil {
+			wa["platform"] = user.Session.Platform
+		}
 	}
 	if user.Client != nil {
 		wa["conn"] = map[string]interface{}{
@@ -566,9 +569,10 @@ func (prov *ProvisioningAPI) Login(w http.ResponseWriter, r *http.Request) {
 				user.log.Debugln("Successful login as", jid, "via provisioning API")
 				prov.segment.Track(user.MXID, "$login_success")
 				_ = c.WriteJSON(map[string]interface{}{
-					"success": true,
-					"jid":     jid,
-					"phone":   fmt.Sprintf("+%s", jid.User),
+					"success":  true,
+					"jid":      jid,
+					"phone":    fmt.Sprintf("+%s", jid.User),
+					"platform": user.Client.Store.Platform,
 				})
 			case whatsmeow.QRChannelTimeout.Event:
 				user.log.Debugln("Login via provisioning API timed out")
