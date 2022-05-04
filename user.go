@@ -536,9 +536,13 @@ func (user *User) phoneSeen(ts time.Time) {
 		// The last seen timestamp isn't going to be perfectly accurate in any case,
 		// so don't spam the database with an update every time there's an event.
 		return
-	} else if !user.PhoneRecentlySeen(false) && user.GetPrevBridgeState().Error == WAPhoneOffline && user.IsConnected() {
-		user.log.Debugfln("Saw phone after current bridge state said it has been offline, switching state back to connected")
-		go user.sendBridgeState(BridgeState{StateEvent: StateConnected})
+	} else if !user.PhoneRecentlySeen(false) {
+		if user.GetPrevBridgeState().Error == WAPhoneOffline && user.IsConnected() {
+			user.log.Debugfln("Saw phone after current bridge state said it has been offline, switching state back to connected")
+			go user.sendBridgeState(BridgeState{StateEvent: StateConnected})
+		} else {
+			user.log.Debugfln("Saw phone after current bridge state said it has been offline, not sending new bridge state (prev: %s, connected: %t)", user.GetPrevBridgeState().Error, user.IsConnected())
+		}
 	}
 	user.PhoneLastSeen = ts
 	go user.Update()

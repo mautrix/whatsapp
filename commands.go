@@ -26,6 +26,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/skip2/go-qrcode"
 	"github.com/tidwall/gjson"
@@ -710,6 +711,9 @@ func (handler *CommandHandler) CommandPing(ce *CommandEvent) {
 		ce.Reply("You're logged in as +%s (device #%d), but you don't have a WhatsApp connection.", ce.User.JID.User, ce.User.JID.Device)
 	} else {
 		ce.Reply("Logged in as +%s (device #%d), connection to WhatsApp OK (probably)", ce.User.JID.User, ce.User.JID.Device)
+		if !ce.User.PhoneRecentlySeen(false) {
+			ce.Reply("Phone hasn't been seen in %s", formatDisconnectTime(time.Now().Sub(ce.User.PhoneLastSeen)))
+		}
 	}
 }
 
