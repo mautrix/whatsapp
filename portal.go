@@ -2883,7 +2883,6 @@ func (portal *Portal) sendReactionToWhatsApp(sender *User, id types.MessageID, t
 				Participant: messageKeyParticipant,
 			},
 			Text:              proto.String(key),
-			GroupingKey:       proto.String(key), // TODO is this correct?
 			SenderTimestampMs: proto.Int64(timestamp),
 		},
 	})
