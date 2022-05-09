@@ -51,7 +51,7 @@ func (bq *BackfillQueue) RunLoop(user *User) {
 			} else {
 				bq.log.Debugfln("Unrecognized backfill type %d in queue", backfill.BackfillType)
 			}
-			backfill.MarkDone()
+			backfill.MarkDispatched()
 		} else {
 			select {
 			case <-bq.ReCheckQueue:

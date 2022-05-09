@@ -167,9 +167,20 @@ func (b *Backfill) Insert() {
 	}
 }
 
+func (b *Backfill) MarkDispatched() {
+	if b.QueueID == 0 {
+		b.log.Errorf("Cannot mark backfill as dispatched without queue_id. Maybe it wasn't actually inserted in the database?")
+		return
+	}
+	_, err := b.db.Exec("UPDATE backfill_queue SET dispatch_time=$1 WHERE queue_id=$2", time.Now(), b.QueueID)
+	if err != nil {
+		b.log.Warnfln("Failed to mark %s/%s as dispatched: %v", b.BackfillType, b.Priority, err)
+	}
+}
+
 func (b *Backfill) MarkDone() {
 	if b.QueueID == 0 {
-		b.log.Errorf("Cannot delete backfill without queue_id. Maybe it wasn't actually inserted in the database?")
+		b.log.Errorf("Cannot mark backfill done without queue_id. Maybe it wasn't actually inserted in the database?")
 		return
 	}
 	_, err := b.db.Exec("UPDATE backfill_queue SET completed_at=$1 WHERE queue_id=$2", time.Now(), b.QueueID)
