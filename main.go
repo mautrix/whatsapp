@@ -208,6 +208,15 @@ type Crypto interface {
 
 func (bridge *Bridge) ensureConnection() {
 	for {
+		versions, err := bridge.Bot.Versions()
+		if err != nil {
+			bridge.Log.Errorfln("Failed to connect to homeserver: %v. Retrying in 10 seconds...", err)
+			time.Sleep(10 * time.Second)
+			continue
+		}
+		if !versions.ContainsGreaterOrEqual(mautrix.SpecV11) {
+			bridge.Log.Warnfln("Server isn't advertising modern spec versions")
+		}
 		resp, err := bridge.Bot.Whoami()
 		if err != nil {
 			if errors.Is(err, mautrix.MUnknownToken) {
