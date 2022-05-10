@@ -189,6 +189,7 @@ func (user *User) immediateSendBridgeState(state BridgeState) {
 				retryIn = 64
 			}
 		} else {
+			user.prevBridgeStatus = &state
 			user.log.Debugfln("Sent new bridge state %+v", state)
 			return
 		}
