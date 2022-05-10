@@ -53,7 +53,7 @@ func (user *User) handleHistorySyncsLoop() {
 	reCheckQueue := make(chan bool, 1)
 	// Start the backfill queue.
 	user.BackfillQueue = &BackfillQueue{
-		BackfillQuery:             user.bridge.DB.BackfillQuery,
+		BackfillQuery:             user.bridge.DB.Backfill,
 		ImmediateBackfillRequests: make(chan *database.Backfill, 1),
 		DeferredBackfillRequests:  make(chan *database.Backfill, 1),
 		ReCheckQueue:              make(chan bool, 1),
@@ -82,7 +82,7 @@ func (user *User) handleHistorySyncsLoop() {
 func (user *User) handleBackfillRequestsLoop(backfillRequests chan *database.Backfill) {
 	for req := range backfillRequests {
 		user.log.Infofln("Handling backfill request %s", req)
-		conv := user.bridge.DB.HistorySyncQuery.GetConversation(user.MXID, req.Portal)
+		conv := user.bridge.DB.HistorySync.GetConversation(user.MXID, req.Portal)
 		if conv == nil {
 			user.log.Debugfln("Could not find history sync conversation data for %s", req.Portal.String())
 			continue
@@ -133,7 +133,7 @@ func (user *User) backfillInChunks(req *database.Backfill, conv *database.Histor
 			user.log.Debugfln("Limiting backfill to end at %v", end)
 		}
 	}
-	allMsgs := user.bridge.DB.HistorySyncQuery.GetMessagesBetween(user.MXID, conv.ConversationID, req.TimeStart, req.TimeEnd, req.MaxTotalEvents)
+	allMsgs := user.bridge.DB.HistorySync.GetMessagesBetween(user.MXID, conv.ConversationID, req.TimeStart, req.TimeEnd, req.MaxTotalEvents)
 
 	sendDisappearedNotice := false
 	// If expired messages are on, and a notice has not been sent to this chat
@@ -211,7 +211,7 @@ func (user *User) backfillInChunks(req *database.Backfill, conv *database.Histor
 			insertionEventIds[0])
 	}
 	user.log.Debugfln("Deleting %d history sync messages after backfilling (queue ID: %d)", len(allMsgs), req.QueueID)
-	err := user.bridge.DB.HistorySyncQuery.DeleteMessages(user.MXID, conv.ConversationID, allMsgs)
+	err := user.bridge.DB.HistorySync.DeleteMessages(user.MXID, conv.ConversationID, allMsgs)
 	if err != nil {
 		user.log.Warnfln("Failed to delete %d history sync messages after backfilling (queue ID: %d): %v", len(allMsgs), req.QueueID, err)
 	}
@@ -255,7 +255,7 @@ func (user *User) handleHistorySync(reCheckQueue chan bool, evt *waProto.History
 		}
 		portal := user.GetPortalByJID(jid)
 
-		historySyncConversation := user.bridge.DB.HistorySyncQuery.NewConversationWithValues(
+		historySyncConversation := user.bridge.DB.HistorySync.NewConversationWithValues(
 			user.MXID,
 			conv.GetId(),
 			&portal.Key,
@@ -291,7 +291,7 @@ func (user *User) handleHistorySync(reCheckQueue chan bool, evt *waProto.History
 				continue
 			}
 
-			message, err := user.bridge.DB.HistorySyncQuery.NewMessageWithValues(user.MXID, conv.GetId(), wmi.GetKey().GetId(), rawMsg)
+			message, err := user.bridge.DB.HistorySync.NewMessageWithValues(user.MXID, conv.GetId(), wmi.GetKey().GetId(), rawMsg)
 			if err != nil {
 				user.log.Warnfln("Failed to save message %s in %s. Error: %+v", wmi.GetKey().Id, conv.GetId(), err)
 				continue
@@ -308,7 +308,7 @@ func (user *User) handleHistorySync(reCheckQueue chan bool, evt *waProto.History
 			return
 		}
 
-		nMostRecent := user.bridge.DB.HistorySyncQuery.GetNMostRecentConversations(user.MXID, user.bridge.Config.Bridge.HistorySync.MaxInitialConversations)
+		nMostRecent := user.bridge.DB.HistorySync.GetNMostRecentConversations(user.MXID, user.bridge.Config.Bridge.HistorySync.MaxInitialConversations)
 		if len(nMostRecent) > 0 {
 			// Find the portals for all of the conversations.
 			portals := []*Portal{}
@@ -348,7 +348,7 @@ func getConversationTimestamp(conv *waProto.Conversation) uint64 {
 func (user *User) EnqueueImmedateBackfills(portals []*Portal) {
 	for priority, portal := range portals {
 		maxMessages := user.bridge.Config.Bridge.HistorySync.Immediate.MaxEvents
-		initialBackfill := user.bridge.DB.BackfillQuery.NewWithValues(user.MXID, database.BackfillImmediate, priority, &portal.Key, nil, nil, maxMessages, maxMessages, 0)
+		initialBackfill := user.bridge.DB.Backfill.NewWithValues(user.MXID, database.BackfillImmediate, priority, &portal.Key, nil, nil, maxMessages, maxMessages, 0)
 		initialBackfill.Insert()
 	}
 }
@@ -362,7 +362,7 @@ func (user *User) EnqueueDeferredBackfills(portals []*Portal) {
 				startDaysAgo := time.Now().AddDate(0, 0, -backfillStage.StartDaysAgo)
 				startDate = &startDaysAgo
 			}
-			backfillMessages := user.bridge.DB.BackfillQuery.NewWithValues(
+			backfillMessages := user.bridge.DB.Backfill.NewWithValues(
 				user.MXID, database.BackfillDeferred, stageIdx*numPortals+portalIdx, &portal.Key, startDate, nil, backfillStage.MaxBatchEvents, -1, backfillStage.BatchDelay)
 			backfillMessages.Insert()
 		}
@@ -375,7 +375,7 @@ func (user *User) EnqueueForwardBackfills(portals []*Portal) {
 		if lastMsg == nil {
 			continue
 		}
-		backfill := user.bridge.DB.BackfillQuery.NewWithValues(
+		backfill := user.bridge.DB.Backfill.NewWithValues(
 			user.MXID, database.BackfillForward, priority, &portal.Key, &lastMsg.Timestamp, nil, -1, -1, 0)
 		backfill.Insert()
 	}

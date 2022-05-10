@@ -49,9 +49,10 @@ type Database struct {
 	Message  *MessageQuery
 	Reaction *ReactionQuery
 
-	DisappearingMessage *DisappearingMessageQuery
-	BackfillQuery       *BackfillQuery
-	HistorySyncQuery    *HistorySyncQuery
+	DisappearingMessage  *DisappearingMessageQuery
+	Backfill             *BackfillQuery
+	HistorySync          *HistorySyncQuery
+	MediaBackfillRequest *MediaBackfillRequestQuery
 }
 
 func New(cfg config.DatabaseConfig, baseLog log.Logger) (*Database, error) {
@@ -89,13 +90,17 @@ func New(cfg config.DatabaseConfig, baseLog log.Logger) (*Database, error) {
 		db:  db,
 		log: db.log.Sub("DisappearingMessage"),
 	}
-	db.BackfillQuery = &BackfillQuery{
+	db.Backfill = &BackfillQuery{
 		db:  db,
 		log: db.log.Sub("Backfill"),
 	}
-	db.HistorySyncQuery = &HistorySyncQuery{
+	db.HistorySync = &HistorySyncQuery{
 		db:  db,
 		log: db.log.Sub("HistorySync"),
+	}
+	db.MediaBackfillRequest = &MediaBackfillRequestQuery{
+		db:  db,
+		log: db.log.Sub("MediaBackfillRequest"),
 	}
 
 	db.SetMaxOpenConns(cfg.MaxOpenConns)

@@ -1224,8 +1224,8 @@ func (portal *Portal) CreateMatrixRoom(user *User, groupInfo *types.GroupInfo, i
 			// before creating the matrix room
 			if errors.Is(err, whatsmeow.ErrNotInGroup) {
 				user.log.Debugfln("Skipping creating matrix room for %s because the user is not a participant", portal.Key.JID)
-				user.bridge.DB.BackfillQuery.DeleteAllForPortal(user.MXID, portal.Key)
-				user.bridge.DB.HistorySyncQuery.DeleteAllMessagesForPortal(user.MXID, portal.Key)
+				user.bridge.DB.Backfill.DeleteAllForPortal(user.MXID, portal.Key)
+				user.bridge.DB.HistorySync.DeleteAllMessagesForPortal(user.MXID, portal.Key)
 				return err
 			} else if err != nil {
 				portal.log.Warnfln("Failed to get group info through %s: %v", user.JID, err)
