@@ -2178,7 +2178,7 @@ func (portal *Portal) convertMediaMessage(intent *appservice.IntentAPI, source *
 		converted.MediaKey = msg.GetMediaKey()
 
 		errorText := fmt.Sprintf("Old %s.", typeName)
-		if portal.bridge.Config.Bridge.HistorySync.AutoRequestMedia && isBackfill {
+		if portal.bridge.Config.Bridge.HistorySync.MediaRequests.AutoRequestMedia && isBackfill {
 			errorText += " Media will be automatically requested from your phone later."
 		} else {
 			errorText += ` React with the \u267b (recycle) emoji to request this media from your phone.`

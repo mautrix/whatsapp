@@ -34,6 +34,13 @@ type DeferredConfig struct {
 	BatchDelay     int `yaml:"batch_delay"`
 }
 
+type MediaRequestMethod string
+
+const (
+	MediaRequestMethodImmediate MediaRequestMethod = "immediate"
+	MediaRequestMethodLocalTime                    = "local_time"
+)
+
 type BridgeConfig struct {
 	UsernameTemplate    string `yaml:"username_template"`
 	DisplaynameTemplate string `yaml:"displayname_template"`
@@ -51,13 +58,18 @@ type BridgeConfig struct {
 
 		DoublePuppetBackfill    bool `yaml:"double_puppet_backfill"`
 		RequestFullSync         bool `yaml:"request_full_sync"`
-		AutoRequestMedia        bool `yaml:"auto_request_media"`
 		MaxInitialConversations int  `yaml:"max_initial_conversations"`
 
 		Immediate struct {
 			WorkerCount int `yaml:"worker_count"`
 			MaxEvents   int `yaml:"max_events"`
 		} `yaml:"immediate"`
+
+		MediaRequests struct {
+			AutoRequestMedia bool               `yaml:"auto_request_media"`
+			RequestMethod    MediaRequestMethod `yaml:"request_method"`
+			RequestLocalTime int                `yaml:"request_local_time"`
+		} `yaml:"media_requests"`
 
 		Deferred []DeferredConfig `yaml:"deferred"`
 	} `yaml:"history_sync"`

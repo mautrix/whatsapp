@@ -28,6 +28,7 @@ import (
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 
+	"maunium.net/go/mautrix-whatsapp/config"
 	"maunium.net/go/mautrix-whatsapp/database"
 )
 
@@ -518,7 +519,8 @@ func (portal *Portal) backfill(source *User, messages []*waProto.WebMessageInfo,
 		portal.finishBatch(resp.EventIDs, infos)
 		portal.NextBatchID = resp.NextBatchID
 		portal.Update()
-		if portal.bridge.Config.Bridge.HistorySync.AutoRequestMedia {
+		if portal.bridge.Config.Bridge.HistorySync.MediaRequests.AutoRequestMedia &&
+			portal.bridge.Config.Bridge.HistorySync.MediaRequests.RequestMethod == config.MediaRequestMethodImmediate {
 			go portal.requestMediaRetries(source, infos)
 		}
 		return resp
