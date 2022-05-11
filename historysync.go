@@ -519,22 +519,27 @@ func (portal *Portal) backfill(source *User, messages []*waProto.WebMessageInfo,
 		portal.finishBatch(resp.EventIDs, infos)
 		portal.NextBatchID = resp.NextBatchID
 		portal.Update()
-		if portal.bridge.Config.Bridge.HistorySync.MediaRequests.AutoRequestMedia &&
-			portal.bridge.Config.Bridge.HistorySync.MediaRequests.RequestMethod == config.MediaRequestMethodImmediate {
-			go portal.requestMediaRetries(source, infos)
+		if portal.bridge.Config.Bridge.HistorySync.MediaRequests.AutoRequestMedia {
+			go portal.requestMediaRetries(source, resp.EventIDs, infos)
 		}
 		return resp
 	}
 }
 
-func (portal *Portal) requestMediaRetries(source *User, infos []*wrappedInfo) {
-	for _, info := range infos {
+func (portal *Portal) requestMediaRetries(source *User, eventIDs []id.EventID, infos []*wrappedInfo) {
+	for i, info := range infos {
 		if info != nil && info.Error == database.MsgErrMediaNotFound && info.MediaKey != nil {
-			err := source.Client.SendMediaRetryReceipt(info.MessageInfo, info.MediaKey)
-			if err != nil {
-				portal.log.Warnfln("Failed to send post-backfill media retry request for %s: %v", info.ID, err)
-			} else {
-				portal.log.Debugfln("Sent post-backfill media retry request for %s", info.ID)
+			switch portal.bridge.Config.Bridge.HistorySync.MediaRequests.RequestMethod {
+			case config.MediaRequestMethodImmediate:
+				err := source.Client.SendMediaRetryReceipt(info.MessageInfo, info.MediaKey)
+				if err != nil {
+					portal.log.Warnfln("Failed to send post-backfill media retry request for %s: %v", info.ID, err)
+				} else {
+					portal.log.Debugfln("Sent post-backfill media retry request for %s", info.ID)
+				}
+			case config.MediaRequestMethodLocalTime:
+				req := portal.bridge.DB.MediaBackfillRequest.NewMediaBackfillRequestWithValues(source.MXID, &portal.Key, eventIDs[i])
+				req.Upsert()
 			}
 		}
 	}
