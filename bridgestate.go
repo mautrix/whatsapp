@@ -51,7 +51,7 @@ const (
 	WAUnknownLogout    BridgeErrorCode = "wa-unknown-logout"
 	WANotConnected     BridgeErrorCode = "wa-not-connected"
 	WAConnecting       BridgeErrorCode = "wa-connecting"
-	WAServerTimeout    BridgeErrorCode = "wa-server-timeout"
+	WAKeepaliveTimeout BridgeErrorCode = "wa-keepalive-timeout"
 	WAPhoneOffline     BridgeErrorCode = "wa-phone-offline"
 	WAConnectionFailed BridgeErrorCode = "wa-connection-failed"
 )
@@ -62,7 +62,7 @@ var bridgeHumanErrors = map[BridgeErrorCode]string{
 	WAUnknownLogout:    "You were logged out for an unknown reason. Relogin to continue using the bridge.",
 	WANotConnected:     "You're not connected to WhatsApp",
 	WAConnecting:       "Reconnecting to WhatsApp...",
-	WAServerTimeout:    "The WhatsApp web servers are not responding. The bridge will try to reconnect.",
+	WAKeepaliveTimeout: "The WhatsApp web servers are not responding. The bridge will try to reconnect.",
 	WAPhoneOffline:     "Your phone hasn't been seen in over 12 days. The bridge is currently connected, but will get disconnected if you don't open the app soon.",
 	WAConnectionFailed: "Connecting to the WhatsApp web servers failed.",
 }

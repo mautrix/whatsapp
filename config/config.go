@@ -73,8 +73,6 @@ type Config struct {
 	WhatsApp struct {
 		OSName      string `yaml:"os_name"`
 		BrowserName string `yaml:"browser_name"`
-
-		DebugDecodeBeforeSend bool `yaml:"debug_decode_before_send"`
 	} `yaml:"whatsapp"`
 
 	Bridge BridgeConfig `yaml:"bridge"`

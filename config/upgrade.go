@@ -69,7 +69,6 @@ func (helper *UpgradeHelper) doUpgrade() {
 
 	helper.Copy(Str, "whatsapp", "os_name")
 	helper.Copy(Str, "whatsapp", "browser_name")
-	helper.Copy(Bool, "whatsapp", "debug_decode_before_send")
 
 	helper.Copy(Str, "bridge", "username_template")
 	helper.Copy(Str, "bridge", "displayname_template")

@@ -334,8 +334,6 @@ var ErrAlreadyLoggedIn = errors.New("already logged in")
 
 func (user *User) createClient(sess *store.Device) {
 	user.Client = whatsmeow.NewClient(sess, &waLogger{user.log.Sub("Client")})
-	user.Client.DebugDecodeBeforeSend = user.bridge.Config.WhatsApp.DebugDecodeBeforeSend
-	user.Client.OneMessageAtATime = user.bridge.Config.WhatsApp.DebugDecodeBeforeSend
 	user.Client.AddEventHandler(user.HandleEvent)
 	user.Client.SetForceActiveDeliveryReceipts(user.bridge.Config.Bridge.ForceActiveDeliveryReceipts)
 	user.Client.GetMessageForRetry = func(to types.JID, id types.MessageID) *waProto.Message {
@@ -741,6 +739,11 @@ func (user *User) HandleEvent(event interface{}) {
 		}
 	case *events.AppState:
 		// Ignore
+	case *events.KeepAliveTimeout:
+		go user.sendBridgeState(BridgeState{StateEvent: StateTransientDisconnect, Error: WAKeepaliveTimeout})
+	case *events.KeepAliveRestored:
+		user.log.Infof("Keepalive restored after timeouts, sending connected event")
+		go user.sendBridgeState(BridgeState{StateEvent: StateConnected})
 	default:
 		user.log.Debugfln("Unknown type of event in HandleEvent: %T", v)
 	}

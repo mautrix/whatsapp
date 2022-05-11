@@ -91,8 +91,6 @@ whatsapp:
     # Must be "unknown" for a generic icon or a valid browser name if you want a specific icon.
     # List of valid browser names: https://github.com/tulir/whatsmeow/blob/8b34d886d543b72e5f4699cf5b2797f68d598f78/binary/proto/def.proto#L38-L51
     browser_name: unknown
-    # Decode outgoing binary XML payloads to try to make sure they're valid before sending to WhatsApp.
-    debug_decode_before_send: false
 
 # Bridge config
 bridge:
