@@ -1,4 +1,4 @@
-# unreleased
+# v0.4.0 (unreleased)
 
 * Switched from `/r0` to `/v3` paths everywhere.
   * The new `v3` paths are implemented since Synapse 1.48, Dendrite 0.6.5,
@@ -8,6 +8,9 @@
 * Added option to automatically request old media from phone after backfilling.
 * Added experimental provisioning API to check if a phone number is registered
   on WhatsApp.
+* Added automatic retrying if the websocket dies while sending a message.
+* Improved error handling if Postgres dies while the bridge is running.
+* Fixed bridging stickers sent from WhatsApp web.
 
 # v0.3.1 (2022-04-16)
 
