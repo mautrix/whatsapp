@@ -513,6 +513,11 @@ func (prov *ProvisioningAPI) Login(w http.ResponseWriter, r *http.Request) {
 	userID := r.URL.Query().Get("user_id")
 	user := prov.bridge.GetUserByMXID(id.UserID(userID))
 
+	if userTimezone := r.URL.Query().Get("tz"); userTimezone != "" {
+		user.Timezone = userTimezone
+		user.Update()
+	}
+
 	c, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		prov.log.Errorln("Failed to upgrade connection to websocket:", err)

@@ -72,10 +72,60 @@ func (user *User) handleHistorySyncsLoop() {
 	go user.handleBackfillRequestsLoop(user.BackfillQueue.DeferredBackfillRequests)
 	go user.BackfillQueue.RunLoop(user)
 
+	if user.bridge.Config.Bridge.HistorySync.MediaRequests.AutoRequestMedia &&
+		user.bridge.Config.Bridge.HistorySync.MediaRequests.RequestMethod == config.MediaRequestMethodLocalTime {
+		go user.dailyMediaRequestLoop()
+	}
+
 	// Always save the history syncs for the user. If they want to enable
 	// backfilling in the future, we will have it in the database.
 	for evt := range user.historySyncs {
 		user.handleHistorySync(reCheckQueue, evt.Data)
+	}
+}
+
+func (user *User) dailyMediaRequestLoop() {
+	// Calculate when to do the first set of media retry requests
+	now := time.Now()
+	userTz, err := time.LoadLocation(user.Timezone)
+	if err != nil {
+		userTz = now.Local().Location()
+	}
+	tonightMidnight := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, userTz)
+	midnightOffset := time.Duration(user.bridge.Config.Bridge.HistorySync.MediaRequests.RequestLocalTime) * time.Minute
+	requestStartTime := tonightMidnight.Add(midnightOffset)
+
+	// If the request time for today has already happened, we need to start the
+	// request loop tomorrow instead.
+	if requestStartTime.Before(now) {
+		requestStartTime = requestStartTime.AddDate(0, 0, 1)
+	}
+
+	// Wait to start the loop
+	user.log.Infof("Waiting until %s to do media retry requests", requestStartTime)
+	time.Sleep(time.Until(requestStartTime))
+
+	for {
+		mediaBackfillRequests := user.bridge.DB.MediaBackfillRequest.GetMediaBackfillRequestsForUser(user.MXID)
+		user.log.Infof("Sending %d media retry requests", len(mediaBackfillRequests))
+
+		// Send all of the media backfill requests for the user at once
+		for _, req := range mediaBackfillRequests {
+			portal := user.GetPortalByJID(req.PortalKey.JID)
+			_, err := portal.requestMediaRetry(user, req.EventID)
+			if err != nil {
+				user.log.Warnf("Failed to send media retry request for %s / %s", req.PortalKey.String(), req.EventID)
+				req.Status = database.MediaBackfillRequestStatusRequestFailed
+				req.Error = err.Error()
+			} else {
+				user.log.Debugfln("Sent media retry request for %s / %s", req.PortalKey.String(), req.EventID)
+				req.Status = database.MediaBackfillRequestStatusRequested
+			}
+			req.Upsert()
+		}
+
+		// Wait for 24 hours before making requests again
+		time.Sleep(24 * time.Hour)
 	}
 }
 

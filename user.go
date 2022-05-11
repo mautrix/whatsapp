@@ -431,6 +431,7 @@ func (user *User) DeleteSession() {
 	user.bridge.DB.Backfill.DeleteAll(user.MXID)
 	user.bridge.DB.HistorySync.DeleteAllConversations(user.MXID)
 	user.bridge.DB.HistorySync.DeleteAllMessages(user.MXID)
+	user.bridge.DB.MediaBackfillRequest.DeleteAllMediaBackfillRequests(user.MXID)
 }
 
 func (user *User) IsConnected() bool {

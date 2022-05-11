@@ -2346,20 +2346,22 @@ func (portal *Portal) handleMediaRetry(retry *events.MediaRetry, source *User) {
 	msg.UpdateMXID(resp.EventID, database.MsgNormal, database.MsgNoError)
 }
 
-func (portal *Portal) requestMediaRetry(user *User, eventID id.EventID) bool {
+func (portal *Portal) requestMediaRetry(user *User, eventID id.EventID) (bool, error) {
 	msg := portal.bridge.DB.Message.GetByMXID(eventID)
 	if msg == nil {
-		portal.log.Debugfln("%s requested a media retry for unknown event %s", user.MXID, eventID)
-		return false
+		err := errors.New(fmt.Sprintf("%s requested a media retry for unknown event %s", user.MXID, eventID))
+		portal.log.Debugfln(err.Error())
+		return false, err
 	} else if msg.Error != database.MsgErrMediaNotFound {
-		portal.log.Debugfln("%s requested a media retry for non-errored event %s", user.MXID, eventID)
-		return false
+		err := errors.New(fmt.Sprintf("%s requested a media retry for non-errored event %s", user.MXID, eventID))
+		portal.log.Debugfln(err.Error())
+		return false, err
 	}
 
 	evt, err := portal.fetchMediaRetryEvent(msg)
 	if err != nil {
 		portal.log.Warnfln("Can't send media retry request for %s: %v", msg.JID, err)
-		return true
+		return true, nil
 	}
 
 	err = user.Client.SendMediaRetryReceipt(&types.MessageInfo{
@@ -2376,7 +2378,7 @@ func (portal *Portal) requestMediaRetry(user *User, eventID id.EventID) bool {
 	} else {
 		portal.log.Debugfln("Sent media retry request for %s", msg.JID)
 	}
-	return true
+	return true, err
 }
 
 const thumbnailMaxSize = 72

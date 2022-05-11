@@ -29,8 +29,8 @@ type MediaBackfillRequestStatus int
 
 const (
 	MediaBackfillRequestStatusNotRequested MediaBackfillRequestStatus = iota
-	MediaBackfillRequestStatusSuccess
-	MediaBackfillRequestStatusFailed
+	MediaBackfillRequestStatusRequested
+	MediaBackfillRequestStatusRequestFailed
 )
 
 type MediaBackfillRequestQuery struct {
@@ -64,14 +64,16 @@ func (mbrq *MediaBackfillRequestQuery) NewMediaBackfillRequestWithValues(userID 
 		UserID:    userID,
 		PortalKey: portalKey,
 		EventID:   eventID,
+		Status:    MediaBackfillRequestStatusNotRequested,
 	}
 }
 
 const (
 	getMediaBackfillRequestsForUser = `
 		SELECT user_mxid, portal_jid, portal_receiver, event_id, status, error
-		  FROM media_backfill_requests
-		 WHERE user_mxid=$1
+		FROM media_backfill_requests
+		WHERE user_mxid=$1
+			AND status=0
 	`
 )
 
