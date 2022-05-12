@@ -90,16 +90,17 @@ type User struct {
 }
 
 func (user *User) Scan(row Scannable) *User {
-	var username sql.NullString
+	var username, timezone sql.NullString
 	var device, agent sql.NullByte
 	var phoneLastSeen, phoneLastPinged sql.NullInt64
-	err := row.Scan(&user.MXID, &username, &agent, &device, &user.ManagementRoom, &user.SpaceRoom, &phoneLastSeen, &phoneLastPinged, &user.Timezone)
+	err := row.Scan(&user.MXID, &username, &agent, &device, &user.ManagementRoom, &user.SpaceRoom, &phoneLastSeen, &phoneLastPinged, &timezone)
 	if err != nil {
 		if err != sql.ErrNoRows {
 			user.log.Errorln("Database scan failed:", err)
 		}
 		return nil
 	}
+	user.Timezone = timezone.String
 	if len(username.String) > 0 {
 		user.JID = types.NewADJID(username.String, agent.Byte, device.Byte)
 	}
