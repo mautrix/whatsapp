@@ -2346,7 +2346,7 @@ func (portal *Portal) handleMediaRetry(retry *events.MediaRetry, source *User) {
 	msg.UpdateMXID(resp.EventID, database.MsgNormal, database.MsgNoError)
 }
 
-func (portal *Portal) requestMediaRetry(user *User, eventID id.EventID) (bool, error) {
+func (portal *Portal) requestMediaRetry(user *User, eventID id.EventID, mediaKey []byte) (bool, error) {
 	msg := portal.bridge.DB.Message.GetByMXID(eventID)
 	if msg == nil {
 		err := errors.New(fmt.Sprintf("%s requested a media retry for unknown event %s", user.MXID, eventID))
@@ -2358,13 +2358,17 @@ func (portal *Portal) requestMediaRetry(user *User, eventID id.EventID) (bool, e
 		return false, err
 	}
 
-	evt, err := portal.fetchMediaRetryEvent(msg)
-	if err != nil {
-		portal.log.Warnfln("Can't send media retry request for %s: %v", msg.JID, err)
-		return true, nil
+	// If the media key is not provided, grab it from the event in Matrix
+	if mediaKey == nil {
+		evt, err := portal.fetchMediaRetryEvent(msg)
+		if err != nil {
+			portal.log.Warnfln("Can't send media retry request for %s: %v", msg.JID, err)
+			return true, nil
+		}
+		mediaKey = evt.Media.Key
 	}
 
-	err = user.Client.SendMediaRetryReceipt(&types.MessageInfo{
+	err := user.Client.SendMediaRetryReceipt(&types.MessageInfo{
 		ID: msg.JID,
 		MessageSource: types.MessageSource{
 			IsFromMe: msg.Sender.User == user.JID.User,
@@ -2372,7 +2376,7 @@ func (portal *Portal) requestMediaRetry(user *User, eventID id.EventID) (bool, e
 			Sender:   msg.Sender,
 			Chat:     portal.Key.JID,
 		},
-	}, evt.Media.Key)
+	}, mediaKey)
 	if err != nil {
 		portal.log.Warnfln("Failed to send media retry request for %s: %v", msg.JID, err)
 	} else {

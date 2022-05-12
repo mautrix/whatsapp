@@ -12,6 +12,7 @@ func init() {
 				portal_jid          TEXT,
 				portal_receiver     TEXT,
 				event_id            TEXT,
+				media_key           BYTEA,
 				status              INTEGER,
 				error               TEXT,
 

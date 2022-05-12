@@ -112,7 +112,7 @@ func (user *User) dailyMediaRequestLoop() {
 		// Send all of the media backfill requests for the user at once
 		for _, req := range mediaBackfillRequests {
 			portal := user.GetPortalByJID(req.PortalKey.JID)
-			_, err := portal.requestMediaRetry(user, req.EventID)
+			_, err := portal.requestMediaRetry(user, req.EventID, req.MediaKey)
 			if err != nil {
 				user.log.Warnf("Failed to send media retry request for %s / %s", req.PortalKey.String(), req.EventID)
 				req.Status = database.MediaBackfillRequestStatusRequestFailed
@@ -121,6 +121,7 @@ func (user *User) dailyMediaRequestLoop() {
 				user.log.Debugfln("Sent media retry request for %s / %s", req.PortalKey.String(), req.EventID)
 				req.Status = database.MediaBackfillRequestStatusRequested
 			}
+			req.MediaKey = nil
 			req.Upsert()
 		}
 
@@ -588,7 +589,7 @@ func (portal *Portal) requestMediaRetries(source *User, eventIDs []id.EventID, i
 					portal.log.Debugfln("Sent post-backfill media retry request for %s", info.ID)
 				}
 			case config.MediaRequestMethodLocalTime:
-				req := portal.bridge.DB.MediaBackfillRequest.NewMediaBackfillRequestWithValues(source.MXID, &portal.Key, eventIDs[i])
+				req := portal.bridge.DB.MediaBackfillRequest.NewMediaBackfillRequestWithValues(source.MXID, &portal.Key, eventIDs[i], info.MediaKey)
 				req.Upsert()
 			}
 		}

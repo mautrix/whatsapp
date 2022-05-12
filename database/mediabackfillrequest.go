@@ -45,6 +45,7 @@ type MediaBackfillRequest struct {
 	UserID    id.UserID
 	PortalKey *PortalKey
 	EventID   id.EventID
+	MediaKey  []byte
 	Status    MediaBackfillRequestStatus
 	Error     string
 }
@@ -57,20 +58,21 @@ func (mbrq *MediaBackfillRequestQuery) newMediaBackfillRequest() *MediaBackfillR
 	}
 }
 
-func (mbrq *MediaBackfillRequestQuery) NewMediaBackfillRequestWithValues(userID id.UserID, portalKey *PortalKey, eventID id.EventID) *MediaBackfillRequest {
+func (mbrq *MediaBackfillRequestQuery) NewMediaBackfillRequestWithValues(userID id.UserID, portalKey *PortalKey, eventID id.EventID, mediaKey []byte) *MediaBackfillRequest {
 	return &MediaBackfillRequest{
 		db:        mbrq.db,
 		log:       mbrq.log,
 		UserID:    userID,
 		PortalKey: portalKey,
 		EventID:   eventID,
+		MediaKey:  mediaKey,
 		Status:    MediaBackfillRequestStatusNotRequested,
 	}
 }
 
 const (
 	getMediaBackfillRequestsForUser = `
-		SELECT user_mxid, portal_jid, portal_receiver, event_id, status, error
+		SELECT user_mxid, portal_jid, portal_receiver, event_id, media_key, status, error
 		FROM media_backfill_requests
 		WHERE user_mxid=$1
 			AND status=0
@@ -79,17 +81,18 @@ const (
 
 func (mbr *MediaBackfillRequest) Upsert() {
 	_, err := mbr.db.Exec(`
-		INSERT INTO media_backfill_requests (user_mxid, portal_jid, portal_receiver, event_id, status, error)
-		VALUES ($1, $2, $3, $4, $5, $6)
+		INSERT INTO media_backfill_requests (user_mxid, portal_jid, portal_receiver, event_id, media_key, status, error)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
 		ON CONFLICT (user_mxid, portal_jid, portal_receiver, event_id)
 		DO UPDATE SET
+			media_key=EXCLUDED.media_key,
 			status=EXCLUDED.status,
-			error=EXCLUDED.error
-	`,
+			error=EXCLUDED.error`,
 		mbr.UserID,
 		mbr.PortalKey.JID.String(),
 		mbr.PortalKey.Receiver.String(),
 		mbr.EventID,
+		mbr.MediaKey,
 		mbr.Status,
 		mbr.Error)
 	if err != nil {
@@ -98,7 +101,7 @@ func (mbr *MediaBackfillRequest) Upsert() {
 }
 
 func (mbr *MediaBackfillRequest) Scan(row Scannable) *MediaBackfillRequest {
-	err := row.Scan(&mbr.UserID, &mbr.PortalKey.JID, &mbr.PortalKey.Receiver, &mbr.EventID, &mbr.Status, &mbr.Error)
+	err := row.Scan(&mbr.UserID, &mbr.PortalKey.JID, &mbr.PortalKey.Receiver, &mbr.EventID, &mbr.MediaKey, &mbr.Status, &mbr.Error)
 	if err != nil {
 		if !errors.Is(err, sql.ErrNoRows) {
 			mbr.log.Errorln("Database scan failed:", err)
