@@ -513,11 +513,6 @@ func (prov *ProvisioningAPI) Login(w http.ResponseWriter, r *http.Request) {
 	userID := r.URL.Query().Get("user_id")
 	user := prov.bridge.GetUserByMXID(id.UserID(userID))
 
-	if userTimezone := r.URL.Query().Get("tz"); userTimezone != "" {
-		user.Timezone = userTimezone
-		user.Update()
-	}
-
 	c, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		prov.log.Errorln("Failed to upgrade connection to websocket:", err)
@@ -579,6 +574,11 @@ func (prov *ProvisioningAPI) Login(w http.ResponseWriter, r *http.Request) {
 					"phone":    fmt.Sprintf("+%s", jid.User),
 					"platform": user.Client.Store.Platform,
 				})
+
+				if userTimezone := r.URL.Query().Get("tz"); userTimezone != "" {
+					user.Timezone = userTimezone
+					user.Update()
+				}
 			case whatsmeow.QRChannelTimeout.Event:
 				user.log.Debugln("Login via provisioning API timed out")
 				errCode := "login timed out"
