@@ -574,6 +574,11 @@ func (prov *ProvisioningAPI) Login(w http.ResponseWriter, r *http.Request) {
 					"phone":    fmt.Sprintf("+%s", jid.User),
 					"platform": user.Client.Store.Platform,
 				})
+
+				if userTimezone := r.URL.Query().Get("tz"); userTimezone != "" {
+					user.Timezone = userTimezone
+					user.Update()
+				}
 			case whatsmeow.QRChannelTimeout.Event:
 				user.log.Debugln("Login via provisioning API timed out")
 				errCode := "login timed out"

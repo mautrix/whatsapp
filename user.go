@@ -428,9 +428,10 @@ func (user *User) DeleteSession() {
 	}
 
 	// Delete all of the backfill and history sync data.
-	user.bridge.DB.BackfillQuery.DeleteAll(user.MXID)
-	user.bridge.DB.HistorySyncQuery.DeleteAllConversations(user.MXID)
-	user.bridge.DB.HistorySyncQuery.DeleteAllMessages(user.MXID)
+	user.bridge.DB.Backfill.DeleteAll(user.MXID)
+	user.bridge.DB.HistorySync.DeleteAllConversations(user.MXID)
+	user.bridge.DB.HistorySync.DeleteAllMessages(user.MXID)
+	user.bridge.DB.MediaBackfillRequest.DeleteAllMediaBackfillRequests(user.MXID)
 }
 
 func (user *User) IsConnected() bool {

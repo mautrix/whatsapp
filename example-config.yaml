@@ -133,9 +133,22 @@ bridge:
         # Should the bridge request a full sync from the phone when logging in?
         # This bumps the size of history syncs from 3 months to 1 year.
         request_full_sync: false
-        # Should expired media be automatically requested from the server after backfilling?
-        # If false, media can still be requested by reacting with the ♻️ (recycle) emoji.
-        auto_request_media: true
+        # Settings for media requests. If the media expired, then it will not
+        # be on the WA servers.
+        # Media can always be requested by reacting with the ♻️ (recycle) emoji.
+        # These settings determine if the media requests should be done
+        # automatically during or after backfill.
+        media_requests:
+            # Should expired media be automatically requested from the server as
+            # part of the backfill process?
+            auto_request_media: true
+            # Whether to request the media immediately after the media message
+            # is backfilled ("immediate") or at a specific time of the day
+            # ("local_time").
+            request_method: immediate
+            # If request_method is "local_time", what time should the requests
+            # be sent (in minutes after midnight)?
+            request_local_time: 120
         # The maximum number of initial conversations that should be synced.
         # Other conversations will be backfilled on demand when the start PM
         # provisioning endpoint is used or when a message comes in from that
