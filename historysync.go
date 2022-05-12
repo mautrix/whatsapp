@@ -17,6 +17,7 @@
 package main
 
 import (
+	"database/sql"
 	"fmt"
 	"time"
 
@@ -154,7 +155,7 @@ func (user *User) handleBackfillRequestsLoop(backfillRequests chan *database.Bac
 
 		if conv.EphemeralExpiration != nil && portal.ExpirationTime != *conv.EphemeralExpiration {
 			portal.ExpirationTime = *conv.EphemeralExpiration
-			portal.Update()
+			portal.Update(nil)
 		}
 
 		user.backfillInChunks(req, conv, portal)
@@ -233,7 +234,7 @@ func (user *User) backfillInChunks(req *database.Backfill, conv *database.Histor
 		msg.Timestamp = conv.LastMessageTimestamp
 		msg.Sent = true
 		msg.Type = database.MsgFake
-		msg.Insert()
+		msg.Insert(nil)
 		return
 	}
 
@@ -561,9 +562,24 @@ func (portal *Portal) backfill(source *User, messages []*waProto.WebMessageInfo,
 		portal.log.Errorln("Error batch sending messages:", err)
 		return nil
 	} else {
-		portal.finishBatch(resp.EventIDs, infos)
-		portal.NextBatchID = resp.NextBatchID
-		portal.Update()
+		txn, err := portal.bridge.DB.Begin()
+		if err != nil {
+			portal.log.Errorln("Failed to start transaction to save batch messages:", err)
+			return nil
+		}
+
+		// Do the following block in the transaction
+		{
+			portal.finishBatch(txn, resp.EventIDs, infos)
+			portal.NextBatchID = resp.NextBatchID
+			portal.Update(txn)
+		}
+
+		err = txn.Commit()
+		if err != nil {
+			portal.log.Errorln("Failed to commit transaction to save batch messages:", err)
+			return nil
+		}
 		if portal.bridge.Config.Bridge.HistorySync.MediaRequests.AutoRequestMedia {
 			go portal.requestMediaRetries(source, resp.EventIDs, infos)
 		}
@@ -654,48 +670,27 @@ func (portal *Portal) wrapBatchEvent(info *types.MessageInfo, intent *appservice
 	}, nil
 }
 
-func (portal *Portal) finishBatch(eventIDs []id.EventID, infos []*wrappedInfo) {
-	if len(eventIDs) != len(infos) {
-		portal.log.Errorfln("Length of event IDs (%d) and message infos (%d) doesn't match! Using slow path for mapping event IDs", len(eventIDs), len(infos))
-		infoMap := make(map[types.MessageID]*wrappedInfo, len(infos))
-		for _, info := range infos {
-			infoMap[info.ID] = info
+func (portal *Portal) finishBatch(txn *sql.Tx, eventIDs []id.EventID, infos []*wrappedInfo) {
+	for i, info := range infos {
+		if info == nil {
+			continue
 		}
-		for _, eventID := range eventIDs {
-			if evt, err := portal.MainIntent().GetEvent(portal.MXID, eventID); err != nil {
-				portal.log.Warnfln("Failed to get event %s to register it in the database: %v", eventID, err)
-			} else if msgID, ok := evt.Content.Raw[backfillIDField].(string); !ok {
-				portal.log.Warnfln("Event %s doesn't include the WhatsApp message ID", eventID)
-			} else if info, ok := infoMap[types.MessageID(msgID)]; !ok {
-				portal.log.Warnfln("Didn't find info of message %s (event %s) to register it in the database", msgID, eventID)
+
+		eventID := eventIDs[i]
+		portal.markHandled(txn, nil, info.MessageInfo, eventID, true, false, info.Type, info.Error)
+
+		if info.ExpiresIn > 0 {
+			if info.ExpirationStart > 0 {
+				remainingSeconds := time.Unix(int64(info.ExpirationStart), 0).Add(time.Duration(info.ExpiresIn) * time.Second).Sub(time.Now()).Seconds()
+				portal.log.Debugfln("Disappearing history sync message: expires in %d, started at %d, remaining %d", info.ExpiresIn, info.ExpirationStart, int(remainingSeconds))
+				portal.MarkDisappearing(eventID, uint32(remainingSeconds), true)
 			} else {
-				portal.finishBatchEvt(info, eventID)
+				portal.log.Debugfln("Disappearing history sync message: expires in %d (not started)", info.ExpiresIn)
+				portal.MarkDisappearing(eventID, info.ExpiresIn, false)
 			}
 		}
-	} else {
-		for i := 0; i < len(infos); i++ {
-			portal.finishBatchEvt(infos[i], eventIDs[i])
-		}
-		portal.log.Infofln("Successfully sent %d events", len(eventIDs))
 	}
-}
-
-func (portal *Portal) finishBatchEvt(info *wrappedInfo, eventID id.EventID) {
-	if info == nil {
-		return
-	}
-
-	portal.markHandled(nil, info.MessageInfo, eventID, true, false, info.Type, info.Error)
-	if info.ExpiresIn > 0 {
-		if info.ExpirationStart > 0 {
-			remainingSeconds := time.Unix(int64(info.ExpirationStart), 0).Add(time.Duration(info.ExpiresIn) * time.Second).Sub(time.Now()).Seconds()
-			portal.log.Debugfln("Disappearing history sync message: expires in %d, started at %d, remaining %d", info.ExpiresIn, info.ExpirationStart, int(remainingSeconds))
-			portal.MarkDisappearing(eventID, uint32(remainingSeconds), true)
-		} else {
-			portal.log.Debugfln("Disappearing history sync message: expires in %d (not started)", info.ExpiresIn)
-			portal.MarkDisappearing(eventID, info.ExpiresIn, false)
-		}
-	}
+	portal.log.Infofln("Successfully sent %d events", len(eventIDs))
 }
 
 func (portal *Portal) sendPostBackfillDummy(lastTimestamp time.Time, insertionEventId id.EventID) {
@@ -717,7 +712,7 @@ func (portal *Portal) sendPostBackfillDummy(lastTimestamp time.Time, insertionEv
 	msg.Timestamp = lastTimestamp.Add(1 * time.Second)
 	msg.Sent = true
 	msg.Type = database.MsgFake
-	msg.Insert()
+	msg.Insert(nil)
 }
 
 // endregion

@@ -74,7 +74,7 @@ func (mx *MatrixHandler) HandleEncryption(evt *event.Event) {
 	if portal != nil && !portal.Encrypted {
 		mx.log.Debugfln("%s enabled encryption in %s", evt.Sender, evt.RoomID)
 		portal.Encrypted = true
-		portal.Update()
+		portal.Update(nil)
 		if portal.IsPrivateChat() {
 			err := mx.as.BotIntent().EnsureJoined(portal.MXID, appservice.EnsureJoinedParams{BotOverride: portal.MainIntent().Client})
 			if err != nil {
@@ -211,7 +211,7 @@ func (mx *MatrixHandler) createPrivatePortalFromInvite(roomID id.RoomID, inviter
 		mx.as.StateStore.SetMembership(roomID, mx.bridge.Bot.UserID, event.MembershipJoin)
 		portal.Encrypted = true
 	}
-	portal.Update()
+	portal.Update(nil)
 	portal.UpdateBridgeInfo()
 	_, _ = intent.SendNotice(roomID, "Private chat portal created")
 }

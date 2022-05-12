@@ -209,7 +209,7 @@ func (handler *CommandHandler) CommandSetRelay(ce *CommandEvent) {
 		ce.Reply("Only admins are allowed to enable relay mode on this instance of the bridge")
 	} else {
 		ce.Portal.RelayUserID = ce.User.MXID
-		ce.Portal.Update()
+		ce.Portal.Update(nil)
 		ce.Reply("Messages from non-logged-in users in this room will now be bridged through your WhatsApp account")
 	}
 }
@@ -225,7 +225,7 @@ func (handler *CommandHandler) CommandUnsetRelay(ce *CommandEvent) {
 		ce.Reply("Only admins are allowed to enable relay mode on this instance of the bridge")
 	} else {
 		ce.Portal.RelayUserID = ""
-		ce.Portal.Update()
+		ce.Portal.Update(nil)
 		ce.Reply("Messages from non-logged-in users will no longer be bridged in this room")
 	}
 }
@@ -447,7 +447,7 @@ func (handler *CommandHandler) CommandCreate(ce *CommandEvent) {
 		portal.Encrypted = true
 	}
 
-	portal.Update()
+	portal.Update(nil)
 	portal.UpdateBridgeInfo()
 
 	ce.Reply("Successfully created WhatsApp group %s", portal.Key.JID)
