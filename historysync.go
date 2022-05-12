@@ -140,7 +140,7 @@ func (user *User) backfillInChunks(req *database.Backfill, conv *database.Histor
 	// a notice indicating so.
 	if len(allMsgs) == 0 && conv.EphemeralExpiration != nil && *conv.EphemeralExpiration > 0 {
 		lastMessage := portal.bridge.DB.Message.GetLastInChat(portal.Key)
-		if lastMessage == nil || !conv.LastMessageTimestamp.Equal(lastMessage.Timestamp) {
+		if lastMessage == nil || conv.LastMessageTimestamp.After(lastMessage.Timestamp) {
 			sendDisappearedNotice = true
 		}
 	}
@@ -177,6 +177,7 @@ func (user *User) backfillInChunks(req *database.Backfill, conv *database.Histor
 		msg.JID = types.MessageID(resp.EventID)
 		msg.Timestamp = conv.LastMessageTimestamp
 		msg.Sent = true
+		msg.Type = database.MsgFake
 		msg.Insert()
 		return
 	}
