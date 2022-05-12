@@ -804,6 +804,7 @@ func (portal *Portal) SyncParticipants(source *User, metadata *types.GroupInfo) 
 		levels = portal.GetBasePowerLevels()
 		changed = true
 	}
+	changed = portal.applyPowerLevelFixes(levels) || changed
 	participantMap := make(map[types.JID]bool)
 	for _, participant := range metadata.Participants {
 		participantMap[participant.JID] = true
@@ -1045,8 +1046,17 @@ func (portal *Portal) GetBasePowerLevels() *event.PowerLevelsEventContent {
 			event.StateRoomName.Type:   anyone,
 			event.StateRoomAvatar.Type: anyone,
 			event.StateTopic.Type:      anyone,
+			event.EventReaction.Type:   anyone,
+			event.EventRedaction.Type:  anyone,
 		},
 	}
+}
+
+func (portal *Portal) applyPowerLevelFixes(levels *event.PowerLevelsEventContent) bool {
+	changed := false
+	changed = levels.EnsureEventLevel(event.EventReaction, 0) || changed
+	changed = levels.EnsureEventLevel(event.EventRedaction, 0) || changed
+	return changed
 }
 
 func (portal *Portal) ChangeAdminStatus(jids []types.JID, setAdmin bool) id.EventID {
@@ -1058,7 +1068,7 @@ func (portal *Portal) ChangeAdminStatus(jids []types.JID, setAdmin bool) id.Even
 	if setAdmin {
 		newLevel = 50
 	}
-	changed := false
+	changed := portal.applyPowerLevelFixes(levels)
 	for _, jid := range jids {
 		puppet := portal.bridge.GetPuppetByJID(jid)
 		changed = levels.EnsureUserLevel(puppet.MXID, newLevel) || changed
@@ -1090,7 +1100,8 @@ func (portal *Portal) RestrictMessageSending(restrict bool) id.EventID {
 		newLevel = 50
 	}
 
-	if levels.EventsDefault == newLevel {
+	changed := portal.applyPowerLevelFixes(levels)
+	if levels.EventsDefault == newLevel && !changed {
 		return ""
 	}
 
@@ -1113,7 +1124,7 @@ func (portal *Portal) RestrictMetadataChanges(restrict bool) id.EventID {
 	if restrict {
 		newLevel = 50
 	}
-	changed := false
+	changed := portal.applyPowerLevelFixes(levels)
 	changed = levels.EnsureEventLevel(event.StateRoomName, newLevel) || changed
 	changed = levels.EnsureEventLevel(event.StateRoomAvatar, newLevel) || changed
 	changed = levels.EnsureEventLevel(event.StateTopic, newLevel) || changed
