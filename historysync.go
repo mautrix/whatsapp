@@ -169,6 +169,7 @@ func (user *User) backfillInChunks(req *database.Backfill, conv *database.Histor
 	}
 
 	var forwardPrevID id.EventID
+	var timeEnd *time.Time
 	if req.BackfillType == database.BackfillForward {
 		// TODO this overrides the TimeStart set when enqueuing the backfill
 		//      maybe the enqueue should instead include the prev event ID
@@ -178,13 +179,13 @@ func (user *User) backfillInChunks(req *database.Backfill, conv *database.Histor
 		req.TimeStart = &start
 	} else {
 		firstMessage := portal.bridge.DB.Message.GetFirstInChat(portal.Key)
-		if firstMessage != nil && (req.TimeEnd == nil || firstMessage.Timestamp.Before(*req.TimeEnd)) {
+		if firstMessage != nil {
 			end := firstMessage.Timestamp.Add(-1 * time.Second)
-			req.TimeEnd = &end
+			timeEnd = &end
 			user.log.Debugfln("Limiting backfill to end at %v", end)
 		}
 	}
-	allMsgs := user.bridge.DB.HistorySync.GetMessagesBetween(user.MXID, conv.ConversationID, req.TimeStart, req.TimeEnd, req.MaxTotalEvents)
+	allMsgs := user.bridge.DB.HistorySync.GetMessagesBetween(user.MXID, conv.ConversationID, req.TimeStart, timeEnd, req.MaxTotalEvents)
 
 	sendDisappearedNotice := false
 	// If expired messages are on, and a notice has not been sent to this chat
@@ -397,7 +398,7 @@ func getConversationTimestamp(conv *waProto.Conversation) uint64 {
 func (user *User) EnqueueImmedateBackfills(portals []*Portal) {
 	for priority, portal := range portals {
 		maxMessages := user.bridge.Config.Bridge.HistorySync.Immediate.MaxEvents
-		initialBackfill := user.bridge.DB.Backfill.NewWithValues(user.MXID, database.BackfillImmediate, priority, &portal.Key, nil, nil, maxMessages, maxMessages, 0)
+		initialBackfill := user.bridge.DB.Backfill.NewWithValues(user.MXID, database.BackfillImmediate, priority, &portal.Key, nil, maxMessages, maxMessages, 0)
 		initialBackfill.Insert()
 	}
 }
@@ -412,7 +413,7 @@ func (user *User) EnqueueDeferredBackfills(portals []*Portal) {
 				startDate = &startDaysAgo
 			}
 			backfillMessages := user.bridge.DB.Backfill.NewWithValues(
-				user.MXID, database.BackfillDeferred, stageIdx*numPortals+portalIdx, &portal.Key, startDate, nil, backfillStage.MaxBatchEvents, -1, backfillStage.BatchDelay)
+				user.MXID, database.BackfillDeferred, stageIdx*numPortals+portalIdx, &portal.Key, startDate, backfillStage.MaxBatchEvents, -1, backfillStage.BatchDelay)
 			backfillMessages.Insert()
 		}
 	}
@@ -425,7 +426,7 @@ func (user *User) EnqueueForwardBackfills(portals []*Portal) {
 			continue
 		}
 		backfill := user.bridge.DB.Backfill.NewWithValues(
-			user.MXID, database.BackfillForward, priority, &portal.Key, &lastMsg.Timestamp, nil, -1, -1, 0)
+			user.MXID, database.BackfillForward, priority, &portal.Key, &lastMsg.Timestamp, -1, -1, 0)
 		backfill.Insert()
 	}
 }

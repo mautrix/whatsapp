@@ -59,7 +59,7 @@ func (bq *BackfillQuery) New() *Backfill {
 	}
 }
 
-func (bq *BackfillQuery) NewWithValues(userID id.UserID, backfillType BackfillType, priority int, portal *PortalKey, timeStart *time.Time, timeEnd *time.Time, maxBatchEvents, maxTotalEvents, batchDelay int) *Backfill {
+func (bq *BackfillQuery) NewWithValues(userID id.UserID, backfillType BackfillType, priority int, portal *PortalKey, timeStart *time.Time, maxBatchEvents, maxTotalEvents, batchDelay int) *Backfill {
 	return &Backfill{
 		db:             bq.db,
 		log:            bq.log,
@@ -68,7 +68,6 @@ func (bq *BackfillQuery) NewWithValues(userID id.UserID, backfillType BackfillTy
 		Priority:       priority,
 		Portal:         portal,
 		TimeStart:      timeStart,
-		TimeEnd:        timeEnd,
 		MaxBatchEvents: maxBatchEvents,
 		MaxTotalEvents: maxTotalEvents,
 		BatchDelay:     batchDelay,
@@ -77,10 +76,10 @@ func (bq *BackfillQuery) NewWithValues(userID id.UserID, backfillType BackfillTy
 
 const (
 	getNextBackfillQuery = `
-		SELECT queue_id, user_mxid, type, priority, portal_jid, portal_receiver, time_start, time_end, max_batch_events, max_total_events, batch_delay
+		SELECT queue_id, user_mxid, type, priority, portal_jid, portal_receiver, time_start, max_batch_events, max_total_events, batch_delay
 		FROM backfill_queue
 		WHERE user_mxid=$1
-			AND completed_at IS NULL
+			AND dispatch_time IS NULL
 		ORDER BY type, priority, queue_id
 		LIMIT 1
 	`
@@ -126,21 +125,21 @@ type Backfill struct {
 	Priority       int
 	Portal         *PortalKey
 	TimeStart      *time.Time
-	TimeEnd        *time.Time
 	MaxBatchEvents int
 	MaxTotalEvents int
 	BatchDelay     int
+	DispatchTime   *time.Time
 	CompletedAt    *time.Time
 }
 
 func (b *Backfill) String() string {
-	return fmt.Sprintf("Backfill{QueueID: %d, UserID: %s, BackfillType: %s, Priority: %d, Portal: %s, TimeStart: %s, TimeEnd: %s, MaxBatchEvents: %d, MaxTotalEvents: %d, BatchDelay: %d, CompletedAt: %s}",
-		b.QueueID, b.UserID, b.BackfillType, b.Priority, b.Portal, b.TimeStart, b.TimeEnd, b.MaxBatchEvents, b.MaxTotalEvents, b.BatchDelay, b.CompletedAt,
+	return fmt.Sprintf("Backfill{QueueID: %d, UserID: %s, BackfillType: %s, Priority: %d, Portal: %s, TimeStart: %s, MaxBatchEvents: %d, MaxTotalEvents: %d, BatchDelay: %d, DispatchTime: %s, CompletedAt: %s}",
+		b.QueueID, b.UserID, b.BackfillType, b.Priority, b.Portal, b.TimeStart, b.MaxBatchEvents, b.MaxTotalEvents, b.BatchDelay, b.CompletedAt, b.DispatchTime,
 	)
 }
 
 func (b *Backfill) Scan(row Scannable) *Backfill {
-	err := row.Scan(&b.QueueID, &b.UserID, &b.BackfillType, &b.Priority, &b.Portal.JID, &b.Portal.Receiver, &b.TimeStart, &b.TimeEnd, &b.MaxBatchEvents, &b.MaxTotalEvents, &b.BatchDelay)
+	err := row.Scan(&b.QueueID, &b.UserID, &b.BackfillType, &b.Priority, &b.Portal.JID, &b.Portal.Receiver, &b.TimeStart, &b.MaxBatchEvents, &b.MaxTotalEvents, &b.BatchDelay)
 	if err != nil {
 		if !errors.Is(err, sql.ErrNoRows) {
 			b.log.Errorln("Database scan failed:", err)
@@ -153,10 +152,10 @@ func (b *Backfill) Scan(row Scannable) *Backfill {
 func (b *Backfill) Insert() {
 	rows, err := b.db.Query(`
 		INSERT INTO backfill_queue
-			(user_mxid, type, priority, portal_jid, portal_receiver, time_start, time_end, max_batch_events, max_total_events, batch_delay, completed_at)
+			(user_mxid, type, priority, portal_jid, portal_receiver, time_start, max_batch_events, max_total_events, batch_delay, dispatch_time, completed_at)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 		RETURNING queue_id
-	`, b.UserID, b.BackfillType, b.Priority, b.Portal.JID, b.Portal.Receiver, b.TimeStart, b.TimeEnd, b.MaxBatchEvents, b.MaxTotalEvents, b.BatchDelay, b.CompletedAt)
+	`, b.UserID, b.BackfillType, b.Priority, b.Portal.JID, b.Portal.Receiver, b.TimeStart, b.MaxBatchEvents, b.MaxTotalEvents, b.BatchDelay, b.DispatchTime, b.CompletedAt)
 	defer rows.Close()
 	if err != nil || !rows.Next() {
 		b.log.Warnfln("Failed to insert %v/%s with priority %d: %v", b.BackfillType, b.Portal.JID, b.Priority, err)
