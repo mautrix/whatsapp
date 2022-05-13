@@ -738,7 +738,7 @@ func (portal *Portal) getMessagePuppet(user *User, info *types.MessageInfo) *Pup
 		return portal.bridge.GetPuppetByJID(portal.Key.JID)
 	} else {
 		puppet := portal.bridge.GetPuppetByJID(info.Sender)
-		puppet.SyncContact(user, true, "handling message")
+		puppet.SyncContact(user, true, true, "handling message")
 		return puppet
 	}
 }
@@ -809,7 +809,7 @@ func (portal *Portal) SyncParticipants(source *User, metadata *types.GroupInfo) 
 	for _, participant := range metadata.Participants {
 		participantMap[participant.JID] = true
 		puppet := portal.bridge.GetPuppetByJID(participant.JID)
-		puppet.SyncContact(source, true, "group participant")
+		puppet.SyncContact(source, true, false, "group participant")
 		user := portal.bridge.GetUserByJID(participant.JID)
 		if user != nil && user != source {
 			portal.ensureUserInvited(user)
@@ -1194,7 +1194,7 @@ func (portal *Portal) CreateMatrixRoom(user *User, groupInfo *types.GroupInfo, i
 	//var broadcastMetadata *types.BroadcastListInfo
 	if portal.IsPrivateChat() {
 		puppet := portal.bridge.GetPuppetByJID(portal.Key.JID)
-		puppet.SyncContact(user, true, "creating private chat portal")
+		puppet.SyncContact(user, true, false, "creating private chat portal")
 		if portal.bridge.Config.Bridge.PrivateChatPortalMeta {
 			portal.Name = puppet.Displayname
 			portal.AvatarURL = puppet.AvatarURL
@@ -1877,7 +1877,7 @@ func (portal *Portal) HandleWhatsAppInvite(source *User, senderJID *types.JID, j
 	}
 	for _, jid := range jids {
 		puppet := portal.bridge.GetPuppetByJID(jid)
-		puppet.SyncContact(source, true, "handling whatsapp invite")
+		puppet.SyncContact(source, true, false, "handling whatsapp invite")
 		content := event.Content{
 			Parsed: event.MemberEventContent{
 				Membership:  "invite",

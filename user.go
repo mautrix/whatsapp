@@ -955,7 +955,7 @@ func (user *User) GetPortalByJID(jid types.JID) *Portal {
 }
 
 func (user *User) syncPuppet(jid types.JID, reason string) {
-	user.bridge.GetPuppetByJID(jid).SyncContact(user, false, reason)
+	user.bridge.GetPuppetByJID(jid).SyncContact(user, false, false, reason)
 }
 
 func (user *User) ResyncContacts() error {
@@ -1124,7 +1124,7 @@ func (user *User) handlePictureUpdate(evt *events.Picture) {
 func (user *User) StartPM(jid types.JID, reason string) (*Portal, *Puppet, bool, error) {
 	user.log.Debugln("Starting PM with", jid, "from", reason)
 	puppet := user.bridge.GetPuppetByJID(jid)
-	puppet.SyncContact(user, true, reason)
+	puppet.SyncContact(user, true, false, reason)
 	portal := user.GetPortalByJID(puppet.JID)
 	if len(portal.MXID) > 0 {
 		ok := portal.ensureUserInvited(user)

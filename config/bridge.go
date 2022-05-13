@@ -174,6 +174,12 @@ type legacyContactInfo struct {
 	JID    string
 }
 
+const (
+	NameQualityPush    = 3
+	NameQualityContact = 2
+	NameQualityPhone   = 1
+)
+
 func (bc BridgeConfig) FormatDisplayname(jid types.JID, contact types.ContactInfo) (string, int8) {
 	var buf strings.Builder
 	_ = bc.displaynameTemplate.Execute(&buf, legacyContactInfo{
@@ -188,11 +194,11 @@ func (bc BridgeConfig) FormatDisplayname(jid types.JID, contact types.ContactInf
 	var quality int8
 	switch {
 	case len(contact.PushName) > 0 || len(contact.BusinessName) > 0:
-		quality = 3
+		quality = NameQualityPush
 	case len(contact.FullName) > 0 || len(contact.FirstName) > 0:
-		quality = 2
+		quality = NameQualityContact
 	default:
-		quality = 1
+		quality = NameQualityPhone
 	}
 	return buf.String(), quality
 }
