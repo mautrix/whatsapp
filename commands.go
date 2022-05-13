@@ -876,7 +876,7 @@ func (handler *CommandHandler) CommandBackfill(ce *CommandEvent) {
 	backfillMessages := ce.Portal.bridge.DB.Backfill.NewWithValues(ce.User.MXID, database.BackfillImmediate, 0, &ce.Portal.Key, nil, batchSize, -1, batchDelay)
 	backfillMessages.Insert()
 
-	ce.User.BackfillQueue.ReCheckQueue <- true
+	ce.User.BackfillQueue.ReCheck()
 }
 
 const cmdListHelp = `list <contacts|groups> [page] [items per page] - Get a list of all contacts and groups.`

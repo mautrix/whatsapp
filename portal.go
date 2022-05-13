@@ -1368,7 +1368,7 @@ func (portal *Portal) CreateMatrixRoom(user *User, groupInfo *types.GroupInfo, i
 		portals := []*Portal{portal}
 		user.EnqueueImmedateBackfills(portals)
 		user.EnqueueDeferredBackfills(portals)
-		user.BackfillQueue.ReCheckQueue <- true
+		user.BackfillQueue.ReCheck()
 	}
 	return nil
 }

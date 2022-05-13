@@ -20,6 +20,8 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strconv"
+	"strings"
 	"time"
 
 	log "maunium.net/go/maulogger/v2"
@@ -79,6 +81,7 @@ const (
 		SELECT queue_id, user_mxid, type, priority, portal_jid, portal_receiver, time_start, max_batch_events, max_total_events, batch_delay
 		FROM backfill_queue
 		WHERE user_mxid=$1
+			AND type IN (%s)
 			AND dispatch_time IS NULL
 		ORDER BY type, priority, queue_id
 		LIMIT 1
@@ -86,13 +89,17 @@ const (
 )
 
 // GetNext returns the next backfill to perform
-func (bq *BackfillQuery) GetNext(userID id.UserID) (backfill *Backfill) {
-	rows, err := bq.db.Query(getNextBackfillQuery, userID)
-	defer rows.Close()
+func (bq *BackfillQuery) GetNext(userID id.UserID, backfillTypes []BackfillType) (backfill *Backfill) {
+	types := []string{}
+	for _, backfillType := range backfillTypes {
+		types = append(types, strconv.Itoa(int(backfillType)))
+	}
+	rows, err := bq.db.Query(fmt.Sprintf(getNextBackfillQuery, strings.Join(types, ",")), userID)
 	if err != nil || rows == nil {
 		bq.log.Error(err)
 		return
 	}
+	defer rows.Close()
 	if rows.Next() {
 		backfill = bq.New().Scan(rows)
 	}

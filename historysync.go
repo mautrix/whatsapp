@@ -51,27 +51,22 @@ func (user *User) handleHistorySyncsLoop() {
 		return
 	}
 
-	reCheckQueue := make(chan bool, 1)
 	// Start the backfill queue.
 	user.BackfillQueue = &BackfillQueue{
-		BackfillQuery:             user.bridge.DB.Backfill,
-		ImmediateBackfillRequests: make(chan *database.Backfill, 1),
-		DeferredBackfillRequests:  make(chan *database.Backfill, 1),
-		ReCheckQueue:              make(chan bool, 1),
-		log:                       user.log.Sub("BackfillQueue"),
+		BackfillQuery:   user.bridge.DB.Backfill,
+		reCheckChannels: []chan bool{},
+		log:             user.log.Sub("BackfillQueue"),
 	}
-	reCheckQueue = user.BackfillQueue.ReCheckQueue
 
 	// Immediate backfills can be done in parallel
 	for i := 0; i < user.bridge.Config.Bridge.HistorySync.Immediate.WorkerCount; i++ {
-		go user.handleBackfillRequestsLoop(user.BackfillQueue.ImmediateBackfillRequests)
+		go user.HandleBackfillRequestsLoop([]database.BackfillType{database.BackfillImmediate, database.BackfillForward})
 	}
 
 	// Deferred backfills should be handled synchronously so as not to
 	// overload the homeserver. Users can configure their backfill stages
 	// to be more or less aggressive with backfilling at this stage.
-	go user.handleBackfillRequestsLoop(user.BackfillQueue.DeferredBackfillRequests)
-	go user.BackfillQueue.RunLoop(user)
+	go user.HandleBackfillRequestsLoop([]database.BackfillType{database.BackfillDeferred})
 
 	if user.bridge.Config.Bridge.HistorySync.MediaRequests.AutoRequestMedia &&
 		user.bridge.Config.Bridge.HistorySync.MediaRequests.RequestMethod == config.MediaRequestMethodLocalTime {
@@ -81,7 +76,7 @@ func (user *User) handleHistorySyncsLoop() {
 	// Always save the history syncs for the user. If they want to enable
 	// backfilling in the future, we will have it in the database.
 	for evt := range user.historySyncs {
-		user.handleHistorySync(reCheckQueue, evt.Data)
+		user.handleHistorySync(user.BackfillQueue, evt.Data)
 	}
 }
 
@@ -128,38 +123,6 @@ func (user *User) dailyMediaRequestLoop() {
 
 		// Wait for 24 hours before making requests again
 		time.Sleep(24 * time.Hour)
-	}
-}
-
-func (user *User) handleBackfillRequestsLoop(backfillRequests chan *database.Backfill) {
-	for req := range backfillRequests {
-		user.log.Infofln("Handling backfill request %s", req)
-		conv := user.bridge.DB.HistorySync.GetConversation(user.MXID, req.Portal)
-		if conv == nil {
-			user.log.Debugfln("Could not find history sync conversation data for %s", req.Portal.String())
-			req.MarkDone()
-			continue
-		}
-		portal := user.GetPortalByJID(conv.PortalKey.JID)
-
-		// Update the client store with basic chat settings.
-		if conv.MuteEndTime.After(time.Now()) {
-			user.Client.Store.ChatSettings.PutMutedUntil(conv.PortalKey.JID, conv.MuteEndTime)
-		}
-		if conv.Archived {
-			user.Client.Store.ChatSettings.PutArchived(conv.PortalKey.JID, true)
-		}
-		if conv.Pinned > 0 {
-			user.Client.Store.ChatSettings.PutPinned(conv.PortalKey.JID, true)
-		}
-
-		if conv.EphemeralExpiration != nil && portal.ExpirationTime != *conv.EphemeralExpiration {
-			portal.ExpirationTime = *conv.EphemeralExpiration
-			portal.Update(nil)
-		}
-
-		user.backfillInChunks(req, conv, portal)
-		req.MarkDone()
 	}
 }
 
@@ -294,7 +257,7 @@ func (user *User) shouldCreatePortalForHistorySync(conv *database.HistorySyncCon
 	return false
 }
 
-func (user *User) handleHistorySync(reCheckQueue chan bool, evt *waProto.HistorySync) {
+func (user *User) handleHistorySync(backfillQueue *BackfillQueue, evt *waProto.HistorySync) {
 	if evt == nil || evt.SyncType == nil || evt.GetSyncType() == waProto.HistorySync_INITIAL_STATUS_V3 || evt.GetSyncType() == waProto.HistorySync_PUSH_NAME {
 		return
 	}
@@ -385,7 +348,7 @@ func (user *User) handleHistorySync(reCheckQueue chan bool, evt *waProto.History
 			}
 
 			// Tell the queue to check for new backfill requests.
-			reCheckQueue <- true
+			backfillQueue.ReCheck()
 		}
 	}
 }
