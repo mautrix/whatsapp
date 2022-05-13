@@ -325,28 +325,24 @@ func (user *User) handleHistorySync(reCheckQueue chan bool, evt *waProto.History
 
 		for _, rawMsg := range conv.GetMessages() {
 			// Don't store messages that will just be skipped.
-			wmi := rawMsg.GetMessage()
-			msg := wmi.GetMessage()
-			if msg.GetEphemeralMessage().GetMessage() != nil {
-				msg = msg.GetEphemeralMessage().GetMessage()
-			}
-			if msg.GetViewOnceMessage().GetMessage() != nil {
-				msg = msg.GetViewOnceMessage().GetMessage()
+			msgEvt, err := user.Client.ParseWebMessage(portal.Key.JID, rawMsg.GetMessage())
+			if err != nil {
+				continue
 			}
 
-			msgType := getMessageType(msg)
+			msgType := getMessageType(msgEvt.Message)
 			if msgType == "unknown" || msgType == "ignore" || msgType == "unknown_protocol" {
 				continue
 			}
 
 			// Don't store unsupported messages.
-			if !containsSupportedMessage(msg) {
+			if !containsSupportedMessage(msgEvt.Message) {
 				continue
 			}
 
-			message, err := user.bridge.DB.HistorySync.NewMessageWithValues(user.MXID, conv.GetId(), wmi.GetKey().GetId(), rawMsg)
+			message, err := user.bridge.DB.HistorySync.NewMessageWithValues(user.MXID, conv.GetId(), msgEvt.Info.ID, rawMsg)
 			if err != nil {
-				user.log.Warnfln("Failed to save message %s in %s. Error: %+v", wmi.GetKey().Id, conv.GetId(), err)
+				user.log.Warnfln("Failed to save message %s in %s. Error: %+v", msgEvt.Info.ID, conv.GetId(), err)
 				continue
 			}
 			message.Insert()
@@ -497,45 +493,38 @@ func (portal *Portal) backfill(source *User, messages []*waProto.WebMessageInfo,
 	// The messages are ordered newest to oldest, so iterate them in reverse order.
 	for i := len(messages) - 1; i >= 0; i-- {
 		webMsg := messages[i]
-		msg := webMsg.GetMessage()
-		if msg.GetEphemeralMessage().GetMessage() != nil {
-			msg = msg.GetEphemeralMessage().GetMessage()
-		}
-		if msg.GetViewOnceMessage().GetMessage() != nil {
-			msg = msg.GetViewOnceMessage().GetMessage()
-		}
-
-		msgType := getMessageType(msg)
-		if msgType == "unknown" || msgType == "ignore" || msgType == "unknown_protocol" {
-			if msgType != "ignore" {
-				portal.log.Debugfln("Skipping message %s with unknown type in backfill", webMsg.GetKey().GetId())
-			}
+		msgEvt, err := source.Client.ParseWebMessage(portal.Key.JID, webMsg)
+		if err != nil {
 			continue
 		}
-		info := portal.parseWebMessageInfo(source, webMsg)
-		if info == nil {
+
+		msgType := getMessageType(msgEvt.Message)
+		if msgType == "unknown" || msgType == "ignore" || msgType == "unknown_protocol" {
+			if msgType != "ignore" {
+				portal.log.Debugfln("Skipping message %s with unknown type in backfill", msgEvt.Info.ID)
+			}
 			continue
 		}
 		if webMsg.GetPushName() != "" && webMsg.GetPushName() != "-" {
-			existingContact, _ := source.Client.Store.Contacts.GetContact(info.Sender)
+			existingContact, _ := source.Client.Store.Contacts.GetContact(msgEvt.Info.Sender)
 			if !existingContact.Found || existingContact.PushName == "" {
-				changed, _, err := source.Client.Store.Contacts.PutPushName(info.Sender, webMsg.GetPushName())
+				changed, _, err := source.Client.Store.Contacts.PutPushName(msgEvt.Info.Sender, webMsg.GetPushName())
 				if err != nil {
-					source.log.Errorfln("Failed to save push name of %s from historical message in device store: %v", info.Sender, err)
+					source.log.Errorfln("Failed to save push name of %s from historical message in device store: %v", msgEvt.Info.Sender, err)
 				} else if changed {
-					source.log.Debugfln("Got push name %s for %s from historical message", webMsg.GetPushName(), info.Sender)
+					source.log.Debugfln("Got push name %s for %s from historical message", webMsg.GetPushName(), msgEvt.Info.Sender)
 				}
 			}
 		}
-		puppet := portal.getMessagePuppet(source, info)
+		puppet := portal.getMessagePuppet(source, &msgEvt.Info)
 		intent := puppet.IntentFor(portal)
 		if intent.IsCustomPuppet && !portal.bridge.Config.CanDoublePuppetBackfill(puppet.CustomMXID) {
 			intent = puppet.DefaultIntent()
 		}
 
-		converted := portal.convertMessage(intent, source, info, msg, true)
+		converted := portal.convertMessage(intent, source, &msgEvt.Info, msgEvt.Message, true)
 		if converted == nil {
-			portal.log.Debugfln("Skipping unsupported message %s in backfill", info.ID)
+			portal.log.Debugfln("Skipping unsupported message %s in backfill", msgEvt.Info.ID)
 			continue
 		}
 		if !intent.IsCustomPuppet && !portal.bridge.StateStore.IsInRoom(portal.MXID, puppet.MXID) {
@@ -545,9 +534,9 @@ func (portal *Portal) backfill(source *User, messages []*waProto.WebMessageInfo,
 		if len(converted.ReplyTo) > 0 {
 			portal.SetReply(converted.Content, converted.ReplyTo)
 		}
-		err := portal.appendBatchEvents(converted, info, webMsg.GetEphemeralStartTimestamp(), &req.Events, &infos)
+		err = portal.appendBatchEvents(converted, &msgEvt.Info, webMsg.GetEphemeralStartTimestamp(), &req.Events, &infos)
 		if err != nil {
-			portal.log.Errorfln("Error handling message %s during backfill: %v", info.ID, err)
+			portal.log.Errorfln("Error handling message %s during backfill: %v", msgEvt.Info.ID, err)
 		}
 	}
 	portal.log.Infofln("Made %d Matrix events from messages in batch", len(req.Events))
@@ -596,34 +585,6 @@ func (portal *Portal) requestMediaRetries(source *User, eventIDs []id.EventID, i
 			}
 		}
 	}
-}
-
-func (portal *Portal) parseWebMessageInfo(source *User, webMsg *waProto.WebMessageInfo) *types.MessageInfo {
-	info := types.MessageInfo{
-		MessageSource: types.MessageSource{
-			Chat:     portal.Key.JID,
-			IsFromMe: webMsg.GetKey().GetFromMe(),
-			IsGroup:  portal.Key.JID.Server == types.GroupServer,
-		},
-		ID:        webMsg.GetKey().GetId(),
-		PushName:  webMsg.GetPushName(),
-		Timestamp: time.Unix(int64(webMsg.GetMessageTimestamp()), 0),
-	}
-	var err error
-	if info.IsFromMe {
-		info.Sender = source.JID.ToNonAD()
-	} else if portal.IsPrivateChat() {
-		info.Sender = portal.Key.JID
-	} else if webMsg.GetParticipant() != "" {
-		info.Sender, err = types.ParseJID(webMsg.GetParticipant())
-	} else if webMsg.GetKey().GetParticipant() != "" {
-		info.Sender, err = types.ParseJID(webMsg.GetKey().GetParticipant())
-	}
-	if info.Sender.IsEmpty() {
-		portal.log.Warnfln("Failed to get sender of message %s (parse error: %v)", info.ID, err)
-		return nil
-	}
-	return &info
 }
 
 func (portal *Portal) appendBatchEvents(converted *ConvertedMessage, info *types.MessageInfo, expirationStart uint64, eventsArray *[]*event.Event, infoArray *[]*wrappedInfo) error {
