@@ -275,8 +275,9 @@ func (user *User) backfillInChunks(req *database.Backfill, conv *database.Histor
 
 func (user *User) shouldCreatePortalForHistorySync(conv *database.HistorySyncConversation, portal *Portal) bool {
 	if len(portal.MXID) > 0 {
-		user.log.Debugfln("Portal for %s already exists, ensuring user is invited", portal.Key.JID)
-		portal.ensureUserInvited(user)
+		if !user.bridge.AS.StateStore.IsInRoom(portal.MXID, user.MXID) {
+			portal.ensureUserInvited(user)
+		}
 		// Portal exists, let backfill continue
 		return true
 	} else if !user.bridge.Config.Bridge.HistorySync.CreatePortals {
