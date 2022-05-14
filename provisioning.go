@@ -277,13 +277,28 @@ type PortalInfo struct {
 	JustCreated bool             `json:"just_created"`
 }
 
+func looksEmaily(str string) bool {
+	for _, char := range str {
+		// Characters that are usually in emails, but shouldn't be in phone numbers
+		if (char >= 'a' && char <= 'z') || (char >= 'A' && char <= 'Z') || char == '@' {
+			return true
+		}
+	}
+	return false
+}
+
 func (prov *ProvisioningAPI) resolveIdentifier(w http.ResponseWriter, r *http.Request) (types.JID, *User) {
 	number, _ := mux.Vars(r)["number"]
 	if strings.HasSuffix(number, "@"+types.DefaultUserServer) {
 		jid, _ := types.ParseJID(number)
 		number = "+" + jid.User
 	}
-	if user := r.Context().Value("user").(*User); !user.IsLoggedIn() {
+	if looksEmaily(number) {
+		jsonResponse(w, http.StatusBadRequest, Error{
+			Error:   "WhatsApp only supports phone numbers as user identifiers",
+			ErrCode: "number looks like email",
+		})
+	} else if user := r.Context().Value("user").(*User); !user.IsLoggedIn() {
 		jsonResponse(w, http.StatusBadRequest, Error{
 			Error:   "User is not logged into WhatsApp",
 			ErrCode: "no session",
