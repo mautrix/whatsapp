@@ -489,7 +489,7 @@ func (portal *Portal) backfill(source *User, messages []*waProto.WebMessageInfo,
 		addedMembers[puppet.MXID] = struct{}{}
 	}
 
-	portal.log.Infofln("Processing history sync with %d messages (forward: %t)", len(messages), isForward)
+	portal.log.Infofln("Processing history sync with %d messages (forward: %t, prev: %s, batch: %s)", len(messages), isForward, req.PrevEventID, req.BatchID)
 	// The messages are ordered newest to oldest, so iterate them in reverse order.
 	for i := len(messages) - 1; i >= 0; i-- {
 		webMsg := messages[i]
@@ -713,6 +713,7 @@ func (portal *Portal) sendPostBackfillDummy(lastTimestamp time.Time, insertionEv
 	msg.JID = types.MessageID(resp.EventID)
 	msg.Timestamp = lastTimestamp.Add(1 * time.Second)
 	msg.Sent = true
+	msg.Type = database.MsgFake
 	msg.Insert()
 }
 
