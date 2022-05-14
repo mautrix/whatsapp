@@ -1929,7 +1929,11 @@ func shallowCopyMap(data map[string]interface{}) map[string]interface{} {
 }
 
 func (portal *Portal) makeMediaBridgeFailureMessage(info *types.MessageInfo, bridgeErr error, converted *ConvertedMessage, keys *FailedMediaKeys, userFriendlyError string) *ConvertedMessage {
-	portal.log.Errorfln("Failed to bridge media for %s: %v", info.ID, bridgeErr)
+	if errors.Is(bridgeErr, whatsmeow.ErrMediaDownloadFailedWith404) || errors.Is(bridgeErr, whatsmeow.ErrMediaDownloadFailedWith410) {
+		portal.log.Debugfln("Failed to bridge media for %s: %v", info.ID, bridgeErr)
+	} else {
+		portal.log.Errorfln("Failed to bridge media for %s: %v", info.ID, bridgeErr)
+	}
 	if keys != nil {
 		meta := &FailedMediaMeta{
 			Type:         converted.Type,
