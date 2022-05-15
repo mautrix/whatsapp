@@ -9,6 +9,7 @@
 * Added experimental provisioning API to check if a phone number is registered
   on WhatsApp.
 * Added automatic retrying if the websocket dies while sending a message.
+* Added experimental support for sending status broadcast messages.
 * Improved error handling if Postgres dies while the bridge is running.
 * Fixed bridging stickers sent from WhatsApp web.
 
