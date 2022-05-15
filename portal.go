@@ -497,6 +497,9 @@ func (portal *Portal) convertMessage(intent *appservice.IntentAPI, source *User,
 }
 
 func (portal *Portal) UpdateGroupDisappearingMessages(sender *types.JID, timestamp time.Time, timer uint32) {
+	if portal.ExpirationTime == timer {
+		return
+	}
 	portal.ExpirationTime = timer
 	portal.Update()
 	intent := portal.MainIntent()

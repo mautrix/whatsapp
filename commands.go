@@ -87,6 +87,17 @@ func (ce *CommandEvent) Reply(msg string, args ...interface{}) {
 	}
 }
 
+func (ce *CommandEvent) React(key string) {
+	intent := ce.Bot
+	if ce.Portal != nil && ce.Portal.IsPrivateChat() {
+		intent = ce.Portal.MainIntent()
+	}
+	_, err := intent.SendReaction(ce.RoomID, ce.EventID, key)
+	if err != nil {
+		ce.Handler.log.Warnfln("Failed to react to command from %s: %v", ce.User.MXID, err)
+	}
+}
+
 // Handle handles messages to the bridge
 func (handler *CommandHandler) Handle(roomID id.RoomID, eventID id.EventID, user *User, message string, replyTo id.EventID) {
 	args := strings.Fields(message)
@@ -143,7 +154,8 @@ func (handler *CommandHandler) CommandMux(ce *CommandEvent) {
 		handler.CommandLogout(ce)
 	case "toggle":
 		handler.CommandToggle(ce)
-	case "set-relay", "unset-relay", "login-matrix", "sync", "list", "search", "open", "pm", "invite-link", "resolve", "resolve-link", "join", "create", "accept", "backfill":
+	case "set-relay", "unset-relay", "login-matrix", "sync", "list", "search", "open", "pm", "invite-link", "resolve",
+		"resolve-link", "join", "create", "accept", "backfill", "disappearing-timer":
 		if !ce.User.HasSession() {
 			ce.Reply("You are not logged in. Use the `login` command to log into WhatsApp.")
 			return
@@ -181,6 +193,8 @@ func (handler *CommandHandler) CommandMux(ce *CommandEvent) {
 			handler.CommandAccept(ce)
 		case "backfill":
 			handler.CommandBackfill(ce)
+		case "disappearing-timer":
+			handler.CommandDisappearingTimer(ce)
 		}
 	default:
 		ce.Reply("Unknown command, use the `help` command for help.")
@@ -750,6 +764,7 @@ func (handler *CommandHandler) CommandHelp(ce *CommandEvent) {
 		cmdPrefix + cmdResolveLinkHelp,
 		cmdPrefix + cmdJoinHelp,
 		cmdPrefix + cmdCreateHelp,
+		cmdPrefix + cmdDisappearingTimerHelp,
 		cmdPrefix + cmdSetPowerLevelHelp,
 		cmdPrefix + cmdDeletePortalHelp,
 		cmdPrefix + cmdDeleteAllPortalsHelp,
@@ -1210,4 +1225,28 @@ func (handler *CommandHandler) CommandLogoutMatrix(ce *CommandEvent) {
 		return
 	}
 	ce.Reply("Successfully removed custom puppet")
+}
+
+const cmdDisappearingTimerHelp = `disappearing-timer <off/1d/7d/90d> - Set future messages in the room to disappear after the given time.`
+
+func (handler *CommandHandler) CommandDisappearingTimer(ce *CommandEvent) {
+	duration, ok := whatsmeow.ParseDisappearingTimerString(ce.Args[0])
+	if !ok {
+		ce.Reply("Invalid timer '%s'", ce.Args[0])
+		return
+	}
+	prevExpirationTime := ce.Portal.ExpirationTime
+	ce.Portal.ExpirationTime = uint32(duration.Seconds())
+	err := ce.User.Client.SetDisappearingTimer(ce.Portal.Key.JID, duration)
+	if err != nil {
+		ce.Reply("Failed to set disappearing timer: %v", err)
+		ce.Portal.ExpirationTime = prevExpirationTime
+		return
+	}
+	ce.Portal.Update()
+	if !ce.Portal.IsPrivateChat() && !ce.Bridge.Config.Bridge.DisappearingMessagesInGroups {
+		ce.Reply("Disappearing timer changed successfully, but this bridge is not configured to disappear messages in group chats.")
+	} else {
+		ce.React("✅")
+	}
 }
