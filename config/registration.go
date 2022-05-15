@@ -19,6 +19,7 @@ package config
 import (
 	"fmt"
 	"regexp"
+	"strings"
 
 	"maunium.net/go/mautrix/appservice"
 )
@@ -36,7 +37,9 @@ func (config *Config) NewRegistration() (*appservice.Registration, error) {
 
 	// Workaround for https://github.com/matrix-org/synapse/pull/5758
 	registration.SenderLocalpart = appservice.RandomString(32)
-	botRegex := regexp.MustCompile(fmt.Sprintf("^@%s:%s$", config.AppService.Bot.Username, config.Homeserver.Domain))
+	botRegex := regexp.MustCompile(fmt.Sprintf("^@%s:%s$",
+		regexp.QuoteMeta(config.AppService.Bot.Username),
+		regexp.QuoteMeta(config.Homeserver.Domain)))
 	registration.Namespaces.RegisterUserIDs(botRegex, true)
 
 	return registration, nil
@@ -63,9 +66,14 @@ func (config *Config) copyToRegistration(registration *appservice.Registration) 
 	registration.SenderLocalpart = config.AppService.Bot.Username
 	registration.EphemeralEvents = config.AppService.EphemeralEvents
 
-	userIDRegex, err := regexp.Compile(fmt.Sprintf("^@%s:%s$",
-		config.Bridge.FormatUsername("[0-9]+"),
-		config.Homeserver.Domain))
+	usernamePlaceholder := appservice.RandomString(16)
+	usernameTemplate := fmt.Sprintf("@%s:%s",
+		config.Bridge.FormatUsername(usernamePlaceholder),
+		config.Homeserver.Domain)
+	usernameTemplate = regexp.QuoteMeta(usernameTemplate)
+	usernameTemplate = strings.Replace(usernameTemplate, usernamePlaceholder, "[0-9]+", 1)
+	usernameTemplate = fmt.Sprintf("^%s$", usernameTemplate)
+	userIDRegex, err := regexp.Compile(usernameTemplate)
 	if err != nil {
 		return err
 	}
