@@ -337,10 +337,15 @@ func (user *User) createClient(sess *store.Device) {
 	user.Client.AddEventHandler(user.HandleEvent)
 	user.Client.SetForceActiveDeliveryReceipts(user.bridge.Config.Bridge.ForceActiveDeliveryReceipts)
 	user.Client.GetMessageForRetry = func(to types.JID, id types.MessageID) *waProto.Message {
+		Segment.Track(user.MXID, "WhatsApp incoming retry (message not found)")
 		user.bridge.Metrics.TrackRetryReceipt(0, false)
 		return nil
 	}
-	user.Client.PreRetryCallback = func(receipt *events.Receipt, retryCount int, msg *waProto.Message) bool {
+	user.Client.PreRetryCallback = func(receipt *events.Receipt, messageID types.MessageID, retryCount int, msg *waProto.Message) bool {
+		Segment.Track(user.MXID, "WhatsApp incoming retry (accepted)", map[string]interface{}{
+			"messageID":  messageID,
+			"retryCount": retryCount,
+		})
 		user.bridge.Metrics.TrackRetryReceipt(retryCount, true)
 		return true
 	}

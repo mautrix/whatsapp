@@ -550,6 +550,9 @@ func (portal *Portal) handleUndecryptableMessage(source *User, evt *events.Undec
 		portal.log.Debugfln("Not handling %s (undecryptable): message is duplicate", evt.Info.ID)
 		return
 	}
+	Segment.Track(source.MXID, "WhatsApp undecryptable message", map[string]interface{}{
+		"messageID": evt.Info.ID,
+	})
 	intent := portal.getMessageIntent(source, &evt.Info)
 	if !intent.IsCustomPuppet && portal.IsPrivateChat() && evt.Info.Sender.User == portal.Key.Receiver.User {
 		portal.log.Debugfln("Not handling %s (undecryptable): user doesn't have double puppeting enabled", evt.Info.ID)
@@ -614,6 +617,9 @@ func (portal *Portal) handleMessage(source *User, evt *events.Message) {
 	existingMsg := portal.bridge.DB.Message.GetByJID(portal.Key, msgID)
 	if existingMsg != nil {
 		if existingMsg.Error == database.MsgErrDecryptionFailed {
+			Segment.Track(source.MXID, "WhatsApp undecryptable message resolved", map[string]interface{}{
+				"messageID": evt.Info.ID,
+			})
 			portal.log.Debugfln("Got decryptable version of previously undecryptable message %s (%s)", msgID, msgType)
 		} else {
 			portal.log.Debugfln("Not handling %s (%s): message is duplicate", msgID, msgType)
