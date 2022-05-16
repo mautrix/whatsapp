@@ -20,6 +20,15 @@ func init() {
 			UPDATE backfill_queue
 				SET dispatch_time=completed_at
 		`)
+		if err != nil {
+			return err
+		}
+
+		// Remove time_end from the backfill queue
+		_, err = tx.Exec(`
+			ALTER TABLE backfill_queue
+			DROP COLUMN time_end
+		`)
 		return err
 	}}
 }
