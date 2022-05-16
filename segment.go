@@ -19,6 +19,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http"
 
 	log "maunium.net/go/maulogger/v2"
@@ -55,7 +56,10 @@ func (sc *SegmentClient) trackSync(userID id.UserID, event string, properties ma
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	_ = resp.Body.Close()
+	if resp.StatusCode != 200 {
+		return fmt.Errorf("unexpected status code %d", resp.StatusCode)
+	}
 	return nil
 }
 
