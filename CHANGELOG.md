@@ -10,8 +10,10 @@
   on WhatsApp.
 * Added automatic retrying if the websocket dies while sending a message.
 * Added experimental support for sending status broadcast messages.
+* Added command to change disappearing message timer in chats.
 * Improved error handling if Postgres dies while the bridge is running.
 * Fixed bridging stickers sent from WhatsApp web.
+* Fixed registration generation not regex-escaping user ID namespaces.
 
 # v0.3.1 (2022-04-16)
 
