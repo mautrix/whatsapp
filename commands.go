@@ -1135,7 +1135,10 @@ func (handler *CommandHandler) CommandSync(ce *CommandEvent) {
 	if appState {
 		for _, name := range appstate.AllPatchNames {
 			err := ce.User.Client.FetchAppState(name, true, false)
-			if err != nil {
+			if errors.Is(err, appstate.ErrKeyNotFound) {
+				ce.Reply("Key not found error syncing app state %s: %v\n\nKey requests are sent automatically, and the sync should happen in the background after your phone responds.", name, err)
+				return
+			} else if err != nil {
 				ce.Reply("Error syncing app state %s: %v", name, err)
 			} else if name == appstate.WAPatchCriticalUnblockLow {
 				ce.Reply("Synced app state %s, contact sync running in background", name)
