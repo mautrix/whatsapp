@@ -20,6 +20,8 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strconv"
+	"strings"
 	"time"
 
 	log "maunium.net/go/maulogger/v2"
@@ -59,7 +61,7 @@ func (bq *BackfillQuery) New() *Backfill {
 	}
 }
 
-func (bq *BackfillQuery) NewWithValues(userID id.UserID, backfillType BackfillType, priority int, portal *PortalKey, timeStart *time.Time, timeEnd *time.Time, maxBatchEvents, maxTotalEvents, batchDelay int) *Backfill {
+func (bq *BackfillQuery) NewWithValues(userID id.UserID, backfillType BackfillType, priority int, portal *PortalKey, timeStart *time.Time, maxBatchEvents, maxTotalEvents, batchDelay int) *Backfill {
 	return &Backfill{
 		db:             bq.db,
 		log:            bq.log,
@@ -68,7 +70,6 @@ func (bq *BackfillQuery) NewWithValues(userID id.UserID, backfillType BackfillTy
 		Priority:       priority,
 		Portal:         portal,
 		TimeStart:      timeStart,
-		TimeEnd:        timeEnd,
 		MaxBatchEvents: maxBatchEvents,
 		MaxTotalEvents: maxTotalEvents,
 		BatchDelay:     batchDelay,
@@ -77,23 +78,28 @@ func (bq *BackfillQuery) NewWithValues(userID id.UserID, backfillType BackfillTy
 
 const (
 	getNextBackfillQuery = `
-		SELECT queue_id, user_mxid, type, priority, portal_jid, portal_receiver, time_start, time_end, max_batch_events, max_total_events, batch_delay
+		SELECT queue_id, user_mxid, type, priority, portal_jid, portal_receiver, time_start, max_batch_events, max_total_events, batch_delay
 		FROM backfill_queue
 		WHERE user_mxid=$1
-			AND completed_at IS NULL
+			AND type IN (%s)
+			AND dispatch_time IS NULL
 		ORDER BY type, priority, queue_id
 		LIMIT 1
 	`
 )
 
 // GetNext returns the next backfill to perform
-func (bq *BackfillQuery) GetNext(userID id.UserID) (backfill *Backfill) {
-	rows, err := bq.db.Query(getNextBackfillQuery, userID)
-	defer rows.Close()
+func (bq *BackfillQuery) GetNext(userID id.UserID, backfillTypes []BackfillType) (backfill *Backfill) {
+	types := []string{}
+	for _, backfillType := range backfillTypes {
+		types = append(types, strconv.Itoa(int(backfillType)))
+	}
+	rows, err := bq.db.Query(fmt.Sprintf(getNextBackfillQuery, strings.Join(types, ",")), userID)
 	if err != nil || rows == nil {
 		bq.log.Error(err)
 		return
 	}
+	defer rows.Close()
 	if rows.Next() {
 		backfill = bq.New().Scan(rows)
 	}
@@ -126,21 +132,21 @@ type Backfill struct {
 	Priority       int
 	Portal         *PortalKey
 	TimeStart      *time.Time
-	TimeEnd        *time.Time
 	MaxBatchEvents int
 	MaxTotalEvents int
 	BatchDelay     int
+	DispatchTime   *time.Time
 	CompletedAt    *time.Time
 }
 
 func (b *Backfill) String() string {
-	return fmt.Sprintf("Backfill{QueueID: %d, UserID: %s, BackfillType: %s, Priority: %d, Portal: %s, TimeStart: %s, TimeEnd: %s, MaxBatchEvents: %d, MaxTotalEvents: %d, BatchDelay: %d, CompletedAt: %s}",
-		b.QueueID, b.UserID, b.BackfillType, b.Priority, b.Portal, b.TimeStart, b.TimeEnd, b.MaxBatchEvents, b.MaxTotalEvents, b.BatchDelay, b.CompletedAt,
+	return fmt.Sprintf("Backfill{QueueID: %d, UserID: %s, BackfillType: %s, Priority: %d, Portal: %s, TimeStart: %s, MaxBatchEvents: %d, MaxTotalEvents: %d, BatchDelay: %d, DispatchTime: %s, CompletedAt: %s}",
+		b.QueueID, b.UserID, b.BackfillType, b.Priority, b.Portal, b.TimeStart, b.MaxBatchEvents, b.MaxTotalEvents, b.BatchDelay, b.CompletedAt, b.DispatchTime,
 	)
 }
 
 func (b *Backfill) Scan(row Scannable) *Backfill {
-	err := row.Scan(&b.QueueID, &b.UserID, &b.BackfillType, &b.Priority, &b.Portal.JID, &b.Portal.Receiver, &b.TimeStart, &b.TimeEnd, &b.MaxBatchEvents, &b.MaxTotalEvents, &b.BatchDelay)
+	err := row.Scan(&b.QueueID, &b.UserID, &b.BackfillType, &b.Priority, &b.Portal.JID, &b.Portal.Receiver, &b.TimeStart, &b.MaxBatchEvents, &b.MaxTotalEvents, &b.BatchDelay)
 	if err != nil {
 		if !errors.Is(err, sql.ErrNoRows) {
 			b.log.Errorln("Database scan failed:", err)
@@ -153,10 +159,10 @@ func (b *Backfill) Scan(row Scannable) *Backfill {
 func (b *Backfill) Insert() {
 	rows, err := b.db.Query(`
 		INSERT INTO backfill_queue
-			(user_mxid, type, priority, portal_jid, portal_receiver, time_start, time_end, max_batch_events, max_total_events, batch_delay, completed_at)
+			(user_mxid, type, priority, portal_jid, portal_receiver, time_start, max_batch_events, max_total_events, batch_delay, dispatch_time, completed_at)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 		RETURNING queue_id
-	`, b.UserID, b.BackfillType, b.Priority, b.Portal.JID, b.Portal.Receiver, b.TimeStart, b.TimeEnd, b.MaxBatchEvents, b.MaxTotalEvents, b.BatchDelay, b.CompletedAt)
+	`, b.UserID, b.BackfillType, b.Priority, b.Portal.JID, b.Portal.Receiver, b.TimeStart, b.MaxBatchEvents, b.MaxTotalEvents, b.BatchDelay, b.DispatchTime, b.CompletedAt)
 	defer rows.Close()
 	if err != nil || !rows.Next() {
 		b.log.Warnfln("Failed to insert %v/%s with priority %d: %v", b.BackfillType, b.Portal.JID, b.Priority, err)
@@ -168,9 +174,20 @@ func (b *Backfill) Insert() {
 	}
 }
 
+func (b *Backfill) MarkDispatched() {
+	if b.QueueID == 0 {
+		b.log.Errorf("Cannot mark backfill as dispatched without queue_id. Maybe it wasn't actually inserted in the database?")
+		return
+	}
+	_, err := b.db.Exec("UPDATE backfill_queue SET dispatch_time=$1 WHERE queue_id=$2", time.Now(), b.QueueID)
+	if err != nil {
+		b.log.Warnfln("Failed to mark %s/%s as dispatched: %v", b.BackfillType, b.Priority, err)
+	}
+}
+
 func (b *Backfill) MarkDone() {
 	if b.QueueID == 0 {
-		b.log.Errorf("Cannot delete backfill without queue_id. Maybe it wasn't actually inserted in the database?")
+		b.log.Errorf("Cannot mark backfill done without queue_id. Maybe it wasn't actually inserted in the database?")
 		return
 	}
 	_, err := b.db.Exec("UPDATE backfill_queue SET completed_at=$1 WHERE queue_id=$2", time.Now(), b.QueueID)

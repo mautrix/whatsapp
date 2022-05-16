@@ -19,6 +19,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -482,7 +483,7 @@ func (portal *Portal) convertMessage(intent *appservice.IntentAPI, source *User,
 		return portal.convertGroupInviteMessage(intent, info, waMsg.GetGroupInviteMessage())
 	case waMsg.ProtocolMessage != nil && waMsg.ProtocolMessage.GetType() == waProto.ProtocolMessage_EPHEMERAL_SETTING:
 		portal.ExpirationTime = waMsg.ProtocolMessage.GetEphemeralExpiration()
-		portal.Update()
+		portal.Update(nil)
 		return &ConvertedMessage{
 			Intent: intent,
 			Type:   event.EventMessage,
@@ -501,7 +502,7 @@ func (portal *Portal) UpdateGroupDisappearingMessages(sender *types.JID, timesta
 		return
 	}
 	portal.ExpirationTime = timer
-	portal.Update()
+	portal.Update(nil)
 	intent := portal.MainIntent()
 	if sender != nil {
 		intent = portal.bridge.GetPuppetByJID(sender.ToNonAD()).IntentFor(portal)
@@ -685,7 +686,7 @@ func (portal *Portal) handleMessage(source *User, evt *events.Message) {
 			_, _ = portal.MainIntent().RedactEvent(portal.MXID, existingMsg.MXID, mautrix.ReqRedact{
 				Reason: "The undecryptable message was actually the deletion of another message",
 			})
-			existingMsg.UpdateMXID("net.maunium.whatsapp.fake::"+existingMsg.MXID, database.MsgFake, database.MsgNoError)
+			existingMsg.UpdateMXID(nil, "net.maunium.whatsapp.fake::"+existingMsg.MXID, database.MsgFake, database.MsgNoError)
 		}
 	} else {
 		portal.log.Warnfln("Unhandled message: %+v (%s)", evt.Info, msgType)
@@ -693,7 +694,7 @@ func (portal *Portal) handleMessage(source *User, evt *events.Message) {
 			_, _ = portal.MainIntent().RedactEvent(portal.MXID, existingMsg.MXID, mautrix.ReqRedact{
 				Reason: "The undecryptable message contained an unsupported message type",
 			})
-			existingMsg.UpdateMXID("net.maunium.whatsapp.fake::"+existingMsg.MXID, database.MsgFake, database.MsgNoError)
+			existingMsg.UpdateMXID(nil, "net.maunium.whatsapp.fake::"+existingMsg.MXID, database.MsgFake, database.MsgNoError)
 		}
 		return
 	}
@@ -711,7 +712,7 @@ func (portal *Portal) isRecentlyHandled(id types.MessageID, error database.Messa
 	return false
 }
 
-func (portal *Portal) markHandled(msg *database.Message, info *types.MessageInfo, mxid id.EventID, isSent, recent bool, msgType database.MessageType, error database.MessageErrorType) *database.Message {
+func (portal *Portal) markHandled(txn *sql.Tx, msg *database.Message, info *types.MessageInfo, mxid id.EventID, isSent, recent bool, msgType database.MessageType, errType database.MessageErrorType) *database.Message {
 	if msg == nil {
 		msg = portal.bridge.DB.Message.New()
 		msg.Chat = portal.Key
@@ -721,13 +722,13 @@ func (portal *Portal) markHandled(msg *database.Message, info *types.MessageInfo
 		msg.Sender = info.Sender
 		msg.Sent = isSent
 		msg.Type = msgType
-		msg.Error = error
+		msg.Error = errType
 		if info.IsIncomingBroadcast() {
 			msg.BroadcastListJID = info.Chat
 		}
-		msg.Insert()
+		msg.Insert(txn)
 	} else {
-		msg.UpdateMXID(mxid, msgType, error)
+		msg.UpdateMXID(txn, mxid, msgType, errType)
 	}
 
 	if recent {
@@ -735,7 +736,7 @@ func (portal *Portal) markHandled(msg *database.Message, info *types.MessageInfo
 		index := portal.recentlyHandledIndex
 		portal.recentlyHandledIndex = (portal.recentlyHandledIndex + 1) % recentlyHandledLength
 		portal.recentlyHandledLock.Unlock()
-		portal.recentlyHandled[index] = recentlyHandledWrapper{msg.JID, error}
+		portal.recentlyHandled[index] = recentlyHandledWrapper{msg.JID, errType}
 	}
 	return msg
 }
@@ -756,13 +757,13 @@ func (portal *Portal) getMessageIntent(user *User, info *types.MessageInfo) *app
 	return portal.getMessagePuppet(user, info).IntentFor(portal)
 }
 
-func (portal *Portal) finishHandling(existing *database.Message, message *types.MessageInfo, mxid id.EventID, msgType database.MessageType, error database.MessageErrorType) {
-	portal.markHandled(existing, message, mxid, true, true, msgType, error)
+func (portal *Portal) finishHandling(existing *database.Message, message *types.MessageInfo, mxid id.EventID, msgType database.MessageType, errType database.MessageErrorType) {
+	portal.markHandled(nil, existing, message, mxid, true, true, msgType, errType)
 	portal.sendDeliveryReceipt(mxid)
 	var suffix string
-	if error == database.MsgErrDecryptionFailed {
+	if errType == database.MsgErrDecryptionFailed {
 		suffix = "(undecryptable message error notice)"
-	} else if error == database.MsgErrMediaNotFound {
+	} else if errType == database.MsgErrMediaNotFound {
 		suffix = "(media not found notice)"
 	}
 	portal.log.Debugfln("Handled message %s (%s) -> %s %s", message.ID, msgType, mxid, suffix)
@@ -1028,7 +1029,7 @@ func (portal *Portal) UpdateMatrixRoom(user *User, groupInfo *types.GroupInfo) b
 		update = portal.UpdateAvatar(user, types.EmptyJID, false) || update
 	}
 	if update {
-		portal.Update()
+		portal.Update(nil)
 		portal.UpdateBridgeInfo()
 	}
 	return true
@@ -1320,7 +1321,7 @@ func (portal *Portal) CreateMatrixRoom(user *User, groupInfo *types.GroupInfo, i
 		return err
 	}
 	portal.MXID = resp.RoomID
-	portal.Update()
+	portal.Update(nil)
 	portal.bridge.portalsLock.Lock()
 	portal.bridge.portalsByMXID[portal.MXID] = portal
 	portal.bridge.portalsLock.Unlock()
@@ -1338,7 +1339,7 @@ func (portal *Portal) CreateMatrixRoom(user *User, groupInfo *types.GroupInfo, i
 	if groupInfo != nil {
 		if groupInfo.IsEphemeral {
 			portal.ExpirationTime = groupInfo.DisappearingTimer
-			portal.Update()
+			portal.Update(nil)
 		}
 		portal.SyncParticipants(user, groupInfo)
 		if groupInfo.IsAnnounce {
@@ -1369,14 +1370,14 @@ func (portal *Portal) CreateMatrixRoom(user *User, groupInfo *types.GroupInfo, i
 		portal.log.Errorln("Failed to send dummy event to mark portal creation:", err)
 	} else {
 		portal.FirstEventID = firstEventResp.EventID
-		portal.Update()
+		portal.Update(nil)
 	}
 
 	if user.bridge.Config.Bridge.HistorySync.Backfill && backfill {
 		portals := []*Portal{portal}
 		user.EnqueueImmedateBackfills(portals)
 		user.EnqueueDeferredBackfills(portals)
-		user.BackfillQueue.ReCheckQueue <- true
+		user.BackfillQueue.ReCheck()
 	}
 	return nil
 }
@@ -2367,7 +2368,7 @@ func (portal *Portal) handleMediaRetry(retry *events.MediaRetry, source *User) {
 		return
 	}
 	portal.log.Debugfln("Successfully edited %s -> %s after retry notification for %s", msg.MXID, resp.EventID, retry.MessageID)
-	msg.UpdateMXID(resp.EventID, database.MsgNormal, database.MsgNoError)
+	msg.UpdateMXID(nil, resp.EventID, database.MsgNormal, database.MsgNoError)
 }
 
 func (portal *Portal) requestMediaRetry(user *User, eventID id.EventID, mediaKey []byte) (bool, error) {
@@ -2844,7 +2845,7 @@ func (portal *Portal) HandleMatrixMessage(sender *User, evt *event.Event) {
 	}
 	portal.MarkDisappearing(evt.ID, portal.ExpirationTime, true)
 	info := portal.generateMessageInfo(sender)
-	dbMsg := portal.markHandled(nil, info, evt.ID, false, true, database.MsgNormal, database.MsgNoError)
+	dbMsg := portal.markHandled(nil, nil, info, evt.ID, false, true, database.MsgNormal, database.MsgNoError)
 	portal.log.Debugln("Sending event", evt.ID, "to WhatsApp", info.ID)
 	ts, err := sender.Client.SendMessage(portal.Key.JID, info.ID, msg)
 	if err != nil {
@@ -2888,7 +2889,7 @@ func (portal *Portal) handleMatrixReaction(sender *User, evt *event.Event) error
 		return fmt.Errorf("unknown target event %s", content.RelatesTo.EventID)
 	}
 	info := portal.generateMessageInfo(sender)
-	dbMsg := portal.markHandled(nil, info, evt.ID, false, true, database.MsgReaction, database.MsgNoError)
+	dbMsg := portal.markHandled(nil, nil, info, evt.ID, false, true, database.MsgReaction, database.MsgNoError)
 	portal.upsertReaction(nil, target.JID, sender.JID, evt.ID, info.ID)
 	portal.log.Debugln("Sending reaction", evt.ID, "to WhatsApp", info.ID)
 	ts, err := portal.sendReactionToWhatsApp(sender, info.ID, target, content.RelatesTo.Key, evt.Timestamp)
@@ -3302,6 +3303,6 @@ func (portal *Portal) HandleMatrixMeta(sender *User, evt *event.Event) {
 		portal.Avatar = newID
 		portal.AvatarURL = content.URL
 		portal.UpdateBridgeInfo()
-		portal.Update()
+		portal.Update(nil)
 	}
 }

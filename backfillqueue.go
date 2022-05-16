@@ -20,43 +20,73 @@ import (
 	"time"
 
 	log "maunium.net/go/maulogger/v2"
+	"maunium.net/go/mautrix/id"
 
 	"maunium.net/go/mautrix-whatsapp/database"
 )
 
 type BackfillQueue struct {
-	BackfillQuery             *database.BackfillQuery
-	ImmediateBackfillRequests chan *database.Backfill
-	DeferredBackfillRequests  chan *database.Backfill
-	ReCheckQueue              chan bool
-
-	log log.Logger
+	BackfillQuery   *database.BackfillQuery
+	reCheckChannels []chan bool
+	log             log.Logger
 }
 
-// RunLoop fetches backfills from the database, prioritizing immediate and forward backfills
-func (bq *BackfillQueue) RunLoop(user *User) {
+func (bq *BackfillQueue) ReCheck() {
+	bq.log.Info("Sending re-checks to %d channels", len(bq.reCheckChannels))
+	for _, channel := range bq.reCheckChannels {
+		go func(c chan bool) {
+			c <- true
+		}(channel)
+	}
+}
+
+func (bq *BackfillQueue) GetNextBackfill(userID id.UserID, backfillTypes []database.BackfillType, reCheckChannel chan bool) *database.Backfill {
 	for {
-		if backfill := bq.BackfillQuery.GetNext(user.MXID); backfill != nil {
-			if backfill.BackfillType == database.BackfillImmediate || backfill.BackfillType == database.BackfillForward {
-				bq.ImmediateBackfillRequests <- backfill
-			} else if backfill.BackfillType == database.BackfillDeferred {
-				select {
-				case <-bq.ReCheckQueue:
-					// If a queue re-check is requested, interrupt sending the
-					// backfill request to the deferred channel so that
-					// immediate backfills can happen ASAP.
-					continue
-				case bq.DeferredBackfillRequests <- backfill:
-				}
-			} else {
-				bq.log.Debugfln("Unrecognized backfill type %d in queue", backfill.BackfillType)
-			}
-			backfill.MarkDone()
+		if backfill := bq.BackfillQuery.GetNext(userID, backfillTypes); backfill != nil {
+			backfill.MarkDispatched()
+			return backfill
 		} else {
 			select {
-			case <-bq.ReCheckQueue:
+			case <-reCheckChannel:
 			case <-time.After(time.Minute):
 			}
 		}
+	}
+}
+
+func (user *User) HandleBackfillRequestsLoop(backfillTypes []database.BackfillType) {
+	reCheckChannel := make(chan bool)
+	user.BackfillQueue.reCheckChannels = append(user.BackfillQueue.reCheckChannels, reCheckChannel)
+
+	for {
+		req := user.BackfillQueue.GetNextBackfill(user.MXID, backfillTypes, reCheckChannel)
+		user.log.Infofln("Handling backfill request %s", req)
+
+		conv := user.bridge.DB.HistorySync.GetConversation(user.MXID, req.Portal)
+		if conv == nil {
+			user.log.Debugfln("Could not find history sync conversation data for %s", req.Portal.String())
+			req.MarkDone()
+			continue
+		}
+		portal := user.GetPortalByJID(conv.PortalKey.JID)
+
+		// Update the client store with basic chat settings.
+		if conv.MuteEndTime.After(time.Now()) {
+			user.Client.Store.ChatSettings.PutMutedUntil(conv.PortalKey.JID, conv.MuteEndTime)
+		}
+		if conv.Archived {
+			user.Client.Store.ChatSettings.PutArchived(conv.PortalKey.JID, true)
+		}
+		if conv.Pinned > 0 {
+			user.Client.Store.ChatSettings.PutPinned(conv.PortalKey.JID, true)
+		}
+
+		if conv.EphemeralExpiration != nil && portal.ExpirationTime != *conv.EphemeralExpiration {
+			portal.ExpirationTime = *conv.EphemeralExpiration
+			portal.Update(nil)
+		}
+
+		user.backfillInChunks(req, conv, portal)
+		req.MarkDone()
 	}
 }

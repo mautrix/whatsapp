@@ -178,16 +178,26 @@ func (msg *Message) Scan(row Scannable) *Message {
 	return msg
 }
 
-func (msg *Message) Insert() {
+func (msg *Message) Insert(txn *sql.Tx) {
 	var sender interface{} = msg.Sender
 	// Slightly hacky hack to allow inserting empty senders (used for post-backfill dummy events)
 	if msg.Sender.IsEmpty() {
 		sender = ""
 	}
-	_, err := msg.db.Exec(`INSERT INTO message
+	query := `
+		INSERT INTO message
 			(chat_jid, chat_receiver, jid, mxid, sender, timestamp, sent, type, error, broadcast_list_jid)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
-		msg.Chat.JID, msg.Chat.Receiver, msg.JID, msg.MXID, sender, msg.Timestamp.Unix(), msg.Sent, msg.Type, msg.Error, msg.BroadcastListJID)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+	`
+	args := []interface{}{
+		msg.Chat.JID, msg.Chat.Receiver, msg.JID, msg.MXID, sender, msg.Timestamp.Unix(), msg.Sent, msg.Type, msg.Error, msg.BroadcastListJID,
+	}
+	var err error
+	if txn != nil {
+		_, err = txn.Exec(query, args...)
+	} else {
+		_, err = msg.db.Exec(query, args...)
+	}
 	if err != nil {
 		msg.log.Warnfln("Failed to insert %s@%s: %v", msg.Chat, msg.JID, err)
 	}
@@ -202,11 +212,18 @@ func (msg *Message) MarkSent(ts time.Time) {
 	}
 }
 
-func (msg *Message) UpdateMXID(mxid id.EventID, newType MessageType, newError MessageErrorType) {
+func (msg *Message) UpdateMXID(txn *sql.Tx, mxid id.EventID, newType MessageType, newError MessageErrorType) {
 	msg.MXID = mxid
 	msg.Type = newType
 	msg.Error = newError
-	_, err := msg.db.Exec("UPDATE message SET mxid=$1, type=$2, error=$3 WHERE chat_jid=$4 AND chat_receiver=$5 AND jid=$6", mxid, newType, newError, msg.Chat.JID, msg.Chat.Receiver, msg.JID)
+	query := "UPDATE message SET mxid=$1, type=$2, error=$3 WHERE chat_jid=$4 AND chat_receiver=$5 AND jid=$6"
+	args := []interface{}{mxid, newType, newError, msg.Chat.JID, msg.Chat.Receiver, msg.JID}
+	var err error
+	if txn != nil {
+		_, err = txn.Exec(query, args...)
+	} else {
+		_, err = msg.db.Exec(query, args...)
+	}
 	if err != nil {
 		msg.log.Warnfln("Failed to update %s@%s: %v", msg.Chat, msg.JID, err)
 	}
