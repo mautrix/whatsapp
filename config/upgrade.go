@@ -55,7 +55,6 @@ func (helper *UpgradeHelper) doUpgrade() {
 	} else {
 		helper.Copy(Str, "appservice", "provisioning", "shared_secret")
 	}
-	helper.Copy(Str|Null, "appservice", "provisioning", "segment_key")
 	helper.Copy(Str, "appservice", "id")
 	helper.Copy(Str, "appservice", "bot", "username")
 	helper.Copy(Str, "appservice", "bot", "displayname")
@@ -63,6 +62,8 @@ func (helper *UpgradeHelper) doUpgrade() {
 	helper.Copy(Bool, "appservice", "ephemeral_events")
 	helper.Copy(Str, "appservice", "as_token")
 	helper.Copy(Str, "appservice", "hs_token")
+
+	helper.Copy(Str|Null, "segment_key")
 
 	helper.Copy(Bool, "metrics", "enabled")
 	helper.Copy(Str, "metrics", "listen")
@@ -170,6 +171,7 @@ func (helper *UpgradeHelper) addSpaces() {
 	helper.addSpaceBeforeComment("appservice", "provisioning")
 	helper.addSpaceBeforeComment("appservice", "id")
 	helper.addSpaceBeforeComment("appservice", "as_token")
+	helper.addSpaceBeforeComment("segment_key")
 	helper.addSpaceBeforeComment("metrics")
 	helper.addSpaceBeforeComment("whatsapp")
 	helper.addSpaceBeforeComment("bridge")

@@ -272,6 +272,12 @@ func (bridge *Bridge) Init() {
 	bridge.StateStore = database.NewSQLStateStore(bridge.DB)
 	bridge.AS.StateStore = bridge.StateStore
 
+	Segment.log = bridge.Log.Sub("Segment")
+	Segment.key = bridge.Config.SegmentKey
+	if Segment.IsEnabled() {
+		Segment.log.Infoln("Segment metrics are enabled")
+	}
+
 	bridge.WAContainer = sqlstore.NewWithDB(bridge.DB.DB, bridge.Config.AppService.Database.Type, nil)
 	bridge.WAContainer.DatabaseErrorHandler = bridge.DB.HandleSignalStoreError
 

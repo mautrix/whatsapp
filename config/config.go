@@ -47,7 +47,6 @@ type Config struct {
 		Provisioning struct {
 			Prefix       string `yaml:"prefix"`
 			SharedSecret string `yaml:"shared_secret"`
-			SegmentKey   string `yaml:"segment_key"`
 		} `yaml:"provisioning"`
 
 		ID  string `yaml:"id"`
@@ -64,6 +63,8 @@ type Config struct {
 		ASToken string `yaml:"as_token"`
 		HSToken string `yaml:"hs_token"`
 	} `yaml:"appservice"`
+
+	SegmentKey string `yaml:"segment_key"`
 
 	Metrics struct {
 		Enabled bool   `yaml:"enabled"`
