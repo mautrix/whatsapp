@@ -1,4 +1,4 @@
-# v0.4.0 (unreleased)
+# v0.4.0 (2022-05-16)
 
 * Switched from `/r0` to `/v3` paths everywhere.
   * The new `v3` paths are implemented since Synapse 1.48, Dendrite 0.6.5,
