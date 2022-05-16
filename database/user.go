@@ -165,3 +165,9 @@ func (user *User) Update() {
 		user.log.Warnfln("Failed to update %s: %v", user.MXID, err)
 	}
 }
+
+func (user *User) GetLastAppStateKeyID() ([]byte, error) {
+	var keyID []byte
+	err := user.db.QueryRow("SELECT key_id FROM whatsmeow_app_state_sync_keys ORDER BY timestamp DESC LIMIT 1").Scan(&keyID)
+	return keyID, err
+}

@@ -506,15 +506,29 @@ const PhoneDisconnectPingTime = 10 * 24 * time.Hour
 const PhoneMinPingInterval = 24 * time.Hour
 
 func (user *User) sendHackyPhonePing() {
-	msgID := whatsmeow.GenerateMessageID()
 	user.PhoneLastPinged = time.Now()
+	msgID := whatsmeow.GenerateMessageID()
+	keyIDs := make([]*waProto.AppStateSyncKeyId, 0, 1)
+	lastKeyID, err := user.GetLastAppStateKeyID()
+	if lastKeyID != nil {
+		keyIDs = append(keyIDs, &waProto.AppStateSyncKeyId{
+			KeyId: lastKeyID,
+		})
+	} else {
+		user.log.Warnfln("Failed to get last app state key ID to send hacky phone ping: %v - sending empty request", err)
+	}
 	ts, err := user.Client.SendMessage(user.JID.ToNonAD(), msgID, &waProto.Message{
-		ProtocolMessage: &waProto.ProtocolMessage{},
+		ProtocolMessage: &waProto.ProtocolMessage{
+			Type: waProto.ProtocolMessage_APP_STATE_SYNC_KEY_REQUEST.Enum(),
+			AppStateSyncKeyRequest: &waProto.AppStateSyncKeyRequest{
+				KeyIds: keyIDs,
+			},
+		},
 	})
 	if err != nil {
 		user.log.Warnfln("Failed to send hacky phone ping: %v", err)
 	} else {
-		user.log.Debugfln("Sent hacky phone ping %s/%s because phone has been offline for >10 days", msgID, ts)
+		user.log.Debugfln("Sent hacky phone ping %s/%s because phone has been offline for >10 days", msgID, ts.Unix())
 		user.PhoneLastPinged = ts
 		user.Update()
 	}
