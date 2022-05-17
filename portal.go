@@ -551,8 +551,13 @@ func (portal *Portal) handleUndecryptableMessage(source *User, evt *events.Undec
 		portal.log.Debugfln("Not handling %s (undecryptable): message is duplicate", evt.Info.ID)
 		return
 	}
+	metricType := "error"
+	if evt.IsUnavailable {
+		metricType = "unavailable"
+	}
 	Segment.Track(source.MXID, "WhatsApp undecryptable message", map[string]interface{}{
-		"messageID": evt.Info.ID,
+		"messageID":         evt.Info.ID,
+		"undecryptableType": metricType,
 	})
 	intent := portal.getMessageIntent(source, &evt.Info)
 	if !intent.IsCustomPuppet && portal.IsPrivateChat() && evt.Info.Sender.User == portal.Key.Receiver.User {
