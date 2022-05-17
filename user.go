@@ -18,6 +18,9 @@ package main
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -332,12 +335,19 @@ func (w *waLogger) Sub(module string) waLog.Logger         { return &waLogger{l:
 
 var ErrAlreadyLoggedIn = errors.New("already logged in")
 
+func (user *User) obfuscateJID(jid types.JID) string {
+	// Turn the first 4 bytes of HMAC-SHA256(hs_token, phone) into a number and replace the middle of the actual phone with that deterministic random number.
+	randomNumber := binary.BigEndian.Uint32(hmac.New(sha256.New, []byte(user.bridge.Config.AppService.HSToken)).Sum([]byte(jid.User))[:4])
+	return fmt.Sprintf("+%s-%d-%s:%d", jid.User[:1], randomNumber, jid.User[len(jid.User)-2:], jid.Device)
+}
+
 func (user *User) createClient(sess *store.Device) {
 	user.Client = whatsmeow.NewClient(sess, &waLogger{user.log.Sub("Client")})
 	user.Client.AddEventHandler(user.HandleEvent)
 	user.Client.SetForceActiveDeliveryReceipts(user.bridge.Config.Bridge.ForceActiveDeliveryReceipts)
-	user.Client.GetMessageForRetry = func(to types.JID, id types.MessageID) *waProto.Message {
+	user.Client.GetMessageForRetry = func(requester, to types.JID, id types.MessageID) *waProto.Message {
 		Segment.Track(user.MXID, "WhatsApp incoming retry (message not found)", map[string]interface{}{
+			"requester": user.obfuscateJID(requester),
 			"messageID": id,
 		})
 		user.bridge.Metrics.TrackRetryReceipt(0, false)
@@ -345,6 +355,7 @@ func (user *User) createClient(sess *store.Device) {
 	}
 	user.Client.PreRetryCallback = func(receipt *events.Receipt, messageID types.MessageID, retryCount int, msg *waProto.Message) bool {
 		Segment.Track(user.MXID, "WhatsApp incoming retry (accepted)", map[string]interface{}{
+			"requester":  user.obfuscateJID(receipt.Sender),
 			"messageID":  messageID,
 			"retryCount": retryCount,
 		})
