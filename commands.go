@@ -1246,7 +1246,7 @@ func (handler *CommandHandler) CommandDisappearingTimer(ce *CommandEvent) {
 		ce.Portal.ExpirationTime = prevExpirationTime
 		return
 	}
-	ce.Portal.Update()
+	ce.Portal.Update(nil)
 	if !ce.Portal.IsPrivateChat() && !ce.Bridge.Config.Bridge.DisappearingMessagesInGroups {
 		ce.Reply("Disappearing timer changed successfully, but this bridge is not configured to disappear messages in group chats.")
 	} else {
