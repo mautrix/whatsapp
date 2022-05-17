@@ -82,7 +82,13 @@ const (
 		FROM backfill_queue
 		WHERE user_mxid=$1
 			AND type IN (%s)
-			AND dispatch_time IS NULL
+			AND (
+				dispatch_time IS NULL
+				OR (
+					dispatch_time < current_timestamp - interval '15 minutes'
+					AND completed_at IS NULL
+				)
+			)
 		ORDER BY type, priority, queue_id
 		LIMIT 1
 	`
