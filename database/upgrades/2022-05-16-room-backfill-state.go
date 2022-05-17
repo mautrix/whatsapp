@@ -13,7 +13,7 @@ func init() {
 				portal_receiver     TEXT,
 				processing_batch    BOOLEAN,
 				backfill_complete   BOOLEAN,
-				first_expected_ts   TIMESTAMP,
+				first_expected_ts   INTEGER,
 
 				PRIMARY KEY (user_mxid, portal_jid, portal_receiver),
 				FOREIGN KEY (user_mxid) REFERENCES "user"(mxid) ON DELETE CASCADE ON UPDATE CASCADE,
