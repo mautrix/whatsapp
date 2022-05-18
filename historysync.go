@@ -438,10 +438,7 @@ func (portal *Portal) backfill(source *User, messages []*waProto.WebMessageInfo,
 
 	addedMembers := make(map[id.UserID]struct{})
 	addMember := func(puppet *Puppet) {
-		if req.BeeperNewMessages {
-			// New messages can't use state_events_at_start
-			return
-		} else if _, alreadyAdded := addedMembers[puppet.MXID]; alreadyAdded {
+		if _, alreadyAdded := addedMembers[puppet.MXID]; alreadyAdded {
 			return
 		}
 		mxid := puppet.MXID.String()
