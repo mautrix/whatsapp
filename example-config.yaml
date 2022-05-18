@@ -201,6 +201,11 @@ bridge:
     # Note that updating the m.direct event is not atomic (except with mautrix-asmux)
     # and is therefore prone to race conditions.
     sync_direct_chat_list: false
+    # Should the bridge use MSC2867 to bridge manual "mark as unread"s from
+    # WhatsApp and set the unread status on initial backfill?
+    # This will only work on clients that support the m.marked_unread or
+    # com.famedly.marked_unread room account data.
+    sync_manual_marked_unread: true
     # When double puppeting is enabled, users can use `!wa toggle` to change whether
     # presence and read receipts are bridged. These settings set the default values.
     # Existing users won't be affected when these are changed.

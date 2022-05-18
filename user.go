@@ -777,6 +777,10 @@ func (user *User) HandleEvent(event interface{}) {
 	case *events.KeepAliveRestored:
 		user.log.Infof("Keepalive restored after timeouts, sending connected event")
 		go user.sendBridgeState(BridgeState{StateEvent: StateConnected})
+	case *events.MarkChatAsRead:
+		if user.bridge.Config.Bridge.SyncManualMarkedUnread {
+			user.markUnread(user.GetPortalByJID(v.JID), !v.Action.GetRead())
+		}
 	default:
 		user.log.Debugfln("Unknown type of event in HandleEvent: %T", v)
 	}
@@ -1093,6 +1097,29 @@ func (user *User) markSelfReadFull(portal *Portal) {
 		user.log.Warnfln("Failed to mark %s (last message) in %s as read: %v", lastMessage.MXID, portal.MXID, err)
 	} else {
 		user.log.Debugfln("Marked %s (last message) in %s as read", lastMessage.MXID, portal.MXID)
+	}
+}
+
+func (user *User) markUnread(portal *Portal, unread bool) {
+	puppet := user.bridge.GetPuppetByCustomMXID(user.MXID)
+	if puppet == nil || puppet.CustomIntent() == nil {
+		return
+	}
+
+	err := puppet.CustomIntent().SetRoomAccountData(portal.MXID, "m.marked_unread",
+		map[string]bool{"unread": unread})
+	if err != nil {
+		user.log.Warnfln("Failed to mark %s as unread via m.marked_unread: %v", portal.MXID, err)
+	} else {
+		user.log.Debugfln("Marked %s as unread via m.marked_unread: %v", portal.MXID, err)
+	}
+
+	err = puppet.CustomIntent().SetRoomAccountData(portal.MXID, "com.famedly.marked_unread",
+		map[string]bool{"unread": unread})
+	if err != nil {
+		user.log.Warnfln("Failed to mark %s as unread via com.famedly.marked_unread: %v", portal.MXID, err)
+	} else {
+		user.log.Debugfln("Marked %s as unread via com.famedly.marked_unread: %v", portal.MXID, err)
 	}
 }
 

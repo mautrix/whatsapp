@@ -237,6 +237,8 @@ func (user *User) backfillInChunks(req *database.Backfill, conv *database.Histor
 
 	if !conv.MarkedAsUnread && conv.UnreadCount == 0 {
 		user.markSelfReadFull(portal)
+	} else if user.bridge.Config.Bridge.SyncManualMarkedUnread {
+		user.markUnread(portal, true)
 	}
 }
 

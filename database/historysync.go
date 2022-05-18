@@ -115,20 +115,11 @@ func (hsc *HistorySyncConversation) Upsert() {
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
 		ON CONFLICT (user_mxid, conversation_id)
 		DO UPDATE SET
-			portal_jid=EXCLUDED.portal_jid,
-			portal_receiver=EXCLUDED.portal_receiver,
 			last_message_timestamp=CASE
 				WHEN EXCLUDED.last_message_timestamp > history_sync_conversation.last_message_timestamp THEN EXCLUDED.last_message_timestamp
 				ELSE history_sync_conversation.last_message_timestamp
 			END,
-			archived=EXCLUDED.archived,
-			pinned=EXCLUDED.pinned,
-			mute_end_time=EXCLUDED.mute_end_time,
-			disappearing_mode=EXCLUDED.disappearing_mode,
-			end_of_history_transfer_type=EXCLUDED.end_of_history_transfer_type,
-			ephemeral_expiration=EXCLUDED.ephemeral_expiration,
-			marked_as_unread=EXCLUDED.marked_as_unread,
-			unread_count=EXCLUDED.unread_count
+			end_of_history_transfer_type=EXCLUDED.end_of_history_transfer_type
 	`,
 		hsc.UserID,
 		hsc.ConversationID,
