@@ -302,6 +302,7 @@ func (user *User) handleHistorySync(backfillQueue *BackfillQueue, evt *waProto.H
 			// Don't store messages that will just be skipped.
 			msgEvt, err := user.Client.ParseWebMessage(portal.Key.JID, rawMsg.GetMessage())
 			if err != nil {
+				user.log.Warnln("Dropping historical message due to info parse error:", err)
 				continue
 			}
 
@@ -493,6 +494,9 @@ func (portal *Portal) backfill(source *User, messages []*waProto.WebMessageInfo,
 			}
 		}
 		puppet := portal.getMessagePuppet(source, &msgEvt.Info)
+		if puppet == nil {
+			continue
+		}
 		intent := puppet.IntentFor(portal)
 		if intent.IsCustomPuppet && !portal.bridge.Config.CanDoublePuppetBackfill(puppet.CustomMXID) {
 			intent = puppet.DefaultIntent()

@@ -560,7 +560,9 @@ func (portal *Portal) handleUndecryptableMessage(source *User, evt *events.Undec
 		"undecryptableType": metricType,
 	})
 	intent := portal.getMessageIntent(source, &evt.Info)
-	if !intent.IsCustomPuppet && portal.IsPrivateChat() && evt.Info.Sender.User == portal.Key.Receiver.User {
+	if intent == nil {
+		return
+	} else if !intent.IsCustomPuppet && portal.IsPrivateChat() && evt.Info.Sender.User == portal.Key.Receiver.User {
 		portal.log.Debugfln("Not handling %s (undecryptable): user doesn't have double puppeting enabled", evt.Info.ID)
 		return
 	}
@@ -634,7 +636,9 @@ func (portal *Portal) handleMessage(source *User, evt *events.Message) {
 	}
 
 	intent := portal.getMessageIntent(source, &evt.Info)
-	if !intent.IsCustomPuppet && portal.IsPrivateChat() && evt.Info.Sender.User == portal.Key.Receiver.User {
+	if intent == nil {
+		return
+	} else if !intent.IsCustomPuppet && portal.IsPrivateChat() && evt.Info.Sender.User == portal.Key.Receiver.User {
 		portal.log.Debugfln("Not handling %s (%s): user doesn't have double puppeting enabled", msgID, msgType)
 		return
 	}
@@ -753,13 +757,21 @@ func (portal *Portal) getMessagePuppet(user *User, info *types.MessageInfo) *Pup
 		return portal.bridge.GetPuppetByJID(portal.Key.JID)
 	} else {
 		puppet := portal.bridge.GetPuppetByJID(info.Sender)
+		if puppet == nil {
+			portal.log.Warnfln("Message %+v doesn't seem to have a valid sender (%s): puppet is nil", *info, info.Sender)
+			return nil
+		}
 		puppet.SyncContact(user, true, true, "handling message")
 		return puppet
 	}
 }
 
 func (portal *Portal) getMessageIntent(user *User, info *types.MessageInfo) *appservice.IntentAPI {
-	return portal.getMessagePuppet(user, info).IntentFor(portal)
+	puppet := portal.getMessagePuppet(user, info)
+	if puppet == nil {
+		return nil
+	}
+	return puppet.IntentFor(portal)
 }
 
 func (portal *Portal) finishHandling(existing *database.Message, message *types.MessageInfo, mxid id.EventID, msgType database.MessageType, errType database.MessageErrorType) {
