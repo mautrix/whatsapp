@@ -2346,7 +2346,7 @@ func (portal *Portal) handleMediaRetry(retry *events.MediaRetry, source *User) {
 		errorName := waProto.MediaRetryNotification_MediaRetryNotificationResultType_name[int32(retryData.GetResult())]
 		if retryData.GetDirectPath() == "" {
 			portal.log.Warnfln("Got error response in media retry notification for %s: %s", retry.MessageID, errorName)
-			portal.log.Debugfln("Error response contents: %s / %s", retryData.GetStanzaId(), retryData.GetDirectPath())
+			portal.log.Debugfln("Error response contents: %+v", retryData)
 			if retryData.GetResult() == waProto.MediaRetryNotification_NOT_FOUND {
 				portal.sendMediaRetryFailureEdit(intent, msg, whatsmeow.ErrMediaNotAvailableOnPhone)
 			} else {
