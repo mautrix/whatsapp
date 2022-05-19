@@ -106,19 +106,23 @@ func (bq *BackfillQuery) GetNext(userID id.UserID, backfillTypes []BackfillType)
 	return
 }
 
-func (bq *BackfillQuery) DeleteAll(userID id.UserID) error {
+func (bq *BackfillQuery) DeleteAll(userID id.UserID) {
 	_, err := bq.db.Exec("DELETE FROM backfill_queue WHERE user_mxid=$1", userID)
-	return err
+	if err != nil {
+		bq.log.Warnfln("Failed to delete backfill queue items for %s: %v", userID, err)
+	}
 }
 
-func (bq *BackfillQuery) DeleteAllForPortal(userID id.UserID, portalKey PortalKey) error {
+func (bq *BackfillQuery) DeleteAllForPortal(userID id.UserID, portalKey PortalKey) {
 	_, err := bq.db.Exec(`
 		DELETE FROM backfill_queue
 		WHERE user_mxid=$1
 			AND portal_jid=$2
 			AND portal_receiver=$3
 	`, userID, portalKey.JID, portalKey.Receiver)
-	return err
+	if err != nil {
+		bq.log.Warnfln("Failed to delete backfill queue items for %s/%s: %v", userID, portalKey.JID, err)
+	}
 }
 
 type Backfill struct {

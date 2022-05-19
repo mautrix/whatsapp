@@ -111,19 +111,21 @@ func (mbr *MediaBackfillRequest) Scan(row Scannable) *MediaBackfillRequest {
 	return mbr
 }
 
-func (mbr *MediaBackfillRequestQuery) GetMediaBackfillRequestsForUser(userID id.UserID) (requests []*MediaBackfillRequest) {
-	rows, err := mbr.db.Query(getMediaBackfillRequestsForUser, userID)
+func (mbrq *MediaBackfillRequestQuery) GetMediaBackfillRequestsForUser(userID id.UserID) (requests []*MediaBackfillRequest) {
+	rows, err := mbrq.db.Query(getMediaBackfillRequestsForUser, userID)
 	defer rows.Close()
 	if err != nil || rows == nil {
 		return nil
 	}
 	for rows.Next() {
-		requests = append(requests, mbr.newMediaBackfillRequest().Scan(rows))
+		requests = append(requests, mbrq.newMediaBackfillRequest().Scan(rows))
 	}
 	return
 }
 
-func (mbr *MediaBackfillRequestQuery) DeleteAllMediaBackfillRequests(userID id.UserID) error {
-	_, err := mbr.db.Exec("DELETE FROM media_backfill_requests WHERE user_mxid=$1", userID)
-	return err
+func (mbrq *MediaBackfillRequestQuery) DeleteAllMediaBackfillRequests(userID id.UserID) {
+	_, err := mbrq.db.Exec("DELETE FROM media_backfill_requests WHERE user_mxid=$1", userID)
+	if err != nil {
+		mbrq.log.Warnfln("Failed to delete media backfill requests for %s: %v", userID, err)
+	}
 }

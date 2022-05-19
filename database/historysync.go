@@ -192,9 +192,11 @@ func (hsq *HistorySyncQuery) GetConversation(userID id.UserID, portalKey *Portal
 	return
 }
 
-func (hsq *HistorySyncQuery) DeleteAllConversations(userID id.UserID) error {
+func (hsq *HistorySyncQuery) DeleteAllConversations(userID id.UserID) {
 	_, err := hsq.db.Exec("DELETE FROM history_sync_conversation WHERE user_mxid=$1", userID)
-	return err
+	if err != nil {
+		hsq.log.Warnfln("Failed to delete historical chat info for %s/%s: %v", userID, err)
+	}
 }
 
 const (
@@ -301,15 +303,19 @@ func (hsq *HistorySyncQuery) DeleteMessages(userID id.UserID, conversationID str
 	return err
 }
 
-func (hsq *HistorySyncQuery) DeleteAllMessages(userID id.UserID) error {
+func (hsq *HistorySyncQuery) DeleteAllMessages(userID id.UserID) {
 	_, err := hsq.db.Exec("DELETE FROM history_sync_message WHERE user_mxid=$1", userID)
-	return err
+	if err != nil {
+		hsq.log.Warnfln("Failed to delete historical messages for %s: %v", userID, err)
+	}
 }
 
-func (hsq *HistorySyncQuery) DeleteAllMessagesForPortal(userID id.UserID, portalKey PortalKey) error {
+func (hsq *HistorySyncQuery) DeleteAllMessagesForPortal(userID id.UserID, portalKey PortalKey) {
 	_, err := hsq.db.Exec(`
 		DELETE FROM history_sync_message
 		WHERE user_mxid=$1 AND conversation_id=$2
 	`, userID, portalKey.JID)
-	return err
+	if err != nil {
+		hsq.log.Warnfln("Failed to delete historical messages for %s/%s: %v", userID, portalKey.JID, err)
+	}
 }
