@@ -309,9 +309,7 @@ func (hsq *HistorySyncQuery) DeleteAllMessages(userID id.UserID) error {
 func (hsq *HistorySyncQuery) DeleteAllMessagesForPortal(userID id.UserID, portalKey PortalKey) error {
 	_, err := hsq.db.Exec(`
 		DELETE FROM history_sync_message
-		WHERE user_mxid=$1
-			AND portal_jid=$2
-			AND portal_receiver=$3
-	`, userID, portalKey.JID, portalKey.Receiver)
+		WHERE user_mxid=$1 AND conversation_id=$2
+	`, userID, portalKey.JID)
 	return err
 }
