@@ -2344,14 +2344,18 @@ func (portal *Portal) handleMediaRetry(retry *events.MediaRetry, source *User) {
 		return
 	} else if retryData.GetResult() != waProto.MediaRetryNotification_SUCCESS {
 		errorName := waProto.MediaRetryNotification_MediaRetryNotificationResultType_name[int32(retryData.GetResult())]
-		portal.log.Warnfln("Got error response in media retry notification for %s: %s", retry.MessageID, errorName)
-		portal.log.Debugfln("Error response contents: %s / %s", retryData.GetStanzaId(), retryData.GetDirectPath())
-		if retryData.GetResult() == waProto.MediaRetryNotification_NOT_FOUND {
-			portal.sendMediaRetryFailureEdit(intent, msg, whatsmeow.ErrMediaNotAvailableOnPhone)
+		if retryData.GetDirectPath() == "" {
+			portal.log.Warnfln("Got error response in media retry notification for %s: %s", retry.MessageID, errorName)
+			portal.log.Debugfln("Error response contents: %s / %s", retryData.GetStanzaId(), retryData.GetDirectPath())
+			if retryData.GetResult() == waProto.MediaRetryNotification_NOT_FOUND {
+				portal.sendMediaRetryFailureEdit(intent, msg, whatsmeow.ErrMediaNotAvailableOnPhone)
+			} else {
+				portal.sendMediaRetryFailureEdit(intent, msg, fmt.Errorf("phone sent error response: %s", errorName))
+			}
+			return
 		} else {
-			portal.sendMediaRetryFailureEdit(intent, msg, fmt.Errorf("phone sent error response: %s", errorName))
+			portal.log.Debugfln("Got error response %s in media retry notification for %s, but response also contains a new download URL - trying to download", retry.MessageID, errorName)
 		}
-		return
 	}
 
 	data, err := source.Client.DownloadMediaWithPath(retryData.GetDirectPath(), meta.Media.EncSHA256, meta.Media.SHA256, meta.Media.Key, meta.Media.Length, meta.Media.Type, "")
