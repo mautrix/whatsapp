@@ -136,6 +136,7 @@ func (user *User) backfillInChunks(req *database.Backfill, conv *database.Histor
 
 	var forwardPrevID id.EventID
 	var timeEnd *time.Time
+	var isLatestEvents bool
 	if req.BackfillType == database.BackfillForward {
 		// TODO this overrides the TimeStart set when enqueuing the backfill
 		//      maybe the enqueue should instead include the prev event ID
@@ -143,12 +144,17 @@ func (user *User) backfillInChunks(req *database.Backfill, conv *database.Histor
 		forwardPrevID = lastMessage.MXID
 		start := lastMessage.Timestamp.Add(1 * time.Second)
 		req.TimeStart = &start
+		// Sending events at the end of the room (= latest events)
+		isLatestEvents = true
 	} else {
 		firstMessage := portal.bridge.DB.Message.GetFirstInChat(portal.Key)
 		if firstMessage != nil {
 			end := firstMessage.Timestamp.Add(-1 * time.Second)
 			timeEnd = &end
 			user.log.Debugfln("Limiting backfill to end at %v", end)
+		} else {
+			// Portal is empty -> events are latest
+			isLatestEvents = true
 		}
 	}
 	allMsgs := user.bridge.DB.HistorySync.GetMessagesBetween(user.MXID, conv.ConversationID, req.TimeStart, timeEnd, req.MaxTotalEvents)
@@ -217,8 +223,8 @@ func (user *User) backfillInChunks(req *database.Backfill, conv *database.Histor
 		if len(msgs) > 0 {
 			time.Sleep(time.Duration(req.BatchDelay) * time.Second)
 			user.log.Debugfln("Backfilling %d messages in %s (queue ID: %d)", len(msgs), portal.Key.JID, req.QueueID)
-			resp := portal.backfill(user, msgs, req.BackfillType == database.BackfillForward, forwardPrevID)
-			if resp != nil {
+			resp := portal.backfill(user, msgs, req.BackfillType == database.BackfillForward, isLatestEvents, forwardPrevID)
+			if resp != nil && (resp.BaseInsertionEventID != "" || !isLatestEvents) {
 				insertionEventIds = append(insertionEventIds, resp.BaseInsertionEventID)
 			}
 		}
@@ -410,7 +416,7 @@ var (
 	HistorySyncMarker     = event.Type{Type: "org.matrix.msc2716.marker", Class: event.MessageEventType}
 )
 
-func (portal *Portal) backfill(source *User, messages []*waProto.WebMessageInfo, isForward bool, prevEventID id.EventID) *mautrix.RespBatchSend {
+func (portal *Portal) backfill(source *User, messages []*waProto.WebMessageInfo, isForward, isLatest bool, prevEventID id.EventID) *mautrix.RespBatchSend {
 	var req mautrix.ReqBatchSend
 	var infos []*wrappedInfo
 
@@ -425,6 +431,7 @@ func (portal *Portal) backfill(source *User, messages []*waProto.WebMessageInfo,
 	} else {
 		req.PrevEventID = prevEventID
 	}
+	req.BeeperNewMessages = isLatest && req.BatchID == ""
 
 	beforeFirstMessageTimestampMillis := (int64(messages[len(messages)-1].GetMessageTimestamp()) * 1000) - 1
 	req.StateEventsAtStart = make([]*event.Event, 0)
