@@ -290,7 +290,22 @@ func (prov *ProvisioningAPI) ListContacts(w http.ResponseWriter, r *http.Request
 			ErrCode: "failed to get contacts",
 		})
 	} else {
-		jsonResponse(w, http.StatusOK, contacts)
+		augmentedContacts := map[types.JID]interface{}{}
+		for jid, contact := range contacts {
+			var avatarUrl id.ContentURI
+			if puppet := prov.bridge.DB.Puppet.Get(jid); puppet != nil {
+				avatarUrl = puppet.AvatarURL
+			}
+			augmentedContacts[jid] = map[string]interface{}{
+				"Found":        contact.Found,
+				"FirstName":    contact.FirstName,
+				"FullName":     contact.FullName,
+				"PushName":     contact.PushName,
+				"BusinessName": contact.BusinessName,
+				"AvatarURL":    avatarUrl,
+			}
+		}
+		jsonResponse(w, http.StatusOK, augmentedContacts)
 	}
 }
 
