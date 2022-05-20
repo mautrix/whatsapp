@@ -130,6 +130,14 @@ func (user *User) backfillInChunks(req *database.Backfill, conv *database.Histor
 	portal.backfillLock.Lock()
 	defer portal.backfillLock.Unlock()
 
+	backfillState := user.bridge.DB.Backfill.GetBackfillState(user.MXID, &portal.Key)
+	if backfillState == nil {
+		backfillState = user.bridge.DB.Backfill.NewBackfillState(user.MXID, &portal.Key)
+	}
+	backfillState.SetProcessingBatch(true)
+	defer backfillState.SetProcessingBatch(false)
+	portal.updateBackfillStatus(backfillState)
+
 	if !user.shouldCreatePortalForHistorySync(conv, portal) {
 		return
 	}
@@ -239,6 +247,27 @@ func (user *User) backfillInChunks(req *database.Backfill, conv *database.Histor
 	err := user.bridge.DB.HistorySync.DeleteMessages(user.MXID, conv.ConversationID, allMsgs)
 	if err != nil {
 		user.log.Warnfln("Failed to delete %d history sync messages after backfilling (queue ID: %d): %v", len(allMsgs), req.QueueID, err)
+	}
+
+	if req.TimeStart == nil {
+		// If the time start is nil, then there's no more history to backfill.
+		backfillState.BackfillComplete = true
+
+		if conv.EndOfHistoryTransferType == waProto.Conversation_COMPLETE_BUT_MORE_MESSAGES_REMAIN_ON_PRIMARY {
+			// Since there are more messages on the phone, but we can't
+			// backfilll any more of them, indicate that the last timestamp
+			// that we expect to be backfilled is the oldest one that was just
+			// backfilled.
+			backfillState.FirstExpectedTimestamp = allMsgs[len(allMsgs)-1].GetMessageTimestamp()
+		} else if conv.EndOfHistoryTransferType == waProto.Conversation_COMPLETE_AND_NO_MORE_MESSAGE_REMAIN_ON_PRIMARY {
+			// Since there are no more messages left on the phone, we've
+			// backfilled everything. Indicate so by setting the expected
+			// timestamp to 0 which means that the backfill goes to the
+			// beginning of time.
+			backfillState.FirstExpectedTimestamp = 0
+		}
+		backfillState.Upsert()
+		portal.updateBackfillStatus(backfillState)
 	}
 
 	if !conv.MarkedAsUnread && conv.UnreadCount == 0 {
@@ -415,6 +444,8 @@ var (
 
 	BackfillEndDummyEvent = event.Type{Type: "fi.mau.dummy.backfill_end", Class: event.MessageEventType}
 	HistorySyncMarker     = event.Type{Type: "org.matrix.msc2716.marker", Class: event.MessageEventType}
+
+	BackfillStatusEvent = event.Type{Type: "com.beeper.backfill_status", Class: event.StateEventType}
 )
 
 func (portal *Portal) backfill(source *User, messages []*waProto.WebMessageInfo, isForward, isLatest bool, prevEventID id.EventID) *mautrix.RespBatchSend {
@@ -689,6 +720,21 @@ func (portal *Portal) sendPostBackfillDummy(lastTimestamp time.Time, insertionEv
 	msg.Sent = true
 	msg.Type = database.MsgFake
 	msg.Insert(nil)
+}
+
+func (portal *Portal) updateBackfillStatus(backfillState *database.BackfillState) {
+	backfillStatus := "backfilling"
+	if backfillState.BackfillComplete {
+		backfillStatus = "complete"
+	}
+
+	_, err := portal.MainIntent().SendStateEvent(portal.MXID, BackfillStatusEvent, "", map[string]interface{}{
+		"status":          backfillStatus,
+		"first_timestamp": backfillState.FirstExpectedTimestamp,
+	})
+	if err != nil {
+		portal.log.Errorln("Error sending post-backfill dummy event:", err)
+	}
 }
 
 // endregion
