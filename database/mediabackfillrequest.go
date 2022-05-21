@@ -22,7 +22,9 @@ import (
 
 	_ "github.com/mattn/go-sqlite3"
 	log "maunium.net/go/maulogger/v2"
+
 	"maunium.net/go/mautrix/id"
+	"maunium.net/go/mautrix/util/dbutil"
 )
 
 type MediaBackfillRequestStatus int
@@ -100,7 +102,7 @@ func (mbr *MediaBackfillRequest) Upsert() {
 	}
 }
 
-func (mbr *MediaBackfillRequest) Scan(row Scannable) *MediaBackfillRequest {
+func (mbr *MediaBackfillRequest) Scan(row dbutil.Scannable) *MediaBackfillRequest {
 	err := row.Scan(&mbr.UserID, &mbr.PortalKey.JID, &mbr.PortalKey.Receiver, &mbr.EventID, &mbr.MediaKey, &mbr.Status, &mbr.Error)
 	if err != nil {
 		if !errors.Is(err, sql.ErrNoRows) {

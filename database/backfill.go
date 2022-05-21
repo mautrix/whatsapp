@@ -26,7 +26,9 @@ import (
 	"time"
 
 	log "maunium.net/go/maulogger/v2"
+
 	"maunium.net/go/mautrix/id"
+	"maunium.net/go/mautrix/util/dbutil"
 )
 
 type BackfillType int
@@ -165,7 +167,7 @@ func (b *Backfill) String() string {
 	)
 }
 
-func (b *Backfill) Scan(row Scannable) *Backfill {
+func (b *Backfill) Scan(row dbutil.Scannable) *Backfill {
 	err := row.Scan(&b.QueueID, &b.UserID, &b.BackfillType, &b.Priority, &b.Portal.JID, &b.Portal.Receiver, &b.TimeStart, &b.MaxBatchEvents, &b.MaxTotalEvents, &b.BatchDelay)
 	if err != nil {
 		if !errors.Is(err, sql.ErrNoRows) {
@@ -256,7 +258,7 @@ type BackfillState struct {
 	FirstExpectedTimestamp uint64
 }
 
-func (b *BackfillState) Scan(row Scannable) *BackfillState {
+func (b *BackfillState) Scan(row dbutil.Scannable) *BackfillState {
 	err := row.Scan(&b.UserID, &b.Portal.JID, &b.Portal.Receiver, &b.ProcessingBatch, &b.BackfillComplete, &b.FirstExpectedTimestamp)
 	if err != nil {
 		if !errors.Is(err, sql.ErrNoRows) {

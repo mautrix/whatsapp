@@ -24,6 +24,7 @@ import (
 	log "maunium.net/go/maulogger/v2"
 
 	"maunium.net/go/mautrix/id"
+	"maunium.net/go/mautrix/util/dbutil"
 
 	"go.mau.fi/whatsmeow/types"
 )
@@ -89,7 +90,7 @@ type User struct {
 	inSpaceCacheLock  sync.Mutex
 }
 
-func (user *User) Scan(row Scannable) *User {
+func (user *User) Scan(row dbutil.Scannable) *User {
 	var username, timezone sql.NullString
 	var device, agent sql.NullByte
 	var phoneLastSeen, phoneLastPinged sql.NullInt64

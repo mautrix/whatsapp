@@ -24,6 +24,7 @@ import (
 
 	"go.mau.fi/whatsmeow/types"
 
+	"maunium.net/go/mautrix/bridge/bridgeconfig"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 )
@@ -118,23 +119,23 @@ type BridgeConfig struct {
 		AdditionalHelp     string `yaml:"additional_help"`
 	} `yaml:"management_room_text"`
 
-	Encryption struct {
-		Allow   bool `yaml:"allow"`
-		Default bool `yaml:"default"`
+	Encryption bridgeconfig.EncryptionConfig `yaml:"encryption"`
 
-		KeySharing struct {
-			Allow               bool `yaml:"allow"`
-			RequireCrossSigning bool `yaml:"require_cross_signing"`
-			RequireVerification bool `yaml:"require_verification"`
-		} `yaml:"key_sharing"`
-	} `yaml:"encryption"`
+	Provisioning struct {
+		Prefix       string `yaml:"prefix"`
+		SharedSecret string `yaml:"shared_secret"`
+	} `yaml:"provisioning"`
 
 	Permissions PermissionConfig `yaml:"permissions"`
 
 	Relay RelaybotConfig `yaml:"relay"`
 
-	usernameTemplate    *template.Template `yaml:"-"`
-	displaynameTemplate *template.Template `yaml:"-"`
+	ParsedUsernameTemplate *template.Template `yaml:"-"`
+	displaynameTemplate    *template.Template `yaml:"-"`
+}
+
+func (bc BridgeConfig) GetEncryptionConfig() bridgeconfig.EncryptionConfig {
+	return bc.Encryption
 }
 
 type umBridgeConfig BridgeConfig
@@ -145,7 +146,7 @@ func (bc *BridgeConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
 		return err
 	}
 
-	bc.usernameTemplate, err = template.New("username").Parse(bc.UsernameTemplate)
+	bc.ParsedUsernameTemplate, err = template.New("username").Parse(bc.UsernameTemplate)
 	if err != nil {
 		return err
 	} else if !strings.Contains(bc.FormatUsername("1234567890"), "1234567890") {
@@ -206,7 +207,7 @@ func (bc BridgeConfig) FormatDisplayname(jid types.JID, contact types.ContactInf
 
 func (bc BridgeConfig) FormatUsername(username string) string {
 	var buf strings.Builder
-	_ = bc.usernameTemplate.Execute(&buf, username)
+	_ = bc.ParsedUsernameTemplate.Execute(&buf, username)
 	return buf.String()
 }
 

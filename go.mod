@@ -14,10 +14,8 @@ require (
 	golang.org/x/image v0.0.0-20220413100746-70e8d0d3baa9
 	golang.org/x/net v0.0.0-20220513224357-95641704303c
 	google.golang.org/protobuf v1.28.0
-	gopkg.in/yaml.v3 v3.0.0-20220512140231-539c8e751b99
-	maunium.net/go/mauflag v1.0.0
 	maunium.net/go/maulogger/v2 v2.3.2
-	maunium.net/go/mautrix v0.11.1-0.20220518174602-87d2cd49a4d1
+	maunium.net/go/mautrix v0.11.1-0.20220521215033-d578d1a610d5
 )
 
 require (
@@ -37,7 +35,8 @@ require (
 	golang.org/x/crypto v0.0.0-20220513210258-46612604a0f9 // indirect
 	golang.org/x/sys v0.0.0-20220328115105-d36c6a25d886 // indirect
 	golang.org/x/text v0.3.7 // indirect
-	gopkg.in/yaml.v2 v2.4.0 // indirect
+	gopkg.in/yaml.v3 v3.0.0 // indirect
+	maunium.net/go/mauflag v1.0.0 // indirect
 )
 
 // Exclude some things that cause go.sum to explode

@@ -39,6 +39,7 @@ import (
 
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/appservice"
+	"maunium.net/go/mautrix/bridge"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/format"
 	"maunium.net/go/mautrix/id"
@@ -47,12 +48,12 @@ import (
 )
 
 type CommandHandler struct {
-	bridge *Bridge
+	bridge *WABridge
 	log    maulogger.Logger
 }
 
 // NewCommandHandler creates a CommandHandler
-func NewCommandHandler(bridge *Bridge) *CommandHandler {
+func NewCommandHandler(bridge *WABridge) *CommandHandler {
 	return &CommandHandler{
 		bridge: bridge,
 		log:    bridge.Log.Sub("Command handler"),
@@ -62,7 +63,7 @@ func NewCommandHandler(bridge *Bridge) *CommandHandler {
 // CommandEvent stores all data which might be used to handle commands
 type CommandEvent struct {
 	Bot     *appservice.IntentAPI
-	Bridge  *Bridge
+	Bridge  *WABridge
 	Portal  *Portal
 	Handler *CommandHandler
 	RoomID  id.RoomID
@@ -251,13 +252,7 @@ func (handler *CommandHandler) CommandDevTest(_ *CommandEvent) {
 const cmdVersionHelp = `version - View the bridge version`
 
 func (handler *CommandHandler) CommandVersion(ce *CommandEvent) {
-	linkifiedVersion := fmt.Sprintf("v%s", Version)
-	if Tag == Version {
-		linkifiedVersion = fmt.Sprintf("[v%s](%s/releases/v%s)", Version, URL, Tag)
-	} else if len(Commit) > 8 {
-		linkifiedVersion = strings.Replace(linkifiedVersion, Commit[:8], fmt.Sprintf("[%s](%s/commit/%s)", Commit[:8], URL, Commit), 1)
-	}
-	ce.Reply(fmt.Sprintf("[%s](%s) %s (%s)", Name, URL, linkifiedVersion, BuildTime))
+	ce.Reply(fmt.Sprintf("[%s](%s) %s (%s)", ce.Bridge.Name, ce.Bridge.URL, ce.Bridge.LinkifiedVersion, BuildTime))
 }
 
 const cmdInviteLinkHelp = `invite-link [--reset] - Get an invite link to the current group chat, optionally regenerating the link and revoking the old link.`
@@ -331,7 +326,7 @@ func (handler *CommandHandler) CommandJoin(ce *CommandEvent) {
 	ce.Reply("Successfully joined group `%s`, the portal should be created momentarily", jid)
 }
 
-func tryDecryptEvent(crypto Crypto, evt *event.Event) (json.RawMessage, error) {
+func tryDecryptEvent(crypto bridge.Crypto, evt *event.Event) (json.RawMessage, error) {
 	var data json.RawMessage
 	if evt.Type != event.EventEncrypted {
 		data = evt.Content.VeryRaw
@@ -903,7 +898,7 @@ func matchesQuery(str string, query string) bool {
 	return strings.Contains(strings.ToLower(str), query)
 }
 
-func formatContacts(bridge *Bridge, input map[types.JID]types.ContactInfo, query string) (result []string) {
+func formatContacts(bridge *WABridge, input map[types.JID]types.ContactInfo, query string) (result []string) {
 	hasQuery := len(query) > 0
 	for jid, contact := range input {
 		if len(contact.FullName) == 0 {

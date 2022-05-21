@@ -39,11 +39,11 @@ import (
 
 var userIDRegex *regexp.Regexp
 
-func (bridge *Bridge) ParsePuppetMXID(mxid id.UserID) (jid types.JID, ok bool) {
+func (br *WABridge) ParsePuppetMXID(mxid id.UserID) (jid types.JID, ok bool) {
 	if userIDRegex == nil {
 		userIDRegex = regexp.MustCompile(fmt.Sprintf("^@%s:%s$",
-			bridge.Config.Bridge.FormatUsername("([0-9]+)"),
-			bridge.Config.Homeserver.Domain))
+			br.Config.Bridge.FormatUsername("([0-9]+)"),
+			br.Config.Homeserver.Domain))
 	}
 	match := userIDRegex.FindStringSubmatch(string(mxid))
 	if len(match) == 2 {
@@ -53,79 +53,79 @@ func (bridge *Bridge) ParsePuppetMXID(mxid id.UserID) (jid types.JID, ok bool) {
 	return
 }
 
-func (bridge *Bridge) GetPuppetByMXID(mxid id.UserID) *Puppet {
-	jid, ok := bridge.ParsePuppetMXID(mxid)
+func (br *WABridge) GetPuppetByMXID(mxid id.UserID) *Puppet {
+	jid, ok := br.ParsePuppetMXID(mxid)
 	if !ok {
 		return nil
 	}
 
-	return bridge.GetPuppetByJID(jid)
+	return br.GetPuppetByJID(jid)
 }
 
-func (bridge *Bridge) GetPuppetByJID(jid types.JID) *Puppet {
+func (br *WABridge) GetPuppetByJID(jid types.JID) *Puppet {
 	jid = jid.ToNonAD()
 	if jid.Server == types.LegacyUserServer {
 		jid.Server = types.DefaultUserServer
 	} else if jid.Server != types.DefaultUserServer {
 		return nil
 	}
-	bridge.puppetsLock.Lock()
-	defer bridge.puppetsLock.Unlock()
-	puppet, ok := bridge.puppets[jid]
+	br.puppetsLock.Lock()
+	defer br.puppetsLock.Unlock()
+	puppet, ok := br.puppets[jid]
 	if !ok {
-		dbPuppet := bridge.DB.Puppet.Get(jid)
+		dbPuppet := br.DB.Puppet.Get(jid)
 		if dbPuppet == nil {
-			dbPuppet = bridge.DB.Puppet.New()
+			dbPuppet = br.DB.Puppet.New()
 			dbPuppet.JID = jid
 			dbPuppet.Insert()
 		}
-		puppet = bridge.NewPuppet(dbPuppet)
-		bridge.puppets[puppet.JID] = puppet
+		puppet = br.NewPuppet(dbPuppet)
+		br.puppets[puppet.JID] = puppet
 		if len(puppet.CustomMXID) > 0 {
-			bridge.puppetsByCustomMXID[puppet.CustomMXID] = puppet
+			br.puppetsByCustomMXID[puppet.CustomMXID] = puppet
 		}
 	}
 	return puppet
 }
 
-func (bridge *Bridge) GetPuppetByCustomMXID(mxid id.UserID) *Puppet {
-	bridge.puppetsLock.Lock()
-	defer bridge.puppetsLock.Unlock()
-	puppet, ok := bridge.puppetsByCustomMXID[mxid]
+func (br *WABridge) GetPuppetByCustomMXID(mxid id.UserID) *Puppet {
+	br.puppetsLock.Lock()
+	defer br.puppetsLock.Unlock()
+	puppet, ok := br.puppetsByCustomMXID[mxid]
 	if !ok {
-		dbPuppet := bridge.DB.Puppet.GetByCustomMXID(mxid)
+		dbPuppet := br.DB.Puppet.GetByCustomMXID(mxid)
 		if dbPuppet == nil {
 			return nil
 		}
-		puppet = bridge.NewPuppet(dbPuppet)
-		bridge.puppets[puppet.JID] = puppet
-		bridge.puppetsByCustomMXID[puppet.CustomMXID] = puppet
+		puppet = br.NewPuppet(dbPuppet)
+		br.puppets[puppet.JID] = puppet
+		br.puppetsByCustomMXID[puppet.CustomMXID] = puppet
 	}
 	return puppet
 }
 
-func (bridge *Bridge) GetAllPuppetsWithCustomMXID() []*Puppet {
-	return bridge.dbPuppetsToPuppets(bridge.DB.Puppet.GetAllWithCustomMXID())
+func (br *WABridge) GetAllPuppetsWithCustomMXID() []*Puppet {
+	return br.dbPuppetsToPuppets(br.DB.Puppet.GetAllWithCustomMXID())
 }
 
-func (bridge *Bridge) GetAllPuppets() []*Puppet {
-	return bridge.dbPuppetsToPuppets(bridge.DB.Puppet.GetAll())
+func (br *WABridge) GetAllPuppets() []*Puppet {
+	return br.dbPuppetsToPuppets(br.DB.Puppet.GetAll())
 }
 
-func (bridge *Bridge) dbPuppetsToPuppets(dbPuppets []*database.Puppet) []*Puppet {
-	bridge.puppetsLock.Lock()
-	defer bridge.puppetsLock.Unlock()
+func (br *WABridge) dbPuppetsToPuppets(dbPuppets []*database.Puppet) []*Puppet {
+	br.puppetsLock.Lock()
+	defer br.puppetsLock.Unlock()
 	output := make([]*Puppet, len(dbPuppets))
 	for index, dbPuppet := range dbPuppets {
 		if dbPuppet == nil {
 			continue
 		}
-		puppet, ok := bridge.puppets[dbPuppet.JID]
+		puppet, ok := br.puppets[dbPuppet.JID]
 		if !ok {
-			puppet = bridge.NewPuppet(dbPuppet)
-			bridge.puppets[dbPuppet.JID] = puppet
+			puppet = br.NewPuppet(dbPuppet)
+			br.puppets[dbPuppet.JID] = puppet
 			if len(dbPuppet.CustomMXID) > 0 {
-				bridge.puppetsByCustomMXID[dbPuppet.CustomMXID] = puppet
+				br.puppetsByCustomMXID[dbPuppet.CustomMXID] = puppet
 			}
 		}
 		output[index] = puppet
@@ -133,26 +133,26 @@ func (bridge *Bridge) dbPuppetsToPuppets(dbPuppets []*database.Puppet) []*Puppet
 	return output
 }
 
-func (bridge *Bridge) FormatPuppetMXID(jid types.JID) id.UserID {
+func (br *WABridge) FormatPuppetMXID(jid types.JID) id.UserID {
 	return id.NewUserID(
-		bridge.Config.Bridge.FormatUsername(jid.User),
-		bridge.Config.Homeserver.Domain)
+		br.Config.Bridge.FormatUsername(jid.User),
+		br.Config.Homeserver.Domain)
 }
 
-func (bridge *Bridge) NewPuppet(dbPuppet *database.Puppet) *Puppet {
+func (br *WABridge) NewPuppet(dbPuppet *database.Puppet) *Puppet {
 	return &Puppet{
 		Puppet: dbPuppet,
-		bridge: bridge,
-		log:    bridge.Log.Sub(fmt.Sprintf("Puppet/%s", dbPuppet.JID)),
+		bridge: br,
+		log:    br.Log.Sub(fmt.Sprintf("Puppet/%s", dbPuppet.JID)),
 
-		MXID: bridge.FormatPuppetMXID(dbPuppet.JID),
+		MXID: br.FormatPuppetMXID(dbPuppet.JID),
 	}
 }
 
 type Puppet struct {
 	*database.Puppet
 
-	bridge *Bridge
+	bridge *WABridge
 	log    log.Logger
 
 	typingIn id.RoomID

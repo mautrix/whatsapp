@@ -22,6 +22,7 @@ import (
 	log "maunium.net/go/maulogger/v2"
 
 	"maunium.net/go/mautrix/id"
+	"maunium.net/go/mautrix/util/dbutil"
 
 	"go.mau.fi/whatsmeow/types"
 )
@@ -152,7 +153,7 @@ type Portal struct {
 	ExpirationTime uint32
 }
 
-func (portal *Portal) Scan(row Scannable) *Portal {
+func (portal *Portal) Scan(row dbutil.Scannable) *Portal {
 	var mxid, avatarURL, firstEventID, nextBatchID, relayUserID sql.NullString
 	err := row.Scan(&portal.Key.JID, &portal.Key.Receiver, &mxid, &portal.Name, &portal.Topic, &portal.Avatar, &avatarURL, &portal.Encrypted, &firstEventID, &nextBatchID, &relayUserID, &portal.ExpirationTime)
 	if err != nil {

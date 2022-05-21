@@ -43,14 +43,6 @@ appservice:
         max_conn_idle_time: null
         max_conn_lifetime: null
 
-    # Settings for provisioning API
-    provisioning:
-        # Prefix for the provisioning API paths.
-        prefix: /_matrix/provision
-        # Shared secret for authentication. If set to "generate", a random secret will be generated,
-        # or if set to "disable", the provisioning API will be disabled.
-        shared_secret: generate
-
     # The unique ID of this appservice.
     id: whatsapp
     # Appservice bot details.
@@ -316,6 +308,14 @@ bridge:
             # Require devices to be verified by the bridge?
             # Verification by the bridge is not yet implemented.
             require_verification: true
+
+    # Settings for provisioning API
+    provisioning:
+        # Prefix for the provisioning API paths.
+        prefix: /_matrix/provision
+        # Shared secret for authentication. If set to "generate", a random secret will be generated,
+        # or if set to "disable", the provisioning API will be disabled.
+        shared_secret: generate
 
     # Permissions for using the bridge.
     # Permitted values:

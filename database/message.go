@@ -25,6 +25,7 @@ import (
 	log "maunium.net/go/maulogger/v2"
 
 	"maunium.net/go/mautrix/id"
+	"maunium.net/go/mautrix/util/dbutil"
 
 	"go.mau.fi/whatsmeow/types"
 )
@@ -163,7 +164,7 @@ func (msg *Message) IsFakeJID() bool {
 	return strings.HasPrefix(msg.JID, "FAKE::") || msg.JID == string(msg.MXID)
 }
 
-func (msg *Message) Scan(row Scannable) *Message {
+func (msg *Message) Scan(row dbutil.Scannable) *Message {
 	var ts int64
 	err := row.Scan(&msg.Chat.JID, &msg.Chat.Receiver, &msg.JID, &msg.MXID, &msg.Sender, &ts, &msg.Sent, &msg.Type, &msg.Error, &msg.BroadcastListJID)
 	if err != nil {

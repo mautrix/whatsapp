@@ -45,6 +45,7 @@ import (
 
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/appservice"
+	"maunium.net/go/mautrix/bridge"
 	"maunium.net/go/mautrix/crypto/attachment"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/format"
@@ -69,68 +70,72 @@ const PrivateChatTopic = "WhatsApp private chat"
 
 var ErrStatusBroadcastDisabled = errors.New("status bridging is disabled")
 
-func (bridge *Bridge) GetPortalByMXID(mxid id.RoomID) *Portal {
-	bridge.portalsLock.Lock()
-	defer bridge.portalsLock.Unlock()
-	portal, ok := bridge.portalsByMXID[mxid]
+func (br *WABridge) GetPortalByMXID(mxid id.RoomID) *Portal {
+	br.portalsLock.Lock()
+	defer br.portalsLock.Unlock()
+	portal, ok := br.portalsByMXID[mxid]
 	if !ok {
-		return bridge.loadDBPortal(bridge.DB.Portal.GetByMXID(mxid), nil)
+		return br.loadDBPortal(br.DB.Portal.GetByMXID(mxid), nil)
 	}
 	return portal
 }
 
-func (bridge *Bridge) GetPortalByJID(key database.PortalKey) *Portal {
-	bridge.portalsLock.Lock()
-	defer bridge.portalsLock.Unlock()
-	portal, ok := bridge.portalsByJID[key]
+func (br *WABridge) GetIPortalByMXID(mxid id.RoomID) bridge.Portal {
+	return br.GetPortalByMXID(mxid)
+}
+
+func (br *WABridge) GetPortalByJID(key database.PortalKey) *Portal {
+	br.portalsLock.Lock()
+	defer br.portalsLock.Unlock()
+	portal, ok := br.portalsByJID[key]
 	if !ok {
-		return bridge.loadDBPortal(bridge.DB.Portal.GetByJID(key), &key)
+		return br.loadDBPortal(br.DB.Portal.GetByJID(key), &key)
 	}
 	return portal
 }
 
-func (bridge *Bridge) GetAllPortals() []*Portal {
-	return bridge.dbPortalsToPortals(bridge.DB.Portal.GetAll())
+func (br *WABridge) GetAllPortals() []*Portal {
+	return br.dbPortalsToPortals(br.DB.Portal.GetAll())
 }
 
-func (bridge *Bridge) GetAllPortalsForUser(userID id.UserID) []*Portal {
-	return bridge.dbPortalsToPortals(bridge.DB.Portal.GetAllForUser(userID))
+func (br *WABridge) GetAllPortalsForUser(userID id.UserID) []*Portal {
+	return br.dbPortalsToPortals(br.DB.Portal.GetAllForUser(userID))
 }
 
-func (bridge *Bridge) GetAllPortalsByJID(jid types.JID) []*Portal {
-	return bridge.dbPortalsToPortals(bridge.DB.Portal.GetAllByJID(jid))
+func (br *WABridge) GetAllPortalsByJID(jid types.JID) []*Portal {
+	return br.dbPortalsToPortals(br.DB.Portal.GetAllByJID(jid))
 }
 
-func (bridge *Bridge) dbPortalsToPortals(dbPortals []*database.Portal) []*Portal {
-	bridge.portalsLock.Lock()
-	defer bridge.portalsLock.Unlock()
+func (br *WABridge) dbPortalsToPortals(dbPortals []*database.Portal) []*Portal {
+	br.portalsLock.Lock()
+	defer br.portalsLock.Unlock()
 	output := make([]*Portal, len(dbPortals))
 	for index, dbPortal := range dbPortals {
 		if dbPortal == nil {
 			continue
 		}
-		portal, ok := bridge.portalsByJID[dbPortal.Key]
+		portal, ok := br.portalsByJID[dbPortal.Key]
 		if !ok {
-			portal = bridge.loadDBPortal(dbPortal, nil)
+			portal = br.loadDBPortal(dbPortal, nil)
 		}
 		output[index] = portal
 	}
 	return output
 }
 
-func (bridge *Bridge) loadDBPortal(dbPortal *database.Portal, key *database.PortalKey) *Portal {
+func (br *WABridge) loadDBPortal(dbPortal *database.Portal, key *database.PortalKey) *Portal {
 	if dbPortal == nil {
 		if key == nil {
 			return nil
 		}
-		dbPortal = bridge.DB.Portal.New()
+		dbPortal = br.DB.Portal.New()
 		dbPortal.Key = *key
 		dbPortal.Insert()
 	}
-	portal := bridge.NewPortal(dbPortal)
-	bridge.portalsByJID[portal.Key] = portal
+	portal := br.NewPortal(dbPortal)
+	br.portalsByJID[portal.Key] = portal
 	if len(portal.MXID) > 0 {
-		bridge.portalsByMXID[portal.MXID] = portal
+		br.portalsByMXID[portal.MXID] = portal
 	}
 	return portal
 }
@@ -139,14 +144,14 @@ func (portal *Portal) GetUsers() []*User {
 	return nil
 }
 
-func (bridge *Bridge) newBlankPortal(key database.PortalKey) *Portal {
+func (br *WABridge) newBlankPortal(key database.PortalKey) *Portal {
 	portal := &Portal{
-		bridge: bridge,
-		log:    bridge.Log.Sub(fmt.Sprintf("Portal/%s", key)),
+		bridge: br,
+		log:    br.Log.Sub(fmt.Sprintf("Portal/%s", key)),
 
-		messages:       make(chan PortalMessage, bridge.Config.Bridge.PortalMessageBuffer),
-		matrixMessages: make(chan PortalMatrixMessage, bridge.Config.Bridge.PortalMessageBuffer),
-		mediaRetries:   make(chan PortalMediaRetry, bridge.Config.Bridge.PortalMessageBuffer),
+		messages:       make(chan PortalMessage, br.Config.Bridge.PortalMessageBuffer),
+		matrixMessages: make(chan PortalMatrixMessage, br.Config.Bridge.PortalMessageBuffer),
+		mediaRetries:   make(chan PortalMediaRetry, br.Config.Bridge.PortalMessageBuffer),
 
 		mediaErrorCache: make(map[types.MessageID]*FailedMediaMeta),
 	}
@@ -154,15 +159,15 @@ func (bridge *Bridge) newBlankPortal(key database.PortalKey) *Portal {
 	return portal
 }
 
-func (bridge *Bridge) NewManualPortal(key database.PortalKey) *Portal {
-	portal := bridge.newBlankPortal(key)
-	portal.Portal = bridge.DB.Portal.New()
+func (br *WABridge) NewManualPortal(key database.PortalKey) *Portal {
+	portal := br.newBlankPortal(key)
+	portal.Portal = br.DB.Portal.New()
 	portal.Key = key
 	return portal
 }
 
-func (bridge *Bridge) NewPortal(dbPortal *database.Portal) *Portal {
-	portal := bridge.newBlankPortal(dbPortal.Key)
+func (br *WABridge) NewPortal(dbPortal *database.Portal) *Portal {
+	portal := br.newBlankPortal(dbPortal.Key)
 	portal.Portal = dbPortal
 	return portal
 }
@@ -203,7 +208,7 @@ type recentlyHandledWrapper struct {
 type Portal struct {
 	*database.Portal
 
-	bridge *Bridge
+	bridge *WABridge
 	log    log.Logger
 
 	roomCreateLock sync.Mutex
@@ -227,6 +232,10 @@ type Portal struct {
 	mediaErrorCache map[types.MessageID]*FailedMediaMeta
 
 	relayUser *User
+}
+
+func (portal *Portal) IsEncrypted() bool {
+	return portal.Encrypted
 }
 
 func (portal *Portal) handleMessageLoopItem(msg PortalMessage) {

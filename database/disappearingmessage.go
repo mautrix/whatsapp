@@ -24,6 +24,7 @@ import (
 	log "maunium.net/go/maulogger/v2"
 
 	"maunium.net/go/mautrix/id"
+	"maunium.net/go/mautrix/util/dbutil"
 )
 
 type DisappearingMessageQuery struct {
@@ -94,7 +95,7 @@ type DisappearingMessage struct {
 	ExpireAt time.Time
 }
 
-func (msg *DisappearingMessage) Scan(row Scannable) *DisappearingMessage {
+func (msg *DisappearingMessage) Scan(row dbutil.Scannable) *DisappearingMessage {
 	var expireIn int64
 	var expireAt sql.NullInt64
 	err := row.Scan(&msg.RoomID, &msg.EventID, &expireIn, &expireAt)

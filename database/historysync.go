@@ -27,7 +27,9 @@ import (
 
 	_ "github.com/mattn/go-sqlite3"
 	log "maunium.net/go/maulogger/v2"
+
 	"maunium.net/go/mautrix/id"
+	"maunium.net/go/mautrix/util/dbutil"
 )
 
 type HistorySyncQuery struct {
@@ -139,7 +141,7 @@ func (hsc *HistorySyncConversation) Upsert() {
 	}
 }
 
-func (hsc *HistorySyncConversation) Scan(row Scannable) *HistorySyncConversation {
+func (hsc *HistorySyncConversation) Scan(row dbutil.Scannable) *HistorySyncConversation {
 	err := row.Scan(
 		&hsc.UserID,
 		&hsc.ConversationID,
@@ -166,7 +168,7 @@ func (hsc *HistorySyncConversation) Scan(row Scannable) *HistorySyncConversation
 func (hsq *HistorySyncQuery) GetNMostRecentConversations(userID id.UserID, n int) (conversations []*HistorySyncConversation) {
 	nPtr := &n
 	// Negative limit on SQLite means unlimited, but Postgres prefers a NULL limit.
-	if n < 0 && hsq.db.dialect == "postgres" {
+	if n < 0 && hsq.db.Dialect == dbutil.Postgres {
 		nPtr = nil
 	}
 	rows, err := hsq.db.Query(getNMostRecentConversations, userID, nPtr)

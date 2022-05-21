@@ -1,18 +1,8 @@
-// mautrix-whatsapp - A Matrix-WhatsApp puppeting bridge.
-// Copyright (C) 2020 Tulir Asokan
+// Copyright (c) 2022 Tulir Asokan
 //
-// This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU Affero General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-//
-// This program is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-// GNU Affero General Public License for more details.
-//
-// You should have received a copy of the GNU Affero General Public License
-// along with this program.  If not, see <https://www.gnu.org/licenses/>.
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 //go:build cgo && !nocrypto
 
@@ -20,8 +10,6 @@ package database
 
 import (
 	"database/sql"
-
-	log "maunium.net/go/maulogger/v2"
 
 	"maunium.net/go/mautrix/crypto"
 	"maunium.net/go/mautrix/id"
@@ -37,11 +25,9 @@ var _ crypto.Store = (*SQLCryptoStore)(nil)
 
 func NewSQLCryptoStore(db *Database, userID id.UserID, ghostIDFormat string) *SQLCryptoStore {
 	return &SQLCryptoStore{
-		SQLCryptoStore: crypto.NewSQLCryptoStore(db.DB, db.dialect, "", "",
-			[]byte("maunium.net/go/mautrix-whatsapp"),
-			&cryptoLogger{db.log.Sub("CryptoStore")}),
-		UserID:        userID,
-		GhostIDFormat: ghostIDFormat,
+		SQLCryptoStore: crypto.NewSQLCryptoStore(db.Database, "", "", []byte("maunium.net/go/mautrix-whatsapp")),
+		UserID:         userID,
+		GhostIDFormat:  ghostIDFormat,
 	}
 }
 
@@ -75,31 +61,4 @@ func (store *SQLCryptoStore) GetRoomMembers(roomID id.RoomID) (members []id.User
 		}
 	}
 	return
-}
-
-// TODO merge this with the one in the parent package
-type cryptoLogger struct {
-	int log.Logger
-}
-
-var levelTrace = log.Level{
-	Name:     "TRACE",
-	Severity: -10,
-	Color:    -1,
-}
-
-func (c *cryptoLogger) Error(message string, args ...interface{}) {
-	c.int.Errorfln(message, args...)
-}
-
-func (c *cryptoLogger) Warn(message string, args ...interface{}) {
-	c.int.Warnfln(message, args...)
-}
-
-func (c *cryptoLogger) Debug(message string, args ...interface{}) {
-	c.int.Debugfln(message, args...)
-}
-
-func (c *cryptoLogger) Trace(message string, args ...interface{}) {
-	c.int.Logfln(levelTrace, message, args...)
 }

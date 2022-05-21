@@ -28,6 +28,7 @@ import (
 
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/appservice"
+	"maunium.net/go/mautrix/bridge"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/format"
 	"maunium.net/go/mautrix/id"
@@ -36,13 +37,13 @@ import (
 )
 
 type MatrixHandler struct {
-	bridge *Bridge
+	bridge *WABridge
 	as     *appservice.AppService
 	log    maulogger.Logger
 	cmd    *CommandHandler
 }
 
-func NewMatrixHandler(bridge *Bridge) *MatrixHandler {
+func NewMatrixHandler(bridge *WABridge) *MatrixHandler {
 	handler := &MatrixHandler{
 		bridge: bridge,
 		as:     bridge.AS,
@@ -362,7 +363,7 @@ func (mx *MatrixHandler) HandleEncrypted(evt *event.Event) {
 
 	decrypted, err := mx.bridge.Crypto.Decrypt(evt)
 	decryptionRetryCount := 0
-	if errors.Is(err, NoSessionFound) {
+	if errors.Is(err, bridge.NoSessionFound) {
 		content := evt.Content.AsEncrypted()
 		mx.log.Debugfln("Couldn't find session %s trying to decrypt %s, waiting %d seconds...", content.SessionID, evt.ID, int(sessionWaitTimeout.Seconds()))
 		mx.as.SendErrorMessageSendCheckpoint(evt, appservice.StepDecrypted, err, false, decryptionRetryCount)

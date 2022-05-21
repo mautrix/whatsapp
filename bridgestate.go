@@ -114,18 +114,18 @@ func (pong *BridgeState) shouldDeduplicate(newPong *BridgeState) bool {
 	return pong.Timestamp+int64(pong.TTL/5) > time.Now().Unix()
 }
 
-func (bridge *Bridge) sendBridgeState(ctx context.Context, state *BridgeState) error {
+func (br *WABridge) sendBridgeState(ctx context.Context, state *BridgeState) error {
 	var body bytes.Buffer
 	if err := json.NewEncoder(&body).Encode(&state); err != nil {
 		return fmt.Errorf("failed to encode bridge state JSON: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, bridge.Config.Homeserver.StatusEndpoint, &body)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, br.Config.Homeserver.StatusEndpoint, &body)
 	if err != nil {
 		return fmt.Errorf("failed to prepare request: %w", err)
 	}
 
-	req.Header.Set("Authorization", "Bearer "+bridge.Config.AppService.ASToken)
+	req.Header.Set("Authorization", "Bearer "+br.Config.AppService.ASToken)
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := http.DefaultClient.Do(req)
@@ -143,17 +143,17 @@ func (bridge *Bridge) sendBridgeState(ctx context.Context, state *BridgeState) e
 	return nil
 }
 
-func (bridge *Bridge) sendGlobalBridgeState(state BridgeState) {
-	if len(bridge.Config.Homeserver.StatusEndpoint) == 0 {
+func (br *WABridge) sendGlobalBridgeState(state BridgeState) {
+	if len(br.Config.Homeserver.StatusEndpoint) == 0 {
 		return
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	if err := bridge.sendBridgeState(ctx, &state); err != nil {
-		bridge.Log.Warnln("Failed to update global bridge state:", err)
+	if err := br.sendBridgeState(ctx, &state); err != nil {
+		br.Log.Warnln("Failed to update global bridge state:", err)
 	} else {
-		bridge.Log.Debugfln("Sent new global bridge state %+v", state)
+		br.Log.Debugfln("Sent new global bridge state %+v", state)
 	}
 }
 

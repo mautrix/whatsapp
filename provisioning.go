@@ -43,15 +43,15 @@ import (
 )
 
 type ProvisioningAPI struct {
-	bridge *Bridge
+	bridge *WABridge
 	log    log.Logger
 }
 
 func (prov *ProvisioningAPI) Init() {
 	prov.log = prov.bridge.Log.Sub("Provisioning")
 
-	prov.log.Debugln("Enabling provisioning API at", prov.bridge.Config.AppService.Provisioning.Prefix)
-	r := prov.bridge.AS.Router.PathPrefix(prov.bridge.Config.AppService.Provisioning.Prefix).Subrouter()
+	prov.log.Debugln("Enabling provisioning API at", prov.bridge.Config.Bridge.Provisioning.Prefix)
+	r := prov.bridge.AS.Router.PathPrefix(prov.bridge.Config.Bridge.Provisioning.Prefix).Subrouter()
 	r.Use(prov.AuthMiddleware)
 	r.HandleFunc("/v1/ping", prov.Ping).Methods(http.MethodGet)
 	r.HandleFunc("/v1/login", prov.Login).Methods(http.MethodGet)
@@ -109,7 +109,7 @@ func (prov *ProvisioningAPI) AuthMiddleware(h http.Handler) http.Handler {
 		} else if strings.HasPrefix(auth, "Bearer ") {
 			auth = auth[len("Bearer "):]
 		}
-		if auth != prov.bridge.Config.AppService.Provisioning.SharedSecret {
+		if auth != prov.bridge.Config.Bridge.Provisioning.SharedSecret {
 			jsonResponse(w, http.StatusForbidden, map[string]interface{}{
 				"error":   "Invalid auth token",
 				"errcode": "M_FORBIDDEN",
