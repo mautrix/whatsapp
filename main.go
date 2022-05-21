@@ -44,6 +44,7 @@ import (
 	"maunium.net/go/mautrix/appservice"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
+	"maunium.net/go/mautrix/util/configupgrade"
 
 	"maunium.net/go/mautrix-whatsapp/config"
 	"maunium.net/go/mautrix-whatsapp/database"
@@ -126,9 +127,9 @@ func (bridge *Bridge) GenerateRegistration() {
 		os.Exit(21)
 	}
 
-	err = config.Mutate(*configPath, func(helper *config.UpgradeHelper) {
-		helper.Set(config.Str, bridge.Config.AppService.ASToken, "appservice", "as_token")
-		helper.Set(config.Str, bridge.Config.AppService.HSToken, "appservice", "hs_token")
+	err = config.Mutate(*configPath, func(helper *configupgrade.Helper) {
+		helper.Set(configupgrade.Str, bridge.Config.AppService.ASToken, "appservice", "as_token")
+		helper.Set(configupgrade.Str, bridge.Config.AppService.HSToken, "appservice", "hs_token")
 	})
 	if err != nil {
 		_, _ = fmt.Fprintln(os.Stderr, "Failed to save config:", err)
@@ -405,8 +406,8 @@ func (bridge *Bridge) ResendBridgeInfo() {
 	if *dontSaveConfig {
 		bridge.Log.Warnln("Not setting resend_bridge_info to false in config due to --no-update flag")
 	} else {
-		err := config.Mutate(*configPath, func(helper *config.UpgradeHelper) {
-			helper.Set(config.Bool, "false", "bridge", "resend_bridge_info")
+		err := config.Mutate(*configPath, func(helper *configupgrade.Helper) {
+			helper.Set(configupgrade.Bool, "false", "bridge", "resend_bridge_info")
 		})
 		if err != nil {
 			bridge.Log.Errorln("Failed to save config after setting resend_bridge_info to false:", err)
