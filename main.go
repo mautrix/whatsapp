@@ -81,6 +81,7 @@ type WABridge struct {
 func (br *WABridge) Init() {
 	br.CommandProcessor = commands.NewProcessor(&br.Bridge)
 	br.RegisterCommands()
+	br.MatrixHandler.TrackEventDuration = br.Metrics.TrackMatrixEvent
 
 	// TODO this is a weird place for this
 	br.EventProcessor.On(event.EphemeralEventPresence, br.HandlePresence)
@@ -228,12 +229,7 @@ func (br *WABridge) StartUsers() {
 }
 
 func (br *WABridge) Stop() {
-	if br.Crypto != nil {
-		br.Crypto.Stop()
-	}
-	br.AS.Stop()
 	br.Metrics.Stop()
-	br.EventProcessor.Stop()
 	for _, user := range br.usersByUsername {
 		if user.Client == nil {
 			continue
