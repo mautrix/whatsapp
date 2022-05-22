@@ -31,196 +31,93 @@ import (
 	"github.com/skip2/go-qrcode"
 	"github.com/tidwall/gjson"
 
-	"maunium.net/go/maulogger/v2"
-
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/appstate"
 	"go.mau.fi/whatsmeow/types"
 
 	"maunium.net/go/mautrix"
-	"maunium.net/go/mautrix/appservice"
 	"maunium.net/go/mautrix/bridge"
+	"maunium.net/go/mautrix/bridge/commands"
 	"maunium.net/go/mautrix/event"
-	"maunium.net/go/mautrix/format"
 	"maunium.net/go/mautrix/id"
 
 	"maunium.net/go/mautrix-whatsapp/database"
 )
 
-type CommandHandler struct {
-	bridge *WABridge
-	log    maulogger.Logger
+type WrappedCommandEvent struct {
+	*commands.Event
+	Bridge *WABridge
+	User   *User
+	Portal *Portal
 }
 
-// NewCommandHandler creates a CommandHandler
-func NewCommandHandler(bridge *WABridge) *CommandHandler {
-	return &CommandHandler{
-		bridge: bridge,
-		log:    bridge.Log.Sub("Command handler"),
-	}
+func (br *WABridge) RegisterCommands() {
+	proc := br.CommandProcessor.(*commands.Processor)
+	proc.AddHandlers(
+		cmdSetRelay,
+		cmdUnsetRelay,
+		cmdInviteLink,
+		cmdResolveLink,
+		cmdJoin,
+		cmdAccept,
+		cmdCreate,
+		cmdLogin,
+		cmdLogout,
+		cmdTogglePresence,
+		cmdDeleteSession,
+		cmdReconnect,
+		cmdDisconnect,
+		cmdPing,
+		cmdDeletePortal,
+		cmdDeleteAllPortals,
+		cmdBackfill,
+		cmdList,
+		cmdSearch,
+		cmdOpen,
+		cmdPM,
+		cmdSync,
+		cmdLoginMatrix,
+		cmdPingMatrix,
+		cmdLogoutMatrix,
+		cmdDisappearingTimer,
+	)
 }
 
-// CommandEvent stores all data which might be used to handle commands
-type CommandEvent struct {
-	Bot     *appservice.IntentAPI
-	Bridge  *WABridge
-	Portal  *Portal
-	Handler *CommandHandler
-	RoomID  id.RoomID
-	EventID id.EventID
-	User    *User
-	Command string
-	Args    []string
-	ReplyTo id.EventID
-}
-
-// Reply sends a reply to command as notice
-func (ce *CommandEvent) Reply(msg string, args ...interface{}) {
-	content := format.RenderMarkdown(fmt.Sprintf(msg, args...), true, false)
-	content.MsgType = event.MsgNotice
-	intent := ce.Bot
-	if ce.Portal != nil && ce.Portal.IsPrivateChat() {
-		intent = ce.Portal.MainIntent()
-	}
-	_, err := intent.SendMessageEvent(ce.RoomID, event.EventMessage, content)
-	if err != nil {
-		ce.Handler.log.Warnfln("Failed to reply to command from %s: %v", ce.User.MXID, err)
-	}
-}
-
-func (ce *CommandEvent) React(key string) {
-	intent := ce.Bot
-	if ce.Portal != nil && ce.Portal.IsPrivateChat() {
-		intent = ce.Portal.MainIntent()
-	}
-	_, err := intent.SendReaction(ce.RoomID, ce.EventID, key)
-	if err != nil {
-		ce.Handler.log.Warnfln("Failed to react to command from %s: %v", ce.User.MXID, err)
-	}
-}
-
-// Handle handles messages to the bridge
-func (handler *CommandHandler) Handle(roomID id.RoomID, eventID id.EventID, user *User, message string, replyTo id.EventID) {
-	args := strings.Fields(message)
-	if len(args) == 0 {
-		args = []string{"unknown-command"}
-	}
-	ce := &CommandEvent{
-		Bot:     handler.bridge.Bot,
-		Bridge:  handler.bridge,
-		Portal:  handler.bridge.GetPortalByMXID(roomID),
-		Handler: handler,
-		RoomID:  roomID,
-		EventID: eventID,
-		User:    user,
-		Command: strings.ToLower(args[0]),
-		Args:    args[1:],
-		ReplyTo: replyTo,
-	}
-	handler.log.Debugfln("%s sent '%s' in %s", user.MXID, message, roomID)
-	handler.CommandMux(ce)
-}
-
-func (handler *CommandHandler) CommandMux(ce *CommandEvent) {
-	switch ce.Command {
-	case "login":
-		handler.CommandLogin(ce)
-	case "ping-matrix":
-		handler.CommandPingMatrix(ce)
-	case "logout-matrix":
-		handler.CommandLogoutMatrix(ce)
-	case "help":
-		handler.CommandHelp(ce)
-	case "version":
-		handler.CommandVersion(ce)
-	case "reconnect", "connect":
-		handler.CommandReconnect(ce)
-	case "disconnect":
-		handler.CommandDisconnect(ce)
-	case "ping":
-		handler.CommandPing(ce)
-	case "delete-session":
-		handler.CommandDeleteSession(ce)
-	case "delete-portal":
-		handler.CommandDeletePortal(ce)
-	case "delete-all-portals":
-		handler.CommandDeleteAllPortals(ce)
-	case "discard-megolm-session", "discard-session":
-		handler.CommandDiscardMegolmSession(ce)
-	case "dev-test":
-		handler.CommandDevTest(ce)
-	case "set-pl":
-		handler.CommandSetPowerLevel(ce)
-	case "logout":
-		handler.CommandLogout(ce)
-	case "toggle":
-		handler.CommandToggle(ce)
-	case "set-relay", "unset-relay", "login-matrix", "sync", "list", "search", "open", "pm", "invite-link", "resolve",
-		"resolve-link", "join", "create", "accept", "backfill", "disappearing-timer":
-		if !ce.User.HasSession() {
-			ce.Reply("You are not logged in. Use the `login` command to log into WhatsApp.")
-			return
-		} else if !ce.User.IsLoggedIn() {
-			ce.Reply("You are not connected to WhatsApp. Use the `reconnect` command to reconnect.")
-			return
+func wrapCommand(handler func(*WrappedCommandEvent)) func(*commands.Event) {
+	return func(ce *commands.Event) {
+		user := ce.User.(*User)
+		var portal *Portal
+		if ce.Portal != nil {
+			portal = ce.Portal.(*Portal)
 		}
-
-		switch ce.Command {
-		case "set-relay":
-			handler.CommandSetRelay(ce)
-		case "unset-relay":
-			handler.CommandUnsetRelay(ce)
-		case "login-matrix":
-			handler.CommandLoginMatrix(ce)
-		case "sync":
-			handler.CommandSync(ce)
-		case "list":
-			handler.CommandList(ce)
-		case "search":
-			handler.CommandSearch(ce)
-		case "open":
-			handler.CommandOpen(ce)
-		case "pm":
-			handler.CommandPM(ce)
-		case "invite-link":
-			handler.CommandInviteLink(ce)
-		case "resolve", "resolve-link":
-			handler.CommandResolveLink(ce)
-		case "join":
-			handler.CommandJoin(ce)
-		case "create":
-			handler.CommandCreate(ce)
-		case "accept":
-			handler.CommandAccept(ce)
-		case "backfill":
-			handler.CommandBackfill(ce)
-		case "disappearing-timer":
-			handler.CommandDisappearingTimer(ce)
-		}
-	default:
-		ce.Reply("Unknown command, use the `help` command for help.")
+		br := ce.Bridge.Child.(*WABridge)
+		handler(&WrappedCommandEvent{ce, br, user, portal})
 	}
 }
 
-func (handler *CommandHandler) CommandDiscardMegolmSession(ce *CommandEvent) {
-	if handler.bridge.Crypto == nil {
-		ce.Reply("This bridge instance doesn't have end-to-bridge encryption enabled")
-	} else if !ce.User.Admin {
-		ce.Reply("Only the bridge admin can reset Megolm sessions")
-	} else {
-		handler.bridge.Crypto.ResetSession(ce.RoomID)
-		ce.Reply("Successfully reset Megolm session in this room. New decryption keys will be shared the next time a message is sent from WhatsApp.")
-	}
+var (
+	HelpSectionConnectionManagement = commands.HelpSection{Name: "Connection management", Order: 11}
+	HelpSectionCreatingPortals      = commands.HelpSection{Name: "Creating portals", Order: 15}
+	HelpSectionPortalManagement     = commands.HelpSection{Name: "Portal management", Order: 20}
+	HelpSectionInvites              = commands.HelpSection{Name: "Group invites", Order: 25}
+	HelpSectionMiscellaneous        = commands.HelpSection{Name: "Miscellaneous", Order: 30}
+)
+
+var cmdSetRelay = &commands.FullHandler{
+	Func: wrapCommand(fnSetRelay),
+	Name: "set-relay",
+	Help: commands.HelpMeta{
+		Section:     HelpSectionPortalManagement,
+		Description: "Relay messages in this room through your WhatsApp account.",
+	},
+	RequiresPortal: true,
+	RequiresLogin:  true,
 }
 
-const cmdSetRelayHelp = `set-relay - Relay messages in this room through your WhatsApp account.`
-
-func (handler *CommandHandler) CommandSetRelay(ce *CommandEvent) {
-	if !handler.bridge.Config.Bridge.Relay.Enabled {
+func fnSetRelay(ce *WrappedCommandEvent) {
+	if !ce.Bridge.Config.Bridge.Relay.Enabled {
 		ce.Reply("Relay mode is not enabled on this instance of the bridge")
-	} else if ce.Portal == nil {
-		ce.Reply("This is not a portal room")
-	} else if handler.bridge.Config.Bridge.Relay.AdminOnly && !ce.User.Admin {
+	} else if ce.Bridge.Config.Bridge.Relay.AdminOnly && !ce.User.Admin {
 		ce.Reply("Only admins are allowed to enable relay mode on this instance of the bridge")
 	} else {
 		ce.Portal.RelayUserID = ce.User.MXID
@@ -229,14 +126,20 @@ func (handler *CommandHandler) CommandSetRelay(ce *CommandEvent) {
 	}
 }
 
-const cmdUnsetRelayHelp = `unset-relay - Stop relaying messages in this room.`
+var cmdUnsetRelay = &commands.FullHandler{
+	Func: wrapCommand(fnUnsetRelay),
+	Name: "unset-relay",
+	Help: commands.HelpMeta{
+		Section:     HelpSectionPortalManagement,
+		Description: "Stop relaying messages in this room.",
+	},
+	RequiresPortal: true,
+}
 
-func (handler *CommandHandler) CommandUnsetRelay(ce *CommandEvent) {
-	if !handler.bridge.Config.Bridge.Relay.Enabled {
+func fnUnsetRelay(ce *WrappedCommandEvent) {
+	if !ce.Bridge.Config.Bridge.Relay.Enabled {
 		ce.Reply("Relay mode is not enabled on this instance of the bridge")
-	} else if ce.Portal == nil {
-		ce.Reply("This is not a portal room")
-	} else if handler.bridge.Config.Bridge.Relay.AdminOnly && !ce.User.Admin {
+	} else if ce.Bridge.Config.Bridge.Relay.AdminOnly && !ce.User.Admin {
 		ce.Reply("Only admins are allowed to enable relay mode on this instance of the bridge")
 	} else {
 		ce.Portal.RelayUserID = ""
@@ -245,23 +148,21 @@ func (handler *CommandHandler) CommandUnsetRelay(ce *CommandEvent) {
 	}
 }
 
-func (handler *CommandHandler) CommandDevTest(_ *CommandEvent) {
-
+var cmdInviteLink = &commands.FullHandler{
+	Func: wrapCommand(fnInviteLink),
+	Name: "invite-link",
+	Help: commands.HelpMeta{
+		Section:     HelpSectionInvites,
+		Description: "Get an invite link to the current group chat, optionally regenerating the link and revoking the old link.",
+		Args:        "[--reset]",
+	},
+	RequiresPortal: true,
+	RequiresLogin:  true,
 }
 
-const cmdVersionHelp = `version - View the bridge version`
-
-func (handler *CommandHandler) CommandVersion(ce *CommandEvent) {
-	ce.Reply(fmt.Sprintf("[%s](%s) %s (%s)", ce.Bridge.Name, ce.Bridge.URL, ce.Bridge.LinkifiedVersion, BuildTime))
-}
-
-const cmdInviteLinkHelp = `invite-link [--reset] - Get an invite link to the current group chat, optionally regenerating the link and revoking the old link.`
-
-func (handler *CommandHandler) CommandInviteLink(ce *CommandEvent) {
+func fnInviteLink(ce *WrappedCommandEvent) {
 	reset := len(ce.Args) > 0 && strings.ToLower(ce.Args[0]) == "--reset"
-	if ce.Portal == nil {
-		ce.Reply("Not a portal room")
-	} else if ce.Portal.IsPrivateChat() {
+	if ce.Portal.IsPrivateChat() {
 		ce.Reply("Can't get invite link to private chat")
 	} else if ce.Portal.IsBroadcastList() {
 		ce.Reply("Can't get invite link to broadcast list")
@@ -272,9 +173,18 @@ func (handler *CommandHandler) CommandInviteLink(ce *CommandEvent) {
 	}
 }
 
-const cmdResolveLinkHelp = `resolve-link <group or message link> - Resolve a WhatsApp group invite or business message link.`
+var cmdResolveLink = &commands.FullHandler{
+	Func: wrapCommand(fnResolveLink),
+	Name: "resolve-link",
+	Help: commands.HelpMeta{
+		Section:     HelpSectionInvites,
+		Description: "Resolve a WhatsApp group invite or business message link.",
+		Args:        "<_group or message link_>",
+	},
+	RequiresLogin: true,
+}
 
-func (handler *CommandHandler) CommandResolveLink(ce *CommandEvent) {
+func fnResolveLink(ce *WrappedCommandEvent) {
 	if len(ce.Args) == 0 {
 		ce.Reply("**Usage:** `resolve-link <group or message link>`")
 		return
@@ -306,9 +216,18 @@ func (handler *CommandHandler) CommandResolveLink(ce *CommandEvent) {
 	}
 }
 
-const cmdJoinHelp = `join <invite link> - Join a group chat with an invite link.`
+var cmdJoin = &commands.FullHandler{
+	Func: wrapCommand(fnJoin),
+	Name: "join",
+	Help: commands.HelpMeta{
+		Section:     HelpSectionInvites,
+		Description: "Join a group chat with an invite link.",
+		Args:        "<_invite link_>",
+	},
+	RequiresLogin: true,
+}
 
-func (handler *CommandHandler) CommandJoin(ce *CommandEvent) {
+func fnJoin(ce *WrappedCommandEvent) {
 	if len(ce.Args) == 0 {
 		ce.Reply("**Usage:** `join <invite link>`")
 		return
@@ -322,7 +241,7 @@ func (handler *CommandHandler) CommandJoin(ce *CommandEvent) {
 		ce.Reply("Failed to join group: %v", err)
 		return
 	}
-	handler.log.Debugln("%s successfully joined group %s", ce.User.MXID, jid)
+	ce.Log.Debugln("%s successfully joined group %s", ce.User.MXID, jid)
 	ce.Reply("Successfully joined group `%s`, the portal should be created momentarily", jid)
 }
 
@@ -357,14 +276,25 @@ func parseInviteMeta(data json.RawMessage) (*InviteMeta, error) {
 	return &meta, nil
 }
 
-func (handler *CommandHandler) CommandAccept(ce *CommandEvent) {
-	if ce.Portal == nil || len(ce.ReplyTo) == 0 {
+var cmdAccept = &commands.FullHandler{
+	Func: wrapCommand(fnAccept),
+	Name: "accept",
+	Help: commands.HelpMeta{
+		Section:     HelpSectionInvites,
+		Description: "Accept a group invite. This can only be used in reply to a group invite message.",
+	},
+	RequiresLogin:  true,
+	RequiresPortal: true,
+}
+
+func fnAccept(ce *WrappedCommandEvent) {
+	if len(ce.ReplyTo) == 0 {
 		ce.Reply("You must reply to a group invite message when using this command.")
 	} else if evt, err := ce.Portal.MainIntent().GetEvent(ce.RoomID, ce.ReplyTo); err != nil {
-		handler.log.Errorln("Failed to get event %s to handle !wa accept command: %v", ce.ReplyTo, err)
+		ce.Log.Errorln("Failed to get event %s to handle !wa accept command: %v", ce.ReplyTo, err)
 		ce.Reply("Failed to get reply event")
 	} else if rawContent, err := tryDecryptEvent(ce.Bridge.Crypto, evt); err != nil {
-		handler.log.Errorln("Failed to decrypt event %s to handle !wa accept command: %v", ce.ReplyTo, err)
+		ce.Log.Errorln("Failed to decrypt event %s to handle !wa accept command: %v", ce.ReplyTo, err)
 		ce.Reply("Failed to decrypt reply event")
 	} else if meta, err := parseInviteMeta(rawContent); err != nil || meta == nil {
 		ce.Reply("That doesn't look like a group invite message.")
@@ -377,9 +307,17 @@ func (handler *CommandHandler) CommandAccept(ce *CommandEvent) {
 	}
 }
 
-const cmdCreateHelp = `create - Create a group chat.`
+var cmdCreate = &commands.FullHandler{
+	Func: wrapCommand(fnCreate),
+	Name: "create",
+	Help: commands.HelpMeta{
+		Section:     HelpSectionCreatingPortals,
+		Description: "Create a WhatsApp group chat for the current Matrix room.",
+	},
+	RequiresLogin: true,
+}
 
-func (handler *CommandHandler) CommandCreate(ce *CommandEvent) {
+func fnCreate(ce *WrappedCommandEvent) {
 	if ce.Portal != nil {
 		ce.Reply("This is already a portal room")
 		return
@@ -394,7 +332,7 @@ func (handler *CommandHandler) CommandCreate(ce *CommandEvent) {
 	var roomNameEvent event.RoomNameEventContent
 	err = ce.Bot.StateEvent(ce.RoomID, event.StateRoomName, "", &roomNameEvent)
 	if err != nil && !errors.Is(err, mautrix.MNotFound) {
-		handler.log.Errorln("Failed to get room name to create group:", err)
+		ce.Log.Errorln("Failed to get room name to create group:", err)
 		ce.Reply("Failed to get room name")
 		return
 	} else if len(roomNameEvent.Name) == 0 {
@@ -414,9 +352,9 @@ func (handler *CommandHandler) CommandCreate(ce *CommandEvent) {
 	participantDedup[ce.User.JID.ToNonAD()] = true
 	participantDedup[types.EmptyJID] = true
 	for userID := range members.Joined {
-		jid, ok := handler.bridge.ParsePuppetMXID(userID)
+		jid, ok := ce.Bridge.ParsePuppetMXID(userID)
 		if !ok {
-			user := handler.bridge.GetUserByMXID(userID)
+			user := ce.Bridge.GetUserByMXID(userID)
 			if user != nil && !user.JID.IsEmpty() {
 				jid = user.JID.ToNonAD()
 			}
@@ -427,7 +365,7 @@ func (handler *CommandHandler) CommandCreate(ce *CommandEvent) {
 		}
 	}
 
-	handler.log.Infofln("Creating group for %s with name %s and participants %+v", ce.RoomID, roomNameEvent.Name, participants)
+	ce.Log.Infofln("Creating group for %s with name %s and participants %+v", ce.RoomID, roomNameEvent.Name, participants)
 	resp, err := ce.User.Client.CreateGroup(roomNameEvent.Name, participants)
 	if err != nil {
 		ce.Reply("Failed to create group: %v", err)
@@ -443,7 +381,7 @@ func (handler *CommandHandler) CommandCreate(ce *CommandEvent) {
 	portal.MXID = ce.RoomID
 	portal.Name = roomNameEvent.Name
 	portal.Encrypted = encryptionEvent.Algorithm == id.AlgorithmMegolmV1
-	if !portal.Encrypted && handler.bridge.Config.Bridge.Encryption.Default {
+	if !portal.Encrypted && ce.Bridge.Config.Bridge.Encryption.Default {
 		_, err = portal.MainIntent().SendStateEvent(portal.MXID, event.StateEncryption, "", &event.EncryptionEventContent{Algorithm: id.AlgorithmMegolmV1})
 		if err != nil {
 			portal.log.Warnln("Failed to enable encryption in room:", err)
@@ -462,53 +400,16 @@ func (handler *CommandHandler) CommandCreate(ce *CommandEvent) {
 	ce.Reply("Successfully created WhatsApp group %s", portal.Key.JID)
 }
 
-const cmdSetPowerLevelHelp = `set-pl [user ID] <power level> - Change the power level in a portal room. Only for bridge admins.`
-
-func (handler *CommandHandler) CommandSetPowerLevel(ce *CommandEvent) {
-	if !ce.User.Admin {
-		ce.Reply("Only bridge admins can use `set-pl`")
-		return
-	} else if ce.Portal == nil {
-		ce.Reply("This is not a portal room")
-		return
-	}
-	var level int
-	var userID id.UserID
-	var err error
-	if len(ce.Args) == 1 {
-		level, err = strconv.Atoi(ce.Args[0])
-		if err != nil {
-			ce.Reply("Invalid power level \"%s\"", ce.Args[0])
-			return
-		}
-		userID = ce.User.MXID
-	} else if len(ce.Args) == 2 {
-		userID = id.UserID(ce.Args[0])
-		_, _, err := userID.Parse()
-		if err != nil {
-			ce.Reply("Invalid user ID \"%s\"", ce.Args[0])
-			return
-		}
-		level, err = strconv.Atoi(ce.Args[1])
-		if err != nil {
-			ce.Reply("Invalid power level \"%s\"", ce.Args[1])
-			return
-		}
-	} else {
-		ce.Reply("**Usage:** `set-pl [user] <level>`")
-		return
-	}
-	intent := ce.Portal.MainIntent()
-	_, err = intent.SetPowerLevel(ce.RoomID, userID, level)
-	if err != nil {
-		ce.Reply("Failed to set power levels: %v", err)
-	}
+var cmdLogin = &commands.FullHandler{
+	Func: wrapCommand(fnLogin),
+	Name: "login",
+	Help: commands.HelpMeta{
+		Section:     commands.HelpSectionAuth,
+		Description: "Link the bridge to your WhatsApp account as a web client.",
+	},
 }
 
-const cmdLoginHelp = `login - Link the bridge to your WhatsApp account as a web client`
-
-// CommandLogin handles login command
-func (handler *CommandHandler) CommandLogin(ce *CommandEvent) {
+func fnLogin(ce *WrappedCommandEvent) {
 	if ce.User.Session != nil {
 		if ce.User.IsConnected() {
 			ce.Reply("You're already logged in")
@@ -548,7 +449,7 @@ func (handler *CommandHandler) CommandLogin(ce *CommandEvent) {
 	_, _ = ce.Bot.RedactEvent(ce.RoomID, qrEventID)
 }
 
-func (user *User) sendQR(ce *CommandEvent, code string, prevEvent id.EventID) id.EventID {
+func (user *User) sendQR(ce *WrappedCommandEvent, code string, prevEvent id.EventID) id.EventID {
 	url, ok := user.uploadQR(ce, code)
 	if !ok {
 		return prevEvent
@@ -570,7 +471,7 @@ func (user *User) sendQR(ce *CommandEvent, code string, prevEvent id.EventID) id
 	return prevEvent
 }
 
-func (user *User) uploadQR(ce *CommandEvent, code string) (id.ContentURI, bool) {
+func (user *User) uploadQR(ce *WrappedCommandEvent, code string) (id.ContentURI, bool) {
 	qrCode, err := qrcode.Encode(code, qrcode.Low, 256)
 	if err != nil {
 		user.log.Errorln("Failed to encode QR code:", err)
@@ -589,10 +490,17 @@ func (user *User) uploadQR(ce *CommandEvent, code string) (id.ContentURI, bool) 
 	return resp.ContentURI, true
 }
 
-const cmdLogoutHelp = `logout - Unlink the bridge from your WhatsApp account`
+var cmdLogout = &commands.FullHandler{
+	Func: wrapCommand(fnLogout),
+	Name: "logout",
+	Help: commands.HelpMeta{
+		Section:     commands.HelpSectionAuth,
+		Description: "Unlink the bridge from your WhatsApp account.",
+	},
+}
 
 // CommandLogout handles !logout command
-func (handler *CommandHandler) CommandLogout(ce *CommandEvent) {
+func fnLogout(ce *WrappedCommandEvent) {
 	if ce.User.Session == nil {
 		ce.Reply("You're not logged in.")
 		return
@@ -600,7 +508,7 @@ func (handler *CommandHandler) CommandLogout(ce *CommandEvent) {
 		ce.Reply("You are not connected to WhatsApp. Use the `reconnect` command to reconnect, or `delete-session` to forget all login information.")
 		return
 	}
-	puppet := handler.bridge.GetPuppetByJID(ce.User.JID)
+	puppet := ce.Bridge.GetPuppetByJID(ce.User.JID)
 	if puppet.CustomMXID != "" {
 		err := puppet.SwitchCustomMXID("", "")
 		if err != nil {
@@ -620,53 +528,53 @@ func (handler *CommandHandler) CommandLogout(ce *CommandEvent) {
 	ce.Reply("Logged out successfully.")
 }
 
-const cmdToggleHelp = `toggle <presence|receipts|all> - Toggle bridging of presence or read receipts`
+var cmdTogglePresence = &commands.FullHandler{
+	Func: wrapCommand(fnTogglePresence),
+	Name: "toggle-presence",
+	Help: commands.HelpMeta{
+		Section:     HelpSectionConnectionManagement,
+		Description: "Toggle bridging of presence or read receipts.",
+	},
+}
 
-func (handler *CommandHandler) CommandToggle(ce *CommandEvent) {
-	if len(ce.Args) == 0 || (ce.Args[0] != "presence" && ce.Args[0] != "receipts" && ce.Args[0] != "all") {
-		ce.Reply("**Usage:** `toggle <presence|receipts|all>`")
-		return
-	}
+func fnTogglePresence(ce *WrappedCommandEvent) {
 	if ce.User.Session == nil {
 		ce.Reply("You're not logged in.")
 		return
 	}
-	customPuppet := handler.bridge.GetPuppetByCustomMXID(ce.User.MXID)
+	customPuppet := ce.Bridge.GetPuppetByCustomMXID(ce.User.MXID)
 	if customPuppet == nil {
 		ce.Reply("You're not logged in with your Matrix account.")
 		return
 	}
-	if ce.Args[0] == "presence" || ce.Args[0] == "all" {
-		customPuppet.EnablePresence = !customPuppet.EnablePresence
-		var newPresence types.Presence
-		if customPuppet.EnablePresence {
-			newPresence = types.PresenceAvailable
-			ce.Reply("Enabled presence bridging")
-		} else {
-			newPresence = types.PresenceUnavailable
-			ce.Reply("Disabled presence bridging")
-		}
-		if ce.User.IsLoggedIn() {
-			err := ce.User.Client.SendPresence(newPresence)
-			if err != nil {
-				ce.User.log.Warnln("Failed to set presence:", err)
-			}
-		}
+	customPuppet.EnablePresence = !customPuppet.EnablePresence
+	var newPresence types.Presence
+	if customPuppet.EnablePresence {
+		newPresence = types.PresenceAvailable
+		ce.Reply("Enabled presence bridging")
+	} else {
+		newPresence = types.PresenceUnavailable
+		ce.Reply("Disabled presence bridging")
 	}
-	if ce.Args[0] == "receipts" || ce.Args[0] == "all" {
-		customPuppet.EnableReceipts = !customPuppet.EnableReceipts
-		if customPuppet.EnableReceipts {
-			ce.Reply("Enabled read receipt bridging")
-		} else {
-			ce.Reply("Disabled read receipt bridging")
+	if ce.User.IsLoggedIn() {
+		err := ce.User.Client.SendPresence(newPresence)
+		if err != nil {
+			ce.User.log.Warnln("Failed to set presence:", err)
 		}
 	}
 	customPuppet.Update()
 }
 
-const cmdDeleteSessionHelp = `delete-session - Delete session information and disconnect from WhatsApp without sending a logout request`
+var cmdDeleteSession = &commands.FullHandler{
+	Func: wrapCommand(fnDeleteSession),
+	Name: "delete-session",
+	Help: commands.HelpMeta{
+		Section:     commands.HelpSectionAuth,
+		Description: "Delete session information and disconnect from WhatsApp without sending a logout request.",
+	},
+}
 
-func (handler *CommandHandler) CommandDeleteSession(ce *CommandEvent) {
+func fnDeleteSession(ce *WrappedCommandEvent) {
 	if ce.User.Session == nil && ce.User.Client == nil {
 		ce.Reply("Nothing to purge: no session information stored and no active connection.")
 		return
@@ -677,9 +585,16 @@ func (handler *CommandHandler) CommandDeleteSession(ce *CommandEvent) {
 	ce.Reply("Session information purged")
 }
 
-const cmdReconnectHelp = `reconnect - Reconnect to WhatsApp`
+var cmdReconnect = &commands.FullHandler{
+	Func: wrapCommand(fnReconnect),
+	Name: "reconnect",
+	Help: commands.HelpMeta{
+		Section:     HelpSectionConnectionManagement,
+		Description: "Reconnect to WhatsApp.",
+	},
+}
 
-func (handler *CommandHandler) CommandReconnect(ce *CommandEvent) {
+func fnReconnect(ce *WrappedCommandEvent) {
 	if ce.User.Client == nil {
 		if ce.User.Session == nil {
 			ce.Reply("You're not logged into WhatsApp. Please log in first.")
@@ -695,9 +610,16 @@ func (handler *CommandHandler) CommandReconnect(ce *CommandEvent) {
 	}
 }
 
-const cmdDisconnectHelp = `disconnect - Disconnect from WhatsApp (without logging out)`
+var cmdDisconnect = &commands.FullHandler{
+	Func: wrapCommand(fnDisconnect),
+	Name: "disconnect",
+	Help: commands.HelpMeta{
+		Section:     HelpSectionConnectionManagement,
+		Description: "Disconnect from WhatsApp (without logging out).",
+	},
+}
 
-func (handler *CommandHandler) CommandDisconnect(ce *CommandEvent) {
+func fnDisconnect(ce *WrappedCommandEvent) {
 	if ce.User.Client == nil {
 		ce.Reply("You don't have a WhatsApp connection.")
 		return
@@ -707,9 +629,16 @@ func (handler *CommandHandler) CommandDisconnect(ce *CommandEvent) {
 	ce.User.sendBridgeState(BridgeState{StateEvent: StateBadCredentials, Error: WANotConnected})
 }
 
-const cmdPingHelp = `ping - Check your connection to WhatsApp.`
+var cmdPing = &commands.FullHandler{
+	Func: wrapCommand(fnPing),
+	Name: "ping",
+	Help: commands.HelpMeta{
+		Section:     HelpSectionConnectionManagement,
+		Description: "Check your connection to WhatsApp.",
+	},
+}
 
-func (handler *CommandHandler) CommandPing(ce *CommandEvent) {
+func fnPing(ce *WrappedCommandEvent) {
 	if ce.User.Session == nil {
 		if ce.User.Client != nil {
 			ce.Reply("Connected to WhatsApp, but not logged in.")
@@ -726,48 +655,11 @@ func (handler *CommandHandler) CommandPing(ce *CommandEvent) {
 	}
 }
 
-const cmdHelpHelp = `help - Prints this help`
-
-// CommandHelp handles help command
-func (handler *CommandHandler) CommandHelp(ce *CommandEvent) {
-	cmdPrefix := ""
-	if ce.User.ManagementRoom != ce.RoomID {
-		cmdPrefix = handler.bridge.Config.Bridge.CommandPrefix + " "
+func canDeletePortal(portal *Portal, userID id.UserID) bool {
+	if len(portal.MXID) == 0 {
+		return false
 	}
 
-	ce.Reply("* " + strings.Join([]string{
-		cmdPrefix + cmdHelpHelp,
-		cmdPrefix + cmdVersionHelp,
-		cmdPrefix + cmdLoginHelp,
-		cmdPrefix + cmdLogoutHelp,
-		cmdPrefix + cmdDeleteSessionHelp,
-		cmdPrefix + cmdReconnectHelp,
-		cmdPrefix + cmdDisconnectHelp,
-		cmdPrefix + cmdPingHelp,
-		cmdPrefix + cmdSetRelayHelp,
-		cmdPrefix + cmdUnsetRelayHelp,
-		cmdPrefix + cmdLoginMatrixHelp,
-		cmdPrefix + cmdPingMatrixHelp,
-		cmdPrefix + cmdLogoutMatrixHelp,
-		cmdPrefix + cmdToggleHelp,
-		cmdPrefix + cmdListHelp,
-		cmdPrefix + cmdSearchHelp,
-		cmdPrefix + cmdSyncHelp,
-		cmdPrefix + cmdOpenHelp,
-		cmdPrefix + cmdPMHelp,
-		cmdPrefix + cmdInviteLinkHelp,
-		cmdPrefix + cmdResolveLinkHelp,
-		cmdPrefix + cmdJoinHelp,
-		cmdPrefix + cmdCreateHelp,
-		cmdPrefix + cmdDisappearingTimerHelp,
-		cmdPrefix + cmdSetPowerLevelHelp,
-		cmdPrefix + cmdDeletePortalHelp,
-		cmdPrefix + cmdDeleteAllPortalsHelp,
-		cmdPrefix + cmdBackfillHelp,
-	}, "\n* "))
-}
-
-func canDeletePortal(portal *Portal, userID id.UserID) bool {
 	members, err := portal.MainIntent().JoinedMembers(portal.MXID)
 	if err != nil {
 		portal.log.Errorfln("Failed to get joined members to check if portal can be deleted by %s: %v", userID, err)
@@ -786,14 +678,17 @@ func canDeletePortal(portal *Portal, userID id.UserID) bool {
 	return true
 }
 
-const cmdDeletePortalHelp = `delete-portal - Delete the current portal. If the portal is used by other people, this is limited to bridge admins.`
+var cmdDeletePortal = &commands.FullHandler{
+	Func: wrapCommand(fnDeletePortal),
+	Name: "delete-portal",
+	Help: commands.HelpMeta{
+		Section:     HelpSectionPortalManagement,
+		Description: "Delete the current portal. If the portal is used by other people, this is limited to bridge admins.",
+	},
+	RequiresPortal: true,
+}
 
-func (handler *CommandHandler) CommandDeletePortal(ce *CommandEvent) {
-	if ce.Portal == nil {
-		ce.Reply("You must be in a portal room to use that command")
-		return
-	}
-
+func fnDeletePortal(ce *WrappedCommandEvent) {
 	if !ce.User.Admin && !canDeletePortal(ce.Portal, ce.User.MXID) {
 		ce.Reply("Only bridge admins can delete portals with other Matrix users")
 		return
@@ -804,10 +699,17 @@ func (handler *CommandHandler) CommandDeletePortal(ce *CommandEvent) {
 	ce.Portal.Cleanup(false)
 }
 
-const cmdDeleteAllPortalsHelp = `delete-all-portals - Delete all portals.`
+var cmdDeleteAllPortals = &commands.FullHandler{
+	Func: wrapCommand(fnDeleteAllPortals),
+	Name: "delete-all-portals",
+	Help: commands.HelpMeta{
+		Section:     HelpSectionPortalManagement,
+		Description: "Delete all portals.",
+	},
+}
 
-func (handler *CommandHandler) CommandDeleteAllPortals(ce *CommandEvent) {
-	portals := handler.bridge.GetAllPortals()
+func fnDeleteAllPortals(ce *WrappedCommandEvent) {
+	portals := ce.Bridge.GetAllPortals()
 	var portalsToDelete []*Portal
 
 	if ce.User.Admin {
@@ -820,6 +722,10 @@ func (handler *CommandHandler) CommandDeleteAllPortals(ce *CommandEvent) {
 			}
 		}
 	}
+	if len(portalsToDelete) == 0 {
+		ce.Reply("Didn't find any portals to delete")
+		return
+	}
 
 	leave := func(portal *Portal) {
 		if len(portal.MXID) > 0 {
@@ -829,7 +735,7 @@ func (handler *CommandHandler) CommandDeleteAllPortals(ce *CommandEvent) {
 			})
 		}
 	}
-	customPuppet := handler.bridge.GetPuppetByCustomMXID(ce.User.MXID)
+	customPuppet := ce.Bridge.GetPuppetByCustomMXID(ce.User.MXID)
 	if customPuppet != nil && customPuppet.CustomIntent() != nil {
 		intent := customPuppet.CustomIntent()
 		leave = func(portal *Portal) {
@@ -854,13 +760,18 @@ func (handler *CommandHandler) CommandDeleteAllPortals(ce *CommandEvent) {
 	}()
 }
 
-const cmdBackfillHelp = `backfill [batch size] [batch delay] - Backfill all messages the portal.`
+var cmdBackfill = &commands.FullHandler{
+	Func: wrapCommand(fnBackfill),
+	Name: "backfill",
+	Help: commands.HelpMeta{
+		Section:     HelpSectionPortalManagement,
+		Description: "Backfill all messages the portal.",
+		Args:        "[_batch size_] [_batch delay_]",
+	},
+	RequiresPortal: true,
+}
 
-func (handler *CommandHandler) CommandBackfill(ce *CommandEvent) {
-	if ce.Portal == nil {
-		ce.Reply("This is not a portal room")
-		return
-	}
+func fnBackfill(ce *WrappedCommandEvent) {
 	if !ce.Bridge.Config.Bridge.HistorySync.Backfill {
 		ce.Reply("Backfill is not enabled for this bridge.")
 		return
@@ -888,8 +799,6 @@ func (handler *CommandHandler) CommandBackfill(ce *CommandEvent) {
 
 	ce.User.BackfillQueue.ReCheck()
 }
-
-const cmdListHelp = `list <contacts|groups> [page] [items per page] - Get a list of all contacts and groups.`
 
 func matchesQuery(str string, query string) bool {
 	if query == "" {
@@ -929,7 +838,18 @@ func formatGroups(input []*types.GroupInfo, query string) (result []string) {
 	return
 }
 
-func (handler *CommandHandler) CommandList(ce *CommandEvent) {
+var cmdList = &commands.FullHandler{
+	Func: wrapCommand(fnList),
+	Name: "list",
+	Help: commands.HelpMeta{
+		Section:     HelpSectionMiscellaneous,
+		Description: "Get a list of all contacts and groups.",
+		Args:        "<`contacts`|`groups`> [_page_] [_items per page_]",
+	},
+	RequiresLogin: true,
+}
+
+func fnList(ce *WrappedCommandEvent) {
 	if len(ce.Args) == 0 {
 		ce.Reply("**Usage:** `list <contacts|groups> [page] [items per page]`")
 		return
@@ -1000,9 +920,18 @@ func (handler *CommandHandler) CommandList(ce *CommandEvent) {
 	ce.Reply("### %s (page %d of %d)\n\n%s", typeName, page, pages, strings.Join(result, "\n"))
 }
 
-const cmdSearchHelp = `search <query> - Search for contacts or groups.`
+var cmdSearch = &commands.FullHandler{
+	Func: wrapCommand(fnSearch),
+	Name: "search",
+	Help: commands.HelpMeta{
+		Section:     HelpSectionMiscellaneous,
+		Description: "Search for contacts or groups.",
+		Args:        "<_query_>",
+	},
+	RequiresLogin: true,
+}
 
-func (handler *CommandHandler) CommandSearch(ce *CommandEvent) {
+func fnSearch(ce *WrappedCommandEvent) {
 	if len(ce.Args) == 0 {
 		ce.Reply("**Usage:** `search <query>`")
 		return
@@ -1039,9 +968,18 @@ func (handler *CommandHandler) CommandSearch(ce *CommandEvent) {
 	ce.Reply(strings.Join(result, "\n\n"))
 }
 
-const cmdOpenHelp = `open <_group JID_> - Open a group chat portal.`
+var cmdOpen = &commands.FullHandler{
+	Func: wrapCommand(fnOpen),
+	Name: "open",
+	Help: commands.HelpMeta{
+		Section:     HelpSectionCreatingPortals,
+		Description: "Open a group chat portal.",
+		Args:        "<_group JID_>",
+	},
+	RequiresLogin: true,
+}
 
-func (handler *CommandHandler) CommandOpen(ce *CommandEvent) {
+func fnOpen(ce *WrappedCommandEvent) {
 	if len(ce.Args) == 0 {
 		ce.Reply("**Usage:** `open <group JID>`")
 		return
@@ -1063,7 +1001,7 @@ func (handler *CommandHandler) CommandOpen(ce *CommandEvent) {
 		ce.Reply("Failed to get group info: %v", err)
 		return
 	}
-	handler.log.Debugln("Importing", jid, "for", ce.User.MXID)
+	ce.Log.Debugln("Importing", jid, "for", ce.User.MXID)
 	portal := ce.User.GetPortalByJID(info.JID)
 	if len(portal.MXID) > 0 {
 		portal.UpdateMatrixRoom(ce.User, info)
@@ -1078,9 +1016,18 @@ func (handler *CommandHandler) CommandOpen(ce *CommandEvent) {
 	}
 }
 
-const cmdPMHelp = `pm <_international phone number_> - Open a private chat with the given phone number.`
+var cmdPM = &commands.FullHandler{
+	Func: wrapCommand(fnPM),
+	Name: "pm",
+	Help: commands.HelpMeta{
+		Section:     HelpSectionCreatingPortals,
+		Description: "Open a private chat with the given phone number.",
+		Args:        "<_international phone number_>",
+	},
+	RequiresLogin: true,
+}
 
-func (handler *CommandHandler) CommandPM(ce *CommandEvent) {
+func fnPM(ce *WrappedCommandEvent) {
 	if len(ce.Args) == 0 {
 		ce.Reply("**Usage:** `pm <international phone number>`")
 		return
@@ -1113,9 +1060,18 @@ func (handler *CommandHandler) CommandPM(ce *CommandEvent) {
 	}
 }
 
-const cmdSyncHelp = `sync <appstate/contacts/groups/space> [--create-portals] - Synchronize data from WhatsApp.`
+var cmdSync = &commands.FullHandler{
+	Func: wrapCommand(fnSync),
+	Name: "sync",
+	Help: commands.HelpMeta{
+		Section:     HelpSectionMiscellaneous,
+		Description: "Synchronize data from WhatsApp.",
+		Args:        "<appstate/contacts/groups/space> [--create-portals]",
+	},
+	RequiresLogin: true,
+}
 
-func (handler *CommandHandler) CommandSync(ce *CommandEvent) {
+func fnSync(ce *WrappedCommandEvent) {
 	if len(ce.Args) == 0 {
 		ce.Reply("**Usage:** `sync <appstate/contacts/groups/space> [--create-portals]`")
 		return
@@ -1177,14 +1133,23 @@ func (handler *CommandHandler) CommandSync(ce *CommandEvent) {
 	}
 }
 
-const cmdLoginMatrixHelp = `login-matrix <_access token_> - Replace your WhatsApp account's Matrix puppet with your real Matrix account.`
+var cmdLoginMatrix = &commands.FullHandler{
+	Func: wrapCommand(fnLoginMatrix),
+	Name: "login-matrix",
+	Help: commands.HelpMeta{
+		Section:     commands.HelpSectionAuth,
+		Description: "Replace your WhatsApp account's Matrix puppet with your real Matrix account.",
+		Args:        "<_access token_>",
+	},
+	RequiresLogin: true,
+}
 
-func (handler *CommandHandler) CommandLoginMatrix(ce *CommandEvent) {
+func fnLoginMatrix(ce *WrappedCommandEvent) {
 	if len(ce.Args) == 0 {
 		ce.Reply("**Usage:** `login-matrix <access token>`")
 		return
 	}
-	puppet := handler.bridge.GetPuppetByJID(ce.User.JID)
+	puppet := ce.Bridge.GetPuppetByJID(ce.User.JID)
 	err := puppet.SwitchCustomMXID(ce.Args[0], ce.User.MXID)
 	if err != nil {
 		ce.Reply("Failed to switch puppet: %v", err)
@@ -1193,10 +1158,18 @@ func (handler *CommandHandler) CommandLoginMatrix(ce *CommandEvent) {
 	ce.Reply("Successfully switched puppet")
 }
 
-const cmdPingMatrixHelp = `ping-matrix - Check if your double puppet is working correctly.`
+var cmdPingMatrix = &commands.FullHandler{
+	Func: wrapCommand(fnPingMatrix),
+	Name: "ping-matrix",
+	Help: commands.HelpMeta{
+		Section:     commands.HelpSectionAuth,
+		Description: "Check if your double puppet is working correctly.",
+	},
+	RequiresLogin: true,
+}
 
-func (handler *CommandHandler) CommandPingMatrix(ce *CommandEvent) {
-	puppet := handler.bridge.GetPuppetByCustomMXID(ce.User.MXID)
+func fnPingMatrix(ce *WrappedCommandEvent) {
+	puppet := ce.Bridge.GetPuppetByCustomMXID(ce.User.MXID)
 	if puppet == nil || puppet.CustomIntent() == nil {
 		ce.Reply("You have not changed your WhatsApp account's Matrix puppet.")
 		return
@@ -1209,10 +1182,18 @@ func (handler *CommandHandler) CommandPingMatrix(ce *CommandEvent) {
 	}
 }
 
-const cmdLogoutMatrixHelp = `logout-matrix - Switch your WhatsApp account's Matrix puppet back to the default one.`
+var cmdLogoutMatrix = &commands.FullHandler{
+	Func: wrapCommand(fnLogoutMatrix),
+	Name: "logout-matrix",
+	Help: commands.HelpMeta{
+		Section:     commands.HelpSectionAuth,
+		Description: "Switch your WhatsApp account's Matrix puppet back to the default one.",
+	},
+	RequiresLogin: true,
+}
 
-func (handler *CommandHandler) CommandLogoutMatrix(ce *CommandEvent) {
-	puppet := handler.bridge.GetPuppetByCustomMXID(ce.User.MXID)
+func fnLogoutMatrix(ce *WrappedCommandEvent) {
+	puppet := ce.Bridge.GetPuppetByCustomMXID(ce.User.MXID)
 	if puppet == nil || puppet.CustomIntent() == nil {
 		ce.Reply("You had not changed your WhatsApp account's Matrix puppet.")
 		return
@@ -1225,9 +1206,19 @@ func (handler *CommandHandler) CommandLogoutMatrix(ce *CommandEvent) {
 	ce.Reply("Successfully removed custom puppet")
 }
 
-const cmdDisappearingTimerHelp = `disappearing-timer <off/1d/7d/90d> - Set future messages in the room to disappear after the given time.`
+var cmdDisappearingTimer = &commands.FullHandler{
+	Func:    wrapCommand(fnDisappearingTimer),
+	Name:    "disappearing-timer",
+	Aliases: []string{"disappear-timer"},
+	Help: commands.HelpMeta{
+		Section:     HelpSectionPortalManagement,
+		Description: "Set future messages in the room to disappear after the given time.",
+		Args:        "<off/1d/7d/90d>",
+	},
+	RequiresLogin: true,
+}
 
-func (handler *CommandHandler) CommandDisappearingTimer(ce *CommandEvent) {
+func fnDisappearingTimer(ce *WrappedCommandEvent) {
 	duration, ok := whatsmeow.ParseDisappearingTimerString(ce.Args[0])
 	if !ok {
 		ce.Reply("Invalid timer '%s'", ce.Args[0])

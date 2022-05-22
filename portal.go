@@ -80,8 +80,27 @@ func (br *WABridge) GetPortalByMXID(mxid id.RoomID) *Portal {
 	return portal
 }
 
-func (br *WABridge) GetIPortalByMXID(mxid id.RoomID) bridge.Portal {
-	return br.GetPortalByMXID(mxid)
+func (br *WABridge) GetIPortal(mxid id.RoomID) bridge.Portal {
+	p := br.GetPortalByMXID(mxid)
+	if p == nil {
+		return nil
+	}
+	return p
+}
+
+func (portal *Portal) IsEncrypted() bool {
+	return portal.Encrypted
+}
+
+func (portal *Portal) MarkEncrypted() {
+	portal.Encrypted = true
+	portal.Update(nil)
+}
+
+func (portal *Portal) ReceiveMatrixEvent(user bridge.User, evt *event.Event) {
+	if user.GetPermissionLevel() >= bridge.PermissionUser || portal.HasRelaybot() {
+		portal.matrixMessages <- PortalMatrixMessage{user: user.(*User), evt: evt}
+	}
 }
 
 func (br *WABridge) GetPortalByJID(key database.PortalKey) *Portal {
@@ -234,10 +253,6 @@ type Portal struct {
 	relayUser *User
 }
 
-func (portal *Portal) IsEncrypted() bool {
-	return portal.Encrypted
-}
-
 func (portal *Portal) handleMessageLoopItem(msg PortalMessage) {
 	if len(portal.MXID) == 0 {
 		if msg.fake == nil && msg.undecryptable == nil && (msg.evt == nil || !containsSupportedMessage(msg.evt.Message)) {
@@ -266,12 +281,14 @@ func (portal *Portal) handleMessageLoopItem(msg PortalMessage) {
 }
 
 func (portal *Portal) handleMatrixMessageLoopItem(msg PortalMatrixMessage) {
-	portal.HandleMatrixReadReceipt(msg.user, "", time.UnixMilli(msg.evt.Timestamp), false)
+	portal.handleMatrixReadReceipt(msg.user, "", time.UnixMilli(msg.evt.Timestamp), false)
 	switch msg.evt.Type {
 	case event.EventMessage, event.EventSticker:
 		portal.HandleMatrixMessage(msg.user, msg.evt)
 	case event.EventRedaction:
 		portal.HandleMatrixRedaction(msg.user, msg.evt)
+	case event.EventReaction:
+		portal.HandleMatrixReaction(msg.user, msg.evt)
 	default:
 		portal.log.Warnln("Unsupported event type %+v in portal message channel", msg.evt.Type)
 	}
@@ -2897,6 +2914,21 @@ func (portal *Portal) HandleMatrixMessage(sender *User, evt *event.Event) {
 }
 
 func (portal *Portal) HandleMatrixReaction(sender *User, evt *event.Event) {
+	if portal.IsPrivateChat() && sender.JID.User != portal.Key.Receiver.User {
+		return
+	}
+
+	content, ok := evt.Content.Parsed.(*event.ReactionEventContent)
+	if ok && strings.Contains(content.RelatesTo.Key, "retry") || strings.HasPrefix(content.RelatesTo.Key, "\u267b") { // ♻️
+		if retryRequested, _ := portal.requestMediaRetry(sender, content.RelatesTo.EventID, nil); retryRequested {
+			_, _ = portal.MainIntent().RedactEvent(portal.MXID, evt.ID, mautrix.ReqRedact{
+				Reason: "requested media from phone",
+			})
+			// Errored media, don't try to send as reaction
+			return
+		}
+	}
+
 	portal.log.Debugfln("Received reaction event %s from %s", evt.ID, evt.Sender)
 	err := portal.handleMatrixReaction(sender, evt)
 	if err != nil {
@@ -3033,7 +3065,11 @@ func (portal *Portal) HandleMatrixRedaction(sender *User, evt *event.Event) {
 	}
 }
 
-func (portal *Portal) HandleMatrixReadReceipt(sender *User, eventID id.EventID, receiptTimestamp time.Time, isExplicit bool) {
+func (portal *Portal) HandleMatrixReadReceipt(sender bridge.User, eventID id.EventID, receiptTimestamp time.Time) {
+	portal.handleMatrixReadReceipt(sender.(*User), eventID, receiptTimestamp, true)
+}
+
+func (portal *Portal) handleMatrixReadReceipt(sender *User, eventID id.EventID, receiptTimestamp time.Time, isExplicit bool) {
 	if !sender.IsLoggedIn() {
 		if isExplicit {
 			portal.log.Debugfln("Ignoring read receipt by %s: user is not connected to WhatsApp", sender.JID)
@@ -3247,7 +3283,8 @@ func (portal *Portal) Cleanup(puppetsOnly bool) {
 	}
 }
 
-func (portal *Portal) HandleMatrixLeave(sender *User) {
+func (portal *Portal) HandleMatrixLeave(brSender bridge.User) {
+	sender := brSender.(*User)
 	if portal.IsPrivateChat() {
 		portal.log.Debugln("User left private chat portal, cleaning up and deleting...")
 		portal.Delete()
@@ -3264,7 +3301,9 @@ func (portal *Portal) HandleMatrixLeave(sender *User) {
 	portal.CleanupIfEmpty()
 }
 
-func (portal *Portal) HandleMatrixKick(sender *User, target *Puppet) {
+func (portal *Portal) HandleMatrixKick(brSender bridge.User, brTarget bridge.Ghost) {
+	sender := brSender.(*User)
+	target := brTarget.(*Puppet)
 	_, err := sender.Client.UpdateGroupParticipants(portal.Key.JID, map[types.JID]whatsmeow.ParticipantChange{
 		target.JID: whatsmeow.ParticipantChangeRemove,
 	})
@@ -3275,7 +3314,9 @@ func (portal *Portal) HandleMatrixKick(sender *User, target *Puppet) {
 	//portal.log.Infoln("Kick %s response: %s", puppet.JID, <-resp)
 }
 
-func (portal *Portal) HandleMatrixInvite(sender *User, target *Puppet) {
+func (portal *Portal) HandleMatrixInvite(brSender bridge.User, brTarget bridge.Ghost) {
+	sender := brSender.(*User)
+	target := brTarget.(*Puppet)
 	_, err := sender.Client.UpdateGroupParticipants(portal.Key.JID, map[types.JID]whatsmeow.ParticipantChange{
 		target.JID: whatsmeow.ParticipantChangeAdd,
 	})
@@ -3286,7 +3327,12 @@ func (portal *Portal) HandleMatrixInvite(sender *User, target *Puppet) {
 	//portal.log.Infofln("Add %s response: %s", puppet.JID, <-resp)
 }
 
-func (portal *Portal) HandleMatrixMeta(sender *User, evt *event.Event) {
+func (portal *Portal) HandleMatrixMeta(brSender bridge.User, evt *event.Event) {
+	sender := brSender.(*User)
+	if !sender.Whitelisted || !sender.IsLoggedIn() {
+		return
+	}
+
 	switch content := evt.Content.Parsed.(type) {
 	case *event.RoomNameEventContent:
 		if content.Name == portal.Name {

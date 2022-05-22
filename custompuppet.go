@@ -219,7 +219,7 @@ func (puppet *Puppet) ProcessResponse(resp *mautrix.RespSync, _ string) error {
 			if err != nil {
 				continue
 			}
-			go puppet.bridge.MatrixHandler.HandlePresence(evt)
+			go puppet.bridge.HandlePresence(evt)
 		}
 	}
 	return nil

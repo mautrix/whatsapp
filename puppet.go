@@ -31,6 +31,7 @@ import (
 	log "maunium.net/go/maulogger/v2"
 
 	"maunium.net/go/mautrix/appservice"
+	"maunium.net/go/mautrix/bridge"
 	"maunium.net/go/mautrix/id"
 
 	"maunium.net/go/mautrix-whatsapp/config"
@@ -102,6 +103,31 @@ func (br *WABridge) GetPuppetByCustomMXID(mxid id.UserID) *Puppet {
 		br.puppetsByCustomMXID[puppet.CustomMXID] = puppet
 	}
 	return puppet
+}
+
+func (user *User) GetIDoublePuppet() bridge.DoublePuppet {
+	p := user.bridge.GetPuppetByCustomMXID(user.MXID)
+	if p == nil {
+		return nil
+	}
+	return p
+}
+
+func (br *WABridge) IsGhost(id id.UserID) bool {
+	_, ok := br.ParsePuppetMXID(id)
+	return ok
+}
+
+func (br *WABridge) GetIGhost(id id.UserID) bridge.Ghost {
+	p := br.GetPuppetByMXID(id)
+	if p == nil {
+		return nil
+	}
+	return p
+}
+
+func (p *Puppet) GetMXID() id.UserID {
+	return p.MXID
 }
 
 func (br *WABridge) GetAllPuppetsWithCustomMXID() []*Puppet {

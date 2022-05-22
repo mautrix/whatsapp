@@ -63,6 +63,7 @@ type User struct {
 	Admin            bool
 	Whitelisted      bool
 	RelayWhitelisted bool
+	PermissionLevel  bridge.PermissionLevel
 
 	mgmtCreateLock  sync.Mutex
 	spaceCreateLock sync.Mutex
@@ -107,12 +108,28 @@ func (br *WABridge) GetUserByMXID(userID id.UserID) *User {
 	return br.getUserByMXID(userID, false)
 }
 
-func (br *WABridge) GetIUserByMXID(userID id.UserID) bridge.User {
-	return br.getUserByMXID(userID, false)
+func (br *WABridge) GetIUser(userID id.UserID, create bool) bridge.User {
+	u := br.getUserByMXID(userID, !create)
+	if u == nil {
+		return nil
+	}
+	return u
 }
 
-func (user *User) IsAdmin() bool {
-	return user.Admin
+func (user *User) GetPermissionLevel() bridge.PermissionLevel {
+	return user.PermissionLevel
+}
+
+func (user *User) GetManagementRoomID() id.RoomID {
+	return user.ManagementRoom
+}
+
+func (user *User) GetMXID() id.UserID {
+	return user.MXID
+}
+
+func (user *User) GetCommandState() map[string]interface{} {
+	return nil
 }
 
 func (br *WABridge) GetUserByMXIDIfExists(userID id.UserID) *User {
@@ -201,9 +218,11 @@ func (br *WABridge) NewUser(dbUser *database.User) *User {
 		historySyncs: make(chan *events.HistorySync, 32),
 		lastPresence: types.PresenceUnavailable,
 	}
+
 	user.RelayWhitelisted = user.bridge.Config.Bridge.Permissions.IsRelayWhitelisted(user.MXID)
 	user.Whitelisted = user.bridge.Config.Bridge.Permissions.IsWhitelisted(user.MXID)
 	user.Admin = user.bridge.Config.Bridge.Permissions.IsAdmin(user.MXID)
+	user.PermissionLevel = bridge.PermissionLevel(user.bridge.Config.Bridge.Permissions.GetPermissionLevel(user.MXID))
 	if len(user.bridge.Config.Homeserver.StatusEndpoint) > 0 {
 		user.bridgeStateQueue = make(chan BridgeState, 10)
 		go user.bridgeStateLoop()

@@ -112,12 +112,7 @@ type BridgeConfig struct {
 
 	CommandPrefix string `yaml:"command_prefix"`
 
-	ManagementRoomText struct {
-		Welcome            string `yaml:"welcome"`
-		WelcomeConnected   string `yaml:"welcome_connected"`
-		WelcomeUnconnected string `yaml:"welcome_unconnected"`
-		AdditionalHelp     string `yaml:"additional_help"`
-	} `yaml:"management_room_text"`
+	ManagementRoomText bridgeconfig.ManagementRoomTexts `yaml:"management_room_text"`
 
 	Encryption bridgeconfig.EncryptionConfig `yaml:"encryption"`
 
@@ -136,6 +131,14 @@ type BridgeConfig struct {
 
 func (bc BridgeConfig) GetEncryptionConfig() bridgeconfig.EncryptionConfig {
 	return bc.Encryption
+}
+
+func (bc BridgeConfig) GetCommandPrefix() string {
+	return bc.CommandPrefix
+}
+
+func (bc BridgeConfig) GetManagementRoomTexts() bridgeconfig.ManagementRoomTexts {
+	return bc.ManagementRoomText
 }
 
 type umBridgeConfig BridgeConfig

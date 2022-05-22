@@ -33,6 +33,8 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"maunium.net/go/mautrix/bridge"
+	"maunium.net/go/mautrix/bridge/commands"
+	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 	"maunium.net/go/mautrix/util/configupgrade"
 
@@ -53,14 +55,13 @@ var ExampleConfig string
 
 type WABridge struct {
 	bridge.Bridge
-	MatrixHandler *MatrixHandler
-	Config        *config.Config
-	DB            *database.Database
-	Provisioning  *ProvisioningAPI
-	Formatter     *Formatter
-	Metrics       *MetricsHandler
-	WAContainer   *sqlstore.Container
-	WAVersion     string
+	Config       *config.Config
+	DB           *database.Database
+	Provisioning *ProvisioningAPI
+	Formatter    *Formatter
+	Metrics      *MetricsHandler
+	WAContainer  *sqlstore.Container
+	WAVersion    string
 
 	usersByMXID         map[id.UserID]*User
 	usersByUsername     map[string]*User
@@ -78,6 +79,12 @@ type WABridge struct {
 }
 
 func (br *WABridge) Init() {
+	br.CommandProcessor = commands.NewProcessor(&br.Bridge)
+	br.RegisterCommands()
+
+	// TODO this is a weird place for this
+	br.EventProcessor.On(event.EphemeralEventPresence, br.HandlePresence)
+
 	Segment.log = br.Log.Sub("Segment")
 	Segment.key = br.Config.SegmentKey
 	if Segment.IsEnabled() {
@@ -93,8 +100,6 @@ func (br *WABridge) Init() {
 		br.Provisioning = &ProvisioningAPI{bridge: br}
 	}
 
-	br.Log.Debugln("Initializing Matrix event handler")
-	br.MatrixHandler = NewMatrixHandler(br)
 	br.Formatter = NewFormatter(br)
 	br.Metrics = NewMetricsHandler(br.Config.Metrics.Listen, br.Log.Sub("Metrics"), br.DB)
 
