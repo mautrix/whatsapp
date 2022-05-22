@@ -18,7 +18,6 @@ package config
 
 import (
 	"fmt"
-	"strconv"
 	"strings"
 	"text/template"
 
@@ -121,7 +120,7 @@ type BridgeConfig struct {
 		SharedSecret string `yaml:"shared_secret"`
 	} `yaml:"provisioning"`
 
-	Permissions PermissionConfig `yaml:"permissions"`
+	Permissions bridgeconfig.PermissionConfig `yaml:"permissions"`
 
 	Relay RelaybotConfig `yaml:"relay"`
 
@@ -212,99 +211,6 @@ func (bc BridgeConfig) FormatUsername(username string) string {
 	var buf strings.Builder
 	_ = bc.ParsedUsernameTemplate.Execute(&buf, username)
 	return buf.String()
-}
-
-type PermissionConfig map[string]PermissionLevel
-
-type PermissionLevel int
-
-const (
-	PermissionLevelDefault PermissionLevel = 0
-	PermissionLevelRelay   PermissionLevel = 5
-	PermissionLevelUser    PermissionLevel = 10
-	PermissionLevelAdmin   PermissionLevel = 100
-)
-
-func (pc *PermissionConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
-	rawPC := make(map[string]string)
-	err := unmarshal(&rawPC)
-	if err != nil {
-		return err
-	}
-
-	if *pc == nil {
-		*pc = make(map[string]PermissionLevel)
-	}
-	for key, value := range rawPC {
-		switch strings.ToLower(value) {
-		case "relaybot", "relay":
-			(*pc)[key] = PermissionLevelRelay
-		case "user":
-			(*pc)[key] = PermissionLevelUser
-		case "admin":
-			(*pc)[key] = PermissionLevelAdmin
-		default:
-			val, err := strconv.Atoi(value)
-			if err != nil {
-				(*pc)[key] = PermissionLevelDefault
-			} else {
-				(*pc)[key] = PermissionLevel(val)
-			}
-		}
-	}
-	return nil
-}
-
-func (pc *PermissionConfig) MarshalYAML() (interface{}, error) {
-	if *pc == nil {
-		return nil, nil
-	}
-	rawPC := make(map[string]string)
-	for key, value := range *pc {
-		switch value {
-		case PermissionLevelRelay:
-			rawPC[key] = "relay"
-		case PermissionLevelUser:
-			rawPC[key] = "user"
-		case PermissionLevelAdmin:
-			rawPC[key] = "admin"
-		default:
-			rawPC[key] = strconv.Itoa(int(value))
-		}
-	}
-	return rawPC, nil
-}
-
-func (pc PermissionConfig) IsRelayWhitelisted(userID id.UserID) bool {
-	return pc.GetPermissionLevel(userID) >= PermissionLevelRelay
-}
-
-func (pc PermissionConfig) IsWhitelisted(userID id.UserID) bool {
-	return pc.GetPermissionLevel(userID) >= PermissionLevelUser
-}
-
-func (pc PermissionConfig) IsAdmin(userID id.UserID) bool {
-	return pc.GetPermissionLevel(userID) >= PermissionLevelAdmin
-}
-
-func (pc PermissionConfig) GetPermissionLevel(userID id.UserID) PermissionLevel {
-	permissions, ok := pc[string(userID)]
-	if ok {
-		return permissions
-	}
-
-	_, homeserver, _ := userID.Parse()
-	permissions, ok = pc[homeserver]
-	if len(homeserver) > 0 && ok {
-		return permissions
-	}
-
-	permissions, ok = pc["*"]
-	if ok {
-		return permissions
-	}
-
-	return PermissionLevelDefault
 }
 
 type RelaybotConfig struct {

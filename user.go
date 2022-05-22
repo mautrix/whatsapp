@@ -32,6 +32,7 @@ import (
 	"time"
 
 	log "maunium.net/go/maulogger/v2"
+	"maunium.net/go/mautrix/bridge/bridgeconfig"
 
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/appservice"
@@ -63,7 +64,7 @@ type User struct {
 	Admin            bool
 	Whitelisted      bool
 	RelayWhitelisted bool
-	PermissionLevel  bridge.PermissionLevel
+	PermissionLevel  bridgeconfig.PermissionLevel
 
 	mgmtCreateLock  sync.Mutex
 	spaceCreateLock sync.Mutex
@@ -116,7 +117,7 @@ func (br *WABridge) GetIUser(userID id.UserID, create bool) bridge.User {
 	return u
 }
 
-func (user *User) GetPermissionLevel() bridge.PermissionLevel {
+func (user *User) GetPermissionLevel() bridgeconfig.PermissionLevel {
 	return user.PermissionLevel
 }
 
@@ -219,10 +220,10 @@ func (br *WABridge) NewUser(dbUser *database.User) *User {
 		lastPresence: types.PresenceUnavailable,
 	}
 
-	user.RelayWhitelisted = user.bridge.Config.Bridge.Permissions.IsRelayWhitelisted(user.MXID)
-	user.Whitelisted = user.bridge.Config.Bridge.Permissions.IsWhitelisted(user.MXID)
-	user.Admin = user.bridge.Config.Bridge.Permissions.IsAdmin(user.MXID)
-	user.PermissionLevel = bridge.PermissionLevel(user.bridge.Config.Bridge.Permissions.GetPermissionLevel(user.MXID))
+	user.PermissionLevel = user.bridge.Config.Bridge.Permissions.Get(user.MXID)
+	user.RelayWhitelisted = user.PermissionLevel >= bridgeconfig.PermissionLevelRelay
+	user.Whitelisted = user.PermissionLevel >= bridgeconfig.PermissionLevelUser
+	user.Admin = user.PermissionLevel >= bridgeconfig.PermissionLevelAdmin
 	if len(user.bridge.Config.Homeserver.StatusEndpoint) > 0 {
 		user.bridgeStateQueue = make(chan BridgeState, 10)
 		go user.bridgeStateLoop()

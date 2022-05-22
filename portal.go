@@ -40,6 +40,7 @@ import (
 	"golang.org/x/image/draw"
 	"golang.org/x/image/webp"
 	"google.golang.org/protobuf/proto"
+	"maunium.net/go/mautrix/bridge/bridgeconfig"
 
 	log "maunium.net/go/maulogger/v2"
 
@@ -98,7 +99,7 @@ func (portal *Portal) MarkEncrypted() {
 }
 
 func (portal *Portal) ReceiveMatrixEvent(user bridge.User, evt *event.Event) {
-	if user.GetPermissionLevel() >= bridge.PermissionUser || portal.HasRelaybot() {
+	if user.GetPermissionLevel() >= bridgeconfig.PermissionLevelUser || portal.HasRelaybot() {
 		portal.matrixMessages <- PortalMatrixMessage{user: user.(*User), evt: evt}
 	}
 }
