@@ -81,7 +81,6 @@ type WABridge struct {
 func (br *WABridge) Init() {
 	br.CommandProcessor = commands.NewProcessor(&br.Bridge)
 	br.RegisterCommands()
-	br.MatrixHandler.TrackEventDuration = br.Metrics.TrackMatrixEvent
 
 	// TODO this is a weird place for this
 	br.EventProcessor.On(event.EphemeralEventPresence, br.HandlePresence)
@@ -103,6 +102,7 @@ func (br *WABridge) Init() {
 
 	br.Formatter = NewFormatter(br)
 	br.Metrics = NewMetricsHandler(br.Config.Metrics.Listen, br.Log.Sub("Metrics"), br.DB)
+	br.MatrixHandler.TrackEventDuration = br.Metrics.TrackMatrixEvent
 
 	store.BaseClientPayload.UserAgent.OsVersion = proto.String(br.WAVersion)
 	store.BaseClientPayload.UserAgent.OsBuildNumber = proto.String(br.WAVersion)
