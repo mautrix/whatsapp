@@ -5,7 +5,7 @@ go 1.17
 require (
 	github.com/gorilla/mux v1.8.0
 	github.com/gorilla/websocket v1.5.0
-	github.com/lib/pq v1.10.5
+	github.com/lib/pq v1.10.6
 	github.com/mattn/go-sqlite3 v1.14.13
 	github.com/prometheus/client_golang v1.12.2-0.20220514081015-5d584e2717ef
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
@@ -15,7 +15,7 @@ require (
 	golang.org/x/net v0.0.0-20220513224357-95641704303c
 	google.golang.org/protobuf v1.28.0
 	maunium.net/go/maulogger/v2 v2.3.2
-	maunium.net/go/mautrix v0.11.1-0.20220522132814-7f7f4896f884
+	maunium.net/go/mautrix v0.11.1-0.20220522190042-ec20c3fc994a
 )
 
 require (
