@@ -76,9 +76,6 @@ func (br *WABridge) RegisterCommands() {
 		cmdOpen,
 		cmdPM,
 		cmdSync,
-		cmdLoginMatrix,
-		cmdPingMatrix,
-		cmdLogoutMatrix,
 		cmdDisappearingTimer,
 	)
 }
@@ -499,7 +496,6 @@ var cmdLogout = &commands.FullHandler{
 	},
 }
 
-// CommandLogout handles !logout command
 func fnLogout(ce *WrappedCommandEvent) {
 	if ce.User.Session == nil {
 		ce.Reply("You're not logged in.")
@@ -1131,79 +1127,6 @@ func fnSync(ce *WrappedCommandEvent) {
 			ce.Reply("Resynced groups")
 		}
 	}
-}
-
-var cmdLoginMatrix = &commands.FullHandler{
-	Func: wrapCommand(fnLoginMatrix),
-	Name: "login-matrix",
-	Help: commands.HelpMeta{
-		Section:     commands.HelpSectionAuth,
-		Description: "Replace your WhatsApp account's Matrix puppet with your real Matrix account.",
-		Args:        "<_access token_>",
-	},
-	RequiresLogin: true,
-}
-
-func fnLoginMatrix(ce *WrappedCommandEvent) {
-	if len(ce.Args) == 0 {
-		ce.Reply("**Usage:** `login-matrix <access token>`")
-		return
-	}
-	puppet := ce.Bridge.GetPuppetByJID(ce.User.JID)
-	err := puppet.SwitchCustomMXID(ce.Args[0], ce.User.MXID)
-	if err != nil {
-		ce.Reply("Failed to switch puppet: %v", err)
-		return
-	}
-	ce.Reply("Successfully switched puppet")
-}
-
-var cmdPingMatrix = &commands.FullHandler{
-	Func: wrapCommand(fnPingMatrix),
-	Name: "ping-matrix",
-	Help: commands.HelpMeta{
-		Section:     commands.HelpSectionAuth,
-		Description: "Check if your double puppet is working correctly.",
-	},
-	RequiresLogin: true,
-}
-
-func fnPingMatrix(ce *WrappedCommandEvent) {
-	puppet := ce.Bridge.GetPuppetByCustomMXID(ce.User.MXID)
-	if puppet == nil || puppet.CustomIntent() == nil {
-		ce.Reply("You have not changed your WhatsApp account's Matrix puppet.")
-		return
-	}
-	resp, err := puppet.CustomIntent().Whoami()
-	if err != nil {
-		ce.Reply("Failed to validate Matrix login: %v", err)
-	} else {
-		ce.Reply("Confirmed valid access token for %s / %s", resp.UserID, resp.DeviceID)
-	}
-}
-
-var cmdLogoutMatrix = &commands.FullHandler{
-	Func: wrapCommand(fnLogoutMatrix),
-	Name: "logout-matrix",
-	Help: commands.HelpMeta{
-		Section:     commands.HelpSectionAuth,
-		Description: "Switch your WhatsApp account's Matrix puppet back to the default one.",
-	},
-	RequiresLogin: true,
-}
-
-func fnLogoutMatrix(ce *WrappedCommandEvent) {
-	puppet := ce.Bridge.GetPuppetByCustomMXID(ce.User.MXID)
-	if puppet == nil || puppet.CustomIntent() == nil {
-		ce.Reply("You had not changed your WhatsApp account's Matrix puppet.")
-		return
-	}
-	err := puppet.SwitchCustomMXID("", "")
-	if err != nil {
-		ce.Reply("Failed to remove custom puppet: %v", err)
-		return
-	}
-	ce.Reply("Successfully removed custom puppet")
 }
 
 var cmdDisappearingTimer = &commands.FullHandler{

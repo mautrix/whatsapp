@@ -107,6 +107,17 @@ func (br *WABridge) GetPuppetByCustomMXID(mxid id.UserID) *Puppet {
 
 func (user *User) GetIDoublePuppet() bridge.DoublePuppet {
 	p := user.bridge.GetPuppetByCustomMXID(user.MXID)
+	if p == nil || p.CustomIntent() == nil {
+		return nil
+	}
+	return p
+}
+
+func (user *User) GetIGhost() bridge.Ghost {
+	if user.JID.IsEmpty() {
+		return nil
+	}
+	p := user.bridge.GetPuppetByJID(user.JID)
 	if p == nil {
 		return nil
 	}
