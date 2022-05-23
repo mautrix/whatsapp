@@ -678,6 +678,7 @@ func (portal *Portal) handleMessage(source *User, evt *events.Message) {
 			converted.Extra["fi.mau.whatsapp.source_broadcast_list"] = evt.Info.Chat.String()
 		}
 		var eventID id.EventID
+		var lastEventID id.EventID
 		if existingMsg != nil {
 			portal.MarkDisappearing(existingMsg.MXID, converted.ExpiresIn, false)
 			converted.Content.SetEdit(existingMsg.MXID)
@@ -690,6 +691,7 @@ func (portal *Portal) handleMessage(source *User, evt *events.Message) {
 		} else {
 			portal.MarkDisappearing(resp.EventID, converted.ExpiresIn, false)
 			eventID = resp.EventID
+			lastEventID = eventID
 		}
 		// TODO figure out how to handle captions with undecryptable messages turning decryptable
 		if converted.Caption != nil && existingMsg == nil {
@@ -698,7 +700,7 @@ func (portal *Portal) handleMessage(source *User, evt *events.Message) {
 				portal.log.Errorfln("Failed to send caption of %s to Matrix: %v", msgID, err)
 			} else {
 				portal.MarkDisappearing(resp.EventID, converted.ExpiresIn, false)
-				//eventID = resp.EventID
+				lastEventID = resp.EventID
 			}
 		}
 		if converted.MultiEvent != nil && existingMsg == nil {
@@ -708,7 +710,16 @@ func (portal *Portal) handleMessage(source *User, evt *events.Message) {
 					portal.log.Errorfln("Failed to send sub-event %d of %s to Matrix: %v", index+1, msgID, err)
 				} else {
 					portal.MarkDisappearing(resp.EventID, converted.ExpiresIn, false)
+					lastEventID = resp.EventID
 				}
+			}
+		}
+		if source.MXID == intent.UserID {
+			// There are some edge cases (like call notices) where previous messages aren't marked as read
+			// when the user sends a message from another device, so just mark the new message as read to be safe.
+			err = intent.SetReadMarkers(portal.MXID, makeReadMarkerContent(lastEventID, true))
+			if err != nil {
+				portal.log.Warnfln("Failed to mark own message %s as read by %s: %v", lastEventID, source.MXID, err)
 			}
 		}
 		if len(eventID) != 0 {
