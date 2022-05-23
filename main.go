@@ -25,12 +25,13 @@ import (
 	"sync"
 	"time"
 
+	"google.golang.org/protobuf/proto"
+
 	"go.mau.fi/whatsmeow"
 	waProto "go.mau.fi/whatsmeow/binary/proto"
 	"go.mau.fi/whatsmeow/store"
 	"go.mau.fi/whatsmeow/store/sqlstore"
 	"go.mau.fi/whatsmeow/types"
-	"google.golang.org/protobuf/proto"
 
 	"maunium.net/go/mautrix/bridge"
 	"maunium.net/go/mautrix/bridge/commands"
@@ -106,20 +107,20 @@ func (br *WABridge) Init() {
 
 	store.BaseClientPayload.UserAgent.OsVersion = proto.String(br.WAVersion)
 	store.BaseClientPayload.UserAgent.OsBuildNumber = proto.String(br.WAVersion)
-	store.CompanionProps.Os = proto.String(br.Config.WhatsApp.OSName)
-	store.CompanionProps.RequireFullSync = proto.Bool(br.Config.Bridge.HistorySync.RequestFullSync)
+	store.DeviceProps.Os = proto.String(br.Config.WhatsApp.OSName)
+	store.DeviceProps.RequireFullSync = proto.Bool(br.Config.Bridge.HistorySync.RequestFullSync)
 	versionParts := strings.Split(br.WAVersion, ".")
 	if len(versionParts) > 2 {
 		primary, _ := strconv.Atoi(versionParts[0])
 		secondary, _ := strconv.Atoi(versionParts[1])
 		tertiary, _ := strconv.Atoi(versionParts[2])
-		store.CompanionProps.Version.Primary = proto.Uint32(uint32(primary))
-		store.CompanionProps.Version.Secondary = proto.Uint32(uint32(secondary))
-		store.CompanionProps.Version.Tertiary = proto.Uint32(uint32(tertiary))
+		store.DeviceProps.Version.Primary = proto.Uint32(uint32(primary))
+		store.DeviceProps.Version.Secondary = proto.Uint32(uint32(secondary))
+		store.DeviceProps.Version.Tertiary = proto.Uint32(uint32(tertiary))
 	}
 	platformID, ok := waProto.CompanionProps_CompanionPropsPlatformType_value[strings.ToUpper(br.Config.WhatsApp.BrowserName)]
 	if ok {
-		store.CompanionProps.PlatformType = waProto.CompanionProps_CompanionPropsPlatformType(platformID).Enum()
+		store.DeviceProps.PlatformType = waProto.CompanionProps_CompanionPropsPlatformType(platformID).Enum()
 	}
 }
 
