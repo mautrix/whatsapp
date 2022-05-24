@@ -40,26 +40,29 @@ func (bq *BackfillQueue) ReCheck() {
 	}
 }
 
-func (bq *BackfillQueue) GetNextBackfill(userID id.UserID, backfillTypes []database.BackfillType, reCheckChannel chan bool) *database.Backfill {
+func (bq *BackfillQueue) GetNextBackfill(userID id.UserID, backfillTypes []database.BackfillType, waitForBackfillTypes []database.BackfillType, reCheckChannel chan bool) *database.Backfill {
 	for {
-		if backfill := bq.BackfillQuery.GetNext(userID, backfillTypes); backfill != nil {
-			backfill.MarkDispatched()
-			return backfill
-		} else {
-			select {
-			case <-reCheckChannel:
-			case <-time.After(time.Minute):
+		if !bq.BackfillQuery.HasUnstartedOrInFlightOfType(userID, waitForBackfillTypes) {
+			// check for immediate when dealing with deferred
+			if backfill := bq.BackfillQuery.GetNext(userID, backfillTypes); backfill != nil {
+				backfill.MarkDispatched()
+				return backfill
 			}
+		}
+
+		select {
+		case <-reCheckChannel:
+		case <-time.After(time.Minute):
 		}
 	}
 }
 
-func (user *User) HandleBackfillRequestsLoop(backfillTypes []database.BackfillType) {
+func (user *User) HandleBackfillRequestsLoop(backfillTypes []database.BackfillType, waitForBackfillTypes []database.BackfillType) {
 	reCheckChannel := make(chan bool)
 	user.BackfillQueue.reCheckChannels = append(user.BackfillQueue.reCheckChannels, reCheckChannel)
 
 	for {
-		req := user.BackfillQueue.GetNextBackfill(user.MXID, backfillTypes, reCheckChannel)
+		req := user.BackfillQueue.GetNextBackfill(user.MXID, backfillTypes, waitForBackfillTypes, reCheckChannel)
 		user.log.Infofln("Handling backfill request %s", req)
 
 		conv := user.bridge.DB.HistorySync.GetConversation(user.MXID, req.Portal)
