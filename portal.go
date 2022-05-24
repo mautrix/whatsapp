@@ -236,6 +236,8 @@ type Portal struct {
 	backfillLock   sync.Mutex
 	avatarLock     sync.Mutex
 
+	latestEventBackfillLock sync.Mutex
+
 	recentlyHandled      [recentlyHandledLength]recentlyHandledWrapper
 	recentlyHandledLock  sync.Mutex
 	recentlyHandledIndex uint8
@@ -267,6 +269,8 @@ func (portal *Portal) handleMessageLoopItem(msg PortalMessage) {
 			return
 		}
 	}
+	portal.latestEventBackfillLock.Lock()
+	defer portal.latestEventBackfillLock.Unlock()
 	if msg.evt != nil {
 		portal.handleMessage(msg.source, msg.evt)
 	} else if msg.receipt != nil {

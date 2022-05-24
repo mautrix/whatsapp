@@ -145,6 +145,7 @@ func (user *User) backfillInChunks(req *database.Backfill, conv *database.Histor
 	var forwardPrevID id.EventID
 	var timeEnd *time.Time
 	var isLatestEvents bool
+	portal.latestEventBackfillLock.Lock()
 	if req.BackfillType == database.BackfillForward {
 		// TODO this overrides the TimeStart set when enqueuing the backfill
 		//      maybe the enqueue should instead include the prev event ID
@@ -164,6 +165,14 @@ func (user *User) backfillInChunks(req *database.Backfill, conv *database.Histor
 			// Portal is empty -> events are latest
 			isLatestEvents = true
 		}
+	}
+	if !isLatestEvents {
+		// We'll use normal batch sending, so no need to keep blocking new message processing
+		portal.latestEventBackfillLock.Unlock()
+	} else {
+		// This might involve sending events at the end of the room as non-historical events,
+		// make sure we don't process messages until this is done.
+		defer portal.latestEventBackfillLock.Unlock()
 	}
 	allMsgs := user.bridge.DB.HistorySync.GetMessagesBetween(user.MXID, conv.ConversationID, req.TimeStart, timeEnd, req.MaxTotalEvents)
 
@@ -255,7 +264,7 @@ func (user *User) backfillInChunks(req *database.Backfill, conv *database.Histor
 
 		if conv.EndOfHistoryTransferType == waProto.Conversation_COMPLETE_BUT_MORE_MESSAGES_REMAIN_ON_PRIMARY {
 			// Since there are more messages on the phone, but we can't
-			// backfilll any more of them, indicate that the last timestamp
+			// backfill any more of them, indicate that the last timestamp
 			// that we expect to be backfilled is the oldest one that was just
 			// backfilled.
 			backfillState.FirstExpectedTimestamp = allMsgs[len(allMsgs)-1].GetMessageTimestamp()
