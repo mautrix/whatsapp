@@ -132,17 +132,16 @@ func (user *User) backfillInChunks(req *database.Backfill, conv *database.Histor
 	portal.backfillLock.Lock()
 	defer portal.backfillLock.Unlock()
 
+	if !user.shouldCreatePortalForHistorySync(conv, portal) {
+		return
+	}
+
 	backfillState := user.bridge.DB.Backfill.GetBackfillState(user.MXID, &portal.Key)
 	if backfillState == nil {
 		backfillState = user.bridge.DB.Backfill.NewBackfillState(user.MXID, &portal.Key)
 	}
 	backfillState.SetProcessingBatch(true)
 	defer backfillState.SetProcessingBatch(false)
-	portal.updateBackfillStatus(backfillState)
-
-	if !user.shouldCreatePortalForHistorySync(conv, portal) {
-		return
-	}
 
 	var forwardPrevID id.EventID
 	var timeEnd *time.Time
@@ -193,6 +192,9 @@ func (user *User) backfillInChunks(req *database.Backfill, conv *database.Histor
 			return
 		}
 	}
+
+	// Update the backfill status here after the room has been created.
+	portal.updateBackfillStatus(backfillState)
 
 	if sendDisappearedNotice {
 		user.log.Debugfln("Sending notice to %s that there are disappeared messages ending at %v", portal.Key.JID, conv.LastMessageTimestamp)
@@ -735,7 +737,7 @@ func (portal *Portal) updateBackfillStatus(backfillState *database.BackfillState
 		"first_timestamp": backfillState.FirstExpectedTimestamp,
 	})
 	if err != nil {
-		portal.log.Errorln("Error sending backfill status dummy event:", err)
+		portal.log.Errorln("Error sending backfill status event:", err)
 	}
 }
 
