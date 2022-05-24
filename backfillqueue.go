@@ -32,7 +32,7 @@ type BackfillQueue struct {
 }
 
 func (bq *BackfillQueue) ReCheck() {
-	bq.log.Info("Sending re-checks to %d channels", len(bq.reCheckChannels))
+	bq.log.Infofln("Sending re-checks to %d channels", len(bq.reCheckChannels))
 	for _, channel := range bq.reCheckChannels {
 		go func(c chan bool) {
 			c <- true

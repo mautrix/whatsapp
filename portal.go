@@ -242,8 +242,6 @@ type Portal struct {
 	recentlyHandledLock  sync.Mutex
 	recentlyHandledIndex uint8
 
-	privateChatBackfillInvitePuppet func()
-
 	currentlyTyping     []id.UserID
 	currentlyTypingLock sync.Mutex
 
@@ -271,16 +269,17 @@ func (portal *Portal) handleMessageLoopItem(msg PortalMessage) {
 	}
 	portal.latestEventBackfillLock.Lock()
 	defer portal.latestEventBackfillLock.Unlock()
-	if msg.evt != nil {
+	switch {
+	case msg.evt != nil:
 		portal.handleMessage(msg.source, msg.evt)
-	} else if msg.receipt != nil {
+	case msg.receipt != nil:
 		portal.handleReceipt(msg.receipt, msg.source)
-	} else if msg.undecryptable != nil {
+	case msg.undecryptable != nil:
 		portal.handleUndecryptableMessage(msg.source, msg.undecryptable)
-	} else if msg.fake != nil {
+	case msg.fake != nil:
 		msg.fake.ID = "FAKE::" + msg.fake.ID
 		portal.handleFakeMessage(*msg.fake)
-	} else {
+	default:
 		portal.log.Warnln("Unexpected PortalMessage with no message: %+v", msg)
 	}
 }

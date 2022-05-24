@@ -137,8 +137,8 @@ func (br *WABridge) GetIGhost(id id.UserID) bridge.Ghost {
 	return p
 }
 
-func (p *Puppet) GetMXID() id.UserID {
-	return p.MXID
+func (puppet *Puppet) GetMXID() id.UserID {
+	return puppet.MXID
 }
 
 func (br *WABridge) GetAllPuppetsWithCustomMXID() []*Puppet {

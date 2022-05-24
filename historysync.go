@@ -295,12 +295,11 @@ func (user *User) shouldCreatePortalForHistorySync(conv *database.HistorySyncCon
 		return true
 	} else if !user.bridge.Config.Bridge.HistorySync.CreatePortals {
 		user.log.Debugfln("Not creating portal for %s: creating rooms from history sync is disabled", portal.Key.JID)
+		return false
 	} else {
 		// Portal doesn't exist, but should be created
 		return true
 	}
-	// Portal shouldn't be created, reason logged above
-	return false
 }
 
 func (user *User) handleHistorySync(backfillQueue *BackfillQueue, evt *waProto.HistorySync) {
@@ -451,8 +450,7 @@ var (
 	PortalCreationDummyEvent = event.Type{Type: "fi.mau.dummy.portal_created", Class: event.MessageEventType}
 	PreBackfillDummyEvent    = event.Type{Type: "fi.mau.dummy.pre_backfill", Class: event.MessageEventType}
 
-	BackfillEndDummyEvent = event.Type{Type: "fi.mau.dummy.backfill_end", Class: event.MessageEventType}
-	HistorySyncMarker     = event.Type{Type: "org.matrix.msc2716.marker", Class: event.MessageEventType}
+	HistorySyncMarker = event.Type{Type: "org.matrix.msc2716.marker", Class: event.MessageEventType}
 
 	BackfillStatusEvent = event.Type{Type: "com.beeper.backfill_status", Class: event.StateEventType}
 )
@@ -506,7 +504,7 @@ func (portal *Portal) backfill(source *User, messages []*waProto.WebMessageInfo,
 		addedMembers[puppet.MXID] = struct{}{}
 	}
 
-	portal.log.Infofln("Processing history sync with %d messages (forward: %t, prev: %s, batch: %s)", len(messages), isForward, req.PrevEventID, req.BatchID)
+	portal.log.Infofln("Processing history sync with %d messages (forward: %t, latest: %t, prev: %s, batch: %s)", len(messages), isForward, isLatest, req.PrevEventID, req.BatchID)
 	// The messages are ordered newest to oldest, so iterate them in reverse order.
 	for i := len(messages) - 1; i >= 0; i-- {
 		webMsg := messages[i]
@@ -710,9 +708,6 @@ func (portal *Portal) finishBatch(txn *sql.Tx, eventIDs []id.EventID, infos []*w
 }
 
 func (portal *Portal) sendPostBackfillDummy(lastTimestamp time.Time, insertionEventId id.EventID) {
-	// TODO remove after clients stop using this
-	_, _ = portal.MainIntent().SendMessageEvent(portal.MXID, BackfillEndDummyEvent, struct{}{})
-
 	resp, err := portal.MainIntent().SendMessageEvent(portal.MXID, HistorySyncMarker, map[string]interface{}{
 		"org.matrix.msc2716.marker.insertion": insertionEventId,
 		//"m.marker.insertion":                  insertionEventId,
