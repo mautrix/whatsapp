@@ -1,3 +1,12 @@
+# unreleased
+
+**N.B.** Due to some changes to the database upgrade system, you must upgrade
+the bridge to v0.4.0 before updating to a newer version.
+
+* Improved handling edge cases in backfill system.
+* Fixed chats not being marked as read when sending a message from another
+  WhatsApp client after receiving a call.
+
 # v0.4.0 (2022-05-16)
 
 * Switched from `/r0` to `/v3` paths everywhere.
