@@ -4,4 +4,4 @@
 UPDATE backfill_state SET first_expected_ts=unixepoch(first_expected_ts);
 
 -- only: postgres
-ALTER TABLE backfill_state ALTER COLUMN first_expected_ts TYPE BIGINT;
+ALTER TABLE backfill_state ALTER COLUMN first_expected_ts TYPE BIGINT USING extract(epoch from first_expected_ts);
