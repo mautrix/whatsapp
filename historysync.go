@@ -734,7 +734,7 @@ func (portal *Portal) updateBackfillStatus(backfillState *database.BackfillState
 
 	_, err := portal.MainIntent().SendStateEvent(portal.MXID, BackfillStatusEvent, "", map[string]interface{}{
 		"status":          backfillStatus,
-		"first_timestamp": backfillState.FirstExpectedTimestamp,
+		"first_timestamp": backfillState.FirstExpectedTimestamp * 1000,
 	})
 	if err != nil {
 		portal.log.Errorln("Error sending backfill status event:", err)
