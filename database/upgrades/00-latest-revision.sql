@@ -1,4 +1,4 @@
--- v0 -> v48: Latest revision
+-- v0 -> v49: Latest revision
 
 CREATE TABLE "user" (
     mxid     TEXT PRIMARY KEY,
@@ -127,7 +127,7 @@ CREATE TABLE backfill_state (
     portal_receiver   TEXT,
     processing_batch  BOOLEAN,
     backfill_complete BOOLEAN,
-    first_expected_ts TIMESTAMP,
+    first_expected_ts BIGINT,
     PRIMARY KEY (user_mxid, portal_jid, portal_receiver),
     FOREIGN KEY (user_mxid) REFERENCES "user" (mxid) ON DELETE CASCADE ON UPDATE CASCADE,
     FOREIGN KEY (portal_jid, portal_receiver) REFERENCES portal (jid, receiver) ON DELETE CASCADE
