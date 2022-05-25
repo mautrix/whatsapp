@@ -97,6 +97,14 @@ const (
 		ORDER BY type, priority, queue_id
 		LIMIT 1
 	`
+	getUnstartedOrInFlightQuery = `
+		SELECT 1
+		FROM backfill_queue
+		WHERE user_mxid=$1
+			AND type IN (%s)
+			AND (dispatch_time IS NULL OR completed_at IS NULL)
+		LIMIT 1
+	`
 )
 
 // GetNext returns the next backfill to perform
@@ -118,6 +126,28 @@ func (bq *BackfillQuery) GetNext(userID id.UserID, backfillTypes []BackfillType)
 		backfill = bq.New().Scan(rows)
 	}
 	return
+}
+
+func (bq *BackfillQuery) HasUnstartedOrInFlightOfType(userID id.UserID, backfillTypes []BackfillType) bool {
+	if len(backfillTypes) == 0 {
+		return false
+	}
+
+	bq.backfillQueryLock.Lock()
+	defer bq.backfillQueryLock.Unlock()
+
+	types := []string{}
+	for _, backfillType := range backfillTypes {
+		types = append(types, strconv.Itoa(int(backfillType)))
+	}
+	rows, err := bq.db.Query(fmt.Sprintf(getUnstartedOrInFlightQuery, strings.Join(types, ",")), userID)
+	if err != nil || rows == nil {
+		// No rows means that there are no unstarted or in flight backfill
+		// requests.
+		return false
+	}
+	defer rows.Close()
+	return rows.Next()
 }
 
 func (bq *BackfillQuery) DeleteAll(userID id.UserID) {

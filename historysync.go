@@ -58,15 +58,17 @@ func (user *User) handleHistorySyncsLoop() {
 		log:             user.log.Sub("BackfillQueue"),
 	}
 
+	forwardAndImmediate := []database.BackfillType{database.BackfillImmediate, database.BackfillForward}
+
 	// Immediate backfills can be done in parallel
 	for i := 0; i < user.bridge.Config.Bridge.HistorySync.Immediate.WorkerCount; i++ {
-		go user.HandleBackfillRequestsLoop([]database.BackfillType{database.BackfillImmediate, database.BackfillForward})
+		go user.HandleBackfillRequestsLoop(forwardAndImmediate, []database.BackfillType{})
 	}
 
 	// Deferred backfills should be handled synchronously so as not to
 	// overload the homeserver. Users can configure their backfill stages
 	// to be more or less aggressive with backfilling at this stage.
-	go user.HandleBackfillRequestsLoop([]database.BackfillType{database.BackfillDeferred})
+	go user.HandleBackfillRequestsLoop([]database.BackfillType{database.BackfillDeferred}, forwardAndImmediate)
 
 	if user.bridge.Config.Bridge.HistorySync.MediaRequests.AutoRequestMedia &&
 		user.bridge.Config.Bridge.HistorySync.MediaRequests.RequestMethod == config.MediaRequestMethodLocalTime {
@@ -130,17 +132,16 @@ func (user *User) backfillInChunks(req *database.Backfill, conv *database.Histor
 	portal.backfillLock.Lock()
 	defer portal.backfillLock.Unlock()
 
+	if !user.shouldCreatePortalForHistorySync(conv, portal) {
+		return
+	}
+
 	backfillState := user.bridge.DB.Backfill.GetBackfillState(user.MXID, &portal.Key)
 	if backfillState == nil {
 		backfillState = user.bridge.DB.Backfill.NewBackfillState(user.MXID, &portal.Key)
 	}
 	backfillState.SetProcessingBatch(true)
 	defer backfillState.SetProcessingBatch(false)
-	portal.updateBackfillStatus(backfillState)
-
-	if !user.shouldCreatePortalForHistorySync(conv, portal) {
-		return
-	}
 
 	var forwardPrevID id.EventID
 	var timeEnd *time.Time
@@ -200,6 +201,9 @@ func (user *User) backfillInChunks(req *database.Backfill, conv *database.Histor
 			return
 		}
 	}
+
+	// Update the backfill status here after the room has been created.
+	portal.updateBackfillStatus(backfillState)
 
 	if sendDisappearedNotice {
 		user.log.Debugfln("Sending notice to %s that there are disappeared messages ending at %v", portal.Key.JID, conv.LastMessageTimestamp)
@@ -734,10 +738,10 @@ func (portal *Portal) updateBackfillStatus(backfillState *database.BackfillState
 
 	_, err := portal.MainIntent().SendStateEvent(portal.MXID, BackfillStatusEvent, "", map[string]interface{}{
 		"status":          backfillStatus,
-		"first_timestamp": backfillState.FirstExpectedTimestamp,
+		"first_timestamp": backfillState.FirstExpectedTimestamp * 1000,
 	})
 	if err != nil {
-		portal.log.Errorln("Error sending post-backfill dummy event:", err)
+		portal.log.Errorln("Error sending backfill status event:", err)
 	}
 }
 
