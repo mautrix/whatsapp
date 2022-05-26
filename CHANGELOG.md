@@ -1,8 +1,5 @@
 # unreleased
 
-**N.B.** Due to some changes to the database upgrade system, you must upgrade
-the bridge to v0.4.0 before updating to a newer version.
-
 * Improved handling edge cases in backfill system.
 * Fixed chats not being marked as read when sending a message from another
   WhatsApp client after receiving a call.

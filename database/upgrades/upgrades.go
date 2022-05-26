@@ -30,7 +30,7 @@ var Table dbutil.UpgradeTable
 var rawUpgrades embed.FS
 
 func init() {
-	Table.Register(-1, 43, "Unsupported version", func(tx *sql.Tx, database *dbutil.Database) error {
+	Table.Register(-1, 35, "Unsupported version", func(tx *sql.Tx, database *dbutil.Database) error {
 		return errors.New("please upgrade to mautrix-whatsapp v0.4.0 before upgrading to a newer version")
 	})
 	Table.RegisterFS(rawUpgrades)

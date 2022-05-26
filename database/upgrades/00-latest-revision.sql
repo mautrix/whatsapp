@@ -28,7 +28,7 @@ CREATE TABLE portal (
     first_event_id  TEXT,
     next_batch_id   TEXT,
     relay_user_id   TEXT,
-    expiration_time BIGINT NOT NULL DEFAULT 0,
+    expiration_time BIGINT NOT NULL DEFAULT 0 CHECK (expiration_time >= 0 AND expiration_time < 4294967296),
 
     PRIMARY KEY (jid, receiver)
 );
@@ -118,7 +118,8 @@ CREATE TABLE backfill_queue (
     max_batch_events INTEGER NOT NULL,
     max_total_events INTEGER,
 
-    FOREIGN KEY (portal_jid, portal_receiver) REFERENCES portal(jid, receiver) ON DELETE CASCADE ON UPDATE CASCADE
+    FOREIGN KEY (user_mxid) REFERENCES "user" (mxid) ON DELETE CASCADE ON UPDATE CASCADE,
+    FOREIGN KEY (portal_jid, portal_receiver) REFERENCES portal(jid, receiver) ON DELETE CASCADE
 );
 
 CREATE TABLE backfill_state (
