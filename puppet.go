@@ -204,7 +204,7 @@ type Puppet struct {
 }
 
 func (puppet *Puppet) IntentFor(portal *Portal) *appservice.IntentAPI {
-	if puppet.customIntent == nil || portal.Key.JID == puppet.JID {
+	if puppet.customIntent == nil || portal.Key.JID == puppet.JID || (portal.Key.JID.Server == types.BroadcastServer && portal.Key.Receiver != puppet.JID) {
 		return puppet.DefaultIntent()
 	}
 	return puppet.customIntent
