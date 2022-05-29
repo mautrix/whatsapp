@@ -1379,10 +1379,11 @@ func (portal *Portal) CreateMatrixRoom(user *User, groupInfo *types.GroupInfo, i
 		return err
 	}
 	portal.MXID = resp.RoomID
-	portal.Update(nil)
 	portal.bridge.portalsLock.Lock()
 	portal.bridge.portalsByMXID[portal.MXID] = portal
 	portal.bridge.portalsLock.Unlock()
+	portal.Update(nil)
+	portal.log.Infoln("Matrix room created:", portal.MXID)
 
 	// We set the memberships beforehand to make sure the encryption key exchange in initial backfill knows the users are here.
 	for _, userID := range invite {
@@ -1503,10 +1504,7 @@ func (portal *Portal) SetReply(content *event.MessageEventContent, replyToID typ
 	evt, err := portal.MainIntent().GetEvent(portal.MXID, message.MXID)
 	if err != nil {
 		portal.log.Warnln("Failed to get reply target:", err)
-		content.RelatesTo = &event.RelatesTo{
-			EventID: message.MXID,
-			Type:    event.RelReply,
-		}
+		content.RelatesTo = (&event.RelatesTo{}).SetReplyTo(message.MXID)
 		return true
 	}
 	_ = evt.Content.ParseRaw(evt.Type)
