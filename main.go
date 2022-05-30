@@ -215,7 +215,7 @@ func (br *WABridge) StartUsers() {
 		go user.Connect()
 	}
 	if !foundAnySessions {
-		br.sendGlobalBridgeState(BridgeState{StateEvent: StateUnconfigured}.fill(nil))
+		br.SendGlobalBridgeState(bridge.State{StateEvent: bridge.StateUnconfigured}.Fill(nil))
 	}
 	br.Log.Debugln("Starting custom puppets")
 	for _, loopuppet := range br.GetAllPuppetsWithCustomMXID() {

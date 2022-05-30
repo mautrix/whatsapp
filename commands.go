@@ -518,7 +518,7 @@ func fnLogout(ce *WrappedCommandEvent) {
 		return
 	}
 	ce.User.Session = nil
-	ce.User.removeFromJIDMap(BridgeState{StateEvent: StateLoggedOut})
+	ce.User.removeFromJIDMap(bridge.State{StateEvent: bridge.StateLoggedOut})
 	ce.User.DeleteConnection()
 	ce.User.DeleteSession()
 	ce.Reply("Logged out successfully.")
@@ -575,7 +575,7 @@ func fnDeleteSession(ce *WrappedCommandEvent) {
 		ce.Reply("Nothing to purge: no session information stored and no active connection.")
 		return
 	}
-	ce.User.removeFromJIDMap(BridgeState{StateEvent: StateLoggedOut})
+	ce.User.removeFromJIDMap(bridge.State{StateEvent: bridge.StateLoggedOut})
 	ce.User.DeleteConnection()
 	ce.User.DeleteSession()
 	ce.Reply("Session information purged")
@@ -600,7 +600,7 @@ func fnReconnect(ce *WrappedCommandEvent) {
 		}
 	} else {
 		ce.User.DeleteConnection()
-		ce.User.sendBridgeState(BridgeState{StateEvent: StateTransientDisconnect, Error: WANotConnected})
+		ce.User.BridgeState.Send(bridge.State{StateEvent: bridge.StateTransientDisconnect, Error: WANotConnected})
 		ce.User.Connect()
 		ce.Reply("Restarted connection to WhatsApp")
 	}
@@ -622,7 +622,7 @@ func fnDisconnect(ce *WrappedCommandEvent) {
 	}
 	ce.User.DeleteConnection()
 	ce.Reply("Successfully disconnected. Use the `reconnect` command to reconnect.")
-	ce.User.sendBridgeState(BridgeState{StateEvent: StateBadCredentials, Error: WANotConnected})
+	ce.User.BridgeState.Send(bridge.State{StateEvent: bridge.StateBadCredentials, Error: WANotConnected})
 }
 
 var cmdPing = &commands.FullHandler{
