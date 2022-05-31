@@ -48,6 +48,8 @@ type BridgeConfig struct {
 	PersonalFilteringSpaces bool `yaml:"personal_filtering_spaces"`
 
 	DeliveryReceipts      bool `yaml:"delivery_receipts"`
+	MessageStatusEvents   bool `yaml:"message_status_events"`
+	MessageErrorNotices   bool `yaml:"message_error_notices"`
 	PortalMessageBuffer   int  `yaml:"portal_message_buffer"`
 	CallStartNotices      bool `yaml:"call_start_notices"`
 	IdentityChangeNotices bool `yaml:"identity_change_notices"`

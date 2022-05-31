@@ -271,6 +271,8 @@ func main() {
 		Version:      "0.4.0",
 		ProtocolName: "WhatsApp",
 
+		CryptoPickleKey: "maunium.net/go/mautrix-whatsapp",
+
 		ConfigUpgrader: &configupgrade.StructUpgrader{
 			SimpleUpgrader: configupgrade.SimpleUpgrader(config.DoUpgrade),
 			Blocks:         config.SpacedBlocks,

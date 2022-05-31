@@ -100,6 +100,10 @@ bridge:
     personal_filtering_spaces: false
     # Should the bridge send a read receipt from the bridge bot when a message has been sent to WhatsApp?
     delivery_receipts: false
+    # Whether the bridge should send the message status as a custom com.beeper.message_send_status event.
+    message_status_events: false
+    # Whether the bridge should send error notices via m.notice events when a message fails to bridge.
+    message_error_notices: true
     # Should incoming calls send a message to the Matrix room?
     call_start_notices: true
     # Should another user's cryptographic identity changing send a message to Matrix?
