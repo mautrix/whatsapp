@@ -1,8 +1,15 @@
 # unreleased
 
+* Moved a lot of code to mautrix-go.
 * Improved handling edge cases in backfill system.
+* Improved handling errors in Matrix->WhatsApp message bridging.
+* Fixed some cases where the first outgoing message was undecryptable for
+  WhatsApp users.
 * Fixed chats not being marked as read when sending a message from another
   WhatsApp client after receiving a call.
+* Fixed other bridge users being added to status broadcasts rooms through
+  double puppeting.
+* Fixed edge cases in the deferred backfill queue.
 
 # v0.4.0 (2022-05-16)
 
