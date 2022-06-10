@@ -1278,6 +1278,7 @@ func lockedConfirmBridge(ce *WrappedCommandEvent, portal *Portal, roomID id.Room
 	info, err := user.Client.GetGroupInfo(portal.Key.JID)
 	if err != nil {
 		ce.Reply("Failed to get group info: %v", err)
+		return
 	}
 
 	portal.MXID = roomID
