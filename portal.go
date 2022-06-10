@@ -3345,11 +3345,11 @@ func (portal *Portal) CleanupIfEmpty() {
 	if len(users) == 0 {
 		portal.log.Infoln("Room seems to be empty, cleaning up...")
 		portal.Delete()
-		portal.Cleanup(false)
+		portal.Cleanup("", false)
 	}
 }
 
-func (portal *Portal) Cleanup(puppetsOnly bool) {
+func (portal *Portal) Cleanup(message string, puppetsOnly bool) {
 	if len(portal.MXID) == 0 {
 		return
 	}
@@ -3366,6 +3366,9 @@ func (portal *Portal) Cleanup(puppetsOnly bool) {
 		portal.log.Errorln("Failed to get portal members for cleanup:", err)
 		return
 	}
+	if message == "" {
+		message = "Deleting portal"
+	}
 	for member := range members.Joined {
 		if member == intent.UserID {
 			continue
@@ -3377,7 +3380,7 @@ func (portal *Portal) Cleanup(puppetsOnly bool) {
 				portal.log.Errorln("Error leaving as puppet while cleaning up portal:", err)
 			}
 		} else if !puppetsOnly {
-			_, err = intent.KickUser(portal.MXID, &mautrix.ReqKickUser{UserID: member, Reason: "Deleting portal"})
+			_, err = intent.KickUser(portal.MXID, &mautrix.ReqKickUser{UserID: member, Reason: message})
 			if err != nil {
 				portal.log.Errorln("Error kicking user while cleaning up portal:", err)
 			}
@@ -3394,7 +3397,7 @@ func (portal *Portal) HandleMatrixLeave(brSender bridge.User) {
 	if portal.IsPrivateChat() {
 		portal.log.Debugln("User left private chat portal, cleaning up and deleting...")
 		portal.Delete()
-		portal.Cleanup(false)
+		portal.Cleanup("", false)
 		return
 	} else if portal.bridge.Config.Bridge.BridgeMatrixLeave {
 		err := sender.Client.LeaveGroup(portal.Key.JID)

@@ -83,6 +83,8 @@ type User struct {
 
 	BackfillQueue *BackfillQueue
 	BridgeState   *bridge.BridgeStateQueue
+
+	CommandState map[string]interface{}
 }
 
 func (br *WABridge) getUserByMXID(userID id.UserID, onlyIfExists bool) *User {
@@ -128,7 +130,7 @@ func (user *User) GetMXID() id.UserID {
 }
 
 func (user *User) GetCommandState() map[string]interface{} {
-	return nil
+	return user.CommandState
 }
 
 func (br *WABridge) GetUserByMXIDIfExists(userID id.UserID) *User {
