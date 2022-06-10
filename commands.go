@@ -191,21 +191,20 @@ func getInitialState(intent *appservice.IntentAPI, roomID id.RoomID) (
 
 func warnMissingPower(levels *event.PowerLevelsEventContent, ce *WrappedCommandEvent) {
 	if levels.GetUserLevel(ce.Bot.UserID) < levels.Redact() {
-		ce.Reply(
-			"Warning: The bot does not have privileges to redact messages on Matrix. " +
-			"Message deletions from WhatsApp will not be bridged unless you give " +
+		ce.Reply("Warning: The bot does not have privileges to redact messages on Matrix. "+
+			"Message deletions from WhatsApp will not be bridged unless you give "+
 			"redaction permissions to [%[1]s](https://matrix.to/#/%[1]s)",
 			ce.Bot.UserID,
 		)
 	}
 	/* TODO Check other permissions too:
-		Important:
-		- invite/kick
-		Optional:
-		- m.bridge/uk.half-shot.bridge
-		- set room name/topic/avatar
-		- change power levels
-		- top PL for bot to control all users, including initial inviter
+	Important:
+	- invite/kick
+	Optional:
+	- m.bridge/uk.half-shot.bridge
+	- set room name/topic/avatar
+	- change power levels
+	- top PL for bot to control all users, including initial inviter
 	*/
 }
 
@@ -1153,24 +1152,22 @@ func fnOpen(ce *WrappedCommandEvent) {
 			// TODO Move to a function
 			hasPortalMessage := "That WhatsApp group already has a portal at [%[1]s](https://matrix.to/#/%[1]s). "
 			if !userHasPowerLevel(portal.MXID, ce.MainIntent(), ce.User, "unbridge") {
-				ce.Reply(
-					hasPortalMessage +
+				ce.Reply(hasPortalMessage+
 					"Additionally, you do not have the permissions to unbridge that room.",
 					portal.MXID,
 				)
 			} else {
 				ce.User.CommandState = map[string]interface{}{
-					"next": &StateHandler{confirmBridge, "Room bridging"},
-					"mxid": portal.MXID,
+					"next":         &StateHandler{confirmBridge, "Room bridging"},
+					"mxid":         portal.MXID,
 					"bridgeToMXID": bridgeRoomID,
-					"jid": info.JID,
+					"jid":          info.JID,
 				}
-				ce.Reply(
-					hasPortalMessage +
-					"However, you have the permissions to unbridge that room.\n\n" +
-					"To delete that portal completely and continue bridging, use " +
-					"`$cmdprefix  delete-and-continue`. To unbridge the portal " +
-					"without kicking Matrix users, use `$cmdprefix  unbridge-and-" +
+				ce.Reply(hasPortalMessage+
+					"However, you have the permissions to unbridge that room.\n\n"+
+					"To delete that portal completely and continue bridging, use "+
+					"`$cmdprefix  delete-and-continue`. To unbridge the portal "+
+					"without kicking Matrix users, use `$cmdprefix  unbridge-and-"+
 					"continue`. To cancel, use `$cmdprefix  cancel`.",
 					portal.MXID,
 				)
@@ -1187,12 +1184,11 @@ func fnOpen(ce *WrappedCommandEvent) {
 		} else {
 			// TODO Move to a function
 			ce.User.CommandState = map[string]interface{}{
-				"next": &StateHandler{confirmBridge, "Room bridging"},
+				"next":         &StateHandler{confirmBridge, "Room bridging"},
 				"bridgeToMXID": bridgeRoomID,
-				"jid": info.JID,
+				"jid":          info.JID,
 			}
-			ce.Reply(
-				"That WhatsApp group has no existing portal. To confirm bridging the " +
+			ce.Reply("That WhatsApp group has no existing portal. To confirm bridging the " +
 				"group, use `$cmdprefix  continue`. To cancel, use `$cmdprefix  cancel`.",
 			)
 		}
@@ -1201,8 +1197,7 @@ func fnOpen(ce *WrappedCommandEvent) {
 
 func cleanupOldPortalWhileBridging(ce *WrappedCommandEvent, portal *Portal) (bool, func()) {
 	if len(portal.MXID) == 0 {
-		ce.Reply(
-			"The portal seems to have lost its Matrix room between you" +
+		ce.Reply("The portal seems to have lost its Matrix room between you" +
 			"calling `$cmdprefix  bridge` and this command.\n\n" +
 			"Continuing without touching the previous Matrix room...",
 		)
@@ -1210,16 +1205,15 @@ func cleanupOldPortalWhileBridging(ce *WrappedCommandEvent, portal *Portal) (boo
 	}
 	switch ce.Args[0] {
 	case "delete-and-continue":
-		return true, func () {
+		return true, func() {
 			portal.Cleanup("Portal deleted (moving to another room)", false)
 		}
 	case "unbridge-and-continue":
-		return true, func () {
+		return true, func() {
 			portal.Cleanup("Room unbridged (portal moving to another room)", true)
 		}
 	default:
-		ce.Reply(
-			"The chat you were trying to bridge already has a Matrix portal room.\n\n" +
+		ce.Reply("The chat you were trying to bridge already has a Matrix portal room.\n\n" +
 			"Please use `$cmdprefix  delete-and-continue` or `$cmdprefix  unbridge-and-" +
 			"continue` to either delete or unbridge the existing room (respectively) and " +
 			"continue with the bridging.\n\n" +
@@ -1233,7 +1227,7 @@ func confirmBridge(ce *WrappedCommandEvent) {
 	defer func() {
 		if err := recover(); err != nil {
 			ce.User.CommandState = nil
-			ce.Reply("Fatal error: %v. This shouldn't happen unless you're messing with the command handler code.",	err)
+			ce.Reply("Fatal error: %v. This shouldn't happen unless you're messing with the command handler code.", err)
 		}
 	}()
 
@@ -1255,15 +1249,13 @@ func confirmBridge(ce *WrappedCommandEvent) {
 		}
 	} else if len(portal.MXID) > 0 {
 		ce.User.CommandState = nil
-		ce.Reply(
-			"The portal seems to have created a Matrix room between you " +
+		ce.Reply("The portal seems to have created a Matrix room between you " +
 			"calling `$cmdprefix  bridge` and this command.\n\n" +
 			"Please start over by calling the bridge command again.",
 		)
 		return
 	} else if ce.Args[0] != "continue" {
-		ce.Reply(
-			"Please use `$cmdprefix  continue` to confirm the bridging or " +
+		ce.Reply("Please use `$cmdprefix  continue` to confirm the bridging or " +
 			"`$cmdprefix  cancel` to cancel.",
 		)
 		return
