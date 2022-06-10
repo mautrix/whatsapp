@@ -132,14 +132,14 @@ func getBridgeRoomID(ce *WrappedCommandEvent, argIndex int) (roomID id.RoomID, o
 		resp, err := ce.MainIntent().ResolveAlias(id.RoomAlias(roomArg))
 		if err != nil {
 			ce.Log.Errorln("Failed to resolve room alias %s to a room ID: %v", roomArg, err)
-			ce.Reply("Unable to find a room with the provided alias")
+			ce.Reply("Unable to find a room with the provided alias.")
 			return
 		} else {
 			roomID = resp.RoomID
 		}
 	}
 	if roomID == "" {
-		ce.Reply("Invalid room ID")
+		ce.Reply("Please provide a valid room ID.")
 		return
 	}
 
