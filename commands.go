@@ -75,6 +75,7 @@ func (br *WABridge) RegisterCommands() {
 		cmdBackfill,
 		cmdList,
 		cmdSearch,
+		cmdBridge,
 		cmdOpen,
 		cmdPM,
 		cmdSync,
@@ -114,8 +115,9 @@ var (
 	HelpSectionInvites              = commands.HelpSection{Name: "Group invites", Order: 25}
 	HelpSectionMiscellaneous        = commands.HelpSection{Name: "Miscellaneous", Order: 30}
 
-	roomArgHelpMd = " [<_Matrix room ID_> | --here]"
-	roomArgHelp   = " [<Matrix room ID> | --here]"
+	roomArgName   = "Matrix room ID or alias"
+	roomArgHelpMd = " [<_" + roomArgName + "_> | --here]"
+	roomArgHelp   = " [<" + roomArgName + "> | --here]"
 )
 
 func getBridgeRoomID(ce *WrappedCommandEvent, argIndex int) (roomID id.RoomID, ok bool) {
@@ -1102,6 +1104,29 @@ func fnSearch(ce *WrappedCommandEvent) {
 	}
 
 	ce.Reply(strings.Join(result, "\n\n"))
+}
+
+var cmdBridge = &commands.FullHandler{
+	Func: wrapCommand(fnBridge),
+	Name: "bridge",
+	Help: commands.HelpMeta{
+		Section:     HelpSectionCreatingPortals,
+		Description: "Bridge a WhatsApp group chat to the current Matrix room, or to a specified room.",
+		Args:        "<_group JID_> [<_" + roomArgName + "_>]",
+	},
+	RequiresLogin: true,
+}
+
+func fnBridge(ce *WrappedCommandEvent) {
+	if len(ce.Args) == 0 {
+		ce.Reply("**Usage:** `bridge <group JID> [<_" + roomArgName + "_>]`")
+		return
+	}
+
+	if len(ce.Args) == 1 {
+		ce.Args = append(ce.Args, "--here")
+	}
+	fnOpen(ce)
 }
 
 var cmdOpen = &commands.FullHandler{
