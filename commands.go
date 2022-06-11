@@ -128,21 +128,20 @@ func getBridgeRoomID(ce *WrappedCommandEvent, argIndex int) (roomID id.RoomID, o
 	roomArg := ce.Args[argIndex]
 	if roomArg == "--here" {
 		roomID = ce.RoomID
-	} else if strings.HasPrefix(roomArg, "!") {
-		roomID = id.RoomID(roomArg)
-	} else if strings.HasPrefix(roomArg, "#") {
-		resp, err := ce.MainIntent().ResolveAlias(id.RoomAlias(roomArg))
+	} else {
+		var isAlias bool
+		var err error
+		roomID, isAlias, err = ce.Bridge.ResolveRoomArg(roomArg)
 		if err != nil {
-			ce.Log.Errorln("Failed to resolve room alias %s to a room ID: %v", roomArg, err)
-			ce.Reply("Unable to find a room with the provided alias.")
+			if isAlias {
+				ce.Log.Errorln("Failed to resolve room alias %s to a room ID: %v", roomArg, err)
+				ce.Reply("Unable to find a room with the provided alias.")
+			} else {
+				ce.Log.Errorln("Invalid room ID %s: %v", roomArg, err)
+				ce.Reply("Please provide a valid room ID or alias.")
+			}
 			return
-		} else {
-			roomID = resp.RoomID
 		}
-	}
-	if roomID == "" {
-		ce.Reply("Please provide a valid room ID.")
-		return
 	}
 
 	var thatThisSuffix string
@@ -152,8 +151,7 @@ func getBridgeRoomID(ce *WrappedCommandEvent, argIndex int) (roomID id.RoomID, o
 		thatThisSuffix = "at"
 	}
 
-	portal := ce.Bridge.GetPortalByMXID(roomID)
-	if portal != nil {
+	if ce.Bridge.GetPortalByMXID(roomID) != nil {
 		ce.Reply("Th%s room is already a portal room.", thatThisSuffix)
 	} else if !userHasPowerLevel(roomID, ce.MainIntent(), ce.User, "bridge") {
 		ce.Reply("You do not have the permissions to bridge th%s room.", thatThisSuffix)
@@ -1257,7 +1255,7 @@ func confirmBridge(ce *WrappedCommandEvent) {
 	}()
 
 	status := ce.User.GetCommandState()
-	bridgeToMXID := status["bridgeToMXID"].(id.RoomID)
+	roomID := status["bridgeToMXID"].(id.RoomID)
 	portal := ce.User.GetPortalByJID(status["jid"].(types.JID))
 	if portal == nil {
 		panic("could not retrieve portal that was expected to exist")
@@ -1287,10 +1285,6 @@ func confirmBridge(ce *WrappedCommandEvent) {
 	}
 
 	ce.User.CommandState = nil
-	lockedConfirmBridge(ce, portal, bridgeToMXID)
-}
-
-func lockedConfirmBridge(ce *WrappedCommandEvent, portal *Portal, roomID id.RoomID) {
 	portal.roomCreateLock.Lock()
 	defer portal.roomCreateLock.Unlock()
 
@@ -1306,21 +1300,7 @@ func lockedConfirmBridge(ce *WrappedCommandEvent, portal *Portal, roomID id.Room
 		return
 	}
 
-	portal.MXID = roomID
-	portal.bridge.portalsLock.Lock()
-	portal.bridge.portalsByMXID[portal.MXID] = portal
-	portal.bridge.portalsLock.Unlock()
-	var levels *event.PowerLevelsEventContent
-	portal.Name, portal.Topic, levels, portal.Encrypted = getInitialState(
-		ce.MainIntent(), ce.RoomID,
-	)
-	portal.Avatar = ""
-	portal.Update(nil)
-	portal.UpdateBridgeInfo()
-
-	// TODO Let UpdateMatrixRoom also update power levels
-	go portal.UpdateMatrixRoom(user, info)
-
+	levels := portal.BridgeMatrixRoom(roomID, user, info)
 	warnMissingPower(levels, ce)
 
 	ce.Reply("Bridging complete. Portal synchronization should begin momentarily.")

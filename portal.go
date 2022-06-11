@@ -1093,6 +1093,23 @@ func (portal *Portal) UpdateMatrixRoom(user *User, groupInfo *types.GroupInfo) b
 	return true
 }
 
+func (portal *Portal) BridgeMatrixRoom(roomID id.RoomID, user *User, info *types.GroupInfo) (levels *event.PowerLevelsEventContent) {
+	portal.MXID = roomID
+	portal.bridge.portalsLock.Lock()
+	portal.bridge.portalsByMXID[portal.MXID] = portal
+	portal.bridge.portalsLock.Unlock()
+	portal.Name, portal.Topic, levels, portal.Encrypted = getInitialState(
+		portal.bridge.AS.BotIntent(), roomID,
+	)
+	portal.Avatar = ""
+	portal.Update(nil)
+	portal.UpdateBridgeInfo()
+
+	// TODO Let UpdateMatrixRoom also update power levels
+	go portal.UpdateMatrixRoom(user, info)
+	return
+}
+
 func (portal *Portal) GetBasePowerLevels() *event.PowerLevelsEventContent {
 	anyone := 0
 	nope := 99

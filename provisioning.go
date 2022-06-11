@@ -67,6 +67,7 @@ func (prov *ProvisioningAPI) Init() {
 	r.HandleFunc("/v1/resolve_identifier/{number}", prov.ResolveIdentifier).Methods(http.MethodGet)
 	r.HandleFunc("/v1/bulk_resolve_identifier", prov.BulkResolveIdentifier).Methods(http.MethodPost)
 	r.HandleFunc("/v1/pm/{number}", prov.StartPM).Methods(http.MethodPost)
+	r.HandleFunc("/v1/bridge/{groupID}/{roomIDorAlias}", prov.BridgeGroup).Methods(http.MethodPost)
 	r.HandleFunc("/v1/open/{groupID}", prov.OpenGroup).Methods(http.MethodPost)
 	prov.bridge.AS.Router.HandleFunc("/_matrix/app/com.beeper.asmux/ping", prov.BridgeStatePing).Methods(http.MethodPost)
 	prov.bridge.AS.Router.HandleFunc("/_matrix/app/com.beeper.bridge_state", prov.BridgeStatePing).Methods(http.MethodPost)
@@ -459,6 +460,81 @@ func (prov *ProvisioningAPI) BulkResolveIdentifier(w http.ResponseWriter, r *htt
 		})
 	} else {
 		jsonResponse(w, http.StatusOK, resp)
+	}
+}
+
+func (prov *ProvisioningAPI) BridgeGroup(w http.ResponseWriter, r *http.Request) {
+	groupID := mux.Vars(r)["groupID"]
+	roomArg := mux.Vars(r)["roomIDorAlias"]
+	if user := r.Context().Value("user").(*User); !user.IsLoggedIn() {
+		jsonResponse(w, http.StatusBadRequest, Error{
+			Error:   "User is not logged into WhatsApp",
+			ErrCode: "no session",
+		})
+	} else if roomID, isAlias, err := prov.bridge.ResolveRoomArg(roomArg); err != nil || roomID == "" {
+		if isAlias {
+			jsonResponse(w, http.StatusNotFound, Error{
+				Error:   "Failed to resolve room alias",
+				ErrCode: "error resolving room alias",
+			})
+		} else {
+			jsonResponse(w, http.StatusBadRequest, Error{
+				Error:   "Invalid room ID",
+				ErrCode: "invalid room id",
+			})
+		}
+	} else if prov.bridge.GetPortalByMXID(roomID) != nil {
+		jsonResponse(w, http.StatusConflict, Error{
+			Error:   "Room is already bridged to a WhatsApp group.",
+			ErrCode: "room already bridged",
+		})
+	} else if !userHasPowerLevel(roomID, prov.bridge.AS.BotIntent(), user, "bridge") {
+		jsonResponse(w, http.StatusForbidden, Error{
+			Error:   "User does not have the permissions to bridge that room.",
+			ErrCode: "not enough permissions",
+		})
+	} else if jid, err := types.ParseJID(groupID); err != nil || jid.Server != types.GroupServer || (!strings.ContainsRune(jid.User, '-') && len(jid.User) < 15) {
+		jsonResponse(w, http.StatusBadRequest, Error{
+			Error:   "Invalid group ID",
+			ErrCode: "invalid group id",
+		})
+	} else if info, err := user.Client.GetGroupInfo(jid); err != nil {
+		// TODO return better responses for different errors (like ErrGroupNotFound and ErrNotInGroup)
+		jsonResponse(w, http.StatusInternalServerError, Error{
+			Error:   fmt.Sprintf("Failed to get group info: %v", err),
+			ErrCode: "error getting group info",
+		})
+	} else {
+		prov.log.Debugln("Importing", jid, "for", user.MXID)
+		portal := user.GetPortalByJID(info.JID)
+		if portal.MXID == roomID {
+			jsonResponse(w, http.StatusOK, Error{
+				Error:   "WhatsApp group is already bridged to that Matrix room.",
+				ErrCode: "bridge exists",
+			})
+			return
+		} else if len(portal.MXID) > 0 {
+			switch strings.ToLower(r.URL.Query().Get("force")) {
+			case "delete":
+				portal.Cleanup("Portal deleted (moving to another room)", false)
+			case "unbridge":
+				portal.Cleanup("Room unbridged (portal moving to another room)", true)
+			default:
+				jsonResponse(w, http.StatusConflict, Error{
+					Error:   "WhatsApp group is already bridged to another Matrix room.",
+					ErrCode: "group already bridged",
+				})
+				return
+			}
+		}
+		portal.roomCreateLock.Lock()
+		defer portal.roomCreateLock.Unlock()
+		// TODO Store detected power levels & warn about missing permissions
+		portal.BridgeMatrixRoom(roomID, user, info)
+		jsonResponse(w, http.StatusAccepted, PortalInfo{
+			RoomID:    portal.MXID,
+			GroupInfo: info,
+		})
 	}
 }
 
