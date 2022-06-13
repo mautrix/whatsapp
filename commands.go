@@ -513,6 +513,8 @@ func fnCreate(ce *WrappedCommandEvent) {
 	}
 
 	ce.Log.Infofln("Creating group for %s with name %s and participants %+v", ce.RoomID, roomNameEvent.Name, participants)
+	ce.User.groupCreateLock.Lock()
+	defer ce.User.groupCreateLock.Unlock()
 	resp, err := ce.User.Client.CreateGroup(roomNameEvent.Name, participants)
 	if err != nil {
 		ce.Reply("Failed to create group: %v", err)
@@ -524,6 +526,7 @@ func fnCreate(ce *WrappedCommandEvent) {
 	if len(portal.MXID) != 0 {
 		portal.log.Warnln("Detected race condition in room creation")
 		// TODO race condition, clean up the old room
+		// TODO confirm whether this is fixed by the lock on group creation
 	}
 	portal.MXID = ce.RoomID
 	portal.Name = roomNameEvent.Name

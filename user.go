@@ -68,6 +68,7 @@ type User struct {
 
 	mgmtCreateLock  sync.Mutex
 	spaceCreateLock sync.Mutex
+	groupCreateLock sync.Mutex
 	connLock        sync.Mutex
 
 	historySyncs chan *events.HistorySync
@@ -1150,6 +1151,8 @@ func (user *User) markUnread(portal *Portal, unread bool) {
 }
 
 func (user *User) handleGroupCreate(evt *events.JoinedGroup) {
+	user.groupCreateLock.Lock()
+	defer user.groupCreateLock.Unlock()
 	portal := user.GetPortalByJID(evt.JID)
 	if len(portal.MXID) == 0 {
 		err := portal.CreateMatrixRoom(user, &evt.GroupInfo, true, true)
