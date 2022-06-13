@@ -249,6 +249,9 @@ bridge:
     # Should WhatsApp status messages be bridged into a Matrix room?
     # Disabling this won't affect already created status broadcast rooms.
     enable_status_broadcast: true
+    # Should sending WhatsApp status messages be allowed?
+    # This can cause issues if the user has lots of contacts, so it's disabled by default.
+    disable_status_broadcast_send: true
     # Should the status broadcast room be muted and moved into low priority by default?
     # This is only applied when creating the room, the user can unmute it later.
     mute_status_broadcast: true

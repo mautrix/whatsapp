@@ -80,6 +80,7 @@ func DoUpgrade(helper *up.Helper) {
 	helper.Copy(up.Str|up.Null, "bridge", "pinned_tag")
 	helper.Copy(up.Bool, "bridge", "tag_only_on_create")
 	helper.Copy(up.Bool, "bridge", "enable_status_broadcast")
+	helper.Copy(up.Bool, "bridge", "disable_status_broadcast_send")
 	helper.Copy(up.Bool, "bridge", "mute_status_broadcast")
 	helper.Copy(up.Str|up.Null, "bridge", "status_broadcast_tag")
 	helper.Copy(up.Bool, "bridge", "whatsapp_thumbnail")

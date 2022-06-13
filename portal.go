@@ -2907,6 +2907,9 @@ var (
 	errTargetIsFake                = errors.New("target is a fake event")
 	errTargetSentBySomeoneElse     = errors.New("target is a fake event")
 
+	errBroadcastReactionNotSupported = errors.New("reacting to status messages is not currently supported")
+	errBroadcastSendDisabled         = errors.New("sending status messages is disabled")
+
 	errMessageDisconnected      = &whatsmeow.DisconnectedError{Action: "message send"}
 	errMessageRetryDisconnected = &whatsmeow.DisconnectedError{Action: "message send (retry)"}
 )
@@ -2918,7 +2921,9 @@ func errorToStatusReason(err error) (reason event.MessageStatusReason, isCertain
 		errors.Is(err, errUnknownMsgType),
 		errors.Is(err, errInvalidGeoURI),
 		errors.Is(err, whatsmeow.ErrUnknownServer),
-		errors.Is(err, whatsmeow.ErrRecipientADJID):
+		errors.Is(err, whatsmeow.ErrRecipientADJID),
+		errors.Is(err, errBroadcastReactionNotSupported),
+		errors.Is(err, errBroadcastSendDisabled):
 		return event.MessageStatusUnsupported, true, false, true
 	case errors.Is(err, errTargetNotFound),
 		errors.Is(err, errTargetIsFake),
@@ -3033,6 +3038,9 @@ func (portal *Portal) HandleMatrixMessage(sender *User, evt *event.Event) {
 	if err := portal.canBridgeFrom(sender, true); err != nil {
 		go portal.sendMessageMetrics(evt, err, "Ignoring")
 		return
+	} else if portal.Key.JID == types.StatusBroadcastJID && portal.bridge.Config.Bridge.DisableStatusBroadcastSend {
+		go portal.sendMessageMetrics(evt, errBroadcastSendDisabled, "Ignoring")
+		return
 	}
 	portal.log.Debugfln("Received message %s from %s", evt.ID, evt.Sender)
 	msg, sender, err := portal.convertMatrixMessage(sender, evt)
@@ -3054,6 +3062,11 @@ func (portal *Portal) HandleMatrixMessage(sender *User, evt *event.Event) {
 func (portal *Portal) HandleMatrixReaction(sender *User, evt *event.Event) {
 	if err := portal.canBridgeFrom(sender, false); err != nil {
 		go portal.sendMessageMetrics(evt, err, "Ignoring")
+		return
+	} else if portal.Key.JID.Server == types.BroadcastServer {
+		// TODO implement this, probably by only sending the reaction to the sender of the status message?
+		//      (whatsapp hasn't published the feature yet)
+		go portal.sendMessageMetrics(evt, errBroadcastReactionNotSupported, "Ignoring")
 		return
 	}
 
@@ -3162,6 +3175,9 @@ func (portal *Portal) HandleMatrixRedaction(sender *User, evt *event.Event) {
 		go portal.sendMessageMetrics(evt, errTargetIsFake, "Ignoring")
 	} else if msg.Sender.User != sender.JID.User {
 		go portal.sendMessageMetrics(evt, errTargetSentBySomeoneElse, "Ignoring")
+	} else if portal.Key.JID == types.StatusBroadcastJID && portal.bridge.Config.Bridge.DisableStatusBroadcastSend {
+		go portal.sendMessageMetrics(evt, errBroadcastSendDisabled, "Ignoring")
+		return
 	} else if msg.Type == database.MsgReaction {
 		if reaction := portal.bridge.DB.Reaction.GetByMXID(evt.Redacts); reaction == nil {
 			go portal.sendMessageMetrics(evt, errReactionDatabaseNotFound, "Ignoring")

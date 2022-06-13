@@ -107,6 +107,7 @@ type BridgeConfig struct {
 	FederateRooms         bool   `yaml:"federate_rooms"`
 	URLPreviews           bool   `yaml:"url_previews"`
 
+	DisableStatusBroadcastSend   bool `yaml:"disable_status_broadcast_send"`
 	DisappearingMessagesInGroups bool `yaml:"disappearing_messages_in_groups"`
 
 	DisableBridgeAlerts bool `yaml:"disable_bridge_alerts"`
