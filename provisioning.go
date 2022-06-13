@@ -69,6 +69,7 @@ func (prov *ProvisioningAPI) Init() {
 	r.HandleFunc("/v1/pm/{number}", prov.StartPM).Methods(http.MethodPost)
 	r.HandleFunc("/v1/bridge/{groupID}/{roomIDorAlias}", prov.BridgeGroup).Methods(http.MethodPost)
 	r.HandleFunc("/v1/open/{groupID}", prov.OpenGroup).Methods(http.MethodPost)
+	r.HandleFunc("/v1/set_relay/{roomIDorAlias}", prov.SetRelay).Methods(http.MethodPost)
 	prov.bridge.AS.Router.HandleFunc("/_matrix/app/com.beeper.asmux/ping", prov.BridgeStatePing).Methods(http.MethodPost)
 	prov.bridge.AS.Router.HandleFunc("/_matrix/app/com.beeper.bridge_state", prov.BridgeStatePing).Methods(http.MethodPost)
 
@@ -580,6 +581,47 @@ func (prov *ProvisioningAPI) OpenGroup(w http.ResponseWriter, r *http.Request) {
 			GroupInfo:   info,
 			JustCreated: status == http.StatusCreated,
 		})
+	}
+}
+
+func (prov *ProvisioningAPI) SetRelay(w http.ResponseWriter, r *http.Request) {
+	roomArg := mux.Vars(r)["roomIDorAlias"]
+	if user := r.Context().Value("user").(*User); !user.IsLoggedIn() {
+		jsonResponse(w, http.StatusBadRequest, Error{
+			Error:   "User is not logged into WhatsApp",
+			ErrCode: "no session",
+		})
+	} else if roomID, isAlias, err := prov.bridge.ResolveRoomArg(roomArg); err != nil || roomID == "" {
+		if isAlias {
+			jsonResponse(w, http.StatusNotFound, Error{
+				Error:   "Failed to resolve room alias",
+				ErrCode: "error resolving room alias",
+			})
+		} else {
+			jsonResponse(w, http.StatusBadRequest, Error{
+				Error:   "Invalid room ID",
+				ErrCode: "invalid room id",
+			})
+		}
+	} else if portal := prov.bridge.GetPortalByMXID(roomID); portal == nil {
+		jsonResponse(w, http.StatusConflict, Error{
+			Error:   "Room is not bridged to WhatsApp",
+			ErrCode: "room not bridged",
+		})
+	} else if !prov.bridge.Config.Bridge.Relay.Enabled {
+		jsonResponse(w, http.StatusForbidden, Error{
+			Error:   "Relay mode is not enabled on this instance of the bridge",
+			ErrCode: "relay mode not enabled",
+		})
+	} else if prov.bridge.Config.Bridge.Relay.AdminOnly && !user.Admin {
+		jsonResponse(w, http.StatusForbidden, Error{
+			Error:   "Only admins are allowed to enable relay mode on this instance of the bridge",
+			ErrCode: "relay mode not allowed for non-admins",
+		})
+	} else {
+		portal.RelayUserID = user.MXID
+		portal.Update(nil)
+		jsonResponse(w, http.StatusOK, Response{true, "Relay user set"})
 	}
 }
 
