@@ -483,6 +483,11 @@ func (prov *ProvisioningAPI) BridgeGroup(w http.ResponseWriter, r *http.Request)
 				ErrCode: "invalid room id",
 			})
 		}
+	} else if err := prov.bridge.Bot.EnsureJoined(roomID); err != nil {
+		jsonResponse(w, http.StatusBadRequest, Error{
+			Error:   "Bridge bot is not in target room and cannot join it",
+			ErrCode: "room unknown",
+		})
 	} else if prov.bridge.GetPortalByMXID(roomID) != nil {
 		jsonResponse(w, http.StatusConflict, Error{
 			Error:   "Room is already bridged to a WhatsApp group.",

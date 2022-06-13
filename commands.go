@@ -142,6 +142,12 @@ func getBridgeRoomID(ce *WrappedCommandEvent, argIndex int) (roomID id.RoomID, o
 			}
 			return
 		}
+		err = ce.Bot.EnsureJoined(roomID)
+		if err != nil {
+			ce.Log.Errorln("Failed to join %s: %v", roomArg, err)
+			ce.Reply("Failed to join target room %s. Ensure that the room exists and that the bridge bot can join it.", roomArg)
+			return
+		}
 	}
 
 	var thatThisSuffix string
