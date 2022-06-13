@@ -70,6 +70,7 @@ func (prov *ProvisioningAPI) Init() {
 	r.HandleFunc("/v1/bridge/{groupID}/{roomIDorAlias}", prov.BridgeGroup).Methods(http.MethodPost)
 	r.HandleFunc("/v1/open/{groupID}", prov.OpenGroup).Methods(http.MethodPost)
 	r.HandleFunc("/v1/set_relay/{roomIDorAlias}", prov.SetRelay).Methods(http.MethodPost)
+	r.HandleFunc("/v1/invite_link/{roomIDorAlias}", prov.GetInvite).Methods(http.MethodGet)
 	prov.bridge.AS.Router.HandleFunc("/_matrix/app/com.beeper.asmux/ping", prov.BridgeStatePing).Methods(http.MethodPost)
 	prov.bridge.AS.Router.HandleFunc("/_matrix/app/com.beeper.bridge_state", prov.BridgeStatePing).Methods(http.MethodPost)
 
@@ -341,6 +342,10 @@ type PortalInfo struct {
 	OtherUser   *OtherUserInfo   `json:"other_user,omitempty"`
 	GroupInfo   *types.GroupInfo `json:"group_info,omitempty"`
 	JustCreated bool             `json:"just_created"`
+}
+
+type LinkInfo struct {
+	InviteLink string `json:"invite_link"`
 }
 
 func looksEmaily(str string) bool {
@@ -622,6 +627,52 @@ func (prov *ProvisioningAPI) SetRelay(w http.ResponseWriter, r *http.Request) {
 		portal.RelayUserID = user.MXID
 		portal.Update(nil)
 		jsonResponse(w, http.StatusOK, Response{true, "Relay user set"})
+	}
+}
+
+func (prov *ProvisioningAPI) GetInvite(w http.ResponseWriter, r *http.Request) {
+	roomArg := mux.Vars(r)["roomIDorAlias"]
+	reset := r.URL.Query().Has("reset")
+	if user := r.Context().Value("user").(*User); !user.IsLoggedIn() {
+		jsonResponse(w, http.StatusBadRequest, Error{
+			Error:   "User is not logged into WhatsApp",
+			ErrCode: "no session",
+		})
+	} else if roomID, isAlias, err := prov.bridge.ResolveRoomArg(roomArg); err != nil || roomID == "" {
+		if isAlias {
+			jsonResponse(w, http.StatusNotFound, Error{
+				Error:   "Failed to resolve room alias",
+				ErrCode: "error resolving room alias",
+			})
+		} else {
+			jsonResponse(w, http.StatusBadRequest, Error{
+				Error:   "Invalid room ID",
+				ErrCode: "invalid room id",
+			})
+		}
+	} else if portal := prov.bridge.GetPortalByMXID(roomID); portal == nil {
+		jsonResponse(w, http.StatusConflict, Error{
+			Error:   "Room is not bridged to WhatsApp",
+			ErrCode: "room not bridged",
+		})
+	} else if portal.IsPrivateChat() {
+		jsonResponse(w, http.StatusBadRequest, Error{
+			Error:   "Can't get invite link to private chat",
+			ErrCode: "room not bridged to group",
+		})
+	} else if portal.IsBroadcastList() {
+		jsonResponse(w, http.StatusBadRequest, Error{
+			Error:   "Can't get invite link to broadcast list",
+			ErrCode: "room not bridged to group",
+		})
+	} else if link, err := user.Client.GetGroupInviteLink(portal.Key.JID, reset); err != nil {
+		prov.log.Errorln("Failed to get invite link: %v", err)
+		jsonResponse(w, http.StatusBadRequest, Error{
+			Error:   "Failed to get invite link",
+			ErrCode: "Failed to get invite link",
+		})
+	} else {
+		jsonResponse(w, http.StatusOK, LinkInfo{link})
 	}
 }
 
