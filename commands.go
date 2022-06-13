@@ -70,6 +70,7 @@ func (br *WABridge) RegisterCommands() {
 		cmdReconnect,
 		cmdDisconnect,
 		cmdPing,
+		cmdUnbridge,
 		cmdDeletePortal,
 		cmdDeleteAllPortals,
 		cmdBackfill,
@@ -120,6 +121,14 @@ var (
 	roomArgHelp   = " [<" + roomArgName + "> | --here]"
 )
 
+func getThatThisSuffix(targetRoomID id.RoomID, currentRoomID id.RoomID) string {
+	if targetRoomID == currentRoomID {
+		return "is"
+	} else {
+		return "at"
+	}
+}
+
 func getBridgeRoomID(ce *WrappedCommandEvent, argIndex int) (roomID id.RoomID, ok bool) {
 	if len(ce.Args) <= argIndex {
 		ok = true
@@ -150,12 +159,7 @@ func getBridgeRoomID(ce *WrappedCommandEvent, argIndex int) (roomID id.RoomID, o
 		}
 	}
 
-	var thatThisSuffix string
-	if roomID == ce.RoomID {
-		thatThisSuffix = "is"
-	} else {
-		thatThisSuffix = "at"
-	}
+	thatThisSuffix := getThatThisSuffix(roomID, ce.RoomID)
 
 	if ce.Bridge.GetPortalByMXID(roomID) != nil {
 		ce.Reply("Th%s room is already a portal room.", thatThisSuffix)
@@ -797,6 +801,45 @@ func fnPing(ce *WrappedCommandEvent) {
 	}
 }
 
+func checkUnbridgePermission(portal *Portal, ce *WrappedCommandEvent) bool {
+	thatThisSuffix := getThatThisSuffix(portal.MXID, ce.RoomID)
+	errMsg := fmt.Sprintf("You do not have the permissions to unbridge th%s portal.", thatThisSuffix)
+
+	if portal.IsPrivateChat() {
+		if portal.Key.Receiver != ce.User.JID {
+			ce.Reply(errMsg)
+			return false
+		}
+	}
+
+	if !userHasPowerLevel(ce.Portal.MXID, ce.MainIntent(), ce.User, "unbridge") {
+		ce.Reply(errMsg)
+		return false
+	}
+
+	return true
+}
+
+var cmdUnbridge = &commands.FullHandler{
+	Func: wrapCommand(fnUnbridge),
+	Name: "unbridge",
+	Help: commands.HelpMeta{
+		Section:     HelpSectionPortalManagement,
+		Description: "Remove puppets from the current portal room and forget the portal.",
+	},
+	RequiresPortal: true,
+}
+
+func fnUnbridge(ce *WrappedCommandEvent) {
+	if !checkUnbridgePermission(ce.Portal, ce) {
+		return
+	}
+
+	ce.Portal.log.Infoln(ce.User.MXID, "requested unbridging of portal.")
+	ce.Portal.Delete()
+	ce.Portal.Cleanup("Room unbridged", true)
+}
+
 func canDeletePortal(portal *Portal, userID id.UserID) bool {
 	if len(portal.MXID) == 0 {
 		return false
@@ -825,7 +868,7 @@ var cmdDeletePortal = &commands.FullHandler{
 	Name: "delete-portal",
 	Help: commands.HelpMeta{
 		Section:     HelpSectionPortalManagement,
-		Description: "Delete the current portal. If the portal is used by other people, this is limited to bridge admins.",
+		Description: "Remove all users from the current portal room and forget the portal. If the portal is used by other people, this is limited to bridge admins.",
 	},
 	RequiresPortal: true,
 }
@@ -835,10 +878,13 @@ func fnDeletePortal(ce *WrappedCommandEvent) {
 		ce.Reply("Only bridge admins can delete portals with other Matrix users")
 		return
 	}
+	if !checkUnbridgePermission(ce.Portal, ce) {
+		return
+	}
 
 	ce.Portal.log.Infoln(ce.User.MXID, "requested deletion of portal.")
 	ce.Portal.Delete()
-	ce.Portal.Cleanup("", false)
+	ce.Portal.Cleanup("Portal deleted", false)
 }
 
 var cmdDeleteAllPortals = &commands.FullHandler{
