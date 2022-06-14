@@ -1,8 +1,10 @@
-# unreleased
+# v0.5.0 (unreleased)
 
 * Moved a lot of code to mautrix-go.
 * Improved handling edge cases in backfill system.
 * Improved handling errors in Matrix->WhatsApp message bridging.
+* Disallowed sending status broadcast messages by default, as it breaks with
+  big contact lists. Sending can be re-enabled in the config.
 * Fixed some cases where the first outgoing message was undecryptable for
   WhatsApp users.
 * Fixed chats not being marked as read when sending a message from another

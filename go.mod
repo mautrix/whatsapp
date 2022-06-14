@@ -7,15 +7,15 @@ require (
 	github.com/gorilla/websocket v1.5.0
 	github.com/lib/pq v1.10.6
 	github.com/mattn/go-sqlite3 v1.14.13
-	github.com/prometheus/client_golang v1.12.2-0.20220514081015-5d584e2717ef
+	github.com/prometheus/client_golang v1.12.2-0.20220613221938-ebd77f036066
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
 	github.com/tidwall/gjson v1.14.1
-	go.mau.fi/whatsmeow v0.0.0-20220604174810-f28d984f1b9a
+	go.mau.fi/whatsmeow v0.0.0-20220614154415-5718022af87c
 	golang.org/x/image v0.0.0-20220413100746-70e8d0d3baa9
 	golang.org/x/net v0.0.0-20220513224357-95641704303c
 	google.golang.org/protobuf v1.28.0
 	maunium.net/go/maulogger/v2 v2.3.2
-	maunium.net/go/mautrix v0.11.1-0.20220531155421-43e9bc0bdd59
+	maunium.net/go/mautrix v0.11.1-0.20220606163838-f8f9fe45cbe1
 )
 
 require (
@@ -33,7 +33,7 @@ require (
 	github.com/yuin/goldmark v1.4.12 // indirect
 	go.mau.fi/libsignal v0.0.0-20220425070825-c40c839ee6a0 // indirect
 	golang.org/x/crypto v0.0.0-20220513210258-46612604a0f9 // indirect
-	golang.org/x/sys v0.0.0-20220328115105-d36c6a25d886 // indirect
+	golang.org/x/sys v0.0.0-20220520151302-bc2c85ada10a // indirect
 	golang.org/x/text v0.3.7 // indirect
 	gopkg.in/yaml.v3 v3.0.0 // indirect
 	maunium.net/go/mauflag v1.0.0 // indirect
