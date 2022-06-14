@@ -71,6 +71,7 @@ func (prov *ProvisioningAPI) Init() {
 	r.HandleFunc("/v1/open/{groupID}", prov.OpenGroup).Methods(http.MethodPost)
 	r.HandleFunc("/v1/create/{roomIDorAlias}", prov.CreateGroup).Methods(http.MethodPost)
 	r.HandleFunc("/v1/set_relay/{roomIDorAlias}", prov.SetRelay).Methods(http.MethodPost)
+	r.HandleFunc("/v1/unset_relay/{roomIDorAlias}", prov.UnsetRelay).Methods(http.MethodPost)
 	r.HandleFunc("/v1/invite_link/{roomIDorAlias}", prov.GetInvite).Methods(http.MethodGet)
 	prov.bridge.AS.Router.HandleFunc("/_matrix/app/com.beeper.asmux/ping", prov.BridgeStatePing).Methods(http.MethodPost)
 	prov.bridge.AS.Router.HandleFunc("/_matrix/app/com.beeper.bridge_state", prov.BridgeStatePing).Methods(http.MethodPost)
@@ -652,6 +653,14 @@ func (prov *ProvisioningAPI) CreateGroup(w http.ResponseWriter, r *http.Request)
 }
 
 func (prov *ProvisioningAPI) SetRelay(w http.ResponseWriter, r *http.Request) {
+	prov.EditRelay(w, r, true)
+}
+
+func (prov *ProvisioningAPI) UnsetRelay(w http.ResponseWriter, r *http.Request) {
+	prov.EditRelay(w, r, false)
+}
+
+func (prov *ProvisioningAPI) EditRelay(w http.ResponseWriter, r *http.Request, set bool) {
 	roomArg := mux.Vars(r)["roomIDorAlias"]
 	if user := r.Context().Value("user").(*User); !user.IsLoggedIn() {
 		jsonResponse(w, http.StatusBadRequest, Error{
@@ -686,9 +695,16 @@ func (prov *ProvisioningAPI) SetRelay(w http.ResponseWriter, r *http.Request) {
 			ErrCode: "relay mode not allowed for non-admins",
 		})
 	} else {
-		portal.RelayUserID = user.MXID
+		var action string
+		if set {
+			portal.RelayUserID = user.MXID
+			action = "set"
+		} else {
+			portal.RelayUserID = ""
+			action = "unset"
+		}
 		portal.Update(nil)
-		jsonResponse(w, http.StatusOK, Response{true, "Relay user set"})
+		jsonResponse(w, http.StatusOK, Response{true, "Relay user " + action})
 	}
 }
 
