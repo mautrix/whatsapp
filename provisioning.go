@@ -495,14 +495,21 @@ func (prov *ProvisioningAPI) BridgeGroup(w http.ResponseWriter, r *http.Request)
 			Error:   "Bridge bot is not in target room and cannot join it",
 			ErrCode: "room unknown",
 		})
-	} else if prov.bridge.GetPortalByMXID(roomID) != nil {
-		jsonResponse(w, http.StatusConflict, Error{
-			Error:   "Room is already bridged to a WhatsApp group.",
-			ErrCode: "room already bridged",
-		})
+	} else if portal := prov.bridge.GetPortalByMXID(roomID); portal != nil {
+		if portal.MXID != roomID {
+			jsonResponse(w, http.StatusConflict, Error{
+				Error:   "Room is already a WhatsApp portal room",
+				ErrCode: "room already bridged",
+			})
+		} else {
+			jsonResponse(w, http.StatusOK, Error{
+				Error:   "WhatsApp group is already bridged to that Matrix room",
+				ErrCode: "bridge exists",
+			})
+		}
 	} else if !userHasPowerLevel(roomID, prov.bridge.AS.BotIntent(), user, "bridge") {
 		jsonResponse(w, http.StatusForbidden, Error{
-			Error:   "User does not have the permissions to bridge that room.",
+			Error:   "User does not have the permissions to bridge that room",
 			ErrCode: "not enough permissions",
 		})
 	} else if jid, err := types.ParseJID(groupID); err != nil || jid.Server != types.GroupServer || (!strings.ContainsRune(jid.User, '-') && len(jid.User) < 15) {
@@ -521,7 +528,7 @@ func (prov *ProvisioningAPI) BridgeGroup(w http.ResponseWriter, r *http.Request)
 		portal := user.GetPortalByJID(info.JID)
 		if portal.MXID == roomID {
 			jsonResponse(w, http.StatusOK, Error{
-				Error:   "WhatsApp group is already bridged to that Matrix room.",
+				Error:   "WhatsApp group is already bridged to that Matrix room",
 				ErrCode: "bridge exists",
 			})
 			return
@@ -533,7 +540,7 @@ func (prov *ProvisioningAPI) BridgeGroup(w http.ResponseWriter, r *http.Request)
 				portal.Cleanup("Room unbridged (portal moving to another room)", true)
 			default:
 				jsonResponse(w, http.StatusConflict, Error{
-					Error:   "WhatsApp group is already bridged to another Matrix room.",
+					Error:   "WhatsApp group is already bridged to another Matrix room",
 					ErrCode: "group already bridged",
 				})
 				return
@@ -543,7 +550,7 @@ func (prov *ProvisioningAPI) BridgeGroup(w http.ResponseWriter, r *http.Request)
 		defer portal.roomCreateLock.Unlock()
 		// TODO Store detected power levels & warn about missing permissions
 		portal.BridgeMatrixRoom(roomID, user, info)
-		jsonResponse(w, http.StatusAccepted, PortalInfo{
+		jsonResponse(w, http.StatusOK, PortalInfo{
 			RoomID:    portal.MXID,
 			GroupInfo: info,
 		})
@@ -614,20 +621,27 @@ func (prov *ProvisioningAPI) CreateGroup(w http.ResponseWriter, r *http.Request)
 			Error:   "Bridge bot is not in target room and cannot join it",
 			ErrCode: "room unknown",
 		})
-	} else if prov.bridge.GetPortalByMXID(roomID) != nil {
-		jsonResponse(w, http.StatusConflict, Error{
-			Error:   "Room is already bridged to a WhatsApp group.",
-			ErrCode: "room already bridged",
-		})
+	} else if portal := prov.bridge.GetPortalByMXID(roomID); portal != nil {
+		if portal.MXID != roomID {
+			jsonResponse(w, http.StatusConflict, Error{
+				Error:   "Room is already a WhatsApp portal room",
+				ErrCode: "room already bridged",
+			})
+		} else {
+			jsonResponse(w, http.StatusOK, Error{
+				Error:   "WhatsApp group is already bridged to that Matrix room",
+				ErrCode: "bridge exists",
+			})
+		}
 	} else if !userHasPowerLevel(roomID, prov.bridge.AS.BotIntent(), user, "bridge") {
 		jsonResponse(w, http.StatusForbidden, Error{
-			Error:   "User does not have the permissions to bridge that room.",
+			Error:   "User does not have the permissions to bridge that room",
 			ErrCode: "not enough permissions",
 		})
 	} else if portal, info, errMsg := createGroup(user, roomID, &prov.log, nil); errMsg != "" {
 		jsonResponse(w, http.StatusForbidden, Error{
 			Error:   errMsg,
-			ErrCode: "error in group creation",
+			ErrCode: "error creating group",
 		})
 	} else {
 		jsonResponse(w, http.StatusOK, PortalInfo{
@@ -717,7 +731,7 @@ func (prov *ProvisioningAPI) GetInvite(w http.ResponseWriter, r *http.Request) {
 		prov.log.Errorln("Failed to get invite link: %v", err)
 		jsonResponse(w, http.StatusBadRequest, Error{
 			Error:   "Failed to get invite link",
-			ErrCode: "Failed to get invite link",
+			ErrCode: "failed to get invite link",
 		})
 	} else {
 		jsonResponse(w, http.StatusOK, LinkInfo{link})
