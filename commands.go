@@ -35,6 +35,8 @@ import (
 	"go.mau.fi/whatsmeow/appstate"
 	"go.mau.fi/whatsmeow/types"
 
+	log "maunium.net/go/maulogger/v2"
+
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/appservice"
 	"maunium.net/go/mautrix/bridge"
@@ -470,38 +472,58 @@ func fnCreate(ce *WrappedCommandEvent) {
 		return
 	}
 
-	members, err := ce.Bot.JoinedMembers(ce.RoomID)
+	portal, _, errMsg := createGroup(ce.User, ce.RoomID, &ce.Log, ce.Reply)
+	if errMsg != "" {
+		ce.Reply(errMsg)
+	} else {
+		ce.Reply("Successfully created WhatsApp group %s", portal.Key.JID)
+	}
+}
+
+// Creates a new WhatsApp group out of the provided Matrix room ID, and bridges that room to the created group.
+//
+// If replier is set, it will be used to post user-visible messages about the progres of the group creation.
+//
+// On failure, returns an error message string (instead of an error object from a function call).
+func createGroup(user *User, roomID id.RoomID, log *log.Logger, replier func(string, ...interface{})) (
+	newPortal *Portal,
+	info *types.GroupInfo,
+	errMsg string,
+) {
+	bridge := user.bridge
+
+	members, err := bridge.Bot.JoinedMembers(roomID)
 	if err != nil {
-		ce.Reply("Failed to get room members: %v", err)
+		errMsg = fmt.Sprintf("Failed to get room members: %v", err)
 		return
 	}
 
 	var roomNameEvent event.RoomNameEventContent
-	err = ce.Bot.StateEvent(ce.RoomID, event.StateRoomName, "", &roomNameEvent)
+	err = bridge.Bot.StateEvent(roomID, event.StateRoomName, "", &roomNameEvent)
 	if err != nil && !errors.Is(err, mautrix.MNotFound) {
-		ce.Log.Errorln("Failed to get room name to create group:", err)
-		ce.Reply("Failed to get room name")
+		(*log).Errorln("Failed to get room name to create group:", err)
+		errMsg = "Failed to get room name"
 		return
 	} else if len(roomNameEvent.Name) == 0 {
-		ce.Reply("Please set a name for the room first")
+		errMsg = "Please set a name for the room first"
 		return
 	}
 
 	var encryptionEvent event.EncryptionEventContent
-	err = ce.Bot.StateEvent(ce.RoomID, event.StateEncryption, "", &encryptionEvent)
+	err = bridge.Bot.StateEvent(roomID, event.StateEncryption, "", &encryptionEvent)
 	if err != nil && !errors.Is(err, mautrix.MNotFound) {
-		ce.Reply("Failed to get room encryption status")
+		errMsg = "Failed to get room encryption status"
 		return
 	}
 
 	var participants []types.JID
 	participantDedup := make(map[types.JID]bool)
-	participantDedup[ce.User.JID.ToNonAD()] = true
+	participantDedup[user.JID.ToNonAD()] = true
 	participantDedup[types.EmptyJID] = true
 	for userID := range members.Joined {
-		jid, ok := ce.Bridge.ParsePuppetMXID(userID)
+		jid, ok := user.bridge.ParsePuppetMXID(userID)
 		if !ok {
-			user := ce.Bridge.GetUserByMXID(userID)
+			user := user.bridge.GetUserByMXID(userID)
 			if user != nil && !user.JID.IsEmpty() {
 				jid = user.JID.ToNonAD()
 			}
@@ -512,15 +534,15 @@ func fnCreate(ce *WrappedCommandEvent) {
 		}
 	}
 
-	ce.Log.Infofln("Creating group for %s with name %s and participants %+v", ce.RoomID, roomNameEvent.Name, participants)
-	ce.User.groupCreateLock.Lock()
-	defer ce.User.groupCreateLock.Unlock()
-	resp, err := ce.User.Client.CreateGroup(roomNameEvent.Name, participants)
+	(*log).Infofln("Creating group for %s with name %s and participants %+v", roomID, roomNameEvent.Name, participants)
+	user.groupCreateLock.Lock()
+	defer user.groupCreateLock.Unlock()
+	resp, err := user.Client.CreateGroup(roomNameEvent.Name, participants)
 	if err != nil {
-		ce.Reply("Failed to create group: %v", err)
+		errMsg = fmt.Sprintf("Failed to create group: %v", err)
 		return
 	}
-	portal := ce.User.GetPortalByJID(resp.JID)
+	portal := user.GetPortalByJID(resp.JID)
 	portal.roomCreateLock.Lock()
 	defer portal.roomCreateLock.Unlock()
 	if len(portal.MXID) != 0 {
@@ -528,17 +550,19 @@ func fnCreate(ce *WrappedCommandEvent) {
 		// TODO race condition, clean up the old room
 		// TODO confirm whether this is fixed by the lock on group creation
 	}
-	portal.MXID = ce.RoomID
+	portal.MXID = roomID
 	portal.Name = roomNameEvent.Name
 	portal.Encrypted = encryptionEvent.Algorithm == id.AlgorithmMegolmV1
-	if !portal.Encrypted && ce.Bridge.Config.Bridge.Encryption.Default {
+	if !portal.Encrypted && user.bridge.Config.Bridge.Encryption.Default {
 		_, err = portal.MainIntent().SendStateEvent(portal.MXID, event.StateEncryption, "", &event.EncryptionEventContent{Algorithm: id.AlgorithmMegolmV1})
 		if err != nil {
 			portal.log.Warnln("Failed to enable encryption in room:", err)
-			if errors.Is(err, mautrix.MForbidden) {
-				ce.Reply("I don't seem to have permission to enable encryption in this room.")
-			} else {
-				ce.Reply("Failed to enable encryption in room: %v", err)
+			if replier != nil {
+				if errors.Is(err, mautrix.MForbidden) {
+					replier("I don't seem to have permission to enable encryption in this room.")
+				} else {
+					replier("Failed to enable encryption in room: %v", err)
+				}
 			}
 		}
 		portal.Encrypted = true
@@ -547,7 +571,8 @@ func fnCreate(ce *WrappedCommandEvent) {
 	portal.Update(nil)
 	portal.UpdateBridgeInfo()
 
-	ce.Reply("Successfully created WhatsApp group %s", portal.Key.JID)
+	newPortal, info = portal, resp
+	return
 }
 
 var cmdLogin = &commands.FullHandler{
