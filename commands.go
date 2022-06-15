@@ -143,7 +143,7 @@ func getBridgeRoomID(ce *WrappedCommandEvent, argIndex int, hereByDefault bool) 
 		if hereByDefault {
 			roomID = ce.RoomID
 		}
-	} else if roomArg := ce.Args[argIndex]; roomArg == "--here" {
+	} else if roomArg := ce.Args[argIndex]; strings.ToLower(roomArg) == roomArgHere {
 		roomID = ce.RoomID
 	} else {
 		var isAlias bool
@@ -1279,7 +1279,7 @@ func fnBridge(ce *WrappedCommandEvent) {
 	}
 
 	if len(ce.Args) == 1 {
-		ce.Args = append(ce.Args, "--here")
+		ce.Args = append(ce.Args, roomArgHere)
 	}
 	fnOpen(ce)
 }
