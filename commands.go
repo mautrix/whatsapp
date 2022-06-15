@@ -117,10 +117,16 @@ var (
 	HelpSectionPortalManagement     = commands.HelpSection{Name: "Portal management", Order: 20}
 	HelpSectionInvites              = commands.HelpSection{Name: "Group invites", Order: 25}
 	HelpSectionMiscellaneous        = commands.HelpSection{Name: "Miscellaneous", Order: 30}
+)
 
-	roomArgName   = "Matrix room ID or alias"
-	roomArgHelpMd = " [<_" + roomArgName + "_> | --here]"
-	roomArgHelp   = " [<" + roomArgName + "> | --here]"
+const (
+	roomArgName = "Matrix room ID or alias"
+	roomArgHere = "--here"
+
+	roomArgHelpMd       = "[<_" + roomArgName + "_>|`" + roomArgHere + "`]"
+	roomArgHelpNohereMd = "[<_" + roomArgName + "_>]"
+	roomArgHelpPl       = "[" + roomArgName + " | " + roomArgHere + "]"
+	roomArgHelpNoherePl = "[" + roomArgName + "]"
 )
 
 func getThatThisSuffix(targetRoomID id.RoomID, currentRoomID id.RoomID) string {
@@ -131,19 +137,20 @@ func getThatThisSuffix(targetRoomID id.RoomID, currentRoomID id.RoomID) string {
 	}
 }
 
-func getBridgeRoomID(ce *WrappedCommandEvent, argIndex int) (roomID id.RoomID, ok bool) {
+func getBridgeRoomID(ce *WrappedCommandEvent, argIndex int, hereByDefault bool) (roomID id.RoomID, ok bool) {
+	ok = true
 	if len(ce.Args) <= argIndex {
-		ok = true
-		return
-	}
-	roomArg := ce.Args[argIndex]
-	if roomArg == "--here" {
+		if hereByDefault {
+			roomID = ce.RoomID
+		}
+	} else if roomArg := ce.Args[argIndex]; roomArg == "--here" {
 		roomID = ce.RoomID
 	} else {
 		var isAlias bool
 		var err error
 		roomID, isAlias, err = ce.Bridge.ResolveRoomArg(roomArg)
 		if err != nil {
+			ok = false
 			if isAlias {
 				ce.Log.Errorln("Failed to resolve room alias %s to a room ID: %v", roomArg, err)
 				ce.Reply("Unable to find a room with the provided alias.")
@@ -151,24 +158,59 @@ func getBridgeRoomID(ce *WrappedCommandEvent, argIndex int) (roomID id.RoomID, o
 				ce.Log.Errorln("Invalid room ID %s: %v", roomArg, err)
 				ce.Reply("Please provide a valid room ID or alias.")
 			}
-			return
-		}
-		err = ce.Bot.EnsureJoined(roomID)
-		if err != nil {
-			ce.Log.Errorln("Failed to join %s: %v", roomArg, err)
-			ce.Reply("Failed to join target room %s. Ensure that the room exists and that the bridge bot can join it.", roomArg)
-			return
 		}
 	}
+	return
+}
 
-	thatThisSuffix := getThatThisSuffix(roomID, ce.RoomID)
+func getBridgeableRoomID(ce *WrappedCommandEvent, argIndex int, hereByDefault bool) (roomID id.RoomID, ok bool) {
+	roomID, ok = getBridgeRoomID(ce, argIndex, hereByDefault)
+	// When ok, an empty roomID means that a new room should be created
+	if !ok || roomID == "" {
+		return
+	}
 
+	if err := ce.Bot.EnsureJoined(roomID); err != nil {
+		ok = false
+		ce.Log.Errorln("Failed to join room: %v", err)
+		ce.Reply("Failed to join target room. Ensure that the room exists and that the bridge bot can join it.")
+		return
+	}
+
+	var errMsg string
 	if ce.Bridge.GetPortalByMXID(roomID) != nil {
-		ce.Reply("Th%s room is already a portal room.", thatThisSuffix)
+		errMsg = "Th%s room is already a portal room."
 	} else if !userHasPowerLevel(roomID, ce.MainIntent(), ce.User, "bridge") {
-		ce.Reply("You do not have the permissions to bridge th%s room.", thatThisSuffix)
+		errMsg = "You do not have the permissions to bridge th%s room."
+	}
+	if errMsg != "" {
+		ok = false
+		ce.Reply(errMsg, getThatThisSuffix(roomID, ce.RoomID))
+	}
+	return
+}
+
+func getPortalForCmd(ce *WrappedCommandEvent, argIndex int) (portal *Portal) {
+	bridgeRoomID, ok := getBridgeRoomID(ce, argIndex, true)
+	if !ok {
+		return
+	}
+
+	if bridgeRoomID == ce.RoomID {
+		portal = ce.Portal
 	} else {
-		ok = true
+		portal = ce.Bridge.GetPortalByMXID(bridgeRoomID)
+	}
+	if portal == nil {
+		var roomString string
+		if bridgeRoomID == ce.RoomID {
+			roomString = "this room"
+		} else if len(ce.Args) <= argIndex {
+			roomString = "that room"
+		} else {
+			roomString = ce.Args[argIndex]
+		}
+		ce.Reply("That command can only be ran for portal rooms, and %s is not a portal room.", roomString)
 	}
 	return
 }
@@ -258,21 +300,13 @@ var cmdSetRelay = &commands.FullHandler{
 	Help: commands.HelpMeta{
 		Section:     HelpSectionPortalManagement,
 		Description: "Relay messages in this room through your WhatsApp account.",
+		Args:        roomArgHelpNohereMd,
 	},
-	RequiresPortal: true,
-	RequiresLogin:  true,
+	RequiresLogin: true,
 }
 
 func fnSetRelay(ce *WrappedCommandEvent) {
-	if !ce.Bridge.Config.Bridge.Relay.Enabled {
-		ce.Reply("Relay mode is not enabled on this instance of the bridge")
-	} else if ce.Bridge.Config.Bridge.Relay.AdminOnly && !ce.User.Admin {
-		ce.Reply("Only admins are allowed to enable relay mode on this instance of the bridge")
-	} else {
-		ce.Portal.RelayUserID = ce.User.MXID
-		ce.Portal.Update(nil)
-		ce.Reply("Messages from non-logged-in users in this room will now be bridged through your WhatsApp account")
-	}
+	fnEditRelay(ce, true)
 }
 
 var cmdUnsetRelay = &commands.FullHandler{
@@ -281,19 +315,41 @@ var cmdUnsetRelay = &commands.FullHandler{
 	Help: commands.HelpMeta{
 		Section:     HelpSectionPortalManagement,
 		Description: "Stop relaying messages in this room.",
+		Args:        roomArgHelpNohereMd,
 	},
-	RequiresPortal: true,
 }
 
 func fnUnsetRelay(ce *WrappedCommandEvent) {
+	fnEditRelay(ce, false)
+}
+
+func fnEditRelay(ce *WrappedCommandEvent, set bool) {
+	var action string
+	if n := len(ce.Args); n != 0 && n > 1 {
+		if set {
+			action = "set"
+		} else {
+			action = "unset"
+		}
+		ce.Reply("**Usage:** `%s-relay %s`", action, roomArgHelpNoherePl)
+		return
+	}
+
 	if !ce.Bridge.Config.Bridge.Relay.Enabled {
 		ce.Reply("Relay mode is not enabled on this instance of the bridge")
 	} else if ce.Bridge.Config.Bridge.Relay.AdminOnly && !ce.User.Admin {
 		ce.Reply("Only admins are allowed to enable relay mode on this instance of the bridge")
-	} else {
-		ce.Portal.RelayUserID = ""
-		ce.Portal.Update(nil)
-		ce.Reply("Messages from non-logged-in users will no longer be bridged in this room")
+	} else if portal := getPortalForCmd(ce, 0); portal != nil {
+		if set {
+			portal.RelayUserID = ce.User.MXID
+			action = "now"
+		} else {
+			portal.RelayUserID = ""
+			action = "no longer"
+		}
+		portal.Update(nil)
+		ce.Reply("Messages from non-logged-in users in th%s room will %s be bridged through your WhatsApp account",
+			getThatThisSuffix(portal.MXID, ce.RoomID), action)
 	}
 }
 
@@ -303,19 +359,34 @@ var cmdInviteLink = &commands.FullHandler{
 	Help: commands.HelpMeta{
 		Section:     HelpSectionInvites,
 		Description: "Get an invite link to the current group chat, optionally regenerating the link and revoking the old link.",
-		Args:        "[--reset]",
+		Args:        "[--reset] " + roomArgHelpNohereMd,
 	},
-	RequiresPortal: true,
-	RequiresLogin:  true,
+	RequiresLogin: true,
 }
 
 func fnInviteLink(ce *WrappedCommandEvent) {
-	reset := len(ce.Args) > 0 && strings.ToLower(ce.Args[0]) == "--reset"
-	if ce.Portal.IsPrivateChat() {
+	argLen := len(ce.Args)
+	reset := false
+	roomArgIndex := 0
+	for i := 0; i < argLen; i++ {
+		if strings.ToLower(ce.Args[i]) == "--reset" {
+			reset = true
+			roomArgIndex = (i + 1) % 2
+			break
+		}
+	}
+	if !reset && argLen > 1 || reset && argLen > 2 {
+		ce.Reply("**Usage:** `invite-link [--reset] " + roomArgHelpNoherePl + "`")
+		return
+	}
+
+	if portal := getPortalForCmd(ce, roomArgIndex); portal == nil {
+		return
+	} else if portal.IsPrivateChat() {
 		ce.Reply("Can't get invite link to private chat")
-	} else if ce.Portal.IsBroadcastList() {
+	} else if portal.IsBroadcastList() {
 		ce.Reply("Can't get invite link to broadcast list")
-	} else if link, err := ce.User.Client.GetGroupInviteLink(ce.Portal.Key.JID, reset); err != nil {
+	} else if link, err := ce.User.Client.GetGroupInviteLink(portal.Key.JID, reset); err != nil {
 		ce.Reply("Failed to get invite link: %v", err)
 	} else {
 		ce.Reply(link)
@@ -461,18 +532,24 @@ var cmdCreate = &commands.FullHandler{
 	Name: "create",
 	Help: commands.HelpMeta{
 		Section:     HelpSectionCreatingPortals,
-		Description: "Create a WhatsApp group chat for the current Matrix room.",
+		Description: "Create a WhatsApp group chat for the current Matrix room, or for a specified room.",
+		Args:        roomArgHelpNohereMd,
 	},
 	RequiresLogin: true,
 }
 
 func fnCreate(ce *WrappedCommandEvent) {
-	if ce.Portal != nil {
-		ce.Reply("This is already a portal room")
+	if len(ce.Args) > 1 {
+		ce.Reply("**Usage:** `create " + roomArgHelpNoherePl + "`")
 		return
 	}
 
-	portal, _, errMsg := createGroup(ce.User, ce.RoomID, &ce.Log, ce.Reply)
+	bridgeRoomID, ok := getBridgeableRoomID(ce, 0, true)
+	if !ok {
+		return
+	}
+
+	portal, _, errMsg := createGroup(ce.User, bridgeRoomID, &ce.Log, ce.Reply)
 	if errMsg != "" {
 		ce.Reply(errMsg)
 	} else {
@@ -1190,14 +1267,14 @@ var cmdBridge = &commands.FullHandler{
 	Help: commands.HelpMeta{
 		Section:     HelpSectionCreatingPortals,
 		Description: "Bridge a WhatsApp group chat to the current Matrix room, or to a specified room.",
-		Args:        "<_group JID_> [<_" + roomArgName + "_>]",
+		Args:        "<_group JID_> " + roomArgHelpNohereMd,
 	},
 	RequiresLogin: true,
 }
 
 func fnBridge(ce *WrappedCommandEvent) {
 	if len(ce.Args) == 0 {
-		ce.Reply("**Usage:** `bridge <group JID> [<_" + roomArgName + "_>]`")
+		ce.Reply("**Usage:** `bridge <group JID> " + roomArgHelpNoherePl + "`")
 		return
 	}
 
@@ -1213,18 +1290,18 @@ var cmdOpen = &commands.FullHandler{
 	Help: commands.HelpMeta{
 		Section:     HelpSectionCreatingPortals,
 		Description: "Open a group chat portal.",
-		Args:        "<_group JID_>" + roomArgHelpMd,
+		Args:        "<_group JID_> " + roomArgHelpMd,
 	},
 	RequiresLogin: true,
 }
 
 func fnOpen(ce *WrappedCommandEvent) {
-	if len(ce.Args) == 0 {
-		ce.Reply("**Usage:** `open <group JID>" + roomArgHelp + "`")
+	if n := len(ce.Args); n == 0 || n > 2 {
+		ce.Reply("**Usage:** `open <group JID> " + roomArgHelpPl + "`")
 		return
 	}
 
-	bridgeRoomID, ok := getBridgeRoomID(ce, 1)
+	bridgeRoomID, ok := getBridgeableRoomID(ce, 1, false)
 	if !ok {
 		return
 	}
