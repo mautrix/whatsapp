@@ -907,22 +907,16 @@ func fnPing(ce *WrappedCommandEvent) {
 }
 
 func checkUnbridgePermission(portal *Portal, ce *WrappedCommandEvent) bool {
-	thatThisSuffix := getThatThisSuffix(portal.MXID, ce.RoomID)
-	errMsg := fmt.Sprintf("You do not have the permissions to unbridge th%s portal.", thatThisSuffix)
-
 	if portal.IsPrivateChat() {
-		if portal.Key.Receiver != ce.User.JID {
-			ce.Reply(errMsg)
-			return false
+		if portal.Key.Receiver == ce.User.JID {
+			return true
 		}
+	} else if userHasPowerLevel(ce.Portal.MXID, ce.MainIntent(), ce.User, "unbridge") {
+		return true
 	}
 
-	if !userHasPowerLevel(ce.Portal.MXID, ce.MainIntent(), ce.User, "unbridge") {
-		ce.Reply(errMsg)
-		return false
-	}
-
-	return true
+	ce.Reply("You do not have the permissions to unbridge th%s portal.", getThatThisSuffix(portal.MXID, ce.RoomID))
+	return false
 }
 
 var cmdUnbridge = &commands.FullHandler{
