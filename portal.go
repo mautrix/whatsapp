@@ -844,6 +844,13 @@ func (portal *Portal) kickExtraUsers(participantMap map[types.JID]bool) {
 				})
 				if err != nil {
 					portal.log.Warnfln("Failed to kick user %s who had left: %v", member, err)
+					puppet := portal.bridge.GetPuppetByMXID(member)
+					if puppet != nil {
+						_, err = puppet.DefaultIntent().LeaveRoom(portal.MXID)
+						if err != nil {
+							portal.log.Errorln("Error leaving as puppet for user %s who had left: %v:", member, err)
+						}
+					}
 				}
 			}
 		}
