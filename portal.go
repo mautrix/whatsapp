@@ -873,6 +873,7 @@ func (portal *Portal) SyncParticipants(source *User, metadata *types.GroupInfo) 
 		changed = true
 	}
 	changed = portal.applyPowerLevelFixes(levels) || changed
+	botLevel, plSetLevel := getControlLevels(portal.MainIntent().UserID, levels)
 	participantMap := make(map[types.JID]bool)
 	for _, participant := range metadata.Participants {
 		participantMap[participant.JID] = true
@@ -889,14 +890,11 @@ func (portal *Portal) SyncParticipants(source *User, metadata *types.GroupInfo) 
 			}
 		}
 
-		expectedLevel := 0
-		if participant.IsSuperAdmin {
-			expectedLevel = 95
-		} else if participant.IsAdmin {
-			expectedLevel = 50
-		}
+		pType := getParticipantType(participant)
+		expectedLevel := getParticipantLevel(pType, botLevel, plSetLevel, levels.GetUserLevel(puppet.MXID))
 		changed = levels.EnsureUserLevel(puppet.MXID, expectedLevel) || changed
 		if user != nil {
+			expectedLevel = getParticipantLevel(pType, botLevel, plSetLevel, levels.GetUserLevel(user.MXID))
 			changed = levels.EnsureUserLevel(user.MXID, expectedLevel) || changed
 		}
 	}
@@ -1137,6 +1135,57 @@ func (portal *Portal) GetBasePowerLevels() *event.PowerLevelsEventContent {
 	}
 }
 
+type participantType int
+
+const (
+	ptSuperAdmin participantType = iota
+	ptAdmin
+	ptUser
+)
+
+func getParticipantType(p types.GroupParticipant) participantType {
+	if p.IsSuperAdmin {
+		return ptSuperAdmin
+	} else if p.IsAdmin {
+		return ptAdmin
+	} else {
+		return ptUser
+	}
+}
+
+func getControlLevels(botMXID id.UserID, levels *event.PowerLevelsEventContent) (senderLevel, plSetLevel int) {
+	senderLevel = levels.GetUserLevel(botMXID)
+	plSetLevel = levels.GetEventLevel(event.StatePowerLevels)
+	return
+}
+
+func getParticipantLevel(pType participantType, senderLevel, plSetLevel, originalLevel int) int {
+	if senderLevel < plSetLevel || senderLevel <= originalLevel {
+		return originalLevel
+	}
+
+	var goalLevel, margin int
+	switch pType {
+	case ptSuperAdmin:
+		goalLevel = 95
+		margin = 5
+	case ptAdmin:
+		goalLevel = 50
+		margin = 10
+	default:
+		goalLevel = 0
+		margin = 15
+	}
+
+	marginLevel := senderLevel - margin
+	if goalLevel <= marginLevel {
+		return goalLevel
+	} else {
+		// NOTE this can be a negative level, which the spec allows
+		return marginLevel
+	}
+}
+
 func (portal *Portal) applyPowerLevelFixes(levels *event.PowerLevelsEventContent) bool {
 	changed := false
 	changed = levels.EnsureEventLevel(event.EventReaction, 0) || changed
@@ -1149,17 +1198,20 @@ func (portal *Portal) ChangeAdminStatus(jids []types.JID, setAdmin bool) id.Even
 	if err != nil {
 		levels = portal.GetBasePowerLevels()
 	}
-	newLevel := 0
+	pType := ptUser
 	if setAdmin {
-		newLevel = 50
+		pType = ptAdmin
 	}
 	changed := portal.applyPowerLevelFixes(levels)
+	botLevel, plSetLevel := getControlLevels(portal.MainIntent().UserID, levels)
 	for _, jid := range jids {
 		puppet := portal.bridge.GetPuppetByJID(jid)
+		newLevel := getParticipantLevel(pType, botLevel, plSetLevel, levels.GetUserLevel(puppet.MXID))
 		changed = levels.EnsureUserLevel(puppet.MXID, newLevel) || changed
 
 		user := portal.bridge.GetUserByJID(jid)
 		if user != nil {
+			newLevel = getParticipantLevel(pType, botLevel, plSetLevel, levels.GetUserLevel(user.MXID))
 			changed = levels.EnsureUserLevel(user.MXID, newLevel) || changed
 		}
 	}
@@ -1180,12 +1232,14 @@ func (portal *Portal) RestrictMessageSending(restrict bool) id.EventID {
 		levels = portal.GetBasePowerLevels()
 	}
 
-	newLevel := 0
+	pType := ptUser
 	if restrict {
-		newLevel = 50
+		pType = ptAdmin
 	}
 
 	changed := portal.applyPowerLevelFixes(levels)
+	botLevel, plSetLevel := getControlLevels(portal.MainIntent().UserID, levels)
+	newLevel := getParticipantLevel(pType, botLevel, plSetLevel, levels.EventsDefault)
 	if levels.EventsDefault == newLevel && !changed {
 		return ""
 	}
@@ -1205,14 +1259,16 @@ func (portal *Portal) RestrictMetadataChanges(restrict bool) id.EventID {
 	if err != nil {
 		levels = portal.GetBasePowerLevels()
 	}
-	newLevel := 0
+	pType := ptUser
 	if restrict {
-		newLevel = 50
+		pType = ptAdmin
 	}
 	changed := portal.applyPowerLevelFixes(levels)
-	changed = levels.EnsureEventLevel(event.StateRoomName, newLevel) || changed
-	changed = levels.EnsureEventLevel(event.StateRoomAvatar, newLevel) || changed
-	changed = levels.EnsureEventLevel(event.StateTopic, newLevel) || changed
+	botLevel, plSetLevel := getControlLevels(portal.MainIntent().UserID, levels)
+	for _, eventType := range []event.Type{event.StateRoomName, event.StateRoomAvatar, event.StateTopic} {
+		newLevel := getParticipantLevel(pType, botLevel, plSetLevel, levels.GetEventLevel(eventType))
+		changed = levels.EnsureEventLevel(eventType, newLevel) || changed
+	}
 	if changed {
 		resp, err := portal.MainIntent().SetPowerLevels(portal.MXID, levels)
 		if err != nil {
