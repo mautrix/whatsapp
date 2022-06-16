@@ -1,4 +1,4 @@
-# v0.5.0 (unreleased)
+# v0.5.0 (2022-06-16)
 
 * Moved a lot of code to mautrix-go.
 * Improved handling edge cases in backfill system.
