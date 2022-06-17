@@ -680,6 +680,9 @@ func (portal *Portal) handleMessage(source *User, evt *events.Message) {
 			}
 			converted.Extra["fi.mau.whatsapp.source_broadcast_list"] = evt.Info.Chat.String()
 		}
+		if portal.bridge.Config.Bridge.CaptionInMessage {
+			converted.MergeCaption()
+		}
 		var eventID id.EventID
 		var lastEventID id.EventID
 		if existingMsg != nil {
@@ -1674,6 +1677,24 @@ type ConvertedMessage struct {
 	MediaKey  []byte
 }
 
+func (cm *ConvertedMessage) MergeCaption() {
+	if cm.Caption == nil {
+		return
+	}
+	cm.Extra["filename"] = cm.Content.Body
+	extensibleCaption := map[string]interface{}{
+		"org.matrix.msc1767.text": cm.Caption.Body,
+	}
+	cm.Extra["org.matrix.msc1767.caption"] = extensibleCaption
+	cm.Content.Body = cm.Caption.Body
+	if cm.Caption.Format == event.FormatHTML {
+		cm.Content.Format = event.FormatHTML
+		cm.Content.FormattedBody = cm.Caption.FormattedBody
+		extensibleCaption["org.matrix.msc1767.html"] = cm.Caption.FormattedBody
+	}
+	cm.Caption = nil
+}
+
 func (portal *Portal) convertTextMessage(intent *appservice.IntentAPI, source *User, msg *waProto.Message) *ConvertedMessage {
 	content := &event.MessageEventContent{
 		Body:    msg.GetConversation(),
@@ -2004,6 +2025,9 @@ func (portal *Portal) makeMediaBridgeFailureMessage(info *types.MessageInfo, bri
 		portal.log.Errorfln("Failed to bridge media for %s: %v", info.ID, bridgeErr)
 	}
 	if keys != nil {
+		if portal.bridge.Config.Bridge.CaptionInMessage {
+			converted.MergeCaption()
+		}
 		meta := &FailedMediaMeta{
 			Type:         converted.Type,
 			Content:      converted.Content,

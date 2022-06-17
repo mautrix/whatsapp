@@ -106,6 +106,7 @@ type BridgeConfig struct {
 	AllowUserInvite       bool   `yaml:"allow_user_invite"`
 	FederateRooms         bool   `yaml:"federate_rooms"`
 	URLPreviews           bool   `yaml:"url_previews"`
+	CaptionInMessage      bool   `yaml:"caption_in_message"`
 
 	DisableStatusBroadcastSend   bool `yaml:"disable_status_broadcast_send"`
 	DisappearingMessagesInGroups bool `yaml:"disappearing_messages_in_groups"`

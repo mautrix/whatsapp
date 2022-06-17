@@ -629,6 +629,9 @@ func (portal *Portal) appendBatchEvents(converted *ConvertedMessage, info *types
 	if err != nil {
 		return err
 	}
+	if portal.bridge.Config.Bridge.CaptionInMessage {
+		converted.MergeCaption()
+	}
 	if converted.Caption != nil {
 		captionEvt, err := portal.wrapBatchEvent(info, converted.Intent, converted.Type, converted.Caption, nil)
 		if err != nil {
