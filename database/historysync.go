@@ -275,6 +275,9 @@ func (hsq *HistorySyncQuery) GetMessagesBetween(userID id.UserID, conversationID
 	rows, err := hsq.db.Query(fmt.Sprintf(getMessagesBetween, whereClauses, limitClause), args...)
 	defer rows.Close()
 	if err != nil || rows == nil {
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			hsq.log.Warnfln("Failed to query messages between range: %v", err)
+		}
 		return nil
 	}
 
