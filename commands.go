@@ -35,7 +35,10 @@ import (
 	"go.mau.fi/whatsmeow/appstate"
 	"go.mau.fi/whatsmeow/types"
 
+	log "maunium.net/go/maulogger/v2"
+
 	"maunium.net/go/mautrix"
+	"maunium.net/go/mautrix/appservice"
 	"maunium.net/go/mautrix/bridge"
 	"maunium.net/go/mautrix/bridge/commands"
 	"maunium.net/go/mautrix/event"
@@ -54,6 +57,7 @@ type WrappedCommandEvent struct {
 func (br *WABridge) RegisterCommands() {
 	proc := br.CommandProcessor.(*commands.Processor)
 	proc.AddHandlers(
+		cmdCancel,
 		cmdSetRelay,
 		cmdUnsetRelay,
 		cmdInviteLink,
@@ -68,11 +72,13 @@ func (br *WABridge) RegisterCommands() {
 		cmdReconnect,
 		cmdDisconnect,
 		cmdPing,
+		cmdUnbridge,
 		cmdDeletePortal,
 		cmdDeleteAllPortals,
 		cmdBackfill,
 		cmdList,
 		cmdSearch,
+		cmdBridge,
 		cmdOpen,
 		cmdPM,
 		cmdSync,
@@ -92,6 +98,19 @@ func wrapCommand(handler func(*WrappedCommandEvent)) func(*commands.Event) {
 	}
 }
 
+type StateHandler struct {
+	Func func(*WrappedCommandEvent)
+	Name string
+}
+
+func (sh *StateHandler) Run(ce *commands.Event) {
+	wrapCommand(sh.Func)(ce)
+}
+
+func (sh *StateHandler) GetName() string {
+	return sh.Name
+}
+
 var (
 	HelpSectionConnectionManagement = commands.HelpSection{Name: "Connection management", Order: 11}
 	HelpSectionCreatingPortals      = commands.HelpSection{Name: "Creating portals", Order: 15}
@@ -100,27 +119,194 @@ var (
 	HelpSectionMiscellaneous        = commands.HelpSection{Name: "Miscellaneous", Order: 30}
 )
 
+const (
+	roomArgName = "Matrix room ID or alias"
+	roomArgHere = "--here"
+
+	roomArgHelpMd       = "[<_" + roomArgName + "_>|`" + roomArgHere + "`]"
+	roomArgHelpNohereMd = "[<_" + roomArgName + "_>]"
+	roomArgHelpPl       = "[" + roomArgName + " | " + roomArgHere + "]"
+	roomArgHelpNoherePl = "[" + roomArgName + "]"
+)
+
+func getThatThisSuffix(targetRoomID id.RoomID, currentRoomID id.RoomID) string {
+	if targetRoomID == currentRoomID {
+		return "is"
+	} else {
+		return "at"
+	}
+}
+
+func getBridgeRoomID(ce *WrappedCommandEvent, argIndex int, hereByDefault bool) (roomID id.RoomID, ok bool) {
+	ok = true
+	if len(ce.Args) <= argIndex {
+		if hereByDefault {
+			roomID = ce.RoomID
+		}
+	} else if roomArg := ce.Args[argIndex]; roomArg == "--here" {
+		roomID = ce.RoomID
+	} else {
+		var isAlias bool
+		var err error
+		roomID, isAlias, err = ce.Bridge.ResolveRoomArg(roomArg)
+		if err != nil {
+			ok = false
+			if isAlias {
+				ce.Log.Errorln("Failed to resolve room alias %s to a room ID: %v", roomArg, err)
+				ce.Reply("Unable to find a room with the provided alias.")
+			} else {
+				ce.Log.Errorln("Invalid room ID %s: %v", roomArg, err)
+				ce.Reply("Please provide a valid room ID or alias.")
+			}
+		}
+	}
+	return
+}
+
+func getBridgeableRoomID(ce *WrappedCommandEvent, argIndex int, hereByDefault bool) (roomID id.RoomID, ok bool) {
+	roomID, ok = getBridgeRoomID(ce, argIndex, hereByDefault)
+	// When ok, an empty roomID means that a new room should be created
+	if !ok || roomID == "" {
+		return
+	}
+
+	if err := ce.Bot.EnsureJoined(roomID); err != nil {
+		ok = false
+		ce.Log.Errorln("Failed to join room: %v", err)
+		ce.Reply("Failed to join target room. Ensure that the room exists and that the bridge bot can join it.")
+		return
+	}
+
+	var errMsg string
+	if ce.Bridge.GetPortalByMXID(roomID) != nil {
+		errMsg = "Th%s room is already a portal room."
+	} else if !userHasPowerLevel(roomID, ce.MainIntent(), ce.User, "bridge") {
+		errMsg = "You do not have the permissions to bridge th%s room."
+	}
+	if errMsg != "" {
+		ok = false
+		ce.Reply(errMsg, getThatThisSuffix(roomID, ce.RoomID))
+	}
+	return
+}
+
+func getPortalForCmd(ce *WrappedCommandEvent, argIndex int) (portal *Portal) {
+	bridgeRoomID, ok := getBridgeRoomID(ce, argIndex, true)
+	if !ok {
+		return
+	}
+
+	if bridgeRoomID == ce.RoomID {
+		portal = ce.Portal
+	} else {
+		portal = ce.Bridge.GetPortalByMXID(bridgeRoomID)
+	}
+	if portal == nil {
+		var roomString string
+		if bridgeRoomID == ce.RoomID {
+			roomString = "this room"
+		} else if len(ce.Args) <= argIndex {
+			roomString = "that room"
+		} else {
+			roomString = ce.Args[argIndex]
+		}
+		ce.Reply("That command can only be ran for portal rooms, and %s is not a portal room.", roomString)
+	}
+	return
+}
+
+func getInitialState(intent *appservice.IntentAPI, roomID id.RoomID) (
+	name string,
+	topic string,
+	levels *event.PowerLevelsEventContent,
+	encrypted bool,
+) {
+	state, err := intent.State(roomID)
+	if err == nil {
+		for _, events := range state {
+			for _, evt := range events {
+				switch evt.Type {
+				case event.StateRoomName:
+					name = evt.Content.AsRoomName().Name
+				case event.StateTopic:
+					topic = evt.Content.AsTopic().Topic
+				case event.StatePowerLevels:
+					levels = evt.Content.AsPowerLevels()
+				case event.StateEncryption:
+					encrypted = true
+				default:
+					continue
+				}
+			}
+		}
+	}
+	return
+}
+
+func warnMissingPower(levels *event.PowerLevelsEventContent, ce *WrappedCommandEvent) {
+	if levels.GetUserLevel(ce.Bot.UserID) < levels.Redact() {
+		ce.Reply("Warning: The bot does not have privileges to redact messages on Matrix. "+
+			"Message deletions from WhatsApp will not be bridged unless you give "+
+			"redaction permissions to [%[1]s](https://matrix.to/#/%[1]s)",
+			ce.Bot.UserID,
+		)
+	}
+	/* TODO Check other permissions too:
+	Important:
+	- invite/kick
+	Optional:
+	- m.bridge/uk.half-shot.bridge
+	- set room name/topic/avatar
+	- change power levels
+	- top PL for bot to control all users, including initial inviter
+	*/
+}
+
+func userHasPowerLevel(roomID id.RoomID, intent *appservice.IntentAPI, sender *User, stateEventName string) bool {
+	if sender.Admin {
+		return true
+	}
+	levels, err := intent.PowerLevels(roomID)
+	if err != nil || levels == nil {
+		return false
+	}
+	eventType := event.Type{Type: "fi.mau.whatsapp" + stateEventName, Class: event.StateEventType}
+	return levels.GetUserLevel(sender.MXID) >= levels.GetEventLevel(eventType)
+}
+
+var cmdCancel = &commands.FullHandler{
+	Func: wrapCommand(fnCancel),
+	Name: "cancel",
+	Help: commands.HelpMeta{
+		Section:     commands.HelpSectionGeneral,
+		Description: "Cancel an ongoing action.",
+	},
+}
+
+func fnCancel(ce *WrappedCommandEvent) {
+	status := ce.User.GetCommandState()
+	if status != nil {
+		action := status["next"].(commands.Handler).GetName()
+		ce.User.CommandState = nil
+		ce.Reply("%s cancelled.", action)
+	} else {
+		ce.Reply("No ongoing command.")
+	}
+}
+
 var cmdSetRelay = &commands.FullHandler{
 	Func: wrapCommand(fnSetRelay),
 	Name: "set-relay",
 	Help: commands.HelpMeta{
 		Section:     HelpSectionPortalManagement,
 		Description: "Relay messages in this room through your WhatsApp account.",
+		Args:        roomArgHelpNohereMd,
 	},
-	RequiresPortal: true,
-	RequiresLogin:  true,
+	RequiresLogin: true,
 }
 
 func fnSetRelay(ce *WrappedCommandEvent) {
-	if !ce.Bridge.Config.Bridge.Relay.Enabled {
-		ce.Reply("Relay mode is not enabled on this instance of the bridge")
-	} else if ce.Bridge.Config.Bridge.Relay.AdminOnly && !ce.User.Admin {
-		ce.Reply("Only admins are allowed to enable relay mode on this instance of the bridge")
-	} else {
-		ce.Portal.RelayUserID = ce.User.MXID
-		ce.Portal.Update(nil)
-		ce.Reply("Messages from non-logged-in users in this room will now be bridged through your WhatsApp account")
-	}
+	fnEditRelay(ce, true)
 }
 
 var cmdUnsetRelay = &commands.FullHandler{
@@ -129,19 +315,41 @@ var cmdUnsetRelay = &commands.FullHandler{
 	Help: commands.HelpMeta{
 		Section:     HelpSectionPortalManagement,
 		Description: "Stop relaying messages in this room.",
+		Args:        roomArgHelpNohereMd,
 	},
-	RequiresPortal: true,
 }
 
 func fnUnsetRelay(ce *WrappedCommandEvent) {
+	fnEditRelay(ce, false)
+}
+
+func fnEditRelay(ce *WrappedCommandEvent, set bool) {
+	var action string
+	if n := len(ce.Args); n != 0 && n > 1 {
+		if set {
+			action = "set"
+		} else {
+			action = "unset"
+		}
+		ce.Reply("**Usage:** `%s-relay %s`", action, roomArgHelpNoherePl)
+		return
+	}
+
 	if !ce.Bridge.Config.Bridge.Relay.Enabled {
 		ce.Reply("Relay mode is not enabled on this instance of the bridge")
 	} else if ce.Bridge.Config.Bridge.Relay.AdminOnly && !ce.User.Admin {
 		ce.Reply("Only admins are allowed to enable relay mode on this instance of the bridge")
-	} else {
-		ce.Portal.RelayUserID = ""
-		ce.Portal.Update(nil)
-		ce.Reply("Messages from non-logged-in users will no longer be bridged in this room")
+	} else if portal := getPortalForCmd(ce, 0); portal != nil {
+		if set {
+			portal.RelayUserID = ce.User.MXID
+			action = "now"
+		} else {
+			portal.RelayUserID = ""
+			action = "no longer"
+		}
+		portal.Update(nil)
+		ce.Reply("Messages from non-logged-in users in th%s room will %s be bridged through your WhatsApp account",
+			getThatThisSuffix(portal.MXID, ce.RoomID), action)
 	}
 }
 
@@ -151,19 +359,34 @@ var cmdInviteLink = &commands.FullHandler{
 	Help: commands.HelpMeta{
 		Section:     HelpSectionInvites,
 		Description: "Get an invite link to the current group chat, optionally regenerating the link and revoking the old link.",
-		Args:        "[--reset]",
+		Args:        "[--reset] " + roomArgHelpNohereMd,
 	},
-	RequiresPortal: true,
-	RequiresLogin:  true,
+	RequiresLogin: true,
 }
 
 func fnInviteLink(ce *WrappedCommandEvent) {
-	reset := len(ce.Args) > 0 && strings.ToLower(ce.Args[0]) == "--reset"
-	if ce.Portal.IsPrivateChat() {
+	argLen := len(ce.Args)
+	reset := false
+	roomArgIndex := 0
+	for i := 0; i < argLen; i++ {
+		if strings.ToLower(ce.Args[i]) == "--reset" {
+			reset = true
+			roomArgIndex = (i + 1) % 2
+			break
+		}
+	}
+	if !reset && argLen > 1 || reset && argLen > 2 {
+		ce.Reply("**Usage:** `invite-link [--reset] " + roomArgHelpNoherePl + "`")
+		return
+	}
+
+	if portal := getPortalForCmd(ce, roomArgIndex); portal == nil {
+		return
+	} else if portal.IsPrivateChat() {
 		ce.Reply("Can't get invite link to private chat")
-	} else if ce.Portal.IsBroadcastList() {
+	} else if portal.IsBroadcastList() {
 		ce.Reply("Can't get invite link to broadcast list")
-	} else if link, err := ce.User.Client.GetGroupInviteLink(ce.Portal.Key.JID, reset); err != nil {
+	} else if link, err := ce.User.Client.GetGroupInviteLink(portal.Key.JID, reset); err != nil {
 		ce.Reply("Failed to get invite link: %v", err)
 	} else {
 		ce.Reply(link)
@@ -309,49 +532,75 @@ var cmdCreate = &commands.FullHandler{
 	Name: "create",
 	Help: commands.HelpMeta{
 		Section:     HelpSectionCreatingPortals,
-		Description: "Create a WhatsApp group chat for the current Matrix room.",
+		Description: "Create a WhatsApp group chat for the current Matrix room, or for a specified room.",
+		Args:        roomArgHelpNohereMd,
 	},
 	RequiresLogin: true,
 }
 
 func fnCreate(ce *WrappedCommandEvent) {
-	if ce.Portal != nil {
-		ce.Reply("This is already a portal room")
+	if len(ce.Args) > 1 {
+		ce.Reply("**Usage:** `create " + roomArgHelpNoherePl + "`")
 		return
 	}
 
-	members, err := ce.Bot.JoinedMembers(ce.RoomID)
+	bridgeRoomID, ok := getBridgeableRoomID(ce, 0, true)
+	if !ok {
+		return
+	}
+
+	portal, _, errMsg := createGroup(ce.User, bridgeRoomID, &ce.Log, ce.Reply)
+	if errMsg != "" {
+		ce.Reply(errMsg)
+	} else {
+		ce.Reply("Successfully created WhatsApp group %s", portal.Key.JID)
+	}
+}
+
+// Creates a new WhatsApp group out of the provided Matrix room ID, and bridges that room to the created group.
+//
+// If replier is set, it will be used to post user-visible messages about the progres of the group creation.
+//
+// On failure, returns an error message string (instead of an error object from a function call).
+func createGroup(user *User, roomID id.RoomID, log *log.Logger, replier func(string, ...interface{})) (
+	newPortal *Portal,
+	info *types.GroupInfo,
+	errMsg string,
+) {
+	bridge := user.bridge
+
+	members, err := bridge.Bot.JoinedMembers(roomID)
 	if err != nil {
-		ce.Reply("Failed to get room members: %v", err)
+		errMsg = fmt.Sprintf("Failed to get room members: %v", err)
 		return
 	}
 
 	var roomNameEvent event.RoomNameEventContent
-	err = ce.Bot.StateEvent(ce.RoomID, event.StateRoomName, "", &roomNameEvent)
+	err = bridge.Bot.StateEvent(roomID, event.StateRoomName, "", &roomNameEvent)
 	if err != nil && !errors.Is(err, mautrix.MNotFound) {
-		ce.Log.Errorln("Failed to get room name to create group:", err)
-		ce.Reply("Failed to get room name")
+		(*log).Errorln("Failed to get room name to create group:", err)
+		errMsg = "Failed to get room name"
 		return
 	} else if len(roomNameEvent.Name) == 0 {
-		ce.Reply("Please set a name for the room first")
+		errMsg = "Please set a name for the room first"
 		return
 	}
 
 	var encryptionEvent event.EncryptionEventContent
-	err = ce.Bot.StateEvent(ce.RoomID, event.StateEncryption, "", &encryptionEvent)
+	err = bridge.Bot.StateEvent(roomID, event.StateEncryption, "", &encryptionEvent)
 	if err != nil && !errors.Is(err, mautrix.MNotFound) {
-		ce.Reply("Failed to get room encryption status")
+		errMsg = "Failed to get room encryption status"
 		return
 	}
 
 	var participants []types.JID
 	participantDedup := make(map[types.JID]bool)
-	participantDedup[ce.User.JID.ToNonAD()] = true
+	participantDedup[user.JID.ToNonAD()] = true
 	participantDedup[types.EmptyJID] = true
 	for userID := range members.Joined {
-		jid, ok := ce.Bridge.ParsePuppetMXID(userID)
+		jid, ok := user.bridge.ParsePuppetMXID(userID)
 		if !ok {
-			user := ce.Bridge.GetUserByMXID(userID)
+			user := user.bridge.GetUserByMXID(userID)
 			if user != nil && !user.JID.IsEmpty() {
 				jid = user.JID.ToNonAD()
 			}
@@ -362,30 +611,35 @@ func fnCreate(ce *WrappedCommandEvent) {
 		}
 	}
 
-	ce.Log.Infofln("Creating group for %s with name %s and participants %+v", ce.RoomID, roomNameEvent.Name, participants)
-	resp, err := ce.User.Client.CreateGroup(roomNameEvent.Name, participants)
+	(*log).Infofln("Creating group for %s with name %s and participants %+v", roomID, roomNameEvent.Name, participants)
+	user.groupCreateLock.Lock()
+	defer user.groupCreateLock.Unlock()
+	resp, err := user.Client.CreateGroup(roomNameEvent.Name, participants)
 	if err != nil {
-		ce.Reply("Failed to create group: %v", err)
+		errMsg = fmt.Sprintf("Failed to create group: %v", err)
 		return
 	}
-	portal := ce.User.GetPortalByJID(resp.JID)
+	portal := user.GetPortalByJID(resp.JID)
 	portal.roomCreateLock.Lock()
 	defer portal.roomCreateLock.Unlock()
 	if len(portal.MXID) != 0 {
 		portal.log.Warnln("Detected race condition in room creation")
 		// TODO race condition, clean up the old room
+		// TODO confirm whether this is fixed by the lock on group creation
 	}
-	portal.MXID = ce.RoomID
+	portal.MXID = roomID
 	portal.Name = roomNameEvent.Name
 	portal.Encrypted = encryptionEvent.Algorithm == id.AlgorithmMegolmV1
-	if !portal.Encrypted && ce.Bridge.Config.Bridge.Encryption.Default {
+	if !portal.Encrypted && user.bridge.Config.Bridge.Encryption.Default {
 		_, err = portal.MainIntent().SendStateEvent(portal.MXID, event.StateEncryption, "", &event.EncryptionEventContent{Algorithm: id.AlgorithmMegolmV1})
 		if err != nil {
 			portal.log.Warnln("Failed to enable encryption in room:", err)
-			if errors.Is(err, mautrix.MForbidden) {
-				ce.Reply("I don't seem to have permission to enable encryption in this room.")
-			} else {
-				ce.Reply("Failed to enable encryption in room: %v", err)
+			if replier != nil {
+				if errors.Is(err, mautrix.MForbidden) {
+					replier("I don't seem to have permission to enable encryption in this room.")
+				} else {
+					replier("Failed to enable encryption in room: %v", err)
+				}
 			}
 		}
 		portal.Encrypted = true
@@ -394,7 +648,8 @@ func fnCreate(ce *WrappedCommandEvent) {
 	portal.Update(nil)
 	portal.UpdateBridgeInfo()
 
-	ce.Reply("Successfully created WhatsApp group %s", portal.Key.JID)
+	newPortal, info = portal, resp
+	return
 }
 
 var cmdLogin = &commands.FullHandler{
@@ -651,6 +906,45 @@ func fnPing(ce *WrappedCommandEvent) {
 	}
 }
 
+func checkUnbridgePermission(portal *Portal, ce *WrappedCommandEvent) bool {
+	thatThisSuffix := getThatThisSuffix(portal.MXID, ce.RoomID)
+	errMsg := fmt.Sprintf("You do not have the permissions to unbridge th%s portal.", thatThisSuffix)
+
+	if portal.IsPrivateChat() {
+		if portal.Key.Receiver != ce.User.JID {
+			ce.Reply(errMsg)
+			return false
+		}
+	}
+
+	if !userHasPowerLevel(ce.Portal.MXID, ce.MainIntent(), ce.User, "unbridge") {
+		ce.Reply(errMsg)
+		return false
+	}
+
+	return true
+}
+
+var cmdUnbridge = &commands.FullHandler{
+	Func: wrapCommand(fnUnbridge),
+	Name: "unbridge",
+	Help: commands.HelpMeta{
+		Section:     HelpSectionPortalManagement,
+		Description: "Remove puppets from the current portal room and forget the portal.",
+	},
+	RequiresPortal: true,
+}
+
+func fnUnbridge(ce *WrappedCommandEvent) {
+	if !checkUnbridgePermission(ce.Portal, ce) {
+		return
+	}
+
+	ce.Portal.log.Infoln(ce.User.MXID, "requested unbridging of portal.")
+	ce.Portal.Delete()
+	ce.Portal.Cleanup("Room unbridged", true)
+}
+
 func canDeletePortal(portal *Portal, userID id.UserID) bool {
 	if len(portal.MXID) == 0 {
 		return false
@@ -679,7 +973,7 @@ var cmdDeletePortal = &commands.FullHandler{
 	Name: "delete-portal",
 	Help: commands.HelpMeta{
 		Section:     HelpSectionPortalManagement,
-		Description: "Delete the current portal. If the portal is used by other people, this is limited to bridge admins.",
+		Description: "Remove all users from the current portal room and forget the portal. If the portal is used by other people, this is limited to bridge admins.",
 	},
 	RequiresPortal: true,
 }
@@ -689,10 +983,13 @@ func fnDeletePortal(ce *WrappedCommandEvent) {
 		ce.Reply("Only bridge admins can delete portals with other Matrix users")
 		return
 	}
+	if !checkUnbridgePermission(ce.Portal, ce) {
+		return
+	}
 
 	ce.Portal.log.Infoln(ce.User.MXID, "requested deletion of portal.")
 	ce.Portal.Delete()
-	ce.Portal.Cleanup(false)
+	ce.Portal.Cleanup("Portal deleted", false)
 }
 
 var cmdDeleteAllPortals = &commands.FullHandler{
@@ -750,7 +1047,7 @@ func fnDeleteAllPortals(ce *WrappedCommandEvent) {
 
 	go func() {
 		for _, portal := range portalsToDelete {
-			portal.Cleanup(false)
+			portal.Cleanup("", false)
 		}
 		ce.Reply("Finished background cleanup of deleted portal rooms.")
 	}()
@@ -964,20 +1261,48 @@ func fnSearch(ce *WrappedCommandEvent) {
 	ce.Reply(strings.Join(result, "\n\n"))
 }
 
+var cmdBridge = &commands.FullHandler{
+	Func: wrapCommand(fnBridge),
+	Name: "bridge",
+	Help: commands.HelpMeta{
+		Section:     HelpSectionCreatingPortals,
+		Description: "Bridge a WhatsApp group chat to the current Matrix room, or to a specified room.",
+		Args:        "<_group JID_> " + roomArgHelpNohereMd,
+	},
+	RequiresLogin: true,
+}
+
+func fnBridge(ce *WrappedCommandEvent) {
+	if len(ce.Args) == 0 {
+		ce.Reply("**Usage:** `bridge <group JID> " + roomArgHelpNoherePl + "`")
+		return
+	}
+
+	if len(ce.Args) == 1 {
+		ce.Args = append(ce.Args, "--here")
+	}
+	fnOpen(ce)
+}
+
 var cmdOpen = &commands.FullHandler{
 	Func: wrapCommand(fnOpen),
 	Name: "open",
 	Help: commands.HelpMeta{
 		Section:     HelpSectionCreatingPortals,
 		Description: "Open a group chat portal.",
-		Args:        "<_group JID_>",
+		Args:        "<_group JID_> " + roomArgHelpMd,
 	},
 	RequiresLogin: true,
 }
 
 func fnOpen(ce *WrappedCommandEvent) {
-	if len(ce.Args) == 0 {
-		ce.Reply("**Usage:** `open <group JID>`")
+	if n := len(ce.Args); n == 0 || n > 2 {
+		ce.Reply("**Usage:** `open <group JID> " + roomArgHelpPl + "`")
+		return
+	}
+
+	bridgeRoomID, ok := getBridgeableRoomID(ce, 1, false)
+	if !ok {
 		return
 	}
 
@@ -1000,16 +1325,142 @@ func fnOpen(ce *WrappedCommandEvent) {
 	ce.Log.Debugln("Importing", jid, "for", ce.User.MXID)
 	portal := ce.User.GetPortalByJID(info.JID)
 	if len(portal.MXID) > 0 {
-		portal.UpdateMatrixRoom(ce.User, info)
-		ce.Reply("Portal room synced.")
-	} else {
-		err = portal.CreateMatrixRoom(ce.User, info, true, true)
-		if err != nil {
-			ce.Reply("Failed to create room: %v", err)
+		if bridgeRoomID == "" {
+			portal.UpdateMatrixRoom(ce.User, info)
+			ce.Reply("Portal room synced.")
 		} else {
-			ce.Reply("Portal room created.")
+			// TODO Move to a function
+			hasPortalMessage := "That WhatsApp group already has a portal at [%[1]s](https://matrix.to/#/%[1]s). "
+			if !userHasPowerLevel(portal.MXID, ce.MainIntent(), ce.User, "unbridge") {
+				ce.Reply(hasPortalMessage+
+					"Additionally, you do not have the permissions to unbridge that room.",
+					portal.MXID,
+				)
+			} else {
+				ce.User.CommandState = map[string]interface{}{
+					"next":         &StateHandler{confirmBridge, "Room bridging"},
+					"mxid":         portal.MXID,
+					"bridgeToMXID": bridgeRoomID,
+					"jid":          info.JID,
+				}
+				ce.Reply(hasPortalMessage+
+					"However, you have the permissions to unbridge that room.\n\n"+
+					"To delete that portal completely and continue bridging, use "+
+					"`$cmdprefix  delete-and-continue`. To unbridge the portal "+
+					"without kicking Matrix users, use `$cmdprefix  unbridge-and-"+
+					"continue`. To cancel, use `$cmdprefix  cancel`.",
+					portal.MXID,
+				)
+			}
+		}
+	} else {
+		if bridgeRoomID == "" {
+			err = portal.CreateMatrixRoom(ce.User, info, true, true)
+			if err != nil {
+				ce.Reply("Failed to create room: %v", err)
+			} else {
+				ce.Reply("Portal room created.")
+			}
+		} else {
+			// TODO Move to a function
+			ce.User.CommandState = map[string]interface{}{
+				"next":         &StateHandler{confirmBridge, "Room bridging"},
+				"bridgeToMXID": bridgeRoomID,
+				"jid":          info.JID,
+			}
+			ce.Reply("That WhatsApp group has no existing portal. To confirm bridging the " +
+				"group, use `$cmdprefix  continue`. To cancel, use `$cmdprefix  cancel`.",
+			)
 		}
 	}
+}
+
+func cleanupOldPortalWhileBridging(ce *WrappedCommandEvent, portal *Portal) (bool, func()) {
+	if len(portal.MXID) == 0 {
+		ce.Reply("The portal seems to have lost its Matrix room between you" +
+			"calling `$cmdprefix  bridge` and this command.\n\n" +
+			"Continuing without touching the previous Matrix room...",
+		)
+		return true, nil
+	}
+	switch ce.Args[0] {
+	case "delete-and-continue":
+		return true, func() {
+			portal.Cleanup("Portal deleted (moving to another room)", false)
+		}
+	case "unbridge-and-continue":
+		return true, func() {
+			portal.Cleanup("Room unbridged (portal moving to another room)", true)
+		}
+	default:
+		ce.Reply("The chat you were trying to bridge already has a Matrix portal room.\n\n" +
+			"Please use `$cmdprefix  delete-and-continue` or `$cmdprefix  unbridge-and-" +
+			"continue` to either delete or unbridge the existing room (respectively) and " +
+			"continue with the bridging.\n\n" +
+			"If you changed your mind, use `$cmdprefix  cancel` to cancel.",
+		)
+		return false, nil
+	}
+}
+
+func confirmBridge(ce *WrappedCommandEvent) {
+	defer func() {
+		if err := recover(); err != nil {
+			ce.User.CommandState = nil
+			ce.Reply("Fatal error: %v. This shouldn't happen unless you're messing with the command handler code.", err)
+		}
+	}()
+
+	status := ce.User.GetCommandState()
+	roomID := status["bridgeToMXID"].(id.RoomID)
+	portal := ce.User.GetPortalByJID(status["jid"].(types.JID))
+	if portal == nil {
+		panic("could not retrieve portal that was expected to exist")
+	}
+
+	_, mxidInStatus := status["mxid"]
+	if mxidInStatus {
+		ok, f := cleanupOldPortalWhileBridging(ce, portal)
+		if !ok {
+			return
+		} else if f != nil {
+			go f()
+			ce.Reply("Cleaning up previous portal room...")
+		}
+	} else if len(portal.MXID) > 0 {
+		ce.User.CommandState = nil
+		ce.Reply("The portal seems to have created a Matrix room between you " +
+			"calling `$cmdprefix  bridge` and this command.\n\n" +
+			"Please start over by calling the bridge command again.",
+		)
+		return
+	} else if ce.Args[0] != "continue" {
+		ce.Reply("Please use `$cmdprefix  continue` to confirm the bridging or " +
+			"`$cmdprefix  cancel` to cancel.",
+		)
+		return
+	}
+
+	ce.User.CommandState = nil
+	portal.roomCreateLock.Lock()
+	defer portal.roomCreateLock.Unlock()
+
+	user := ce.User
+	if !user.IsLoggedIn() {
+		ce.Reply("You are not logged in to WhatsApp.")
+		return
+	}
+	// TODO Handle non-groups (DMs) too?
+	info, err := user.Client.GetGroupInfo(portal.Key.JID)
+	if err != nil {
+		ce.Reply("Failed to get group info: %v", err)
+		return
+	}
+
+	levels := portal.BridgeMatrixRoom(roomID, user, info)
+	warnMissingPower(levels, ce)
+
+	ce.Reply("Bridging complete. Portal synchronization should begin momentarily.")
 }
 
 var cmdPM = &commands.FullHandler{

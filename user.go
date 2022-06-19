@@ -68,6 +68,7 @@ type User struct {
 
 	mgmtCreateLock  sync.Mutex
 	spaceCreateLock sync.Mutex
+	groupCreateLock sync.Mutex
 	connLock        sync.Mutex
 
 	historySyncs chan *events.HistorySync
@@ -83,6 +84,8 @@ type User struct {
 
 	BackfillQueue *BackfillQueue
 	BridgeState   *bridge.BridgeStateQueue
+
+	CommandState map[string]interface{}
 }
 
 func (br *WABridge) getUserByMXID(userID id.UserID, onlyIfExists bool) *User {
@@ -128,7 +131,7 @@ func (user *User) GetMXID() id.UserID {
 }
 
 func (user *User) GetCommandState() map[string]interface{} {
-	return nil
+	return user.CommandState
 }
 
 func (br *WABridge) GetUserByMXIDIfExists(userID id.UserID) *User {
@@ -1148,6 +1151,8 @@ func (user *User) markUnread(portal *Portal, unread bool) {
 }
 
 func (user *User) handleGroupCreate(evt *events.JoinedGroup) {
+	user.groupCreateLock.Lock()
+	defer user.groupCreateLock.Unlock()
 	portal := user.GetPortalByJID(evt.JID)
 	if len(portal.MXID) == 0 {
 		err := portal.CreateMatrixRoom(user, &evt.GroupInfo, true, true)
