@@ -2582,27 +2582,6 @@ func (portal *Portal) convertWebPtoPNG(webpImage []byte) ([]byte, error) {
 	return pngBuffer.Bytes(), nil
 }
 
-type DualError struct {
-	High error
-	Low  error
-}
-
-func NewDualError(high, low error) DualError {
-	return DualError{high, low}
-}
-
-func (err DualError) Is(other error) bool {
-	return errors.Is(other, err.High) || errors.Is(other, err.Low)
-}
-
-func (err DualError) Unwrap() error {
-	return err.Low
-}
-
-func (err DualError) Error() string {
-	return fmt.Sprintf("%v: %v", err.High, err.Low)
-}
-
 func (portal *Portal) preprocessMatrixMedia(sender *User, relaybotFormatted bool, content *event.MessageEventContent, eventID id.EventID, mediaType whatsmeow.MediaType) (*MediaUpload, error) {
 	var caption string
 	var mentionedJIDs []string
@@ -2622,12 +2601,12 @@ func (portal *Portal) preprocessMatrixMedia(sender *User, relaybotFormatted bool
 	}
 	data, err := portal.MainIntent().DownloadBytes(mxc)
 	if err != nil {
-		return nil, NewDualError(errMediaDownloadFailed, err)
+		return nil, util.NewDualError(errMediaDownloadFailed, err)
 	}
 	if file != nil {
 		err = file.DecryptInPlace(data)
 		if err != nil {
-			return nil, NewDualError(errMediaDecryptFailed, err)
+			return nil, util.NewDualError(errMediaDecryptFailed, err)
 		}
 	}
 	if mediaType == whatsmeow.MediaVideo && content.GetInfo().MimeType == "image/gif" {
@@ -2636,20 +2615,20 @@ func (portal *Portal) preprocessMatrixMedia(sender *User, relaybotFormatted bool
 			"-filter:v", "crop='floor(in_w/2)*2:floor(in_h/2)*2'",
 		}, content.GetInfo().MimeType)
 		if err != nil {
-			return nil, NewDualError(fmt.Errorf("%w (gif to mp4)", errMediaConvertFailed), err)
+			return nil, util.NewDualError(fmt.Errorf("%w (gif to mp4)", errMediaConvertFailed), err)
 		}
 		content.Info.MimeType = "video/mp4"
 	}
 	if mediaType == whatsmeow.MediaImage && content.GetInfo().MimeType == "image/webp" {
 		data, err = portal.convertWebPtoPNG(data)
 		if err != nil {
-			return nil, NewDualError(fmt.Errorf("%w (webp to png)", errMediaConvertFailed), err)
+			return nil, util.NewDualError(fmt.Errorf("%w (webp to png)", errMediaConvertFailed), err)
 		}
 		content.Info.MimeType = "image/png"
 	}
 	uploadResp, err := sender.Client.Upload(context.Background(), data, mediaType)
 	if err != nil {
-		return nil, NewDualError(errMediaWhatsAppUploadFailed, err)
+		return nil, util.NewDualError(errMediaWhatsAppUploadFailed, err)
 	}
 
 	// Audio doesn't have thumbnails
