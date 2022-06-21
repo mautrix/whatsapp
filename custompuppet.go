@@ -75,8 +75,8 @@ func (puppet *Puppet) loginWithSharedSecret(mxid id.UserID) (string, error) {
 		Type:                     mautrix.AuthTypePassword,
 		Identifier:               mautrix.UserIdentifier{Type: mautrix.IdentifierTypeUser, User: string(mxid)},
 		Password:                 hex.EncodeToString(mac.Sum(nil)),
-		DeviceID:                 "WhatsApp bridge",
-		InitialDeviceDisplayName: "WhatsApp bridge",
+		DeviceID:                 "WhatsApp Bridge",
+		InitialDeviceDisplayName: "WhatsApp Bridge",
 	})
 	if err != nil {
 		return "", err
