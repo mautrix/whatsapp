@@ -17,6 +17,7 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"text/template"
@@ -142,6 +143,24 @@ func (bc BridgeConfig) GetCommandPrefix() string {
 
 func (bc BridgeConfig) GetManagementRoomTexts() bridgeconfig.ManagementRoomTexts {
 	return bc.ManagementRoomText
+}
+
+func boolToInt(val bool) int {
+	if val {
+		return 1
+	}
+	return 0
+}
+
+func (bc BridgeConfig) Validate() error {
+	_, hasWildcard := bc.Permissions["*"]
+	_, hasExampleDomain := bc.Permissions["example.com"]
+	_, hasExampleUser := bc.Permissions["@admin:example.com"]
+	exampleLen := boolToInt(hasWildcard) + boolToInt(hasExampleUser) + boolToInt(hasExampleDomain)
+	if len(bc.Permissions) <= exampleLen {
+		return errors.New("bridge.permissions not configured")
+	}
+	return nil
 }
 
 type umBridgeConfig BridgeConfig
