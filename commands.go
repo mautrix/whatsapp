@@ -1491,9 +1491,6 @@ func confirmBridge(ce *WrappedCommandEvent) {
 	status := ce.User.GetCommandState()
 	roomID := status["bridgeToMXID"].(id.RoomID)
 	portal := ce.User.GetPortalByJID(status["jid"].(types.JID))
-	if portal == nil {
-		panic("could not retrieve portal that was expected to exist")
-	}
 
 	_, mxidInStatus := status["mxid"]
 	if mxidInStatus {
