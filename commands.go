@@ -250,7 +250,7 @@ func getPortalForCmd(ce *WrappedCommandEvent, argIndex int) (portal *Portal) {
 		} else if len(ce.Args) <= argIndex {
 			roomString = "that room"
 		} else {
-			roomString = ce.Args[argIndex]
+			roomString = fmt.Sprintf("[%[1]s](https://matrix.to/#/%[1]s)", ce.Args[argIndex])
 		}
 		ce.Reply("That command can only be ran for portal rooms, and %s is not a portal room.", roomString)
 	}
