@@ -543,6 +543,13 @@ func (prov *ProvisioningAPI) BridgeGroup(w http.ResponseWriter, r *http.Request)
 			})
 			return
 		} else if len(portal.MXID) > 0 {
+			if !userHasPowerLevel(portal.MXID, prov.bridge.AS.BotIntent(), user, "unbridge") {
+				jsonResponse(w, http.StatusForbidden, Error{
+					Error:   "User does not have the permissions to unbridge that room",
+					ErrCode: "not enough permissions",
+				})
+				return
+			}
 			switch strings.ToLower(r.URL.Query().Get("force")) {
 			case "delete":
 				portal.Cleanup("Portal deleted (moving to another room)", false)
