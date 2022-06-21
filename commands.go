@@ -86,15 +86,19 @@ func (br *WABridge) RegisterCommands() {
 	)
 }
 
+func wrapCommandEvent(ce *commands.Event) *WrappedCommandEvent {
+	user := ce.User.(*User)
+	var portal *Portal
+	if ce.Portal != nil {
+		portal = ce.Portal.(*Portal)
+	}
+	br := ce.Bridge.Child.(*WABridge)
+	return &WrappedCommandEvent{ce, br, user, portal}
+}
+
 func wrapCommand(handler func(*WrappedCommandEvent)) func(*commands.Event) {
 	return func(ce *commands.Event) {
-		user := ce.User.(*User)
-		var portal *Portal
-		if ce.Portal != nil {
-			portal = ce.Portal.(*Portal)
-		}
-		br := ce.Bridge.Child.(*WABridge)
-		handler(&WrappedCommandEvent{ce, br, user, portal})
+		handler(wrapCommandEvent(ce))
 	}
 }
 
@@ -104,7 +108,14 @@ type StateHandler struct {
 }
 
 func (sh *StateHandler) Run(ce *commands.Event) {
-	wrapCommand(sh.Func)(ce)
+	wce := wrapCommandEvent(ce)
+	defer func() {
+		if err := recover(); err != nil {
+			wce.User.CommandState = nil
+			wce.Reply("Fatal error: %v. This shouldn't happen unless you're messing with the command handler code.", err)
+		}
+	}()
+	sh.Func(wce)
 }
 
 func (sh *StateHandler) GetName() string {
@@ -931,9 +942,20 @@ func fnUnbridge(ce *WrappedCommandEvent) {
 		return
 	}
 
-	portal.log.Infoln(ce.User.MXID, "requested unbridging of portal.")
-	portal.Delete()
-	portal.Cleanup("Room unbridged", true)
+	const command = "unbridge"
+	ce.User.CommandState = map[string]interface{}{
+		"next":             &StateHandler{confirmCleanup, "Room unbridging"},
+		"deletePortal":     false,
+		"roomID":           portal.MXID,
+		"command":          command,
+		"completedMessage": "Room successfully unbridged.",
+	}
+	ce.Reply(
+		"Please confirm unbridging from th%s room "+
+			"by typing `$cmdprefix  confirm-%s`.",
+		getThatThisSuffix(portal.MXID, ce.RoomID),
+		command,
+	)
 }
 
 func canDeletePortal(portal *Portal, userID id.UserID) bool {
@@ -982,9 +1004,24 @@ func fnDeletePortal(ce *WrappedCommandEvent) {
 		return
 	}
 
-	portal.log.Infoln(ce.User.MXID, "requested deletion of portal.")
-	portal.Delete()
-	portal.Cleanup("Portal deleted", false)
+	const command = "delete"
+	ce.User.CommandState = map[string]interface{}{
+		"next":             &StateHandler{confirmCleanup, "Portal deletion"},
+		"deletePortal":     true,
+		"roomID":           portal.MXID,
+		"command":          command,
+		"completedMessage": "Portal successfully deleted.",
+	}
+	ce.Reply(
+		"Please confirm deletion of th%s portal "+
+			"by typing `$cmdprefix  confirm-%s`."+
+			"\n\n"+
+			"**WARNING:** If the bridge bot has the power level to do so, **this "+
+			"will kick ALL users** in the room. If you just want to remove the "+
+			"bridge, use `$cmdprefix  unbridge` instead.",
+		getThatThisSuffix(portal.MXID, ce.RoomID),
+		command,
+	)
 }
 
 var cmdDeleteAllPortals = &commands.FullHandler{
@@ -996,7 +1033,59 @@ var cmdDeleteAllPortals = &commands.FullHandler{
 	},
 }
 
+func confirmCleanup(ce *WrappedCommandEvent) {
+	status := ce.User.GetCommandState()
+	command := status["command"].(string)
+	if ce.Args[0] != "confirm-"+command {
+		fnCancel(ce)
+		return
+	}
+
+	deletePortal := status["deletePortal"].(bool)
+	roomID := status["roomID"].(id.RoomID)
+	portal := ce.Bridge.GetPortalByMXID(roomID)
+	if portal == nil {
+		panic("could not retrieve portal that was expected to exist")
+	}
+	ce.User.CommandState = nil
+
+	var requestAction, responseAction string
+	if deletePortal {
+		requestAction = "deletion"
+		responseAction = "Portal deleted"
+	} else {
+		requestAction = "unbridging"
+		responseAction = "Room unbridged"
+	}
+	portal.log.Infoln("%s requested %s of portal.", ce.User.MXID, requestAction)
+	portal.Delete()
+	portal.Cleanup(responseAction, !deletePortal)
+	if ce.RoomID != roomID {
+		ce.Reply(status["completedMessage"].(string))
+	}
+}
+
 func fnDeleteAllPortals(ce *WrappedCommandEvent) {
+	ce.User.CommandState = map[string]interface{}{
+		"next": &StateHandler{confirmDeleteAll, "Deletion of all portals"},
+	}
+	ce.Reply(
+		"Please confirm deletion of all WhatsApp portal rooms that you have permissions to delete " +
+			"by typing `$cmdprefix  confirm-delete-all`." +
+			"\n\n" +
+			"**WARNING:** If the bridge bot has the power level to do so, **this " +
+			"will kick ALL users** in **EVERY** portal room. If you just want to remove the " +
+			"bridge from certain rooms, use `$cmdprefix  unbridge` instead.",
+	)
+}
+
+func confirmDeleteAll(ce *WrappedCommandEvent) {
+	if ce.Args[0] != "confirm-delete-all" {
+		fnCancel(ce)
+		return
+	}
+	ce.User.CommandState = nil
+
 	portals := ce.Bridge.GetAllPortals()
 	var portalsToDelete []*Portal
 
@@ -1399,13 +1488,6 @@ func cleanupOldPortalWhileBridging(ce *WrappedCommandEvent, portal *Portal) (boo
 }
 
 func confirmBridge(ce *WrappedCommandEvent) {
-	defer func() {
-		if err := recover(); err != nil {
-			ce.User.CommandState = nil
-			ce.Reply("Fatal error: %v. This shouldn't happen unless you're messing with the command handler code.", err)
-		}
-	}()
-
 	status := ce.User.GetCommandState()
 	roomID := status["bridgeToMXID"].(id.RoomID)
 	portal := ce.User.GetPortalByJID(status["jid"].(types.JID))
