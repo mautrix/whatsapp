@@ -80,7 +80,7 @@ func (br *WABridge) createPrivatePortalFromInvite(roomID id.RoomID, inviter *Use
 		if err != nil {
 			portal.log.Warnln("Failed to join as bridge bot to enable e2be:", err)
 		}
-		_, err = intent.SendStateEvent(roomID, event.StateEncryption, "", &event.EncryptionEventContent{Algorithm: id.AlgorithmMegolmV1})
+		_, err = intent.SendStateEvent(roomID, event.StateEncryption, "", portal.GetEncryptionEventContent())
 		if err != nil {
 			portal.log.Warnln("Failed to enable e2be:", err)
 		}
