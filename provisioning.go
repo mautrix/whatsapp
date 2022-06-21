@@ -659,7 +659,7 @@ func (prov *ProvisioningAPI) CreateGroup(w http.ResponseWriter, r *http.Request)
 		})
 	} else if pInfo := GetMissingRequiredPerms(roomID, prov.bridge.AS.BotIntent(), prov.bridge, prov.log); pInfo != nil {
 		missingRequiredPermsResponse(w, pInfo)
-	} else if portal, info, errMsg := createGroup(user, roomID, &prov.log, nil); errMsg != "" {
+	} else if portal, info, errMsg := createGroup(user, roomID, prov.log, nil); errMsg != "" {
 		jsonResponse(w, http.StatusForbidden, Error{
 			Error:   errMsg,
 			ErrCode: "error creating group",

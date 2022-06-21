@@ -555,7 +555,7 @@ func fnCreate(ce *WrappedCommandEvent) {
 		return
 	}
 
-	portal, _, errMsg := createGroup(ce.User, bridgeRoomID, &ce.Log, ce.Reply)
+	portal, _, errMsg := createGroup(ce.User, bridgeRoomID, ce.Log, ce.Reply)
 	if errMsg != "" {
 		ce.Reply(errMsg)
 	} else {
@@ -568,7 +568,7 @@ func fnCreate(ce *WrappedCommandEvent) {
 // If replier is set, it will be used to post user-visible messages about the progres of the group creation.
 //
 // On failure, returns an error message string (instead of an error object from a function call).
-func createGroup(user *User, roomID id.RoomID, log *log.Logger, replier func(string, ...interface{})) (
+func createGroup(user *User, roomID id.RoomID, log log.Logger, replier func(string, ...interface{})) (
 	newPortal *Portal,
 	info *types.GroupInfo,
 	errMsg string,
@@ -584,7 +584,7 @@ func createGroup(user *User, roomID id.RoomID, log *log.Logger, replier func(str
 	var roomNameEvent event.RoomNameEventContent
 	err = bridge.Bot.StateEvent(roomID, event.StateRoomName, "", &roomNameEvent)
 	if err != nil && !errors.Is(err, mautrix.MNotFound) {
-		(*log).Errorln("Failed to get room name to create group:", err)
+		log.Errorln("Failed to get room name to create group:", err)
 		errMsg = "Failed to get room name"
 		return
 	} else if len(roomNameEvent.Name) == 0 {
@@ -617,7 +617,7 @@ func createGroup(user *User, roomID id.RoomID, log *log.Logger, replier func(str
 		}
 	}
 
-	(*log).Infofln("Creating group for %s with name %s and participants %+v", roomID, roomNameEvent.Name, participants)
+	log.Infofln("Creating group for %s with name %s and participants %+v", roomID, roomNameEvent.Name, participants)
 	user.groupCreateLock.Lock()
 	defer user.groupCreateLock.Unlock()
 	resp, err := user.Client.CreateGroup(roomNameEvent.Name, participants)
