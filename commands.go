@@ -265,7 +265,7 @@ func userHasPowerLevel(roomID id.RoomID, intent *appservice.IntentAPI, sender *U
 	if err != nil || levels == nil {
 		return false
 	}
-	eventType := event.Type{Type: "fi.mau.whatsapp" + stateEventName, Class: event.StateEventType}
+	eventType := event.Type{Type: "fi.mau.whatsapp." + stateEventName, Class: event.StateEventType}
 	return levels.GetUserLevel(sender.MXID) >= levels.GetEventLevel(eventType)
 }
 
