@@ -339,11 +339,18 @@ type OtherUserInfo struct {
 	Avatar id.ContentURI `json:"avatar_url"`
 }
 
+type PermsInfo struct {
+	BotLevel     int                     `json:"bot_level"`
+	UserLevel    int                     `json:"user_level"`
+	MissingPerms *map[string]interface{} `json:"missing_permissions"`
+}
+
 type PortalInfo struct {
 	RoomID      id.RoomID        `json:"room_id"`
 	OtherUser   *OtherUserInfo   `json:"other_user,omitempty"`
 	GroupInfo   *types.GroupInfo `json:"group_info,omitempty"`
 	JustCreated bool             `json:"just_created"`
+	PermsInfo   *PermsInfo       `json:"permissions_info,omitempty"`
 }
 
 type LinkInfo struct {
@@ -513,6 +520,8 @@ func (prov *ProvisioningAPI) BridgeGroup(w http.ResponseWriter, r *http.Request)
 			Error:   "User does not have the permissions to bridge that room",
 			ErrCode: "not enough permissions",
 		})
+	} else if pInfo := GetMissingRequiredPerms(roomID, prov.bridge.AS.BotIntent(), prov.bridge, prov.log); pInfo != nil {
+		missingRequiredPermsResponse(w, pInfo)
 	} else if jid, err := types.ParseJID(groupID); err != nil || jid.Server != types.GroupServer || (!strings.ContainsRune(jid.User, '-') && len(jid.User) < 15) {
 		jsonResponse(w, http.StatusBadRequest, Error{
 			Error:   "Invalid group ID",
@@ -549,11 +558,11 @@ func (prov *ProvisioningAPI) BridgeGroup(w http.ResponseWriter, r *http.Request)
 		}
 		portal.roomCreateLock.Lock()
 		defer portal.roomCreateLock.Unlock()
-		// TODO Store detected power levels & warn about missing permissions
 		portal.BridgeMatrixRoom(roomID, user, info)
 		jsonResponse(w, http.StatusOK, PortalInfo{
 			RoomID:    portal.MXID,
 			GroupInfo: info,
+			PermsInfo: getPermsInfo(GetMissingOptionalPerms(roomID, prov.bridge.AS.BotIntent(), prov.bridge, prov.log)),
 		})
 	}
 }
@@ -639,6 +648,8 @@ func (prov *ProvisioningAPI) CreateGroup(w http.ResponseWriter, r *http.Request)
 			Error:   "User does not have the permissions to bridge that room",
 			ErrCode: "not enough permissions",
 		})
+	} else if pInfo := GetMissingRequiredPerms(roomID, prov.bridge.AS.BotIntent(), prov.bridge, prov.log); pInfo != nil {
+		missingRequiredPermsResponse(w, pInfo)
 	} else if portal, info, errMsg := createGroup(user, roomID, &prov.log, nil); errMsg != "" {
 		jsonResponse(w, http.StatusForbidden, Error{
 			Error:   errMsg,
@@ -648,6 +659,7 @@ func (prov *ProvisioningAPI) CreateGroup(w http.ResponseWriter, r *http.Request)
 		jsonResponse(w, http.StatusOK, PortalInfo{
 			RoomID:    portal.MXID,
 			GroupInfo: info,
+			PermsInfo: getPermsInfo(GetMissingOptionalPerms(roomID, prov.bridge.AS.BotIntent(), prov.bridge, prov.log)),
 		})
 	}
 }
@@ -783,6 +795,44 @@ func (prov *ProvisioningAPI) Ping(w http.ResponseWriter, r *http.Request) {
 		"whatsapp":          wa,
 	}
 	jsonResponse(w, http.StatusOK, resp)
+}
+
+func missingRequiredPermsResponse(w http.ResponseWriter, info *MissingPermsInfo) {
+	jsonResponse(w, http.StatusForbidden, map[string]interface{}{
+		"error":            "Bridge is missing required permissions in this room",
+		"errcode":          "bridge missing permissions",
+		"permissions_info": getPermsInfo(info),
+	})
+}
+
+func getPermsInfo(info *MissingPermsInfo) *PermsInfo {
+	if info == nil {
+		return nil
+	}
+
+	var obj PermsInfo
+	obj.BotLevel = info.BotLevel
+	obj.UserLevel = info.UserLevel
+
+	missingPerms := make(map[string]interface{})
+	obj.MissingPerms = &missingPerms
+
+	const eventsKey = "events"
+	eventPerms := make(map[string]int)
+	missingPerms[eventsKey] = eventPerms
+
+	for _, perm := range info.MissingPerms {
+		if perm.IsEvent {
+			eventPerms[perm.Key] = perm.ReqLevel
+		} else {
+			missingPerms[perm.Key] = perm.ReqLevel
+		}
+	}
+	if len(eventPerms) == 0 {
+		delete(missingPerms, eventsKey)
+	}
+
+	return &obj
 }
 
 func jsonResponse(w http.ResponseWriter, status int, response interface{}) {

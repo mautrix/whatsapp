@@ -1098,21 +1098,246 @@ func (portal *Portal) UpdateMatrixRoom(user *User, groupInfo *types.GroupInfo) b
 	return true
 }
 
-func (portal *Portal) BridgeMatrixRoom(roomID id.RoomID, user *User, info *types.GroupInfo) (levels *event.PowerLevelsEventContent) {
+type MissingPermsInfo struct {
+	BotLevel     int
+	UserLevel    int
+	MissingPerms []MissingPermDescriptor
+
+	// cached to simplify the quickfix check
+	plSetLevel int
+}
+
+type MissingPermDescriptor struct {
+	Key         string
+	IsEvent     bool
+	Description string
+	Consequence string
+	IsForBot    bool
+	ReqLevel    int
+}
+
+func initMissingPermsInfo(botMXID id.UserID, levels *event.PowerLevelsEventContent) (info MissingPermsInfo) {
+	info.BotLevel, info.plSetLevel = getControlLevels(botMXID, levels)
+	info.UserLevel = getParticipantLevel(ptUser, info.BotLevel, info.plSetLevel, levels.UsersDefault)
+	return
+}
+
+func (info *MissingPermsInfo) GetLevel(forBot bool) int {
+	if forBot {
+		return info.BotLevel
+	} else {
+		return info.UserLevel
+	}
+}
+
+func (info *MissingPermsInfo) GetMinSufficientBotLevel() int {
+	minLevel := info.BotLevel
+	for _, missingPerm := range info.MissingPerms {
+		if missingPerm.IsForBot && minLevel < missingPerm.ReqLevel {
+			minLevel = missingPerm.ReqLevel
+		}
+	}
+	return minLevel
+}
+
+func (info *MissingPermsInfo) GetQuickfixLevel() int {
+	minLevel := info.BotLevel
+	if minLevel < info.plSetLevel {
+		minLevel = info.plSetLevel
+	}
+	for _, missingPerm := range info.MissingPerms {
+		if minLevel < missingPerm.ReqLevel {
+			minLevel = missingPerm.ReqLevel
+		}
+	}
+	return minLevel
+}
+
+type permDescriptor struct {
+	evt         event.Type
+	key         string
+	level       int
+	isForBot    bool
+	description string
+	consequence string
+}
+
+func GetMissingRequiredPerms(roomID id.RoomID, botIntent *appservice.IntentAPI, bridge *WABridge, log log.Logger) *MissingPermsInfo {
+	levels, err := botIntent.PowerLevels(roomID)
+	if err != nil {
+		log.Errorln("Failed to get power levels: %v", err)
+		return nil
+	}
+	info := initMissingPermsInfo(botIntent.UserID, levels)
+
+	var joinRules event.JoinRulesEventContent
+	err = botIntent.StateEvent(roomID, event.StateJoinRules, "", &joinRules)
+	if err != nil {
+		log.Warnln("Failed to get join rule: %v", err)
+	} else if joinRules.JoinRule == event.JoinRuleInvite || joinRules.JoinRule == event.JoinRulePrivate || joinRules.JoinRule == event.JoinRuleKnock {
+		checkPerm(&info, levels, &permDescriptor{
+			key:         "invite",
+			level:       levels.Invite(),
+			isForBot:    true,
+			description: "The room is private, and the bridge bot doesn't have privileges to invite Matrix users to it.",
+			consequence: "This means WhatsApp puppets will be unable to join the room.",
+		})
+	}
+
+	checkPerm(&info, levels, &permDescriptor{
+		evt:         event.EventMessage,
+		isForBot:    false,
+		description: "WhatsApp puppets don't have privileges to send messages.",
+		consequence: "This means WhatsApp messages cannot be bridged.",
+	})
+
+	if len(info.MissingPerms) == 0 {
+		return nil
+	} else {
+		return &info
+	}
+}
+
+func GetMissingOptionalPerms(roomID id.RoomID, botIntent *appservice.IntentAPI, bridge *WABridge, log log.Logger) *MissingPermsInfo {
+	levels, err := botIntent.PowerLevels(roomID)
+	if err != nil {
+		log.Errorln("Failed to get power levels: %v", err)
+		return nil
+	}
+	info := initMissingPermsInfo(botIntent.UserID, levels)
+
+	var joinRules event.JoinRulesEventContent
+	err = botIntent.StateEvent(roomID, event.StateJoinRules, "", &joinRules)
+	if err != nil {
+		log.Warnln("Failed to get join rule: %v", err)
+	} else if joinRules.JoinRule == event.JoinRuleRestricted {
+		checkPerm(&info, levels, &permDescriptor{
+			key:         "invite",
+			level:       levels.Invite(),
+			isForBot:    true,
+			description: "Room membership is restricted, and the bridge bot doesn't have privileges to invite Matrix users to it.",
+			consequence: "This means the only WhatsApp puppets that can join the room are ones which are members of rooms/spaces that grant access to it.",
+		})
+	}
+
+	checkPerm(&info, levels, &permDescriptor{
+		evt:         event.EventRedaction,
+		isForBot:    false,
+		description: "WhatsApp puppets don't have privileges to redact their own messages on Matrix.",
+		consequence: "This means the bridge bot must redact their messages in order to bridge message deletions from WhatsApp.",
+	})
+
+	checkPerm(&info, levels, &permDescriptor{
+		key:         "redact",
+		level:       levels.Redact(),
+		isForBot:    true,
+		description: "The bridge bot doesn't have privileges to redact messages on Matrix.",
+		consequence: "This means some message deletions from WhatsApp will not be bridged.",
+	})
+
+	checkPerm(&info, levels, &permDescriptor{
+		evt:         event.EventReaction,
+		isForBot:    false,
+		description: "WhatsApp puppets don't have privileges to send reactions.",
+		consequence: "This means message reactions from WhatsApp will not be bridged.",
+	})
+
+	if bridge.Config.Bridge.AllowUserInvite {
+		checkPerm(&info, levels, &permDescriptor{
+			evt:         event.StateBridge,
+			isForBot:    true,
+			description: "The bridge bot doesn't have privileges to mark the room as being a bridge to WhatsApp.",
+			consequence: "This means other Matrix users (including bots) may not be able to see it is a WhatsApp portal room.",
+		})
+	}
+
+	checkPerm(&info, levels, &permDescriptor{
+		evt:         event.StateRoomName,
+		isForBot:    true,
+		description: "The bridge bot doesn't have privileges to set the room name.",
+		consequence: "This means the WhatsApp group's subject will not be bridged.",
+	})
+
+	checkPerm(&info, levels, &permDescriptor{
+		evt:         event.StateTopic,
+		isForBot:    true,
+		description: "The bridge bot doesn't have privileges to set the room topic.",
+		consequence: "This means the WhatsApp group's description will not be bridged.",
+	})
+
+	checkPerm(&info, levels, &permDescriptor{
+		evt:         event.StateRoomAvatar,
+		isForBot:    true,
+		description: "The bridge bot doesn't have privileges to set the room avatar.",
+		consequence: "This means the WhatsApp group's icon will not be bridged.",
+	})
+
+	checkPerm(&info, levels, &permDescriptor{
+		evt:         event.StatePowerLevels,
+		isForBot:    true,
+		description: "The bridge bot doesn't have privileges to set the power levels of Matrix users or change the room's permission settings.",
+		consequence: "This means permissions and admin settings from WhatsApp will not be bridged.",
+	})
+
+	if len(info.MissingPerms) == 0 {
+		return nil
+	} else {
+		return &info
+	}
+}
+
+func checkPerm(info *MissingPermsInfo, levels *event.PowerLevelsEventContent, perm *permDescriptor) {
+	isEvent := perm.key == ""
+	var key string
+	var reqLevel int
+	if isEvent {
+		key = perm.evt.Type
+		reqLevel = levels.GetEventLevel(perm.evt)
+	} else {
+		key = perm.key
+		reqLevel = perm.level
+	}
+	if perm.isForBot && info.BotLevel < reqLevel || !perm.isForBot && info.UserLevel < reqLevel {
+		info.MissingPerms = append(info.MissingPerms, MissingPermDescriptor{
+			Key:         key,
+			IsEvent:     isEvent,
+			Description: perm.description,
+			Consequence: perm.consequence,
+			IsForBot:    perm.isForBot,
+			ReqLevel:    reqLevel,
+		})
+	}
+}
+
+func (portal *Portal) BridgeMatrixRoom(roomID id.RoomID, user *User, info *types.GroupInfo) {
 	portal.MXID = roomID
 	portal.bridge.portalsLock.Lock()
 	portal.bridge.portalsByMXID[portal.MXID] = portal
 	portal.bridge.portalsLock.Unlock()
-	portal.Name, portal.Topic, levels, portal.Encrypted = getInitialState(
-		portal.bridge.AS.BotIntent(), roomID,
-	)
+
+	state, err := portal.bridge.AS.BotIntent().State(roomID)
+	if err == nil {
+		for _, events := range state {
+			for _, evt := range events {
+				switch evt.Type {
+				case event.StateRoomName:
+					portal.Name = evt.Content.AsRoomName().Name
+				case event.StateTopic:
+					portal.Topic = evt.Content.AsTopic().Topic
+				case event.StateEncryption:
+					portal.Encrypted = true
+				default:
+					continue
+				}
+			}
+		}
+	}
+
 	portal.Avatar = ""
 	portal.Update(nil)
 	portal.UpdateBridgeInfo()
 
-	// TODO Let UpdateMatrixRoom also update power levels
 	go portal.UpdateMatrixRoom(user, info)
-	return
 }
 
 func (portal *Portal) GetBasePowerLevels() *event.PowerLevelsEventContent {

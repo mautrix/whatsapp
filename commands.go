@@ -169,25 +169,67 @@ func getBridgeableRoomID(ce *WrappedCommandEvent, argIndex int, hereByDefault bo
 	if !ok || roomID == "" {
 		return
 	}
+	ok = false
 
 	if err := ce.Bot.EnsureJoined(roomID); err != nil {
-		ok = false
 		ce.Log.Errorln("Failed to join room: %v", err)
 		ce.Reply("Failed to join target room. Ensure that the room exists and that the bridge bot can join it.")
 		return
 	}
 
-	var errMsg string
+	var reply string
 	if ce.Bridge.GetPortalByMXID(roomID) != nil {
-		errMsg = "Th%s room is already a portal room."
+		reply = "Th%s room is already a portal room."
 	} else if !userHasPowerLevel(roomID, ce.MainIntent(), ce.User, "bridge") {
-		errMsg = "You do not have the permissions to bridge th%s room."
+		reply = "You do not have the permissions to bridge th%s room."
+	} else if pInfo := GetMissingRequiredPerms(roomID, ce.MainIntent(), ce.Bridge, ce.Log); pInfo != nil {
+		reply = "The bridge is missing **required** privileges in th%s room:\n" +
+			formatMissingPerms(pInfo, ce.Bot.UserID)
+	} else {
+		ok = true
+		if pInfo := GetMissingOptionalPerms(roomID, ce.MainIntent(), ce.Bridge, ce.Log); pInfo != nil {
+			reply = "The bridge is missing optional privileges in th%s room:\n" +
+				formatMissingPerms(pInfo, ce.Bot.UserID)
+		}
 	}
-	if errMsg != "" {
-		ok = false
-		ce.Reply(errMsg, getThatThisSuffix(roomID, ce.RoomID))
+
+	if reply != "" {
+		ce.Reply(reply, getThatThisSuffix(roomID, ce.RoomID))
 	}
 	return
+}
+
+func formatMissingPerms(pInfo *MissingPermsInfo, botMXID id.UserID) string {
+	numMissingPerms := len(pInfo.MissingPerms)
+	if numMissingPerms == 0 {
+		return ""
+	}
+	var missingBotPerm, missingUserPerm bool
+	var permReply strings.Builder
+	for _, missingPerm := range pInfo.MissingPerms {
+		permReply.WriteString(fmt.Sprintf(
+			"- **%s** %s\n  - To grant this privilege, lower its power level requirement to **%d**",
+			missingPerm.Description,
+			missingPerm.Consequence,
+			pInfo.GetLevel(missingPerm.IsForBot)))
+		if missingPerm.IsForBot {
+			permReply.WriteString(fmt.Sprintf(
+				", or raise the power level of [%[1]s](https://matrix.to/#/%[1]s) to **%[2]d**",
+				botMXID,
+				missingPerm.ReqLevel))
+			missingBotPerm = true
+		} else {
+			missingUserPerm = true
+		}
+		permReply.WriteString(".\n")
+	}
+	if numMissingPerms > 1 || missingBotPerm && missingUserPerm {
+		permReply.WriteString(fmt.Sprintf(
+			"\nTo quickly grant all missing privileges at once, raise the power level of [%[1]s](https://matrix.to/#/%[1]s) to **%[2]d**.",
+			botMXID,
+			pInfo.GetQuickfixLevel()))
+	}
+	return permReply.String()
 }
 
 func getPortalForCmd(ce *WrappedCommandEvent, argIndex int) (portal *Portal) {
@@ -213,53 +255,6 @@ func getPortalForCmd(ce *WrappedCommandEvent, argIndex int) (portal *Portal) {
 		ce.Reply("That command can only be ran for portal rooms, and %s is not a portal room.", roomString)
 	}
 	return
-}
-
-func getInitialState(intent *appservice.IntentAPI, roomID id.RoomID) (
-	name string,
-	topic string,
-	levels *event.PowerLevelsEventContent,
-	encrypted bool,
-) {
-	state, err := intent.State(roomID)
-	if err == nil {
-		for _, events := range state {
-			for _, evt := range events {
-				switch evt.Type {
-				case event.StateRoomName:
-					name = evt.Content.AsRoomName().Name
-				case event.StateTopic:
-					topic = evt.Content.AsTopic().Topic
-				case event.StatePowerLevels:
-					levels = evt.Content.AsPowerLevels()
-				case event.StateEncryption:
-					encrypted = true
-				default:
-					continue
-				}
-			}
-		}
-	}
-	return
-}
-
-func warnMissingPower(levels *event.PowerLevelsEventContent, ce *WrappedCommandEvent) {
-	if levels.GetUserLevel(ce.Bot.UserID) < levels.Redact() {
-		ce.Reply("Warning: The bot does not have privileges to redact messages on Matrix. "+
-			"Message deletions from WhatsApp will not be bridged unless you give "+
-			"redaction permissions to [%[1]s](https://matrix.to/#/%[1]s)",
-			ce.Bot.UserID,
-		)
-	}
-	/* TODO Check other permissions too:
-	Important:
-	- invite/kick
-	Optional:
-	- m.bridge/uk.half-shot.bridge
-	- set room name/topic/avatar
-	- change power levels
-	- top PL for bot to control all users, including initial inviter
-	*/
 }
 
 func userHasPowerLevel(roomID id.RoomID, intent *appservice.IntentAPI, sender *User, stateEventName string) bool {
@@ -1451,9 +1446,7 @@ func confirmBridge(ce *WrappedCommandEvent) {
 		return
 	}
 
-	levels := portal.BridgeMatrixRoom(roomID, user, info)
-	warnMissingPower(levels, ce)
-
+	portal.BridgeMatrixRoom(roomID, user, info)
 	ce.Reply("Bridging complete. Portal synchronization should begin momentarily.")
 }
 
