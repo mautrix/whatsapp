@@ -100,6 +100,9 @@ func DoUpgrade(helper *up.Helper) {
 	helper.Copy(up.Bool, "bridge", "encryption", "key_sharing", "allow")
 	helper.Copy(up.Bool, "bridge", "encryption", "key_sharing", "require_cross_signing")
 	helper.Copy(up.Bool, "bridge", "encryption", "key_sharing", "require_verification")
+	helper.Copy(up.Bool, "bridge", "encryption", "rotation", "enable_custom")
+	helper.Copy(up.Int, "bridge", "encryption", "rotation", "milliseconds")
+	helper.Copy(up.Int, "bridge", "encryption", "rotation", "messages")
 	if prefix, ok := helper.Get(up.Str, "appservice", "provisioning", "prefix"); ok {
 		helper.Set(up.Str, strings.TrimSuffix(prefix, "/v1"), "bridge", "provisioning", "prefix")
 	} else {

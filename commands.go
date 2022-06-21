@@ -379,7 +379,7 @@ func fnCreate(ce *WrappedCommandEvent) {
 	portal.Name = roomNameEvent.Name
 	portal.Encrypted = encryptionEvent.Algorithm == id.AlgorithmMegolmV1
 	if !portal.Encrypted && ce.Bridge.Config.Bridge.Encryption.Default {
-		_, err = portal.MainIntent().SendStateEvent(portal.MXID, event.StateEncryption, "", &event.EncryptionEventContent{Algorithm: id.AlgorithmMegolmV1})
+		_, err = portal.MainIntent().SendStateEvent(portal.MXID, event.StateEncryption, "", portal.GetEncryptionEventContent())
 		if err != nil {
 			portal.log.Warnln("Failed to enable encryption in room:", err)
 			if errors.Is(err, mautrix.MForbidden) {

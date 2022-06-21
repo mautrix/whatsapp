@@ -318,6 +318,23 @@ bridge:
             # Require devices to be verified by the bridge?
             # Verification by the bridge is not yet implemented.
             require_verification: true
+        # Options for Megolm room key rotation. These options allow you to
+        # configure the m.room.encryption event content. See:
+        # https://spec.matrix.org/v1.3/client-server-api/#mroomencryption for
+        # more information about that event.
+        rotation:
+            # Enable custom Megolm room key rotation settings. Note that these
+            # settings will only apply to rooms created after this option is
+            # set.
+            enable_custom: false
+            # The maximum number of milliseconds a session should be used
+            # before changing it. The Matrix spec recommends 604800000 (a week)
+            # as the default.
+            milliseconds: 604800000
+            # The maximum number of messages that should be sent with a given a
+            # session before changing it. The Matrix spec recommends 100 as the
+            # default.
+            messages: 100
 
     # Settings for provisioning API
     provisioning:
