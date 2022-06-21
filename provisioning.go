@@ -70,6 +70,8 @@ func (prov *ProvisioningAPI) Init() {
 	r.HandleFunc("/v1/bridge/{groupID}/{roomIDorAlias}", prov.BridgeGroup).Methods(http.MethodPost)
 	r.HandleFunc("/v1/open/{groupID}", prov.OpenGroup).Methods(http.MethodPost)
 	r.HandleFunc("/v1/create/{roomIDorAlias}", prov.CreateGroup).Methods(http.MethodPost)
+	r.HandleFunc("/v1/unbridge/{roomIDorAlias}", prov.UnbridgePortal).Methods(http.MethodPost)
+	r.HandleFunc("/v1/delete/{roomIDorAlias}", prov.DeletePortal).Methods(http.MethodPost)
 	r.HandleFunc("/v1/set_relay/{roomIDorAlias}", prov.SetRelay).Methods(http.MethodPost)
 	r.HandleFunc("/v1/unset_relay/{roomIDorAlias}", prov.UnsetRelay).Methods(http.MethodPost)
 	r.HandleFunc("/v1/invite_link/{roomIDorAlias}", prov.GetInvite).Methods(http.MethodGet)
@@ -668,6 +670,60 @@ func (prov *ProvisioningAPI) CreateGroup(w http.ResponseWriter, r *http.Request)
 			GroupInfo: info,
 			PermsInfo: getPermsInfo(GetMissingOptionalPerms(roomID, prov.bridge.AS.BotIntent(), prov.bridge, prov.log)),
 		})
+	}
+}
+
+func (prov *ProvisioningAPI) UnbridgePortal(w http.ResponseWriter, r *http.Request) {
+	prov.CleanupPortal(w, r, false)
+}
+
+func (prov *ProvisioningAPI) DeletePortal(w http.ResponseWriter, r *http.Request) {
+	prov.CleanupPortal(w, r, true)
+}
+
+func (prov *ProvisioningAPI) CleanupPortal(w http.ResponseWriter, r *http.Request, deletePortal bool) {
+	roomArg := mux.Vars(r)["roomIDorAlias"]
+	user := r.Context().Value("user").(*User)
+	if roomID, isAlias, err := prov.bridge.ResolveRoomArg(roomArg); err != nil || roomID == "" {
+		if isAlias {
+			jsonResponse(w, http.StatusNotFound, Error{
+				Error:   "Failed to resolve room alias",
+				ErrCode: "error resolving room alias",
+			})
+		} else {
+			jsonResponse(w, http.StatusBadRequest, Error{
+				Error:   "Invalid room ID",
+				ErrCode: "invalid room id",
+			})
+		}
+	} else if portal := prov.bridge.GetPortalByMXID(roomID); portal == nil {
+		jsonResponse(w, http.StatusConflict, Error{
+			Error:   "Room is not bridged to WhatsApp",
+			ErrCode: "room not bridged",
+		})
+	} else if deletePortal && !user.Admin && canDeletePortal(portal, user.MXID) {
+		jsonResponse(w, http.StatusForbidden, Error{
+			Error:   "Only bridge admins can delete portals with other Matrix users",
+			ErrCode: "not admin",
+		})
+	} else if !checkUnbridgePermission(portal, user) {
+		jsonResponse(w, http.StatusForbidden, Error{
+			Error:   "User does not have the permissions to unbridge that room",
+			ErrCode: "not enough permissions",
+		})
+	} else {
+		var requestAction, responseAction string
+		if deletePortal {
+			requestAction = "deletion"
+			responseAction = "Portal deleted"
+		} else {
+			requestAction = "unbridging"
+			responseAction = "Room unbridged"
+		}
+		portal.log.Infoln("%s requested %s of portal.", user.MXID, requestAction)
+		portal.Delete()
+		portal.Cleanup(responseAction, !deletePortal)
+		jsonResponse(w, http.StatusOK, Response{true, responseAction})
 	}
 }
 
