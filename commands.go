@@ -952,7 +952,7 @@ func canDeletePortal(portal *Portal, userID id.UserID) bool {
 			continue
 		}
 		user := portal.bridge.GetUserByMXID(otherUser)
-		if user != nil && user.Session != nil {
+		if user != nil && (user.Session != nil || portal.bridge.Config.Bridge.AllowUserInvite) {
 			return false
 		}
 	}
