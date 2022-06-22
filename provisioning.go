@@ -497,7 +497,7 @@ func (prov *ProvisioningAPI) JoinGroup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	inviteLinkPath := mux.Vars(r)["inviteLinkPath"]
-	roomArg := r.URL.Query().Get("roomIDorAlias")
+	roomArg := r.URL.Query().Get("room_id")
 	var bridgeRoomID id.RoomID
 	if roomArg != "" {
 		ok := false
@@ -538,26 +538,26 @@ func (prov *ProvisioningAPI) JoinGroup(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if jid, foundPortal, errMsg := joinGroup(user, whatsmeow.InviteLinkPrefix+inviteLinkPath, "", prov.log); errMsg != "" {
+	if jid, foundPortal, errMsg := joinGroup(user, whatsmeow.InviteLinkPrefix+inviteLinkPath, bridgeRoomID, prov.log); errMsg != "" {
 		jsonResponse(w, http.StatusBadRequest, Error{
 			Error:   errMsg,
 			ErrCode: "error joining group via invite link",
 		})
-	} else if bridgeRoomID != "" && foundPortal != nil {
-		jsonResponse(w, http.StatusConflict, Error{
-			Error:   "The WhatsApp group for this invite link is already bridged to another room",
-			ErrCode: "bridge exists",
-		})
 	} else {
-		var roomID id.RoomID
+		var foundRoomID id.RoomID
 		var permsInfo *PermsInfo
+		status := http.StatusOK
 		if foundPortal != nil {
-			roomID = foundPortal.MXID
-			permsInfo = getPermsInfo(GetMissingOptionalPerms(roomID, prov.bridge.AS.BotIntent(), prov.bridge, prov.log))
+			if bridgeRoomID != "" && bridgeRoomID != foundPortal.MXID {
+				status = http.StatusConflict
+				foundRoomID = foundPortal.MXID
+			}
+		} else if bridgeRoomID != "" {
+			permsInfo = getPermsInfo(GetMissingOptionalPerms(bridgeRoomID, prov.bridge.AS.BotIntent(), prov.bridge, prov.log))
 		}
-		jsonResponse(w, http.StatusOK, JoinInfo{
+		jsonResponse(w, status, JoinInfo{
 			JID:         jid,
-			FoundRoomID: roomID,
+			FoundRoomID: foundRoomID,
 			PermsInfo:   permsInfo,
 		})
 	}

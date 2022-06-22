@@ -34,6 +34,7 @@ import (
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/appstate"
 	"go.mau.fi/whatsmeow/types"
+	"go.mau.fi/whatsmeow/types/events"
 
 	log "maunium.net/go/maulogger/v2"
 
@@ -364,7 +365,7 @@ var cmdInviteLink = &commands.FullHandler{
 	Name: "invite-link",
 	Help: commands.HelpMeta{
 		Section:     HelpSectionInvites,
-		Description: "Get an invite link to the current group chat, optionally regenerating the link and revoking the old link.",
+		Description: "Get an invite link for the group chat of the current portal or a specified one, optionally regenerating the link and revoking the old link.",
 		Args:        "[--reset] " + roomArgHelpNohereMd,
 	},
 	RequiresLogin: true,
@@ -506,21 +507,21 @@ func joinOrBridgeGroup(ce *WrappedCommandEvent, inviteLink string, bridgeRoomID 
 		return
 	}
 
-	useNewPortal := bridgeRoomID == ""
-	if !useNewPortal && foundPortal != nil {
-		offerToReplacePortal(ce, foundPortal, bridgeRoomID, jid)
-		return
-	}
-
 	var replySuffix string
+	roomConflict := false
 	if foundPortal == nil {
-		if useNewPortal {
+		if bridgeRoomID == "" {
 			replySuffix = " The portal should be created momentarily."
 		} else {
 			replySuffix = " Portal synchronization should begin momentarily."
 		}
+	} else if bridgeRoomID != "" && bridgeRoomID != foundPortal.MXID {
+		roomConflict = true
 	}
 	ce.Reply("Successfully joined group `%s`.%s", jid, replySuffix)
+	if roomConflict {
+		offerToReplacePortal(ce, foundPortal, bridgeRoomID, jid)
+	}
 }
 
 // Joins a WhatsApp group via an invite link, creating a portal for the group if needed.
@@ -534,11 +535,8 @@ func joinGroup(user *User, inviteLink string, bridgeRoomID id.RoomID, log log.Lo
 	errMsg string,
 ) {
 	log.Infofln("Joining group via invite link %s", inviteLink)
-	useNewPortal := bridgeRoomID == ""
-	if !useNewPortal {
-		user.groupCreateLock.Lock()
-		defer user.groupCreateLock.Unlock()
-	}
+	user.groupCreateLock.Lock()
+	defer user.groupCreateLock.Unlock()
 
 	jid, err := user.Client.JoinGroupWithLink(inviteLink)
 	if err != nil {
@@ -546,16 +544,32 @@ func joinGroup(user *User, inviteLink string, bridgeRoomID id.RoomID, log log.Lo
 		return
 	}
 	log.Debugln("%s successfully joined group %s", user.MXID, jid)
+
+	if bridgeRoomID != "" && user.bridge.GetPortalByMXID(bridgeRoomID) != nil {
+		log.Warnln("Detected race condition in bridging room %s via invite link %s", bridgeRoomID, inviteLink)
+		errMsg = "The room seems to have been bridged already."
+		return
+	}
+
 	portal := user.GetPortalByJID(jid)
 	if len(portal.MXID) > 0 {
 		foundPortal = portal
 	}
-	if !useNewPortal && foundPortal == nil {
-		if user.bridge.GetPortalByMXID(bridgeRoomID) != nil {
-			errMsg = "The room seems to have been bridged already."
-			return
+	info, err := user.Client.GetGroupInfo(jid)
+	if err != nil {
+		log.Errorln("Failed to get info of joined group %s: %v", jid, err)
+		if foundPortal == nil {
+			// if a "join" event never comes, the portal created by the lookup won't get updated, so just remove it
+			portal.Delete()
 		}
-		portal.MXID = bridgeRoomID
+	} else if bridgeRoomID != "" && foundPortal == nil {
+		portal.BridgeMatrixRoom(bridgeRoomID, user, info)
+	} else {
+		// simulate a "join" event now, as a real event may never come if the user was already in the group
+		user.HandleEvent(&events.JoinedGroup{
+			Reason:    "join-cmd",
+			GroupInfo: *info,
+		})
 	}
 	return
 }
