@@ -658,6 +658,27 @@ func fnCreate(ce *WrappedCommandEvent) {
 		return
 	}
 
+	ce.User.CommandState = map[string]interface{}{
+		"next":         &StateHandler{confirmCreate, "Group creation"},
+		"bridgeToMXID": bridgeRoomID,
+	}
+	ce.Reply("To confirm creating a WhatsApp group for th%s room, "+
+		"use `$cmdprefix  continue`. To cancel, use `$cmdprefix  cancel`.",
+		getThatThisSuffix(bridgeRoomID, ce.RoomID),
+	)
+}
+
+func confirmCreate(ce *WrappedCommandEvent) {
+	status := ce.User.GetCommandState()
+	bridgeRoomID := status["bridgeToMXID"].(id.RoomID)
+
+	if ce.Args[0] != "continue" {
+		ce.Reply("Please use `$cmdprefix  continue` to confirm the joining or " +
+			"`$cmdprefix  cancel` to cancel.")
+		return
+	}
+	ce.User.CommandState = nil
+
 	portal, _, errMsg := createGroup(ce.User, bridgeRoomID, ce.Log, ce.Reply)
 	if errMsg != "" {
 		ce.Reply(errMsg)
