@@ -67,6 +67,7 @@ func (prov *ProvisioningAPI) Init() {
 	r.HandleFunc("/v1/resolve_identifier/{number}", prov.ResolveIdentifier).Methods(http.MethodGet)
 	r.HandleFunc("/v1/bulk_resolve_identifier", prov.BulkResolveIdentifier).Methods(http.MethodPost)
 	r.HandleFunc("/v1/pm/{number}", prov.StartPM).Methods(http.MethodPost)
+	r.HandleFunc("/v1/join/{inviteLinkPath}", prov.JoinGroup).Methods(http.MethodPost)
 	r.HandleFunc("/v1/bridge/{groupID}/{roomIDorAlias}", prov.BridgeGroup).Methods(http.MethodPost)
 	r.HandleFunc("/v1/open/{groupID}", prov.OpenGroup).Methods(http.MethodPost)
 	r.HandleFunc("/v1/create/{roomIDorAlias}", prov.CreateGroup).Methods(http.MethodPost)
@@ -355,6 +356,12 @@ type PortalInfo struct {
 	PermsInfo   *PermsInfo       `json:"permissions_info,omitempty"`
 }
 
+type JoinInfo struct {
+	JID         types.JID  `json:"jid"`
+	FoundRoomID id.RoomID  `json:"found_room_id,omitempty"`
+	PermsInfo   *PermsInfo `json:"permissions_info,omitempty"`
+}
+
 type LinkInfo struct {
 	InviteLink string `json:"invite_link"`
 }
@@ -477,6 +484,82 @@ func (prov *ProvisioningAPI) BulkResolveIdentifier(w http.ResponseWriter, r *htt
 		})
 	} else {
 		jsonResponse(w, http.StatusOK, resp)
+	}
+}
+
+func (prov *ProvisioningAPI) JoinGroup(w http.ResponseWriter, r *http.Request) {
+	user := r.Context().Value("user").(*User)
+	if !user.IsLoggedIn() {
+		jsonResponse(w, http.StatusBadRequest, Error{
+			Error:   "User is not logged into WhatsApp",
+			ErrCode: "no session",
+		})
+		return
+	}
+	inviteLinkPath := mux.Vars(r)["inviteLinkPath"]
+	roomArg := r.URL.Query().Get("roomIDorAlias")
+	var bridgeRoomID id.RoomID
+	if roomArg != "" {
+		ok := false
+		if roomID, isAlias, err := prov.bridge.ResolveRoomArg(roomArg); err != nil || roomID == "" {
+			if isAlias {
+				jsonResponse(w, http.StatusNotFound, Error{
+					Error:   "Failed to resolve room alias",
+					ErrCode: "error resolving room alias",
+				})
+			} else {
+				jsonResponse(w, http.StatusBadRequest, Error{
+					Error:   "Invalid room ID",
+					ErrCode: "invalid room id",
+				})
+			}
+		} else if err := prov.bridge.Bot.EnsureJoined(roomID); err != nil {
+			jsonResponse(w, http.StatusBadRequest, Error{
+				Error:   "Bridge bot is not in target room and cannot join it",
+				ErrCode: "room unknown",
+			})
+		} else if prov.bridge.GetPortalByMXID(roomID) != nil {
+			jsonResponse(w, http.StatusConflict, Error{
+				Error:   "Room is already a WhatsApp portal room",
+				ErrCode: "room already bridged",
+			})
+		} else if !userHasPowerLevel(roomID, prov.bridge.AS.BotIntent(), user, "bridge") {
+			jsonResponse(w, http.StatusForbidden, Error{
+				Error:   "User does not have the permissions to bridge that room",
+				ErrCode: "not enough permissions",
+			})
+		} else if pInfo := GetMissingRequiredPerms(roomID, prov.bridge.AS.BotIntent(), prov.bridge, prov.log); pInfo != nil {
+			missingRequiredPermsResponse(w, pInfo)
+		} else {
+			ok = true
+			bridgeRoomID = roomID
+		}
+		if !ok {
+			return
+		}
+	}
+	if jid, foundPortal, errMsg := joinGroup(user, whatsmeow.InviteLinkPrefix+inviteLinkPath, "", prov.log); errMsg != "" {
+		jsonResponse(w, http.StatusBadRequest, Error{
+			Error:   errMsg,
+			ErrCode: "error joining group via invite link",
+		})
+	} else if bridgeRoomID != "" && foundPortal != nil {
+		jsonResponse(w, http.StatusConflict, Error{
+			Error:   "The WhatsApp group for this invite link is already bridged to another room",
+			ErrCode: "bridge exists",
+		})
+	} else {
+		var roomID id.RoomID
+		var permsInfo *PermsInfo
+		if foundPortal != nil {
+			roomID = foundPortal.MXID
+			permsInfo = getPermsInfo(GetMissingOptionalPerms(roomID, prov.bridge.AS.BotIntent(), prov.bridge, prov.log))
+		}
+		jsonResponse(w, http.StatusOK, JoinInfo{
+			JID:         jid,
+			FoundRoomID: roomID,
+			PermsInfo:   permsInfo,
+		})
 	}
 }
 

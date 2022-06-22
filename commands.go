@@ -448,27 +448,116 @@ var cmdJoin = &commands.FullHandler{
 	Help: commands.HelpMeta{
 		Section:     HelpSectionInvites,
 		Description: "Join a group chat with an invite link.",
-		Args:        "<_invite link_>",
+		Args:        "<_invite link_> " + roomArgHelpMd,
 	},
 	RequiresLogin: true,
 }
 
 func fnJoin(ce *WrappedCommandEvent) {
 	if len(ce.Args) == 0 {
-		ce.Reply("**Usage:** `join <invite link>`")
+		ce.Reply("**Usage:** `join <invite link> " + roomArgHelpPl + "`")
 		return
-	} else if !strings.HasPrefix(ce.Args[0], whatsmeow.InviteLinkPrefix) {
+	}
+
+	inviteLink := ce.Args[0]
+	if !strings.HasPrefix(inviteLink, whatsmeow.InviteLinkPrefix) {
 		ce.Reply("That doesn't look like a WhatsApp invite link")
 		return
 	}
 
-	jid, err := ce.User.Client.JoinGroupWithLink(ce.Args[0])
-	if err != nil {
-		ce.Reply("Failed to join group: %v", err)
+	bridgeRoomID, ok := getBridgeableRoomID(ce, 1, false)
+	if !ok {
 		return
 	}
-	ce.Log.Debugln("%s successfully joined group %s", ce.User.MXID, jid)
-	ce.Reply("Successfully joined group `%s`, the portal should be created momentarily", jid)
+
+	if bridgeRoomID == "" {
+		joinOrBridgeGroup(ce, inviteLink, bridgeRoomID)
+	} else {
+		ce.User.CommandState = map[string]interface{}{
+			"next":         &StateHandler{confirmJoin, "Joining"},
+			"bridgeToMXID": bridgeRoomID,
+			"inviteLink":   inviteLink,
+		}
+		ce.Reply("To confirm joining that WhatsApp link in th%s room, "+
+			"use `$cmdprefix  continue`. To cancel, use `$cmdprefix  cancel`.",
+			getThatThisSuffix(bridgeRoomID, ce.RoomID),
+		)
+	}
+}
+
+func confirmJoin(ce *WrappedCommandEvent) {
+	status := ce.User.GetCommandState()
+	bridgeRoomID := status["bridgeToMXID"].(id.RoomID)
+	inviteLink := status["inviteLink"].(string)
+
+	if ce.Args[0] != "continue" {
+		ce.Reply("Please use `$cmdprefix  continue` to confirm the joining or " +
+			"`$cmdprefix  cancel` to cancel.")
+		return
+	}
+	ce.User.CommandState = nil
+	joinOrBridgeGroup(ce, inviteLink, bridgeRoomID)
+}
+
+func joinOrBridgeGroup(ce *WrappedCommandEvent, inviteLink string, bridgeRoomID id.RoomID) {
+	jid, foundPortal, errMsg := joinGroup(ce.User, inviteLink, bridgeRoomID, ce.Log)
+	if errMsg != "" {
+		ce.Reply(errMsg)
+		return
+	}
+
+	useNewPortal := bridgeRoomID == ""
+	if !useNewPortal && foundPortal != nil {
+		offerToReplacePortal(ce, foundPortal, bridgeRoomID, jid)
+		return
+	}
+
+	var replySuffix string
+	if foundPortal == nil {
+		if useNewPortal {
+			replySuffix = " The portal should be created momentarily."
+		} else {
+			replySuffix = " Portal synchronization should begin momentarily."
+		}
+	}
+	ce.Reply("Successfully joined group `%s`.%s", jid, replySuffix)
+}
+
+// Joins a WhatsApp group via an invite link, creating a portal for the group if needed.
+//
+// If bridgeRoomID is set, the group will be bridged to that room, unless the group already has a portal.
+//
+// On failure, returns an error message string (instead of an error object from a function call).
+func joinGroup(user *User, inviteLink string, bridgeRoomID id.RoomID, log log.Logger) (
+	jid types.JID,
+	foundPortal *Portal,
+	errMsg string,
+) {
+	log.Infofln("Joining group via invite link %s", inviteLink)
+	useNewPortal := bridgeRoomID == ""
+	if !useNewPortal {
+		user.groupCreateLock.Lock()
+		defer user.groupCreateLock.Unlock()
+	}
+
+	jid, err := user.Client.JoinGroupWithLink(inviteLink)
+	if err != nil {
+		errMsg = fmt.Sprintf("Failed to join group: %v", err)
+		return
+	}
+	log.Debugln("%s successfully joined group %s", user.MXID, jid)
+	portal := user.GetPortalByJID(jid)
+	if len(portal.MXID) > 0 {
+		foundPortal = portal
+	}
+	if !useNewPortal && foundPortal == nil {
+		if user.bridge.GetPortalByMXID(bridgeRoomID) != nil {
+			errMsg = "The room seems to have been bridged already."
+			return
+		}
+		portal.MXID = bridgeRoomID
+	}
+	return
 }
 
 func tryDecryptEvent(crypto bridge.Crypto, evt *event.Event) (json.RawMessage, error) {
@@ -1413,29 +1502,7 @@ func fnOpen(ce *WrappedCommandEvent) {
 			portal.UpdateMatrixRoom(ce.User, info)
 			ce.Reply("Portal room synced.")
 		} else {
-			// TODO Move to a function
-			hasPortalMessage := "That WhatsApp group already has a portal at [%[1]s](https://matrix.to/#/%[1]s). "
-			if !userHasPowerLevel(portal.MXID, ce.MainIntent(), ce.User, "unbridge") {
-				ce.Reply(hasPortalMessage+
-					"Additionally, you do not have the permissions to unbridge that room.",
-					portal.MXID,
-				)
-			} else {
-				ce.User.CommandState = map[string]interface{}{
-					"next":         &StateHandler{confirmBridge, "Room bridging"},
-					"mxid":         portal.MXID,
-					"bridgeToMXID": bridgeRoomID,
-					"jid":          info.JID,
-				}
-				ce.Reply(hasPortalMessage+
-					"However, you have the permissions to unbridge that room.\n\n"+
-					"To delete that portal completely and continue bridging, use "+
-					"`$cmdprefix  delete-and-continue`. To unbridge the portal "+
-					"without kicking Matrix users, use `$cmdprefix  unbridge-and-"+
-					"continue`. To cancel, use `$cmdprefix  cancel`.",
-					portal.MXID,
-				)
-			}
+			offerToReplacePortal(ce, portal, bridgeRoomID, info.JID)
 		}
 	} else {
 		if bridgeRoomID == "" {
@@ -1446,7 +1513,6 @@ func fnOpen(ce *WrappedCommandEvent) {
 				ce.Reply("Portal room created.")
 			}
 		} else {
-			// TODO Move to a function
 			ce.User.CommandState = map[string]interface{}{
 				"next":         &StateHandler{confirmBridge, "Room bridging"},
 				"bridgeToMXID": bridgeRoomID,
@@ -1456,6 +1522,31 @@ func fnOpen(ce *WrappedCommandEvent) {
 				"group, use `$cmdprefix  continue`. To cancel, use `$cmdprefix  cancel`.",
 			)
 		}
+	}
+}
+
+func offerToReplacePortal(ce *WrappedCommandEvent, portal *Portal, bridgeRoomID id.RoomID, jid types.JID) {
+	hasPortalMessage := "That WhatsApp group already has a portal at [%[1]s](https://matrix.to/#/%[1]s). "
+	if !userHasPowerLevel(portal.MXID, ce.MainIntent(), ce.User, "unbridge") {
+		ce.Reply(hasPortalMessage+
+			"Additionally, you do not have the permissions to unbridge that room.",
+			portal.MXID,
+		)
+	} else {
+		ce.User.CommandState = map[string]interface{}{
+			"next":         &StateHandler{confirmBridge, "Room bridging"},
+			"mxid":         portal.MXID,
+			"bridgeToMXID": bridgeRoomID,
+			"jid":          jid,
+		}
+		ce.Reply(hasPortalMessage+
+			"However, you have the permissions to unbridge that room.\n\n"+
+			"To delete that portal completely and continue bridging, use "+
+			"`$cmdprefix  delete-and-continue`. To unbridge the portal "+
+			"without kicking Matrix users, use `$cmdprefix  unbridge-and-"+
+			"continue`. To cancel, use `$cmdprefix  cancel`.",
+			portal.MXID,
+		)
 	}
 }
 
