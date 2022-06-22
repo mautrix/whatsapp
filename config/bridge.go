@@ -137,6 +137,14 @@ func (bc BridgeConfig) GetEncryptionConfig() bridgeconfig.EncryptionConfig {
 	return bc.Encryption
 }
 
+func (bc BridgeConfig) EnableMessageStatusEvents() bool {
+	return bc.MessageStatusEvents
+}
+
+func (bc BridgeConfig) EnableMessageErrorNotices() bool {
+	return bc.MessageErrorNotices
+}
+
 func (bc BridgeConfig) GetCommandPrefix() string {
 	return bc.CommandPrefix
 }

@@ -306,18 +306,27 @@ bridge:
         # This will cause the bridge bot to be in private chats for the encryption to work properly.
         # It is recommended to also set private_chat_portal_meta to true when using this.
         default: false
-        # Options for automatic key sharing.
-        key_sharing:
-            # Enable key sharing? If enabled, key requests for rooms where users are in will be fulfilled.
-            # You must use a client that supports requesting keys from other users to use this feature.
-            allow: false
-            # Require the requesting device to have a valid cross-signing signature?
-            # This doesn't require that the bridge has verified the device, only that the user has verified it.
-            # Not yet implemented.
-            require_cross_signing: false
-            # Require devices to be verified by the bridge?
-            # Verification by the bridge is not yet implemented.
-            require_verification: true
+        # Require encryption, drop any unencrypted messages.
+        require: false
+        # Enable key sharing? If enabled, key requests for rooms where users are in will be fulfilled.
+        # You must use a client that supports requesting keys from other users to use this feature.
+        allow_key_sharing: false
+        # What level of device verification should be required from users?
+        #
+        # Valid levels:
+        #   unverified - Send keys to all device in the room.
+        #   cross-signed - Require valid cross-signing. TOFU for the cross-signing keys themselves.
+        #   cross-signed-trusted - Require valid cross-signing, plus a valid user signature from the bridge bot.
+        #                          Note that creating user signatures from the bridge bot is not currently possible.
+        #   verified - Require manual per-device verification
+        #              (currently only possible by modifying the `trust` column in the `crypto_device` database table).
+        verification_levels:
+            # Minimum level for which the bridge should send keys to when bridging messages from WhatsApp to Matrix.
+            receive: unverified
+            # Minimum level that the bridge should accept for incoming Matrix messages.
+            send: unverified
+            # Minimum level that the bridge should require for accepting key requests.
+            share: cross-signed
         # Options for Megolm room key rotation. These options allow you to
         # configure the m.room.encryption event content. See:
         # https://spec.matrix.org/v1.3/client-server-api/#mroomencryption for

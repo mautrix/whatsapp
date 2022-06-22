@@ -97,9 +97,23 @@ func DoUpgrade(helper *up.Helper) {
 	helper.Copy(up.Str|up.Null, "bridge", "management_room_text", "additional_help")
 	helper.Copy(up.Bool, "bridge", "encryption", "allow")
 	helper.Copy(up.Bool, "bridge", "encryption", "default")
-	helper.Copy(up.Bool, "bridge", "encryption", "key_sharing", "allow")
-	helper.Copy(up.Bool, "bridge", "encryption", "key_sharing", "require_cross_signing")
-	helper.Copy(up.Bool, "bridge", "encryption", "key_sharing", "require_verification")
+	helper.Copy(up.Bool, "bridge", "encryption", "require")
+	helper.Copy(up.Str, "bridge", "encryption", "verification_levels", "receive")
+	helper.Copy(up.Str, "bridge", "encryption", "verification_levels", "send")
+	helper.Copy(up.Str, "bridge", "encryption", "verification_levels", "share")
+
+	legacyKeyShareAllow, ok := helper.Get(up.Bool, "bridge", "encryption", "key_sharing", "allow")
+	if ok {
+		helper.Set(up.Bool, legacyKeyShareAllow, "bridge", "encryption", "allow_key_sharing")
+		legacyKeyShareRequireCS, legacyOK1 := helper.Get(up.Bool, "bridge", "encryption", "key_sharing", "require_cross_signing")
+		legacyKeyShareRequireVerification, legacyOK2 := helper.Get(up.Bool, "bridge", "encryption", "key_sharing", "require_verification")
+		if legacyOK1 && legacyOK2 && legacyKeyShareRequireVerification == "false" && legacyKeyShareRequireCS == "false" {
+			helper.Set(up.Str, "unverified", "bridge", "encryption", "verification_levels", "share")
+		}
+	} else {
+		helper.Copy(up.Bool, "bridge", "encryption", "allow_key_sharing")
+	}
+
 	helper.Copy(up.Bool, "bridge", "encryption", "rotation", "enable_custom")
 	helper.Copy(up.Int, "bridge", "encryption", "rotation", "milliseconds")
 	helper.Copy(up.Int, "bridge", "encryption", "rotation", "messages")
