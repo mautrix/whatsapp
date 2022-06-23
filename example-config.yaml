@@ -315,9 +315,10 @@ bridge:
         #
         # Valid levels:
         #   unverified - Send keys to all device in the room.
-        #   cross-signed - Require valid cross-signing. TOFU for the cross-signing keys themselves.
-        #   cross-signed-trusted - Require valid cross-signing, plus a valid user signature from the bridge bot.
-        #                          Note that creating user signatures from the bridge bot is not currently possible.
+        #   cross-signed-untrusted - Require valid cross-signing, but trust all cross-signing keys.
+        #   cross-signed-tofu - Require valid cross-signing, trust cross-signing keys on first use (and reject changes).
+        #   cross-signed-verified - Require valid cross-signing, plus a valid user signature from the bridge bot.
+        #                           Note that creating user signatures from the bridge bot is not currently possible.
         #   verified - Require manual per-device verification
         #              (currently only possible by modifying the `trust` column in the `crypto_device` database table).
         verification_levels:
