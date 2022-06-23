@@ -76,6 +76,7 @@ func (br *WABridge) CreatePrivatePortal(roomID id.RoomID, brInviter bridge.User,
 }
 
 func (br *WABridge) createPrivatePortalFromInvite(roomID id.RoomID, inviter *User, puppet *Puppet, portal *Portal) {
+	puppet.SyncContact(inviter, true, false, "handling private portal from invite")
 	portal.MXID = roomID
 	portal.Topic = PrivateChatTopic
 	_, _ = portal.MainIntent().SetRoomTopic(portal.MXID, portal.Topic)
