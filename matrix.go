@@ -30,6 +30,26 @@ import (
 	"maunium.net/go/mautrix-whatsapp/database"
 )
 
+type WAQueryHandler struct {
+	bridge *WABridge
+}
+
+func (qh *WAQueryHandler) QueryAlias(alias string) bool {
+	return false
+}
+
+func (qh *WAQueryHandler) QueryUser(userID id.UserID) bool {
+	puppet := qh.bridge.GetPuppetByMXID(userID)
+	if puppet == nil {
+		return false
+	} else if err := puppet.DefaultIntent().EnsureRegistered(); err != nil {
+		puppet.log.Errorln("Failed to ensure registered:", err)
+		return false
+	} else {
+		return true
+	}
+}
+
 func (br *WABridge) CreatePrivatePortal(roomID id.RoomID, brInviter bridge.User, brGhost bridge.Ghost) {
 	inviter := brInviter.(*User)
 	puppet := brGhost.(*Puppet)

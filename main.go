@@ -81,6 +81,7 @@ type WABridge struct {
 
 func (br *WABridge) Init() {
 	br.CommandProcessor = commands.NewProcessor(&br.Bridge)
+	br.AS.QueryHandler = &WAQueryHandler{br}
 	br.RegisterCommands()
 
 	// TODO this is a weird place for this
