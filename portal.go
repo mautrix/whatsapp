@@ -351,7 +351,8 @@ func containsSupportedMessage(waMsg *waProto.Message) bool {
 	return waMsg.Conversation != nil || waMsg.ExtendedTextMessage != nil || waMsg.ImageMessage != nil ||
 		waMsg.StickerMessage != nil || waMsg.AudioMessage != nil || waMsg.VideoMessage != nil ||
 		waMsg.DocumentMessage != nil || waMsg.ContactMessage != nil || waMsg.LocationMessage != nil ||
-		waMsg.LiveLocationMessage != nil || waMsg.GroupInviteMessage != nil || waMsg.ContactsArrayMessage != nil
+		waMsg.LiveLocationMessage != nil || waMsg.GroupInviteMessage != nil || waMsg.ContactsArrayMessage != nil ||
+		waMsg.HighlyStructuredMessage != nil || waMsg.TemplateMessage != nil
 }
 
 func getMessageType(waMsg *waProto.Message) string {
@@ -483,6 +484,10 @@ func (portal *Portal) convertMessage(intent *appservice.IntentAPI, source *User,
 	switch {
 	case waMsg.Conversation != nil || waMsg.ExtendedTextMessage != nil:
 		return portal.convertTextMessage(intent, source, waMsg)
+	case waMsg.TemplateMessage != nil:
+		return portal.convertTemplateMessage(intent, source, info, waMsg.GetTemplateMessage())
+	case waMsg.HighlyStructuredMessage != nil:
+		return portal.convertTemplateMessage(intent, source, info, waMsg.GetHighlyStructuredMessage().GetHydratedHsm())
 	case waMsg.ImageMessage != nil:
 		return portal.convertMediaMessage(intent, source, info, waMsg.GetImageMessage(), "photo", isBackfill)
 	case waMsg.StickerMessage != nil:
@@ -1710,7 +1715,7 @@ func (portal *Portal) convertTextMessage(intent *appservice.IntentAPI, source *U
 	}
 
 	contextInfo := msg.GetExtendedTextMessage().GetContextInfo()
-	portal.bridge.Formatter.ParseWhatsApp(portal.MXID, content, contextInfo.GetMentionedJid())
+	portal.bridge.Formatter.ParseWhatsApp(portal.MXID, content, contextInfo.GetMentionedJid(), false)
 	replyTo := contextInfo.GetStanzaId()
 	expiresIn := contextInfo.GetExpiration()
 	extraAttrs := map[string]interface{}{}
@@ -1724,6 +1729,77 @@ func (portal *Portal) convertTextMessage(intent *appservice.IntentAPI, source *U
 		ExpiresIn: expiresIn,
 		Extra:     extraAttrs,
 	}
+}
+
+func (portal *Portal) convertTemplateMessage(intent *appservice.IntentAPI, source *User, info *types.MessageInfo, tplMsg *waProto.TemplateMessage) *ConvertedMessage {
+	converted := &ConvertedMessage{
+		Intent: intent,
+		Type:   event.EventMessage,
+		Content: &event.MessageEventContent{
+			Body:    "Unsupported business message",
+			MsgType: event.MsgText,
+		},
+		ReplyTo:   tplMsg.GetContextInfo().GetStanzaId(),
+		ExpiresIn: tplMsg.GetContextInfo().GetExpiration(),
+	}
+
+	tpl := tplMsg.GetHydratedTemplate()
+	if tpl == nil {
+		return converted
+	}
+	content := tpl.GetHydratedContentText()
+	if buttons := tpl.GetHydratedButtons(); len(buttons) > 0 {
+		addButtonText := false
+		descriptions := make([]string, len(buttons))
+		for i, rawButton := range buttons {
+			switch button := rawButton.GetHydratedButton().(type) {
+			case *waProto.HydratedTemplateButton_QuickReplyButton:
+				descriptions[i] = fmt.Sprintf("<%s>", button.QuickReplyButton.GetDisplayText())
+				addButtonText = true
+			case *waProto.HydratedTemplateButton_UrlButton:
+				descriptions[i] = fmt.Sprintf("[%s](%s)", button.UrlButton.GetDisplayText(), button.UrlButton.GetUrl())
+			case *waProto.HydratedTemplateButton_CallButton:
+				descriptions[i] = fmt.Sprintf("[%s](tel:%s)", button.CallButton.GetDisplayText(), button.CallButton.GetPhoneNumber())
+			}
+		}
+		description := strings.Join(descriptions, " - ")
+		if addButtonText {
+			description += "\nUse the WhatsApp app to click buttons"
+		}
+		content = fmt.Sprintf("%s\n\n%s", content, description)
+	}
+	if footer := tpl.GetHydratedFooterText(); footer != "" {
+		content = fmt.Sprintf("%s\n\n%s", content, footer)
+	}
+
+	var convertedTitle *ConvertedMessage
+	switch title := tpl.GetTitle().(type) {
+	case *waProto.HydratedFourRowTemplate_DocumentMessage:
+		convertedTitle = portal.convertMediaMessage(intent, source, info, title.DocumentMessage, "file attachment", false)
+	case *waProto.HydratedFourRowTemplate_ImageMessage:
+		convertedTitle = portal.convertMediaMessage(intent, source, info, title.ImageMessage, "photo", false)
+	case *waProto.HydratedFourRowTemplate_VideoMessage:
+		convertedTitle = portal.convertMediaMessage(intent, source, info, title.VideoMessage, "video attachment", false)
+	case *waProto.HydratedFourRowTemplate_LocationMessage:
+		content = fmt.Sprintf("Unsupported location message\n\n%s", content)
+	case *waProto.HydratedFourRowTemplate_HydratedTitleText:
+		content = fmt.Sprintf("%s\n\n%s", title.HydratedTitleText, content)
+	}
+
+	converted.Content.Body = content
+	portal.bridge.Formatter.ParseWhatsApp(portal.MXID, converted.Content, nil, true)
+	if convertedTitle != nil {
+		converted.MediaKey = convertedTitle.MediaKey
+		converted.Extra = convertedTitle.Extra
+		converted.Caption = converted.Content
+		converted.Content = convertedTitle.Content
+		converted.Error = convertedTitle.Error
+	}
+	if converted.Extra == nil {
+		converted.Extra = make(map[string]interface{})
+	}
+	converted.Extra["fi.mau.whatsapp.hydrated_template_id"] = tpl.GetTemplateId()
+	return converted
 }
 
 func (portal *Portal) convertLiveLocationMessage(intent *appservice.IntentAPI, msg *waProto.LiveLocationMessage) *ConvertedMessage {
@@ -2232,7 +2308,7 @@ func (portal *Portal) convertMediaMessageContent(intent *appservice.IntentAPI, m
 			MsgType: event.MsgNotice,
 		}
 
-		portal.bridge.Formatter.ParseWhatsApp(portal.MXID, captionContent, msg.GetContextInfo().GetMentionedJid())
+		portal.bridge.Formatter.ParseWhatsApp(portal.MXID, captionContent, msg.GetContextInfo().GetMentionedJid(), false)
 	}
 
 	return &ConvertedMessage{

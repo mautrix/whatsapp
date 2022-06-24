@@ -721,6 +721,8 @@ func (user *User) HandleEvent(event interface{}) {
 		go user.syncPuppet(v.JID, "contact event")
 	case *events.PushName:
 		go user.syncPuppet(v.JID, "push name event")
+	case *events.BusinessName:
+		go user.syncPuppet(v.JID, "business name event")
 	case *events.GroupInfo:
 		user.groupListCache = nil
 		go user.handleGroupUpdate(v)

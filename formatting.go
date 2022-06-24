@@ -33,6 +33,7 @@ var italicRegex = regexp.MustCompile("([\\s>~*]|^)_(.+?)_([^a-zA-Z\\d]|$)")
 var boldRegex = regexp.MustCompile("([\\s>_~]|^)\\*(.+?)\\*([^a-zA-Z\\d]|$)")
 var strikethroughRegex = regexp.MustCompile("([\\s>_*]|^)~(.+?)~([^a-zA-Z\\d]|$)")
 var codeBlockRegex = regexp.MustCompile("```(?:.|\n)+?```")
+var inlineURLRegex = regexp.MustCompile(`\[(.+?)]\((.+?)\)`)
 
 const mentionedJIDsContextKey = "net.maunium.whatsapp.mentioned_jids"
 
@@ -108,13 +109,19 @@ func (formatter *Formatter) getMatrixInfoByJID(roomID id.RoomID, jid types.JID) 
 	return
 }
 
-func (formatter *Formatter) ParseWhatsApp(roomID id.RoomID, content *event.MessageEventContent, mentionedJIDs []string) {
+func (formatter *Formatter) ParseWhatsApp(roomID id.RoomID, content *event.MessageEventContent, mentionedJIDs []string, allowInlineURL bool) {
 	output := html.EscapeString(content.Body)
 	for regex, replacement := range formatter.waReplString {
 		output = regex.ReplaceAllString(output, replacement)
 	}
 	for regex, replacer := range formatter.waReplFunc {
 		output = regex.ReplaceAllStringFunc(output, replacer)
+	}
+	if allowInlineURL {
+		output = inlineURLRegex.ReplaceAllStringFunc(output, func(s string) string {
+			groups := inlineURLRegex.FindStringSubmatch(s)
+			return fmt.Sprintf(`<a href="%s">%s</a>`, groups[2], groups[1])
+		})
 	}
 	for _, rawJID := range mentionedJIDs {
 		jid, err := types.ParseJID(rawJID)
