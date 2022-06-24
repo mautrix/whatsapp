@@ -352,7 +352,7 @@ func containsSupportedMessage(waMsg *waProto.Message) bool {
 		waMsg.StickerMessage != nil || waMsg.AudioMessage != nil || waMsg.VideoMessage != nil ||
 		waMsg.DocumentMessage != nil || waMsg.ContactMessage != nil || waMsg.LocationMessage != nil ||
 		waMsg.LiveLocationMessage != nil || waMsg.GroupInviteMessage != nil || waMsg.ContactsArrayMessage != nil ||
-		waMsg.HighlyStructuredMessage != nil || waMsg.TemplateMessage != nil
+		waMsg.HighlyStructuredMessage != nil || waMsg.TemplateMessage != nil || waMsg.TemplateButtonReplyMessage != nil
 }
 
 func getMessageType(waMsg *waProto.Message) string {
@@ -488,6 +488,8 @@ func (portal *Portal) convertMessage(intent *appservice.IntentAPI, source *User,
 		return portal.convertTemplateMessage(intent, source, info, waMsg.GetTemplateMessage())
 	case waMsg.HighlyStructuredMessage != nil:
 		return portal.convertTemplateMessage(intent, source, info, waMsg.GetHighlyStructuredMessage().GetHydratedHsm())
+	case waMsg.TemplateButtonReplyMessage != nil:
+		return portal.convertTemplateButtonReplyMessage(intent, waMsg.GetTemplateButtonReplyMessage())
 	case waMsg.ImageMessage != nil:
 		return portal.convertMediaMessage(intent, source, info, waMsg.GetImageMessage(), "photo", isBackfill)
 	case waMsg.StickerMessage != nil:
@@ -1728,6 +1730,25 @@ func (portal *Portal) convertTextMessage(intent *appservice.IntentAPI, source *U
 		ReplyTo:   replyTo,
 		ExpiresIn: expiresIn,
 		Extra:     extraAttrs,
+	}
+}
+
+func (portal *Portal) convertTemplateButtonReplyMessage(intent *appservice.IntentAPI, msg *waProto.TemplateButtonReplyMessage) *ConvertedMessage {
+	return &ConvertedMessage{
+		Intent: intent,
+		Type:   event.EventMessage,
+		Content: &event.MessageEventContent{
+			Body:    msg.GetSelectedDisplayText(),
+			MsgType: event.MsgText,
+		},
+		Extra: map[string]interface{}{
+			"fi.mau.whatsapp.template_button_reply": map[string]interface{}{
+				"id":    msg.GetSelectedId(),
+				"index": msg.GetSelectedIndex(),
+			},
+		},
+		ReplyTo:   msg.GetContextInfo().GetStanzaId(),
+		ExpiresIn: msg.GetContextInfo().GetExpiration(),
 	}
 }
 
