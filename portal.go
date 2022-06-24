@@ -118,10 +118,6 @@ func (br *WABridge) GetAllPortals() []*Portal {
 	return br.dbPortalsToPortals(br.DB.Portal.GetAll())
 }
 
-func (br *WABridge) GetAllPortalsForUser(userID id.UserID) []*Portal {
-	return br.dbPortalsToPortals(br.DB.Portal.GetAllForUser(userID))
-}
-
 func (br *WABridge) GetAllPortalsByJID(jid types.JID) []*Portal {
 	return br.dbPortalsToPortals(br.DB.Portal.GetAllByJID(jid))
 }

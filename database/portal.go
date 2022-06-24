@@ -18,6 +18,7 @@ package database
 
 import (
 	"database/sql"
+	"fmt"
 
 	log "maunium.net/go/maulogger/v2"
 
@@ -63,32 +64,26 @@ func (pq *PortalQuery) New() *Portal {
 	}
 }
 
-func (pq *PortalQuery) GetAll() []*Portal {
-	return pq.getAll("SELECT * FROM portal")
-}
+const portalColumns = "jid, receiver, mxid, name, topic, avatar, avatar_url, encrypted, first_event_id, next_batch_id, relay_user_id, expiration_time"
 
-func (pq *PortalQuery) GetAllForUser(userID id.UserID) []*Portal {
-	return pq.getAll(`
-		SELECT p.* FROM portal p
-		LEFT JOIN user_portal up ON p.jid=up.portal_jid AND p.receiver=up.portal_receiver
-		WHERE mxid<>'' AND up.user_mxid=$1
-	`, userID)
+func (pq *PortalQuery) GetAll() []*Portal {
+	return pq.getAll(fmt.Sprintf("SELECT %s FROM portal", portalColumns))
 }
 
 func (pq *PortalQuery) GetByJID(key PortalKey) *Portal {
-	return pq.get("SELECT * FROM portal WHERE jid=$1 AND receiver=$2", key.JID, key.Receiver)
+	return pq.get(fmt.Sprintf("SELECT %s FROM portal WHERE jid=$1 AND receiver=$2", portalColumns), key.JID, key.Receiver)
 }
 
 func (pq *PortalQuery) GetByMXID(mxid id.RoomID) *Portal {
-	return pq.get("SELECT * FROM portal WHERE mxid=$1", mxid)
+	return pq.get(fmt.Sprintf("SELECT %s FROM portal WHERE mxid=$1", portalColumns), mxid)
 }
 
 func (pq *PortalQuery) GetAllByJID(jid types.JID) []*Portal {
-	return pq.getAll("SELECT * FROM portal WHERE jid=$1", jid.ToNonAD())
+	return pq.getAll(fmt.Sprintf("SELECT %s FROM portal WHERE jid=$1", portalColumns), jid.ToNonAD())
 }
 
 func (pq *PortalQuery) FindPrivateChats(receiver types.JID) []*Portal {
-	return pq.getAll("SELECT * FROM portal WHERE receiver=$1 AND jid LIKE '%@s.whatsapp.net'", receiver.ToNonAD())
+	return pq.getAll(fmt.Sprintf("SELECT %s FROM portal WHERE receiver=$1 AND jid LIKE '%@s.whatsapp.net'", portalColumns), receiver.ToNonAD())
 }
 
 func (pq *PortalQuery) FindPrivateChatsNotInSpace(receiver types.JID) (keys []PortalKey) {
