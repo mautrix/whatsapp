@@ -109,7 +109,7 @@ func (formatter *Formatter) getMatrixInfoByJID(roomID id.RoomID, jid types.JID) 
 	return
 }
 
-func (formatter *Formatter) ParseWhatsApp(roomID id.RoomID, content *event.MessageEventContent, mentionedJIDs []string, allowInlineURL bool) {
+func (formatter *Formatter) ParseWhatsApp(roomID id.RoomID, content *event.MessageEventContent, mentionedJIDs []string, allowInlineURL, forceHTML bool) {
 	output := html.EscapeString(content.Body)
 	for regex, replacement := range formatter.waReplString {
 		output = regex.ReplaceAllString(output, replacement)
@@ -135,7 +135,7 @@ func (formatter *Formatter) ParseWhatsApp(roomID id.RoomID, content *event.Messa
 		output = strings.ReplaceAll(output, number, fmt.Sprintf(`<a href="https://matrix.to/#/%s">%s</a>`, mxid, displayname))
 		content.Body = strings.ReplaceAll(content.Body, number, displayname)
 	}
-	if output != content.Body {
+	if output != content.Body || forceHTML {
 		output = strings.ReplaceAll(output, "\n", "<br/>")
 		content.FormattedBody = output
 		content.Format = event.FormatHTML

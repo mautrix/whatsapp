@@ -352,7 +352,8 @@ func containsSupportedMessage(waMsg *waProto.Message) bool {
 		waMsg.StickerMessage != nil || waMsg.AudioMessage != nil || waMsg.VideoMessage != nil ||
 		waMsg.DocumentMessage != nil || waMsg.ContactMessage != nil || waMsg.LocationMessage != nil ||
 		waMsg.LiveLocationMessage != nil || waMsg.GroupInviteMessage != nil || waMsg.ContactsArrayMessage != nil ||
-		waMsg.HighlyStructuredMessage != nil || waMsg.TemplateMessage != nil || waMsg.TemplateButtonReplyMessage != nil
+		waMsg.HighlyStructuredMessage != nil || waMsg.TemplateMessage != nil || waMsg.TemplateButtonReplyMessage != nil ||
+		waMsg.ListMessage != nil || waMsg.ListResponseMessage != nil
 }
 
 func getMessageType(waMsg *waProto.Message) string {
@@ -490,6 +491,10 @@ func (portal *Portal) convertMessage(intent *appservice.IntentAPI, source *User,
 		return portal.convertTemplateMessage(intent, source, info, waMsg.GetHighlyStructuredMessage().GetHydratedHsm())
 	case waMsg.TemplateButtonReplyMessage != nil:
 		return portal.convertTemplateButtonReplyMessage(intent, waMsg.GetTemplateButtonReplyMessage())
+	case waMsg.ListMessage != nil:
+		return portal.convertListMessage(intent, source, waMsg.GetListMessage())
+	case waMsg.ListResponseMessage != nil:
+		return portal.convertListResponseMessage(intent, waMsg.GetListResponseMessage())
 	case waMsg.ImageMessage != nil:
 		return portal.convertMediaMessage(intent, source, info, waMsg.GetImageMessage(), "photo", isBackfill)
 	case waMsg.StickerMessage != nil:
@@ -1717,7 +1722,7 @@ func (portal *Portal) convertTextMessage(intent *appservice.IntentAPI, source *U
 	}
 
 	contextInfo := msg.GetExtendedTextMessage().GetContextInfo()
-	portal.bridge.Formatter.ParseWhatsApp(portal.MXID, content, contextInfo.GetMentionedJid(), false)
+	portal.bridge.Formatter.ParseWhatsApp(portal.MXID, content, contextInfo.GetMentionedJid(), false, false)
 	replyTo := contextInfo.GetStanzaId()
 	expiresIn := contextInfo.GetExpiration()
 	extraAttrs := map[string]interface{}{}
@@ -1730,25 +1735,6 @@ func (portal *Portal) convertTextMessage(intent *appservice.IntentAPI, source *U
 		ReplyTo:   replyTo,
 		ExpiresIn: expiresIn,
 		Extra:     extraAttrs,
-	}
-}
-
-func (portal *Portal) convertTemplateButtonReplyMessage(intent *appservice.IntentAPI, msg *waProto.TemplateButtonReplyMessage) *ConvertedMessage {
-	return &ConvertedMessage{
-		Intent: intent,
-		Type:   event.EventMessage,
-		Content: &event.MessageEventContent{
-			Body:    msg.GetSelectedDisplayText(),
-			MsgType: event.MsgText,
-		},
-		Extra: map[string]interface{}{
-			"fi.mau.whatsapp.template_button_reply": map[string]interface{}{
-				"id":    msg.GetSelectedId(),
-				"index": msg.GetSelectedIndex(),
-			},
-		},
-		ReplyTo:   msg.GetContextInfo().GetStanzaId(),
-		ExpiresIn: msg.GetContextInfo().GetExpiration(),
 	}
 }
 
@@ -1808,7 +1794,7 @@ func (portal *Portal) convertTemplateMessage(intent *appservice.IntentAPI, sourc
 	}
 
 	converted.Content.Body = content
-	portal.bridge.Formatter.ParseWhatsApp(portal.MXID, converted.Content, nil, true)
+	portal.bridge.Formatter.ParseWhatsApp(portal.MXID, converted.Content, nil, true, false)
 	if convertedTitle != nil {
 		converted.MediaKey = convertedTitle.MediaKey
 		converted.Extra = convertedTitle.Extra
@@ -1821,6 +1807,105 @@ func (portal *Portal) convertTemplateMessage(intent *appservice.IntentAPI, sourc
 	}
 	converted.Extra["fi.mau.whatsapp.hydrated_template_id"] = tpl.GetTemplateId()
 	return converted
+}
+
+func (portal *Portal) convertTemplateButtonReplyMessage(intent *appservice.IntentAPI, msg *waProto.TemplateButtonReplyMessage) *ConvertedMessage {
+	return &ConvertedMessage{
+		Intent: intent,
+		Type:   event.EventMessage,
+		Content: &event.MessageEventContent{
+			Body:    msg.GetSelectedDisplayText(),
+			MsgType: event.MsgText,
+		},
+		Extra: map[string]interface{}{
+			"fi.mau.whatsapp.template_button_reply": map[string]interface{}{
+				"id":    msg.GetSelectedId(),
+				"index": msg.GetSelectedIndex(),
+			},
+		},
+		ReplyTo:   msg.GetContextInfo().GetStanzaId(),
+		ExpiresIn: msg.GetContextInfo().GetExpiration(),
+	}
+}
+
+func (portal *Portal) convertListMessage(intent *appservice.IntentAPI, source *User, msg *waProto.ListMessage) *ConvertedMessage {
+	converted := &ConvertedMessage{
+		Intent: intent,
+		Type:   event.EventMessage,
+		Content: &event.MessageEventContent{
+			Body:    "Unsupported business message",
+			MsgType: event.MsgText,
+		},
+		ReplyTo:   msg.GetContextInfo().GetStanzaId(),
+		ExpiresIn: msg.GetContextInfo().GetExpiration(),
+	}
+	body := msg.GetDescription()
+	if msg.GetTitle() != "" {
+		if body == "" {
+			body = msg.GetTitle()
+		} else {
+			body = fmt.Sprintf("%s\n\n%s", msg.GetTitle(), body)
+		}
+	}
+	randomID := appservice.RandomString(64)
+	body = fmt.Sprintf("%s\n%s", body, randomID)
+	if msg.GetFooterText() != "" {
+		body = fmt.Sprintf("%s\n\n%s", body, msg.GetFooterText())
+	}
+	converted.Content.Body = body
+	portal.bridge.Formatter.ParseWhatsApp(portal.MXID, converted.Content, nil, false, true)
+
+	var optionsMarkdown strings.Builder
+	_, _ = fmt.Fprintf(&optionsMarkdown, "#### %s\n", msg.GetButtonText())
+	for _, section := range msg.GetSections() {
+		nesting := ""
+		if section.GetTitle() != "" {
+			_, _ = fmt.Fprintf(&optionsMarkdown, "* %s\n", section.GetTitle())
+			nesting = "  "
+		}
+		for _, row := range section.GetRows() {
+			if row.GetDescription() != "" {
+				_, _ = fmt.Fprintf(&optionsMarkdown, "%s* %s: %s\n", nesting, row.GetTitle(), row.GetDescription())
+			} else {
+				_, _ = fmt.Fprintf(&optionsMarkdown, "%s* %s\n", nesting, row.GetTitle())
+			}
+		}
+	}
+	optionsMarkdown.WriteString("\nUse the WhatsApp app to respond")
+	rendered := format.RenderMarkdown(optionsMarkdown.String(), true, false)
+	converted.Content.Body = strings.Replace(converted.Content.Body, randomID, rendered.Body, 1)
+	converted.Content.FormattedBody = strings.Replace(converted.Content.FormattedBody, randomID, rendered.FormattedBody, 1)
+	return converted
+}
+
+func (portal *Portal) convertListResponseMessage(intent *appservice.IntentAPI, msg *waProto.ListResponseMessage) *ConvertedMessage {
+	var body string
+	if msg.GetTitle() != "" {
+		if msg.GetDescription() != "" {
+			body = fmt.Sprintf("%s\n\n%s", msg.GetTitle(), msg.GetDescription())
+		} else {
+			body = msg.GetTitle()
+		}
+	} else if msg.GetDescription() != "" {
+		body = msg.GetDescription()
+	} else {
+		body = "Unsupported list reply message"
+	}
+	return &ConvertedMessage{
+		Intent: intent,
+		Type:   event.EventMessage,
+		Content: &event.MessageEventContent{
+			Body:    body,
+			MsgType: event.MsgText,
+		},
+		Extra: map[string]interface{}{
+			"fi.mau.whatsapp.list_reply": map[string]interface{}{
+				"row_id": msg.GetSingleSelectReply().GetSelectedRowId(),
+			},
+		},
+		ReplyTo:   msg.GetContextInfo().GetStanzaId(),
+		ExpiresIn: msg.GetContextInfo().GetExpiration(),
+	}
 }
 
 func (portal *Portal) convertLiveLocationMessage(intent *appservice.IntentAPI, msg *waProto.LiveLocationMessage) *ConvertedMessage {
@@ -2329,7 +2414,7 @@ func (portal *Portal) convertMediaMessageContent(intent *appservice.IntentAPI, m
 			MsgType: event.MsgNotice,
 		}
 
-		portal.bridge.Formatter.ParseWhatsApp(portal.MXID, captionContent, msg.GetContextInfo().GetMentionedJid(), false)
+		portal.bridge.Formatter.ParseWhatsApp(portal.MXID, captionContent, msg.GetContextInfo().GetMentionedJid(), false, false)
 	}
 
 	return &ConvertedMessage{
