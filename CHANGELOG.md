@@ -1,3 +1,29 @@
+# v0.6.0 (unreleased)
+
+* Started requiring homeservers to advertise Matrix v1.1 support.
+  * This bumps up the minimum homeserver versions to Synapse 1.54 and
+    Dendrite 0.8.7. Minimum Conduit version remains at 0.4.0.
+  * The bridge will also refuse to start if backfilling is enabled in the
+    config, but the homeserver isn't advertising support for MSC2716. Only
+    Synapse supports backfilling at the moment.
+* Added options to make encryption more secure.
+  * The `encryption` -> `verification_levels` config options can be used to
+    make the bridge require encrypted messages to come from cross-signed
+    devices, with trust-on-first-use validation of the cross-signing master
+    key.
+  * The `encryption` -> `require` option can be used to make the bridge ignore
+    any unencrypted messages.
+  * Key rotation settings can be configured with the `encryption` -> `rotation`
+    config.
+* Added config validation to make the bridge refuse to start if critical fields
+  like homeserver or database address haven't been changed from the defaults.
+* Added option to include captions in the same message as the media to
+  implement [MSC2530].
+* Added basic support for fancy business messages (template and list messages).
+* Fixed backfill queue on SQLite.
+
+[MSC2530]: https://github.com/matrix-org/matrix-spec-proposals/pull/2530
+
 # v0.5.0 (2022-06-16)
 
 * Moved a lot of code to mautrix-go.
