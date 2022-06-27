@@ -141,9 +141,6 @@ func (br *WABridge) Start() {
 		go br.Metrics.Start()
 	}
 
-	if br.Config.Bridge.ResendBridgeInfo {
-		go br.ResendBridgeInfo()
-	}
 	go br.Loop()
 }
 
@@ -185,25 +182,6 @@ func (br *WABridge) WarnUsersAboutDisconnection() {
 		}
 	}
 	br.usersLock.Unlock()
-}
-
-func (br *WABridge) ResendBridgeInfo() {
-	// FIXME
-	//if *dontSaveConfig {
-	//	br.Log.Warnln("Not setting resend_bridge_info to false in config due to --no-update flag")
-	//} else {
-	//	err := config.Mutate(*configPath, func(helper *configupgrade.Helper) {
-	//		helper.Set(configupgrade.Bool, "false", "bridge", "resend_bridge_info")
-	//	})
-	//	if err != nil {
-	//		br.Log.Errorln("Failed to save config after setting resend_bridge_info to false:", err)
-	//	}
-	//}
-	//br.Log.Infoln("Re-sending bridge info state event to all portals")
-	//for _, portal := range br.GetAllPortals() {
-	//	portal.UpdateBridgeInfo()
-	//}
-	//br.Log.Infoln("Finished re-sending bridge info state events")
 }
 
 func (br *WABridge) StartUsers() {

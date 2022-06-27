@@ -153,6 +153,10 @@ func (bc BridgeConfig) GetManagementRoomTexts() bridgeconfig.ManagementRoomTexts
 	return bc.ManagementRoomText
 }
 
+func (bc BridgeConfig) GetResendBridgeInfo() bool {
+	return bc.ResendBridgeInfo
+}
+
 func boolToInt(val bool) int {
 	if val {
 		return 1
