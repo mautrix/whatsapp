@@ -327,7 +327,7 @@ bridge:
             # Minimum level that the bridge should accept for incoming Matrix messages.
             send: unverified
             # Minimum level that the bridge should require for accepting key requests.
-            share: cross-signed
+            share: cross-signed-tofu
         # Options for Megolm room key rotation. These options allow you to
         # configure the m.room.encryption event content. See:
         # https://spec.matrix.org/v1.3/client-server-api/#mroomencryption for
