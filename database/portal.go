@@ -22,6 +22,7 @@ import (
 	log "maunium.net/go/maulogger/v2"
 
 	"maunium.net/go/mautrix/id"
+	"maunium.net/go/mautrix/util/dbutil"
 
 	"go.mau.fi/whatsmeow/types"
 )
@@ -64,6 +65,14 @@ func (pq *PortalQuery) New() *Portal {
 
 func (pq *PortalQuery) GetAll() []*Portal {
 	return pq.getAll("SELECT * FROM portal")
+}
+
+func (pq *PortalQuery) GetAllForUser(userID id.UserID) []*Portal {
+	return pq.getAll(`
+		SELECT p.* FROM portal p
+		LEFT JOIN user_portal up ON p.jid=up.portal_jid AND p.receiver=up.portal_receiver
+		WHERE mxid<>'' AND up.user_mxid=$1
+	`, userID)
 }
 
 func (pq *PortalQuery) GetByJID(key PortalKey) *Portal {
@@ -144,7 +153,7 @@ type Portal struct {
 	ExpirationTime uint32
 }
 
-func (portal *Portal) Scan(row Scannable) *Portal {
+func (portal *Portal) Scan(row dbutil.Scannable) *Portal {
 	var mxid, avatarURL, firstEventID, nextBatchID, relayUserID sql.NullString
 	err := row.Scan(&portal.Key.JID, &portal.Key.Receiver, &mxid, &portal.Name, &portal.Topic, &portal.Avatar, &avatarURL, &portal.Encrypted, &firstEventID, &nextBatchID, &relayUserID, &portal.ExpirationTime)
 	if err != nil {
@@ -183,9 +192,21 @@ func (portal *Portal) Insert() {
 	}
 }
 
-func (portal *Portal) Update() {
-	_, err := portal.db.Exec("UPDATE portal SET mxid=$1, name=$2, topic=$3, avatar=$4, avatar_url=$5, encrypted=$6, first_event_id=$7, next_batch_id=$8, relay_user_id=$9, expiration_time=$10 WHERE jid=$11 AND receiver=$12",
-		portal.mxidPtr(), portal.Name, portal.Topic, portal.Avatar, portal.AvatarURL.String(), portal.Encrypted, portal.FirstEventID.String(), portal.NextBatchID.String(), portal.relayUserPtr(), portal.ExpirationTime, portal.Key.JID, portal.Key.Receiver)
+func (portal *Portal) Update(txn *sql.Tx) {
+	query := `
+		UPDATE portal
+		SET mxid=$1, name=$2, topic=$3, avatar=$4, avatar_url=$5, encrypted=$6, first_event_id=$7, next_batch_id=$8, relay_user_id=$9, expiration_time=$10
+		WHERE jid=$11 AND receiver=$12
+	`
+	args := []interface{}{
+		portal.mxidPtr(), portal.Name, portal.Topic, portal.Avatar, portal.AvatarURL.String(), portal.Encrypted, portal.FirstEventID.String(), portal.NextBatchID.String(), portal.relayUserPtr(), portal.ExpirationTime, portal.Key.JID, portal.Key.Receiver,
+	}
+	var err error
+	if txn != nil {
+		_, err = txn.Exec(query, args...)
+	} else {
+		_, err = portal.db.Exec(query, args...)
+	}
 	if err != nil {
 		portal.log.Warnfln("Failed to update %s: %v", portal.Key, err)
 	}

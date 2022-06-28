@@ -37,7 +37,7 @@ var codeBlockRegex = regexp.MustCompile("```(?:.|\n)+?```")
 const mentionedJIDsContextKey = "net.maunium.whatsapp.mentioned_jids"
 
 type Formatter struct {
-	bridge *Bridge
+	bridge *WABridge
 
 	matrixHTMLParser *format.HTMLParser
 
@@ -46,7 +46,7 @@ type Formatter struct {
 	waReplFuncText map[*regexp.Regexp]func(string) string
 }
 
-func NewFormatter(bridge *Bridge) *Formatter {
+func NewFormatter(bridge *WABridge) *Formatter {
 	formatter := &Formatter{
 		bridge: bridge,
 		matrixHTMLParser: &format.HTMLParser{

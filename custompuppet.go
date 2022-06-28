@@ -75,8 +75,8 @@ func (puppet *Puppet) loginWithSharedSecret(mxid id.UserID) (string, error) {
 		Type:                     mautrix.AuthTypePassword,
 		Identifier:               mautrix.UserIdentifier{Type: mautrix.IdentifierTypeUser, User: string(mxid)},
 		Password:                 hex.EncodeToString(mac.Sum(nil)),
-		DeviceID:                 "WhatsApp Bridge",
-		InitialDeviceDisplayName: "WhatsApp Bridge",
+		DeviceID:                 "WhatsApp bridge",
+		InitialDeviceDisplayName: "WhatsApp bridge",
 	})
 	if err != nil {
 		return "", err
@@ -84,22 +84,22 @@ func (puppet *Puppet) loginWithSharedSecret(mxid id.UserID) (string, error) {
 	return resp.AccessToken, nil
 }
 
-func (bridge *Bridge) newDoublePuppetClient(mxid id.UserID, accessToken string) (*mautrix.Client, error) {
+func (br *WABridge) newDoublePuppetClient(mxid id.UserID, accessToken string) (*mautrix.Client, error) {
 	_, homeserver, err := mxid.Parse()
 	if err != nil {
 		return nil, err
 	}
-	homeserverURL, found := bridge.Config.Bridge.DoublePuppetServerMap[homeserver]
+	homeserverURL, found := br.Config.Bridge.DoublePuppetServerMap[homeserver]
 	if !found {
-		if homeserver == bridge.AS.HomeserverDomain {
-			homeserverURL = bridge.AS.HomeserverURL
-		} else if bridge.Config.Bridge.DoublePuppetAllowDiscovery {
+		if homeserver == br.AS.HomeserverDomain {
+			homeserverURL = br.AS.HomeserverURL
+		} else if br.Config.Bridge.DoublePuppetAllowDiscovery {
 			resp, err := mautrix.DiscoverClientAPI(homeserver)
 			if err != nil {
 				return nil, fmt.Errorf("failed to find homeserver URL for %s: %v", homeserver, err)
 			}
 			homeserverURL = resp.Homeserver.BaseURL
-			bridge.Log.Debugfln("Discovered URL %s for %s to enable double puppeting for %s", homeserverURL, homeserver, mxid)
+			br.Log.Debugfln("Discovered URL %s for %s to enable double puppeting for %s", homeserverURL, homeserver, mxid)
 		} else {
 			return nil, fmt.Errorf("double puppeting from %s is not allowed", homeserver)
 		}
@@ -108,9 +108,9 @@ func (bridge *Bridge) newDoublePuppetClient(mxid id.UserID, accessToken string) 
 	if err != nil {
 		return nil, err
 	}
-	client.Logger = bridge.AS.Log.Sub(mxid.String())
-	client.Client = bridge.AS.HTTPClient
-	client.DefaultHTTPRetries = bridge.AS.DefaultHTTPRetries
+	client.Logger = br.AS.Log.Sub(mxid.String())
+	client.Client = br.AS.HTTPClient
+	client.DefaultHTTPRetries = br.AS.DefaultHTTPRetries
 	return client, nil
 }
 
@@ -219,7 +219,7 @@ func (puppet *Puppet) ProcessResponse(resp *mautrix.RespSync, _ string) error {
 			if err != nil {
 				continue
 			}
-			go puppet.bridge.MatrixHandler.HandlePresence(evt)
+			go puppet.bridge.HandlePresence(evt)
 		}
 	}
 	return nil

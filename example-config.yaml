@@ -43,19 +43,6 @@ appservice:
         max_conn_idle_time: null
         max_conn_lifetime: null
 
-    # Settings for provisioning API
-    provisioning:
-        # Prefix for the provisioning API paths.
-        prefix: /_matrix/provision
-        # Shared secret for authentication. If set to "generate", a random secret will be generated,
-        # or if set to "disable", the provisioning API will be disabled.
-        shared_secret: generate
-        # Segment API key to enable analytics tracking for web server
-        # endpoints. Set to null to disable.
-        # Currently the only events are login start, QR code retrieve, and login
-        # success/failure.
-        segment_key: null
-
     # The unique ID of this appservice.
     id: whatsapp
     # Appservice bot details.
@@ -76,17 +63,21 @@ appservice:
     as_token: "This value is generated when generating the registration"
     hs_token: "This value is generated when generating the registration"
 
-    # Limit usage of the bridge
-    limits:
-        # The maximum number of bridge puppets that can be "active" before the limit is reached
-        max_puppet_limit: 0
-        # The minimum amount of days a puppet must be active for before they are considered "active".
-        min_puppet_activity_days: 0
-        # The number of days after a puppets last activity where they are considered inactive again.
-        puppet_inactivity_days: 30
-        # Should the bridge block traffic when a limit has been reached
-        block_on_limit_reached: false
+# Segment API key to track some events, like provisioning API login and encryption errors.
+segment_key: null
 
+# Limit usage of the bridge
+limits:
+    # The maximum number of bridge puppets that can be "active" before the limit is reached
+    max_puppet_limit: 0
+    # The minimum amount of days a puppet must be active for before they are considered "active".
+    min_puppet_activity_days: 0
+    # The number of days after a puppets last activity where they are considered inactive again.
+    puppet_inactivity_days: 30
+    # Should the bridge block traffic when a limit has been reached
+    block_on_limit_reached: false
+
+# Prometheus config.
 metrics:
     # Enable prometheus metrics?
     enabled: false
@@ -99,7 +90,7 @@ whatsapp:
     os_name: Mautrix-WhatsApp bridge
     # Browser name that determines the logo shown in the mobile app.
     # Must be "unknown" for a generic icon or a valid browser name if you want a specific icon.
-    # List of valid browser names: https://github.com/tulir/whatsmeow/blob/2a72655ef600a7fd7a2e98d53ec6da029759c4b8/binary/proto/def.proto#L1582-L1594
+    # List of valid browser names: https://github.com/tulir/whatsmeow/blob/8b34d886d543b72e5f4699cf5b2797f68d598f78/binary/proto/def.proto#L38-L51
     browser_name: unknown
 
 # Bridge config
@@ -120,19 +111,19 @@ bridge:
     personal_filtering_spaces: false
     # Should the bridge send a read receipt from the bridge bot when a message has been sent to WhatsApp?
     delivery_receipts: false
+    # Whether the bridge should send the message status as a custom com.beeper.message_send_status event.
+    message_status_events: false
+    # Whether the bridge should send error notices via m.notice events when a message fails to bridge.
+    message_error_notices: true
     # Should incoming calls send a message to the Matrix room?
     call_start_notices: true
     # Should another user's cryptographic identity changing send a message to Matrix?
     identity_change_notices: false
     portal_message_buffer: 128
-    # Settings for handling history sync payloads. These settings only apply right after login,
-    # because the phone only sends the history sync data once, and there's no way to re-request it
-    # (other than logging out and back in again).
+    # Settings for handling history sync payloads.
     history_sync:
         # Should the bridge create portals for chats in the history sync payload?
         create_portals: true
-        # Maximum age of chats in seconds to create portals for. Set to 0 to create portals for all chats in sync payload.
-        max_age: 604800
         # Enable backfilling history sync payloads from WhatsApp using batch sending?
         # This requires a server with MSC2716 support, which is currently an experimental feature in synapse.
         # It can be enabled by setting experimental_features -> msc2716_enabled to true in homeserver.yaml.
@@ -147,6 +138,66 @@ bridge:
         # Should the bridge request a full sync from the phone when logging in?
         # This bumps the size of history syncs from 3 months to 1 year.
         request_full_sync: false
+        # Settings for media requests. If the media expired, then it will not
+        # be on the WA servers.
+        # Media can always be requested by reacting with the ♻️ (recycle) emoji.
+        # These settings determine if the media requests should be done
+        # automatically during or after backfill.
+        media_requests:
+            # Should expired media be automatically requested from the server as
+            # part of the backfill process?
+            auto_request_media: true
+            # Whether to request the media immediately after the media message
+            # is backfilled ("immediate") or at a specific time of the day
+            # ("local_time").
+            request_method: immediate
+            # If request_method is "local_time", what time should the requests
+            # be sent (in minutes after midnight)?
+            request_local_time: 120
+        # The maximum number of initial conversations that should be synced.
+        # Other conversations will be backfilled on demand when the start PM
+        # provisioning endpoint is used or when a message comes in from that
+        # chat.
+        max_initial_conversations: -1
+        # Settings for immediate backfills. These backfills should generally be
+        # small and their main purpose is to populate each of the initial chats
+        # (as configured by max_initial_conversations) with a few messages so
+        # that you can continue conversations without loosing context.
+        immediate:
+            # The number of concurrent backfill workers to create for immediate
+            # backfills. Note that using more than one worker could cause the
+            # room list to jump around since there are no guarantees about the
+            # order in which the backfills will complete.
+            worker_count: 1
+            # The maximum number of events to backfill initially.
+            max_events: 10
+        # Settings for deferred backfills. The purpose of these backfills are
+        # to fill in the rest of the chat history that was not covered by the
+        # immediate backfills. These backfills generally should happen at a
+        # slower pace so as not to overload the homeserver.
+        # Each deferred backfill config should define a "stage" of backfill
+        # (i.e. the last week of messages). The fields are as follows:
+        # - start_days_ago: the number of days ago to start backfilling from.
+        #     To indicate the start of time, use -1. For example, for a week ago, use 7.
+        # - max_batch_events: the number of events to send per batch.
+        # - batch_delay: the number of seconds to wait before backfilling each batch.
+        deferred:
+            # Last Week
+            - start_days_ago: 7
+              max_batch_events: 20
+              batch_delay: 5
+            # Last Month
+            - start_days_ago: 30
+              max_batch_events: 50
+              batch_delay: 10
+            # Last 3 months
+            - start_days_ago: 90
+              max_batch_events: 100
+              batch_delay: 10
+            # The start of time
+            - start_days_ago: -1
+              max_batch_events: 500
+              batch_delay: 10
     # Should puppet avatars be fetched from the server even if an avatar is already set?
     user_avatar_sync: true
     # Should Matrix users leaving groups be bridged to WhatsApp?
@@ -157,6 +208,11 @@ bridge:
     # Note that updating the m.direct event is not atomic (except with mautrix-asmux)
     # and is therefore prone to race conditions.
     sync_direct_chat_list: false
+    # Should the bridge use MSC2867 to bridge manual "mark as unread"s from
+    # WhatsApp and set the unread status on initial backfill?
+    # This will only work on clients that support the m.marked_unread or
+    # com.famedly.marked_unread room account data.
+    sync_manual_marked_unread: true
     # When double puppeting is enabled, users can use `!wa toggle` to change whether
     # presence and read receipts are bridged. These settings set the default values.
     # Existing users won't be affected when these are changed.
@@ -204,9 +260,14 @@ bridge:
     # Should WhatsApp status messages be bridged into a Matrix room?
     # Disabling this won't affect already created status broadcast rooms.
     enable_status_broadcast: true
+    # Should sending WhatsApp status messages be allowed?
+    # This can cause issues if the user has lots of contacts, so it's disabled by default.
+    disable_status_broadcast_send: true
     # Should the status broadcast room be muted and moved into low priority by default?
-    # This is only applied when creating the room, the user can unmute/untag it later.
+    # This is only applied when creating the room, the user can unmute it later.
     mute_status_broadcast: true
+    # Tag to apply to the status broadcast room.
+    status_broadcast_tag: m.lowpriority
     # Should the bridge use thumbnails from WhatsApp?
     # They're disabled by default due to very low resolution.
     whatsapp_thumbnail: false
@@ -265,6 +326,14 @@ bridge:
             # Require devices to be verified by the bridge?
             # Verification by the bridge is not yet implemented.
             require_verification: true
+
+    # Settings for provisioning API
+    provisioning:
+        # Prefix for the provisioning API paths.
+        prefix: /_matrix/provision
+        # Shared secret for authentication. If set to "generate", a random secret will be generated,
+        # or if set to "disable", the provisioning API will be disabled.
+        shared_secret: generate
 
     # Permissions for using the bridge.
     # Permitted values:

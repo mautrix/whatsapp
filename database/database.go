@@ -17,17 +17,17 @@
 package database
 
 import (
-	"database/sql"
-	"fmt"
+	"errors"
+	"net"
 	"time"
 
 	"github.com/lib/pq"
 	_ "github.com/mattn/go-sqlite3"
+	"go.mau.fi/whatsmeow/store"
 	"go.mau.fi/whatsmeow/store/sqlstore"
-	log "maunium.net/go/maulogger/v2"
 
-	"maunium.net/go/mautrix-whatsapp/config"
 	"maunium.net/go/mautrix-whatsapp/database/upgrades"
+	"maunium.net/go/mautrix/util/dbutil"
 )
 
 func init() {
@@ -35,9 +35,7 @@ func init() {
 }
 
 type Database struct {
-	*sql.DB
-	log     log.Logger
-	dialect string
+	*dbutil.Database
 
 	User     *UserQuery
 	Portal   *PortalQuery
@@ -45,68 +43,75 @@ type Database struct {
 	Message  *MessageQuery
 	Reaction *ReactionQuery
 
-	DisappearingMessage *DisappearingMessageQuery
+	DisappearingMessage  *DisappearingMessageQuery
+	Backfill             *BackfillQuery
+	HistorySync          *HistorySyncQuery
+	MediaBackfillRequest *MediaBackfillRequestQuery
 }
 
-func New(cfg config.DatabaseConfig, baseLog log.Logger) (*Database, error) {
-	conn, err := sql.Open(cfg.Type, cfg.URI)
-	if err != nil {
-		return nil, err
-	}
-
-	db := &Database{
-		DB:      conn,
-		log:     baseLog.Sub("Database"),
-		dialect: cfg.Type,
-	}
+func New(baseDB *dbutil.Database) *Database {
+	db := &Database{Database: baseDB}
+	db.UpgradeTable = upgrades.Table
 	db.User = &UserQuery{
 		db:  db,
-		log: db.log.Sub("User"),
+		log: db.Log.Sub("User"),
 	}
 	db.Portal = &PortalQuery{
 		db:  db,
-		log: db.log.Sub("Portal"),
+		log: db.Log.Sub("Portal"),
 	}
 	db.Puppet = &PuppetQuery{
 		db:  db,
-		log: db.log.Sub("Puppet"),
+		log: db.Log.Sub("Puppet"),
 	}
 	db.Message = &MessageQuery{
 		db:  db,
-		log: db.log.Sub("Message"),
+		log: db.Log.Sub("Message"),
 	}
 	db.Reaction = &ReactionQuery{
 		db:  db,
-		log: db.log.Sub("Reaction"),
+		log: db.Log.Sub("Reaction"),
 	}
 	db.DisappearingMessage = &DisappearingMessageQuery{
 		db:  db,
-		log: db.log.Sub("DisappearingMessage"),
+		log: db.Log.Sub("DisappearingMessage"),
 	}
-
-	db.SetMaxOpenConns(cfg.MaxOpenConns)
-	db.SetMaxIdleConns(cfg.MaxIdleConns)
-	if len(cfg.ConnMaxIdleTime) > 0 {
-		maxIdleTimeDuration, err := time.ParseDuration(cfg.ConnMaxIdleTime)
-		if err != nil {
-			return nil, fmt.Errorf("failed to parse max_conn_idle_time: %w", err)
-		}
-		db.SetConnMaxIdleTime(maxIdleTimeDuration)
+	db.Backfill = &BackfillQuery{
+		db:  db,
+		log: db.Log.Sub("Backfill"),
 	}
-	if len(cfg.ConnMaxLifetime) > 0 {
-		maxLifetimeDuration, err := time.ParseDuration(cfg.ConnMaxLifetime)
-		if err != nil {
-			return nil, fmt.Errorf("failed to parse max_conn_idle_time: %w", err)
-		}
-		db.SetConnMaxLifetime(maxLifetimeDuration)
+	db.HistorySync = &HistorySyncQuery{
+		db:  db,
+		log: db.Log.Sub("HistorySync"),
 	}
-	return db, nil
+	db.MediaBackfillRequest = &MediaBackfillRequestQuery{
+		db:  db,
+		log: db.Log.Sub("MediaBackfillRequest"),
+	}
+	return db
 }
 
-func (db *Database) Init() error {
-	return upgrades.Run(db.log.Sub("Upgrade"), db.dialect, db.DB)
+func isRetryableError(err error) bool {
+	if pqError := (&pq.Error{}); errors.As(err, &pqError) {
+		switch pqError.Code.Class() {
+		case "08", // Connection Exception
+			"53", // Insufficient Resources (e.g. too many connections)
+			"57": // Operator Intervention (e.g. server restart)
+			return true
+		}
+	} else if netError := (&net.OpError{}); errors.As(err, &netError) {
+		return true
+	}
+	return false
 }
 
-type Scannable interface {
-	Scan(...interface{}) error
+func (db *Database) HandleSignalStoreError(device *store.Device, action string, attemptIndex int, err error) (retry bool) {
+	if db.Dialect != dbutil.SQLite && isRetryableError(err) {
+		sleepTime := time.Duration(attemptIndex*2) * time.Second
+		device.Log.Warnf("Failed to %s (attempt #%d): %v - retrying in %v", action, attemptIndex+1, err, sleepTime)
+		time.Sleep(sleepTime)
+		return true
+	}
+	device.Log.Errorf("Failed to %s: %v", action, err)
+	return false
 }

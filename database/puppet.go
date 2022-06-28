@@ -20,7 +20,9 @@ import (
 	"database/sql"
 
 	log "maunium.net/go/maulogger/v2"
+
 	"maunium.net/go/mautrix/id"
+	"maunium.net/go/mautrix/util/dbutil"
 
 	"go.mau.fi/whatsmeow/types"
 )
@@ -90,16 +92,17 @@ type Puppet struct {
 	Displayname string
 	NameQuality int8
 
-	CustomMXID      id.UserID
-	AccessToken     string
-	NextBatch       string
-	EnablePresence  bool
-	EnableReceipts  bool
+	CustomMXID     id.UserID
+	AccessToken    string
+	NextBatch      string
+	EnablePresence bool
+	EnableReceipts bool
+
 	FirstActivityTs int64
 	LastActivityTs  int64
 }
 
-func (puppet *Puppet) Scan(row Scannable) *Puppet {
+func (puppet *Puppet) Scan(row dbutil.Scannable) *Puppet {
 	var displayname, avatar, avatarURL, customMXID, accessToken, nextBatch sql.NullString
 	var quality, firstActivityTs, lastActivityTs sql.NullInt64
 	var enablePresence, enableReceipts sql.NullBool

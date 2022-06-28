@@ -23,6 +23,7 @@ import (
 	log "maunium.net/go/maulogger/v2"
 
 	"maunium.net/go/mautrix/id"
+	"maunium.net/go/mautrix/util/dbutil"
 
 	"go.mau.fi/whatsmeow/types"
 )
@@ -85,7 +86,7 @@ type Reaction struct {
 	JID       types.MessageID
 }
 
-func (reaction *Reaction) Scan(row Scannable) *Reaction {
+func (reaction *Reaction) Scan(row dbutil.Scannable) *Reaction {
 	err := row.Scan(&reaction.Chat.JID, &reaction.Chat.Receiver, &reaction.TargetJID, &reaction.Sender, &reaction.MXID, &reaction.JID)
 	if err != nil {
 		if !errors.Is(err, sql.ErrNoRows) {
