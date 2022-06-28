@@ -25,6 +25,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"math/rand"
 	"net/http"
 	"strconv"
 	"strings"
@@ -238,7 +239,7 @@ const puppetSyncMinInterval = 7 * 24 * time.Hour
 const puppetSyncLoopInterval = 4 * time.Hour
 
 func (user *User) puppetResyncLoop() {
-	user.nextPuppetResync = time.Now().Add(puppetSyncLoopInterval)
+	user.nextPuppetResync = time.Now().Add(puppetSyncLoopInterval).Add(-time.Duration(rand.Intn(3600)) * time.Second)
 	for {
 		time.Sleep(user.nextPuppetResync.Sub(time.Now()))
 		user.nextPuppetResync = time.Now().Add(puppetSyncLoopInterval)
