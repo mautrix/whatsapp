@@ -1069,7 +1069,7 @@ var cmdSync = &commands.FullHandler{
 
 func fnSync(ce *WrappedCommandEvent) {
 	if len(ce.Args) == 0 {
-		ce.Reply("**Usage:** `sync <appstate/contacts/groups/space> [--create-portals]`")
+		ce.Reply("**Usage:** `sync <appstate/contacts/avatars/groups/space> [--contact-avatars] [--create-portals]`")
 		return
 	}
 	args := strings.ToLower(strings.Join(ce.Args, " "))
@@ -1078,6 +1078,11 @@ func fnSync(ce *WrappedCommandEvent) {
 	space := strings.Contains(args, "space")
 	groups := strings.Contains(args, "groups") || space
 	createPortals := strings.Contains(args, "--create-portals")
+	contactAvatars := strings.Contains(args, "--contact-avatars")
+	if contactAvatars && (!contacts || appState) {
+		ce.Reply("`--contact-avatars` can only be used with `sync contacts`")
+		return
+	}
 
 	if appState {
 		for _, name := range appstate.AllPatchNames {
@@ -1094,7 +1099,7 @@ func fnSync(ce *WrappedCommandEvent) {
 			}
 		}
 	} else if contacts {
-		err := ce.User.ResyncContacts()
+		err := ce.User.ResyncContacts(contactAvatars)
 		if err != nil {
 			ce.Reply("Error resyncing contacts: %v", err)
 		} else {

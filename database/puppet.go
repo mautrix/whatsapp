@@ -18,6 +18,7 @@ package database
 
 import (
 	"database/sql"
+	"time"
 
 	log "maunium.net/go/maulogger/v2"
 
@@ -43,7 +44,7 @@ func (pq *PuppetQuery) New() *Puppet {
 }
 
 func (pq *PuppetQuery) GetAll() (puppets []*Puppet) {
-	rows, err := pq.db.Query("SELECT username, avatar, avatar_url, displayname, name_quality, custom_mxid, access_token, next_batch, enable_presence, enable_receipts FROM puppet")
+	rows, err := pq.db.Query("SELECT username, avatar, avatar_url, displayname, name_quality, name_set, avatar_set, last_sync, custom_mxid, access_token, next_batch, enable_presence, enable_receipts FROM puppet")
 	if err != nil || rows == nil {
 		return nil
 	}
@@ -55,7 +56,7 @@ func (pq *PuppetQuery) GetAll() (puppets []*Puppet) {
 }
 
 func (pq *PuppetQuery) Get(jid types.JID) *Puppet {
-	row := pq.db.QueryRow("SELECT username, avatar, avatar_url, displayname, name_quality, custom_mxid, access_token, next_batch, enable_presence, enable_receipts FROM puppet WHERE username=$1", jid.User)
+	row := pq.db.QueryRow("SELECT username, avatar, avatar_url, displayname, name_quality, name_set, avatar_set, last_sync, custom_mxid, access_token, next_batch, enable_presence, enable_receipts FROM puppet WHERE username=$1", jid.User)
 	if row == nil {
 		return nil
 	}
@@ -63,7 +64,7 @@ func (pq *PuppetQuery) Get(jid types.JID) *Puppet {
 }
 
 func (pq *PuppetQuery) GetByCustomMXID(mxid id.UserID) *Puppet {
-	row := pq.db.QueryRow("SELECT username, avatar, avatar_url, displayname, name_quality, custom_mxid, access_token, next_batch, enable_presence, enable_receipts FROM puppet WHERE custom_mxid=$1", mxid)
+	row := pq.db.QueryRow("SELECT username, avatar, avatar_url, displayname, name_quality, name_set, avatar_set, last_sync, custom_mxid, access_token, next_batch, enable_presence, enable_receipts FROM puppet WHERE custom_mxid=$1", mxid)
 	if row == nil {
 		return nil
 	}
@@ -71,7 +72,7 @@ func (pq *PuppetQuery) GetByCustomMXID(mxid id.UserID) *Puppet {
 }
 
 func (pq *PuppetQuery) GetAllWithCustomMXID() (puppets []*Puppet) {
-	rows, err := pq.db.Query("SELECT username, avatar, avatar_url, displayname, name_quality, custom_mxid, access_token, next_batch, enable_presence, enable_receipts FROM puppet WHERE custom_mxid<>''")
+	rows, err := pq.db.Query("SELECT username, avatar, avatar_url, displayname, name_quality, name_set, avatar_set, last_sync, custom_mxid, access_token, next_batch, enable_presence, enable_receipts FROM puppet WHERE custom_mxid<>''")
 	if err != nil || rows == nil {
 		return nil
 	}
@@ -89,8 +90,11 @@ type Puppet struct {
 	JID         types.JID
 	Avatar      string
 	AvatarURL   id.ContentURI
+	AvatarSet   bool
 	Displayname string
 	NameQuality int8
+	NameSet     bool
+	LastSync    time.Time
 
 	CustomMXID     id.UserID
 	AccessToken    string
@@ -101,10 +105,10 @@ type Puppet struct {
 
 func (puppet *Puppet) Scan(row dbutil.Scannable) *Puppet {
 	var displayname, avatar, avatarURL, customMXID, accessToken, nextBatch sql.NullString
-	var quality sql.NullInt64
-	var enablePresence, enableReceipts sql.NullBool
+	var quality, lastSync sql.NullInt64
+	var enablePresence, enableReceipts, nameSet, avatarSet sql.NullBool
 	var username string
-	err := row.Scan(&username, &avatar, &avatarURL, &displayname, &quality, &customMXID, &accessToken, &nextBatch, &enablePresence, &enableReceipts)
+	err := row.Scan(&username, &avatar, &avatarURL, &displayname, &quality, &nameSet, &avatarSet, &lastSync, &customMXID, &accessToken, &nextBatch, &enablePresence, &enableReceipts)
 	if err != nil {
 		if err != sql.ErrNoRows {
 			puppet.log.Errorln("Database scan failed:", err)
@@ -116,6 +120,11 @@ func (puppet *Puppet) Scan(row dbutil.Scannable) *Puppet {
 	puppet.Avatar = avatar.String
 	puppet.AvatarURL, _ = id.ParseContentURI(avatarURL.String)
 	puppet.NameQuality = int8(quality.Int64)
+	puppet.NameSet = nameSet.Bool
+	puppet.AvatarSet = avatarSet.Bool
+	if lastSync.Int64 > 0 {
+		puppet.LastSync = time.Unix(lastSync.Int64, 0)
+	}
 	puppet.CustomMXID = id.UserID(customMXID.String)
 	puppet.AccessToken = accessToken.String
 	puppet.NextBatch = nextBatch.String
@@ -129,16 +138,36 @@ func (puppet *Puppet) Insert() {
 		puppet.log.Warnfln("Not inserting %s: not a user", puppet.JID)
 		return
 	}
-	_, err := puppet.db.Exec("INSERT INTO puppet (username, avatar, avatar_url, displayname, name_quality, custom_mxid, access_token, next_batch, enable_presence, enable_receipts) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)",
-		puppet.JID.User, puppet.Avatar, puppet.AvatarURL.String(), puppet.Displayname, puppet.NameQuality, puppet.CustomMXID, puppet.AccessToken, puppet.NextBatch, puppet.EnablePresence, puppet.EnableReceipts)
+	var lastSyncTs int64
+	if !puppet.LastSync.IsZero() {
+		lastSyncTs = puppet.LastSync.Unix()
+	}
+	_, err := puppet.db.Exec(`
+		INSERT INTO puppet (username, avatar, avatar_url, avatar_set, displayname, name_quality, name_set, last_sync,
+		                    custom_mxid, access_token, next_batch, enable_presence, enable_receipts)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+	`, puppet.JID.User, puppet.Avatar, puppet.AvatarURL.String(), puppet.AvatarSet, puppet.Displayname,
+		puppet.NameQuality, puppet.NameSet, lastSyncTs, puppet.CustomMXID, puppet.AccessToken, puppet.NextBatch,
+		puppet.EnablePresence, puppet.EnableReceipts,
+	)
 	if err != nil {
 		puppet.log.Warnfln("Failed to insert %s: %v", puppet.JID, err)
 	}
 }
 
 func (puppet *Puppet) Update() {
-	_, err := puppet.db.Exec("UPDATE puppet SET displayname=$1, name_quality=$2, avatar=$3, avatar_url=$4, custom_mxid=$5, access_token=$6, next_batch=$7, enable_presence=$8, enable_receipts=$9 WHERE username=$10",
-		puppet.Displayname, puppet.NameQuality, puppet.Avatar, puppet.AvatarURL.String(), puppet.CustomMXID, puppet.AccessToken, puppet.NextBatch, puppet.EnablePresence, puppet.EnableReceipts, puppet.JID.User)
+	var lastSyncTs int64
+	if !puppet.LastSync.IsZero() {
+		lastSyncTs = puppet.LastSync.Unix()
+	}
+	_, err := puppet.db.Exec(`
+		UPDATE puppet
+		SET displayname=$1, name_quality=$2, name_set=$3, avatar=$4, avatar_url=$5, avatar_set=$6, last_sync=$7,
+		    custom_mxid=$8, access_token=$9, next_batch=$10, enable_presence=$11, enable_receipts=$12
+		WHERE username=$13
+	`, puppet.Displayname, puppet.NameQuality, puppet.NameSet, puppet.Avatar, puppet.AvatarURL.String(), puppet.AvatarSet,
+		lastSyncTs, puppet.CustomMXID, puppet.AccessToken, puppet.NextBatch, puppet.EnablePresence, puppet.EnableReceipts,
+		puppet.JID.User)
 	if err != nil {
 		puppet.log.Warnfln("Failed to update %s: %v", puppet.JID, err)
 	}

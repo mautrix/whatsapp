@@ -83,6 +83,11 @@ type User struct {
 
 	BackfillQueue *BackfillQueue
 	BridgeState   *bridge.BridgeStateQueue
+
+	puppetResyncQueue      []*Puppet
+	puppetResyncQueueDedup map[types.JID]struct{}
+	puppetResyncQueueLock  sync.Mutex
+	nextPuppetResync       time.Time
 }
 
 func (br *WABridge) getUserByMXID(userID id.UserID, onlyIfExists bool) *User {
@@ -216,6 +221,8 @@ func (br *WABridge) NewUser(dbUser *database.User) *User {
 
 		historySyncs: make(chan *events.HistorySync, 32),
 		lastPresence: types.PresenceUnavailable,
+
+		puppetResyncQueueDedup: make(map[types.JID]struct{}),
 	}
 
 	user.PermissionLevel = user.bridge.Config.Bridge.Permissions.Get(user.MXID)
@@ -223,7 +230,83 @@ func (br *WABridge) NewUser(dbUser *database.User) *User {
 	user.Whitelisted = user.PermissionLevel >= bridgeconfig.PermissionLevelUser
 	user.Admin = user.PermissionLevel >= bridgeconfig.PermissionLevelAdmin
 	user.BridgeState = br.NewBridgeStateQueue(user, user.log)
+	go user.puppetResyncLoop()
 	return user
+}
+
+const puppetSyncMinInterval = 7 * 24 * time.Hour
+const puppetSyncLoopInterval = 4 * time.Hour
+
+func (user *User) puppetResyncLoop() {
+	user.nextPuppetResync = time.Now().Add(puppetSyncLoopInterval)
+	for {
+		time.Sleep(user.nextPuppetResync.Sub(time.Now()))
+		user.nextPuppetResync = time.Now().Add(puppetSyncLoopInterval)
+		user.doPuppetResync()
+	}
+}
+
+func (user *User) EnqueuePuppetResync(puppet *Puppet) {
+	if puppet.LastSync.Add(puppetSyncMinInterval).After(time.Now()) {
+		return
+	}
+	user.puppetResyncQueueLock.Lock()
+	if _, exists := user.puppetResyncQueueDedup[puppet.JID]; !exists {
+		user.puppetResyncQueueDedup[puppet.JID] = struct{}{}
+		user.puppetResyncQueue = append(user.puppetResyncQueue, puppet)
+		user.log.Infofln("Enqueued resync for %s (next sync in %s)", puppet.JID, user.nextPuppetResync.Sub(time.Now()))
+	}
+	user.puppetResyncQueueLock.Unlock()
+}
+
+func (user *User) doPuppetResync() {
+	if !user.IsLoggedIn() {
+		return
+	}
+	user.puppetResyncQueueLock.Lock()
+	if len(user.puppetResyncQueue) == 0 {
+		user.puppetResyncQueueLock.Unlock()
+		return
+	}
+	queue := user.puppetResyncQueue
+	user.puppetResyncQueue = nil
+	user.puppetResyncQueueDedup = make(map[types.JID]struct{})
+	user.puppetResyncQueueLock.Unlock()
+	var jids []types.JID
+	var filteredPuppets []*Puppet
+	for _, puppet := range queue {
+		if puppet.LastSync.Add(puppetSyncMinInterval).After(time.Now()) {
+			user.log.Debugfln("Not resyncing %s, last sync was %s ago", puppet.JID, time.Now().Sub(puppet.LastSync))
+			continue
+		}
+		jids = append(jids, puppet.JID)
+		filteredPuppets = append(filteredPuppets, puppet)
+	}
+	if len(jids) == 0 {
+		user.log.Debugfln("Skipping background sync, all puppets in queue have been synced in the past 3 days")
+		return
+	}
+	user.log.Debugfln("Doing background sync for %+v", jids)
+	infos, err := user.Client.GetUserInfo(jids)
+	if err != nil {
+		user.log.Errorfln("Error getting user info for background sync: %v", err)
+		return
+	}
+	for _, puppet := range filteredPuppets {
+		info, ok := infos[puppet.JID]
+		if !ok {
+			user.log.Warnfln("Didn't get info for %s in background sync", puppet.JID)
+			continue
+		}
+		var contactPtr *types.ContactInfo
+		contact, err := user.Session.Contacts.GetContact(puppet.JID)
+		if err != nil {
+			user.log.Warnfln("Failed to get contact info for %s in background sync: %v", puppet.JID, err)
+		} else if contact.Found {
+			contactPtr = &contact
+		}
+		puppet.Sync(user, contactPtr, info.PictureID != puppet.Avatar)
+	}
 }
 
 func (user *User) ensureInvited(intent *appservice.IntentAPI, roomID id.RoomID, isDirect bool) (ok bool) {
@@ -670,7 +753,7 @@ func (user *User) HandleEvent(event interface{}) {
 			}
 		} else if v.Name == appstate.WAPatchCriticalUnblockLow {
 			go func() {
-				err := user.ResyncContacts()
+				err := user.ResyncContacts(false)
 				if err != nil {
 					user.log.Errorln("Failed to resync puppets: %v", err)
 				}
@@ -1020,7 +1103,7 @@ func (user *User) syncPuppet(jid types.JID, reason string) {
 	user.bridge.GetPuppetByJID(jid).SyncContact(user, false, false, reason)
 }
 
-func (user *User) ResyncContacts() error {
+func (user *User) ResyncContacts(forceAvatarSync bool) error {
 	contacts, err := user.Client.Store.Contacts.GetAllContacts()
 	if err != nil {
 		return fmt.Errorf("failed to get cached contacts: %w", err)
@@ -1029,7 +1112,7 @@ func (user *User) ResyncContacts() error {
 	for jid, contact := range contacts {
 		puppet := user.bridge.GetPuppetByJID(jid)
 		if puppet != nil {
-			puppet.Sync(user, contact)
+			puppet.Sync(user, &contact, forceAvatarSync)
 		} else {
 			user.log.Warnfln("Got a nil puppet for %s while syncing contacts", jid)
 		}
@@ -1196,7 +1279,7 @@ func (user *User) handlePictureUpdate(evt *events.Picture) {
 		puppet := user.bridge.GetPuppetByJID(evt.JID)
 		user.log.Debugfln("Received picture update for puppet %s (current: %s, new: %s)", evt.JID, puppet.Avatar, evt.PictureID)
 		if puppet.Avatar != evt.PictureID {
-			puppet.UpdateAvatar(user)
+			puppet.Sync(user, nil, true)
 		}
 	} else if portal := user.GetPortalByJID(evt.JID); portal != nil {
 		user.log.Debugfln("Received picture update for portal %s (current: %s, new: %s)", evt.JID, portal.Avatar, evt.PictureID)

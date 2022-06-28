@@ -64,7 +64,7 @@ func (pq *PortalQuery) New() *Portal {
 	}
 }
 
-const portalColumns = "jid, receiver, mxid, name, topic, avatar, avatar_url, encrypted, first_event_id, next_batch_id, relay_user_id, expiration_time"
+const portalColumns = "jid, receiver, mxid, name, name_set, topic, topic_set, avatar, avatar_url, avatar_set, encrypted, first_event_id, next_batch_id, relay_user_id, expiration_time"
 
 func (pq *PortalQuery) GetAll() []*Portal {
 	return pq.getAll(fmt.Sprintf("SELECT %s FROM portal", portalColumns))
@@ -135,9 +135,12 @@ type Portal struct {
 	MXID id.RoomID
 
 	Name      string
+	NameSet   bool
 	Topic     string
+	TopicSet  bool
 	Avatar    string
 	AvatarURL id.ContentURI
+	AvatarSet bool
 	Encrypted bool
 
 	FirstEventID id.EventID
@@ -150,7 +153,7 @@ type Portal struct {
 
 func (portal *Portal) Scan(row dbutil.Scannable) *Portal {
 	var mxid, avatarURL, firstEventID, nextBatchID, relayUserID sql.NullString
-	err := row.Scan(&portal.Key.JID, &portal.Key.Receiver, &mxid, &portal.Name, &portal.Topic, &portal.Avatar, &avatarURL, &portal.Encrypted, &firstEventID, &nextBatchID, &relayUserID, &portal.ExpirationTime)
+	err := row.Scan(&portal.Key.JID, &portal.Key.Receiver, &mxid, &portal.Name, &portal.NameSet, &portal.Topic, &portal.TopicSet, &portal.Avatar, &avatarURL, &portal.AvatarSet, &portal.Encrypted, &firstEventID, &nextBatchID, &relayUserID, &portal.ExpirationTime)
 	if err != nil {
 		if err != sql.ErrNoRows {
 			portal.log.Errorln("Database scan failed:", err)
@@ -180,8 +183,14 @@ func (portal *Portal) relayUserPtr() *id.UserID {
 }
 
 func (portal *Portal) Insert() {
-	_, err := portal.db.Exec("INSERT INTO portal (jid, receiver, mxid, name, topic, avatar, avatar_url, encrypted, first_event_id, next_batch_id, relay_user_id, expiration_time) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)",
-		portal.Key.JID, portal.Key.Receiver, portal.mxidPtr(), portal.Name, portal.Topic, portal.Avatar, portal.AvatarURL.String(), portal.Encrypted, portal.FirstEventID.String(), portal.NextBatchID.String(), portal.relayUserPtr(), portal.ExpirationTime)
+	_, err := portal.db.Exec(`
+		INSERT INTO portal (jid, receiver, mxid, name, name_set, topic, topic_set, avatar, avatar_url, avatar_set,
+		                    encrypted, first_event_id, next_batch_id, relay_user_id, expiration_time)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+	`,
+		portal.Key.JID, portal.Key.Receiver, portal.mxidPtr(), portal.Name, portal.NameSet, portal.Topic, portal.TopicSet,
+		portal.Avatar, portal.AvatarURL.String(), portal.AvatarSet, portal.Encrypted, portal.FirstEventID.String(),
+		portal.NextBatchID.String(), portal.relayUserPtr(), portal.ExpirationTime)
 	if err != nil {
 		portal.log.Warnfln("Failed to insert %s: %v", portal.Key, err)
 	}
@@ -190,11 +199,14 @@ func (portal *Portal) Insert() {
 func (portal *Portal) Update(txn *sql.Tx) {
 	query := `
 		UPDATE portal
-		SET mxid=$1, name=$2, topic=$3, avatar=$4, avatar_url=$5, encrypted=$6, first_event_id=$7, next_batch_id=$8, relay_user_id=$9, expiration_time=$10
-		WHERE jid=$11 AND receiver=$12
+		SET mxid=$1, name=$2, name_set=$3, topic=$4, topic_set=$5, avatar=$6, avatar_url=$7, avatar_set=$8,
+		    encrypted=$9, first_event_id=$10, next_batch_id=$11, relay_user_id=$12, expiration_time=$13
+		WHERE jid=$14 AND receiver=$15
 	`
 	args := []interface{}{
-		portal.mxidPtr(), portal.Name, portal.Topic, portal.Avatar, portal.AvatarURL.String(), portal.Encrypted, portal.FirstEventID.String(), portal.NextBatchID.String(), portal.relayUserPtr(), portal.ExpirationTime, portal.Key.JID, portal.Key.Receiver,
+		portal.mxidPtr(), portal.Name, portal.Topic, portal.Avatar, portal.AvatarURL.String(), portal.Encrypted,
+		portal.FirstEventID.String(), portal.NextBatchID.String(), portal.relayUserPtr(), portal.ExpirationTime,
+		portal.Key.JID, portal.Key.Receiver,
 	}
 	var err error
 	if txn != nil {

@@ -811,20 +811,20 @@ func (portal *Portal) markHandled(txn *sql.Tx, msg *database.Message, info *type
 	return msg
 }
 
-func (portal *Portal) getMessagePuppet(user *User, info *types.MessageInfo) *Puppet {
+func (portal *Portal) getMessagePuppet(user *User, info *types.MessageInfo) (puppet *Puppet) {
 	if info.IsFromMe {
 		return portal.bridge.GetPuppetByJID(user.JID)
 	} else if portal.IsPrivateChat() {
-		return portal.bridge.GetPuppetByJID(portal.Key.JID)
+		puppet = portal.bridge.GetPuppetByJID(portal.Key.JID)
 	} else {
-		puppet := portal.bridge.GetPuppetByJID(info.Sender)
-		if puppet == nil {
-			portal.log.Warnfln("Message %+v doesn't seem to have a valid sender (%s): puppet is nil", *info, info.Sender)
-			return nil
-		}
-		puppet.SyncContact(user, true, true, "handling message")
-		return puppet
+		puppet = portal.bridge.GetPuppetByJID(info.Sender)
 	}
+	if puppet == nil {
+		portal.log.Warnfln("Message %+v doesn't seem to have a valid sender (%s): puppet is nil", *info, info.Sender)
+		return nil
+	}
+	puppet.SyncContact(user, true, true, "handling message")
+	return puppet
 }
 
 func (portal *Portal) getMessageIntent(user *User, info *types.MessageInfo) *appservice.IntentAPI {
@@ -939,12 +939,12 @@ func (portal *Portal) UpdateAvatar(user *User, setBy types.JID, updateInfo bool)
 		}
 		return false
 	} else if avatar == nil {
-		if portal.Avatar == "remove" {
+		if portal.Avatar == "remove" && portal.AvatarSet {
 			return false
 		}
 		portal.AvatarURL = id.ContentURI{}
 		avatar = &types.ProfilePictureInfo{ID: "remove"}
-	} else if avatar.ID == portal.Avatar {
+	} else if avatar.ID == portal.Avatar && portal.AvatarSet {
 		return false
 	} else if len(avatar.URL) == 0 {
 		portal.log.Warnln("Didn't get URL in response to avatar query")
@@ -957,6 +957,8 @@ func (portal *Portal) UpdateAvatar(user *User, setBy types.JID, updateInfo bool)
 		}
 		portal.AvatarURL = url
 	}
+	portal.Avatar = avatar.ID
+	portal.AvatarSet = false
 
 	if len(portal.MXID) > 0 {
 		intent := portal.MainIntent()
@@ -970,11 +972,13 @@ func (portal *Portal) UpdateAvatar(user *User, setBy types.JID, updateInfo bool)
 		if err != nil {
 			portal.log.Warnln("Failed to set room avatar:", err)
 			return false
+		} else {
+			portal.AvatarSet = true
 		}
 	}
-	portal.Avatar = avatar.ID
 	if updateInfo {
 		portal.UpdateBridgeInfo()
+		portal.Update(nil)
 	}
 	return true
 }
@@ -983,9 +987,10 @@ func (portal *Portal) UpdateName(name string, setBy types.JID, updateInfo bool) 
 	if name == "" && portal.IsBroadcastList() {
 		name = UnnamedBroadcastName
 	}
-	if portal.Name != name {
-		portal.log.Debugfln("Updating name %s -> %s", portal.Name, name)
+	if portal.Name != name || !portal.NameSet {
+		portal.log.Debugfln("Updating name %q -> %q", portal.Name, name)
 		portal.Name = name
+		portal.NameSet = false
 
 		intent := portal.MainIntent()
 		if !setBy.IsEmpty() {
@@ -996,12 +1001,13 @@ func (portal *Portal) UpdateName(name string, setBy types.JID, updateInfo bool) 
 			_, err = portal.MainIntent().SetRoomName(portal.MXID, name)
 		}
 		if err == nil {
+			portal.NameSet = true
 			if updateInfo {
 				portal.UpdateBridgeInfo()
+				portal.Update(nil)
 			}
 			return true
 		} else {
-			portal.Name = ""
 			portal.log.Warnln("Failed to set room name:", err)
 		}
 	}
@@ -1009,9 +1015,10 @@ func (portal *Portal) UpdateName(name string, setBy types.JID, updateInfo bool) 
 }
 
 func (portal *Portal) UpdateTopic(topic string, setBy types.JID, updateInfo bool) bool {
-	if portal.Topic != topic {
-		portal.log.Debugfln("Updating topic %s -> %s", portal.Topic, topic)
+	if portal.Topic != topic || !portal.TopicSet {
+		portal.log.Debugfln("Updating topic %q -> %q", portal.Topic, topic)
 		portal.Topic = topic
+		portal.TopicSet = false
 
 		intent := portal.MainIntent()
 		if !setBy.IsEmpty() {
@@ -1022,12 +1029,13 @@ func (portal *Portal) UpdateTopic(topic string, setBy types.JID, updateInfo bool
 			_, err = portal.MainIntent().SetRoomTopic(portal.MXID, topic)
 		}
 		if err == nil {
+			portal.TopicSet = true
 			if updateInfo {
 				portal.UpdateBridgeInfo()
+				portal.Update(nil)
 			}
 			return true
 		} else {
-			portal.Topic = ""
 			portal.log.Warnln("Failed to set room topic:", err)
 		}
 	}
@@ -1376,6 +1384,7 @@ func (portal *Portal) CreateMatrixRoom(user *User, groupInfo *types.GroupInfo, i
 				Parsed: event.RoomAvatarEventContent{URL: portal.AvatarURL},
 			},
 		})
+		portal.AvatarSet = true
 	}
 
 	var invite []id.UserID
@@ -1410,6 +1419,8 @@ func (portal *Portal) CreateMatrixRoom(user *User, groupInfo *types.GroupInfo, i
 	if err != nil {
 		return err
 	}
+	portal.NameSet = len(portal.Name) > 0
+	portal.TopicSet = len(portal.Topic) > 0
 	portal.MXID = resp.RoomID
 	portal.bridge.portalsLock.Lock()
 	portal.bridge.portalsByMXID[portal.MXID] = portal

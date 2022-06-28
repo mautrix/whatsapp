@@ -244,21 +244,22 @@ func (puppet *Puppet) UpdateAvatar(source *User) bool {
 			puppet.log.Warnln("Failed to get avatar URL:", err)
 		} else if puppet.Avatar == "" {
 			puppet.Avatar = "unauthorized"
+			puppet.AvatarSet = false
 			return true
 		}
 		return false
 	} else if avatar == nil {
-		if puppet.Avatar == "remove" {
+		if puppet.Avatar == "remove" && puppet.AvatarSet {
 			return false
 		}
 		puppet.AvatarURL = id.ContentURI{}
 		avatar = &types.ProfilePictureInfo{ID: "remove"}
-	} else if avatar.ID == puppet.Avatar {
+	} else if avatar.ID == puppet.Avatar && puppet.AvatarSet {
 		return false
 	} else if len(avatar.URL) == 0 {
 		puppet.log.Warnln("Didn't get URL in response to avatar query")
 		return false
-	} else {
+	} else if avatar.ID != puppet.Avatar || puppet.AvatarURL.IsEmpty() {
 		url, err := reuploadAvatar(puppet.DefaultIntent(), avatar.URL)
 		if err != nil {
 			puppet.log.Warnln("Failed to reupload avatar:", err)
@@ -267,27 +268,31 @@ func (puppet *Puppet) UpdateAvatar(source *User) bool {
 
 		puppet.AvatarURL = url
 	}
+	puppet.Avatar = avatar.ID
+	puppet.AvatarSet = false
 
 	err = puppet.DefaultIntent().SetAvatarURL(puppet.AvatarURL)
 	if err != nil {
 		puppet.log.Warnln("Failed to set avatar:", err)
+	} else {
+		puppet.log.Debugln("Updated avatar", puppet.Avatar, "->", avatar.ID)
+		puppet.AvatarSet = true
 	}
-	puppet.log.Debugln("Updated avatar", puppet.Avatar, "->", avatar.ID)
-	puppet.Avatar = avatar.ID
 	go puppet.updatePortalAvatar()
 	return true
 }
 
-func (puppet *Puppet) UpdateName(source *User, contact types.ContactInfo) bool {
+func (puppet *Puppet) UpdateName(contact types.ContactInfo) bool {
 	newName, quality := puppet.bridge.Config.Bridge.FormatDisplayname(puppet.JID, contact)
-	if puppet.Displayname != newName && quality >= puppet.NameQuality {
+	if (puppet.Displayname != newName || !puppet.NameSet) && quality >= puppet.NameQuality {
+		puppet.Displayname = newName
+		puppet.NameQuality = quality
+		puppet.NameSet = false
 		err := puppet.DefaultIntent().SetDisplayName(newName)
 		if err == nil {
 			puppet.log.Debugln("Updated name", puppet.Displayname, "->", newName)
-			puppet.Displayname = newName
-			puppet.NameQuality = quality
+			puppet.NameSet = true
 			go puppet.updatePortalName()
-			puppet.Update()
 		} else {
 			puppet.log.Warnln("Failed to set display name:", err)
 		}
@@ -336,6 +341,7 @@ func (puppet *Puppet) updatePortalName() {
 
 func (puppet *Puppet) SyncContact(source *User, onlyIfNoName, shouldHavePushName bool, reason string) {
 	if onlyIfNoName && len(puppet.Displayname) > 0 && (!shouldHavePushName || puppet.NameQuality > config.NameQualityPhone) {
+		source.EnqueuePuppetResync(puppet)
 		return
 	}
 
@@ -345,10 +351,10 @@ func (puppet *Puppet) SyncContact(source *User, onlyIfNoName, shouldHavePushName
 	} else if !contact.Found {
 		puppet.log.Warnfln("No contact info found through %s in SyncContact (sync reason: %s)", source.MXID, reason)
 	}
-	puppet.Sync(source, contact)
+	puppet.Sync(source, &contact, false)
 }
 
-func (puppet *Puppet) Sync(source *User, contact types.ContactInfo) {
+func (puppet *Puppet) Sync(source *User, contact *types.ContactInfo, forceAvatarSync bool) {
 	puppet.syncLock.Lock()
 	defer puppet.syncLock.Unlock()
 	err := puppet.DefaultIntent().EnsureRegistered()
@@ -356,16 +362,20 @@ func (puppet *Puppet) Sync(source *User, contact types.ContactInfo) {
 		puppet.log.Errorln("Failed to ensure registered:", err)
 	}
 
-	if puppet.JID.User == source.JID.User {
-		contact.PushName = source.Client.Store.PushName
-	}
+	puppet.log.Debugfln("Syncing info through %s", source.JID)
 
 	update := false
-	update = puppet.UpdateName(source, contact) || update
-	if len(puppet.Avatar) == 0 || puppet.bridge.Config.Bridge.UserAvatarSync {
+	if contact != nil {
+		if puppet.JID.User == source.JID.User {
+			contact.PushName = source.Client.Store.PushName
+		}
+		update = puppet.UpdateName(*contact) || update
+	}
+	if len(puppet.Avatar) == 0 || forceAvatarSync || puppet.bridge.Config.Bridge.UserAvatarSync {
 		update = puppet.UpdateAvatar(source) || update
 	}
-	if update {
+	if update || puppet.LastSync.Add(24*time.Hour).Before(time.Now()) {
+		puppet.LastSync = time.Now()
 		puppet.Update()
 	}
 }
