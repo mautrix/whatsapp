@@ -1,4 +1,4 @@
--- v0 -> v49: Latest revision
+-- v0 -> v50: Latest revision
 
 CREATE TABLE "user" (
     mxid     TEXT PRIMARY KEY,
@@ -48,7 +48,7 @@ CREATE TABLE puppet (
     enable_receipts BOOLEAN NOT NULL DEFAULT true,
 
     first_activity_ts BIGINT,
-    last_activity_ts BIGINT,
+    last_activity_ts BIGINT
 );
 
 -- only: postgres
