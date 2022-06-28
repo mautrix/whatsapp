@@ -1707,7 +1707,7 @@ func (cm *ConvertedMessage) MergeCaption() {
 	if cm.Caption == nil {
 		return
 	}
-	cm.Extra["filename"] = cm.Content.Body
+	cm.Content.FileName = cm.Content.Body
 	extensibleCaption := map[string]interface{}{
 		"org.matrix.msc1767.text": cm.Caption.Body,
 	}
