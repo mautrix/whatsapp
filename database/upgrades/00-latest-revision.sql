@@ -1,4 +1,4 @@
--- v0 -> v50: Latest revision
+-- v0 -> v51: Latest revision
 
 CREATE TABLE "user" (
     mxid     TEXT PRIMARY KEY,
@@ -27,6 +27,7 @@ CREATE TABLE portal (
     avatar_url TEXT,
     avatar_set BOOLEAN NOT NULL DEFAULT false,
     encrypted  BOOLEAN NOT NULL DEFAULT false,
+    last_sync  BIGINT NOT NULL DEFAULT 0,
 
     first_event_id  TEXT,
     next_batch_id   TEXT,

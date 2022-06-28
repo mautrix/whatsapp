@@ -823,6 +823,7 @@ func (portal *Portal) getMessagePuppet(user *User, info *types.MessageInfo) (pup
 		portal.log.Warnfln("Message %+v doesn't seem to have a valid sender (%s): puppet is nil", *info, info.Sender)
 		return nil
 	}
+	user.EnqueuePortalResync(portal)
 	puppet.SyncContact(user, true, true, "handling message")
 	return puppet
 }
@@ -929,49 +930,71 @@ func (portal *Portal) SyncParticipants(source *User, metadata *types.GroupInfo) 
 	portal.kickExtraUsers(participantMap)
 }
 
+func (user *User) updateAvatar(jid types.JID, avatarID *string, avatarURL *id.ContentURI, avatarSet *bool, log log.Logger, intent *appservice.IntentAPI) bool {
+	currentID := ""
+	if *avatarSet && *avatarID != "remove" && *avatarID != "unauthorized" {
+		currentID = *avatarID
+	}
+	avatar, err := user.Client.GetProfilePictureInfo(jid, false, currentID)
+	if errors.Is(err, whatsmeow.ErrProfilePictureUnauthorized) {
+		if *avatarID == "" {
+			*avatarID = "unauthorized"
+			*avatarSet = false
+			return true
+		}
+		return false
+	} else if errors.Is(err, whatsmeow.ErrProfilePictureNotSet) {
+		*avatarURL = id.ContentURI{}
+		avatar = &types.ProfilePictureInfo{ID: "remove"}
+		// Fall through to the rest of the avatar handling code
+	} else if err != nil {
+		log.Warnln("Failed to get avatar URL:", err)
+		return false
+	} else if avatar == nil {
+		// Avatar hasn't changed
+		return false
+	}
+	if avatar.ID == *avatarID && *avatarSet {
+		return false
+	} else if len(avatar.URL) == 0 {
+		log.Warnln("Didn't get URL in response to avatar query")
+		return false
+	} else if avatar.ID != *avatarID || avatarURL.IsEmpty() {
+		url, err := reuploadAvatar(intent, avatar.URL)
+		if err != nil {
+			log.Warnln("Failed to reupload avatar:", err)
+			return false
+		}
+		*avatarURL = url
+	}
+	*avatarID = avatar.ID
+	*avatarSet = false
+	return true
+}
+
 func (portal *Portal) UpdateAvatar(user *User, setBy types.JID, updateInfo bool) bool {
 	portal.avatarLock.Lock()
 	defer portal.avatarLock.Unlock()
-	avatar, err := user.Client.GetProfilePictureInfo(portal.Key.JID, false)
-	if err != nil {
-		if !errors.Is(err, whatsmeow.ErrProfilePictureUnauthorized) {
-			portal.log.Warnln("Failed to get avatar URL:", err)
+	changed := user.updateAvatar(portal.Key.JID, &portal.Avatar, &portal.AvatarURL, &portal.AvatarSet, portal.log, portal.MainIntent())
+	if !changed || portal.Avatar == "unauthorized" {
+		if changed || updateInfo {
+			portal.Update(nil)
 		}
-		return false
-	} else if avatar == nil {
-		if portal.Avatar == "remove" && portal.AvatarSet {
-			return false
-		}
-		portal.AvatarURL = id.ContentURI{}
-		avatar = &types.ProfilePictureInfo{ID: "remove"}
-	} else if avatar.ID == portal.Avatar && portal.AvatarSet {
-		return false
-	} else if len(avatar.URL) == 0 {
-		portal.log.Warnln("Didn't get URL in response to avatar query")
-		return false
-	} else {
-		url, err := reuploadAvatar(portal.MainIntent(), avatar.URL)
-		if err != nil {
-			portal.log.Warnln("Failed to reupload avatar:", err)
-			return false
-		}
-		portal.AvatarURL = url
+		return changed
 	}
-	portal.Avatar = avatar.ID
-	portal.AvatarSet = false
 
 	if len(portal.MXID) > 0 {
 		intent := portal.MainIntent()
 		if !setBy.IsEmpty() {
 			intent = portal.bridge.GetPuppetByJID(setBy).IntentFor(portal)
 		}
-		_, err = intent.SetRoomAvatar(portal.MXID, portal.AvatarURL)
+		_, err := intent.SetRoomAvatar(portal.MXID, portal.AvatarURL)
 		if errors.Is(err, mautrix.MForbidden) && intent != portal.MainIntent() {
 			_, err = portal.MainIntent().SetRoomAvatar(portal.MXID, portal.AvatarURL)
 		}
 		if err != nil {
 			portal.log.Warnln("Failed to set room avatar:", err)
-			return false
+			return true
 		} else {
 			portal.AvatarSet = true
 		}
@@ -1111,10 +1134,11 @@ func (portal *Portal) UpdateMatrixRoom(user *User, groupInfo *types.GroupInfo) b
 
 	update := false
 	update = portal.UpdateMetadata(user, groupInfo) || update
-	if !portal.IsPrivateChat() && !portal.IsBroadcastList() && portal.Avatar == "" {
+	if !portal.IsPrivateChat() && !portal.IsBroadcastList() {
 		update = portal.UpdateAvatar(user, types.EmptyJID, false) || update
 	}
-	if update {
+	if update || portal.LastSync.Add(24*time.Hour).Before(time.Now()) {
+		portal.LastSync = time.Now()
 		portal.Update(nil)
 		portal.UpdateBridgeInfo()
 	}

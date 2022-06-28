@@ -85,10 +85,14 @@ type User struct {
 	BackfillQueue *BackfillQueue
 	BridgeState   *bridge.BridgeStateQueue
 
-	puppetResyncQueue      []*Puppet
-	puppetResyncQueueDedup map[types.JID]struct{}
-	puppetResyncQueueLock  sync.Mutex
-	nextPuppetResync       time.Time
+	resyncQueue     map[types.JID]resyncQueueItem
+	resyncQueueLock sync.Mutex
+	nextResync      time.Time
+}
+
+type resyncQueueItem struct {
+	portal *Portal
+	puppet *Puppet
 }
 
 func (br *WABridge) getUserByMXID(userID id.UserID, onlyIfExists bool) *User {
@@ -223,7 +227,7 @@ func (br *WABridge) NewUser(dbUser *database.User) *User {
 		historySyncs: make(chan *events.HistorySync, 32),
 		lastPresence: types.PresenceUnavailable,
 
-		puppetResyncQueueDedup: make(map[types.JID]struct{}),
+		resyncQueue: make(map[types.JID]resyncQueueItem),
 	}
 
 	user.PermissionLevel = user.bridge.Config.Bridge.Permissions.Get(user.MXID)
@@ -235,65 +239,89 @@ func (br *WABridge) NewUser(dbUser *database.User) *User {
 	return user
 }
 
-const puppetSyncMinInterval = 7 * 24 * time.Hour
-const puppetSyncLoopInterval = 4 * time.Hour
+const resyncMinInterval = 7 * 24 * time.Hour
+const resyncLoopInterval = 4 * time.Hour
 
 func (user *User) puppetResyncLoop() {
-	user.nextPuppetResync = time.Now().Add(puppetSyncLoopInterval).Add(-time.Duration(rand.Intn(3600)) * time.Second)
+	user.nextResync = time.Now().Add(resyncLoopInterval).Add(-time.Duration(rand.Intn(3600)) * time.Second)
 	for {
-		time.Sleep(user.nextPuppetResync.Sub(time.Now()))
-		user.nextPuppetResync = time.Now().Add(puppetSyncLoopInterval)
+		time.Sleep(user.nextResync.Sub(time.Now()))
+		user.nextResync = time.Now().Add(resyncLoopInterval)
 		user.doPuppetResync()
 	}
 }
 
 func (user *User) EnqueuePuppetResync(puppet *Puppet) {
-	if puppet.LastSync.Add(puppetSyncMinInterval).After(time.Now()) {
+	if puppet.LastSync.Add(resyncMinInterval).After(time.Now()) {
 		return
 	}
-	user.puppetResyncQueueLock.Lock()
-	if _, exists := user.puppetResyncQueueDedup[puppet.JID]; !exists {
-		user.puppetResyncQueueDedup[puppet.JID] = struct{}{}
-		user.puppetResyncQueue = append(user.puppetResyncQueue, puppet)
-		user.log.Infofln("Enqueued resync for %s (next sync in %s)", puppet.JID, user.nextPuppetResync.Sub(time.Now()))
+	user.resyncQueueLock.Lock()
+	if _, exists := user.resyncQueue[puppet.JID]; !exists {
+		user.resyncQueue[puppet.JID] = resyncQueueItem{puppet: puppet}
+		user.log.Debugfln("Enqueued resync for %s (next sync in %s)", puppet.JID, user.nextResync.Sub(time.Now()))
 	}
-	user.puppetResyncQueueLock.Unlock()
+	user.resyncQueueLock.Unlock()
+}
+
+func (user *User) EnqueuePortalResync(portal *Portal) {
+	if portal.IsPrivateChat() || portal.LastSync.Add(resyncMinInterval).After(time.Now()) {
+		return
+	}
+	user.resyncQueueLock.Lock()
+	if _, exists := user.resyncQueue[portal.Key.JID]; !exists {
+		user.resyncQueue[portal.Key.JID] = resyncQueueItem{portal: portal}
+		user.log.Debugfln("Enqueued resync for %s (next sync in %s)", portal.Key.JID, user.nextResync.Sub(time.Now()))
+	}
+	user.resyncQueueLock.Unlock()
 }
 
 func (user *User) doPuppetResync() {
 	if !user.IsLoggedIn() {
 		return
 	}
-	user.puppetResyncQueueLock.Lock()
-	if len(user.puppetResyncQueue) == 0 {
-		user.puppetResyncQueueLock.Unlock()
+	user.resyncQueueLock.Lock()
+	if len(user.resyncQueue) == 0 {
+		user.resyncQueueLock.Unlock()
 		return
 	}
-	queue := user.puppetResyncQueue
-	user.puppetResyncQueue = nil
-	user.puppetResyncQueueDedup = make(map[types.JID]struct{})
-	user.puppetResyncQueueLock.Unlock()
-	var jids []types.JID
-	var filteredPuppets []*Puppet
-	for _, puppet := range queue {
-		if puppet.LastSync.Add(puppetSyncMinInterval).After(time.Now()) {
-			user.log.Debugfln("Not resyncing %s, last sync was %s ago", puppet.JID, time.Now().Sub(puppet.LastSync))
+	queue := user.resyncQueue
+	user.resyncQueue = make(map[types.JID]resyncQueueItem)
+	user.resyncQueueLock.Unlock()
+	var puppetJIDs []types.JID
+	var puppets []*Puppet
+	var portals []*Portal
+	for jid, item := range queue {
+		var lastSync time.Time
+		if item.puppet != nil {
+			lastSync = item.puppet.LastSync
+		} else if item.portal != nil {
+			lastSync = item.portal.LastSync
+		}
+		if lastSync.Add(resyncMinInterval).After(time.Now()) {
+			user.log.Debugfln("Not resyncing %s, last sync was %s ago", jid, time.Now().Sub(lastSync))
 			continue
 		}
-		jids = append(jids, puppet.JID)
-		filteredPuppets = append(filteredPuppets, puppet)
+		if item.puppet != nil {
+			puppets = append(puppets, item.puppet)
+			puppetJIDs = append(puppetJIDs, jid)
+		} else if item.portal != nil {
+			portals = append(portals, item.portal)
+		}
 	}
-	if len(jids) == 0 {
-		user.log.Debugfln("Skipping background sync, all puppets in queue have been synced in the past 3 days")
+	for _, portal := range portals {
+		user.log.Debugfln("Doing background sync for %s", portal.Key.JID)
+		portal.UpdateMatrixRoom(user, nil)
+	}
+	if len(puppetJIDs) == 0 {
 		return
 	}
-	user.log.Debugfln("Doing background sync for %+v", jids)
-	infos, err := user.Client.GetUserInfo(jids)
+	user.log.Debugfln("Doing background sync for users: %+v", puppetJIDs)
+	infos, err := user.Client.GetUserInfo(puppetJIDs)
 	if err != nil {
 		user.log.Errorfln("Error getting user info for background sync: %v", err)
 		return
 	}
-	for _, puppet := range filteredPuppets {
+	for _, puppet := range puppets {
 		info, ok := infos[puppet.JID]
 		if !ok {
 			user.log.Warnfln("Didn't get info for %s in background sync", puppet.JID)

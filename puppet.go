@@ -17,7 +17,6 @@
 package main
 
 import (
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -25,7 +24,6 @@ import (
 	"sync"
 	"time"
 
-	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/types"
 
 	log "maunium.net/go/maulogger/v2"
@@ -238,44 +236,16 @@ func reuploadAvatar(intent *appservice.IntentAPI, url string) (id.ContentURI, er
 }
 
 func (puppet *Puppet) UpdateAvatar(source *User) bool {
-	avatar, err := source.Client.GetProfilePictureInfo(puppet.JID, false)
-	if err != nil {
-		if !errors.Is(err, whatsmeow.ErrProfilePictureUnauthorized) {
-			puppet.log.Warnln("Failed to get avatar URL:", err)
-		} else if puppet.Avatar == "" {
-			puppet.Avatar = "unauthorized"
-			puppet.AvatarSet = false
-			return true
-		}
-		return false
-	} else if avatar == nil {
-		if puppet.Avatar == "remove" && puppet.AvatarSet {
-			return false
-		}
-		puppet.AvatarURL = id.ContentURI{}
-		avatar = &types.ProfilePictureInfo{ID: "remove"}
-	} else if avatar.ID == puppet.Avatar && puppet.AvatarSet {
-		return false
-	} else if len(avatar.URL) == 0 {
-		puppet.log.Warnln("Didn't get URL in response to avatar query")
-		return false
-	} else if avatar.ID != puppet.Avatar || puppet.AvatarURL.IsEmpty() {
-		url, err := reuploadAvatar(puppet.DefaultIntent(), avatar.URL)
-		if err != nil {
-			puppet.log.Warnln("Failed to reupload avatar:", err)
-			return false
-		}
-
-		puppet.AvatarURL = url
+	oldAvatarID := puppet.Avatar
+	changed := source.updateAvatar(puppet.JID, &puppet.Avatar, &puppet.AvatarURL, &puppet.AvatarSet, puppet.log, puppet.DefaultIntent())
+	if !changed || puppet.Avatar == "unauthorized" {
+		return changed
 	}
-	puppet.Avatar = avatar.ID
-	puppet.AvatarSet = false
-
-	err = puppet.DefaultIntent().SetAvatarURL(puppet.AvatarURL)
+	err := puppet.DefaultIntent().SetAvatarURL(puppet.AvatarURL)
 	if err != nil {
 		puppet.log.Warnln("Failed to set avatar:", err)
 	} else {
-		puppet.log.Debugln("Updated avatar", puppet.Avatar, "->", avatar.ID)
+		puppet.log.Debugln("Updated avatar", oldAvatarID, "->", puppet.Avatar)
 		puppet.AvatarSet = true
 	}
 	go puppet.updatePortalAvatar()

@@ -19,6 +19,7 @@ package database
 import (
 	"database/sql"
 	"fmt"
+	"time"
 
 	log "maunium.net/go/maulogger/v2"
 
@@ -64,7 +65,7 @@ func (pq *PortalQuery) New() *Portal {
 	}
 }
 
-const portalColumns = "jid, receiver, mxid, name, name_set, topic, topic_set, avatar, avatar_url, avatar_set, encrypted, first_event_id, next_batch_id, relay_user_id, expiration_time"
+const portalColumns = "jid, receiver, mxid, name, name_set, topic, topic_set, avatar, avatar_url, avatar_set, encrypted, last_sync, first_event_id, next_batch_id, relay_user_id, expiration_time"
 
 func (pq *PortalQuery) GetAll() []*Portal {
 	return pq.getAll(fmt.Sprintf("SELECT %s FROM portal", portalColumns))
@@ -142,6 +143,7 @@ type Portal struct {
 	AvatarURL id.ContentURI
 	AvatarSet bool
 	Encrypted bool
+	LastSync  time.Time
 
 	FirstEventID id.EventID
 	NextBatchID  id.BatchID
@@ -153,12 +155,16 @@ type Portal struct {
 
 func (portal *Portal) Scan(row dbutil.Scannable) *Portal {
 	var mxid, avatarURL, firstEventID, nextBatchID, relayUserID sql.NullString
-	err := row.Scan(&portal.Key.JID, &portal.Key.Receiver, &mxid, &portal.Name, &portal.NameSet, &portal.Topic, &portal.TopicSet, &portal.Avatar, &avatarURL, &portal.AvatarSet, &portal.Encrypted, &firstEventID, &nextBatchID, &relayUserID, &portal.ExpirationTime)
+	var lastSyncTs int64
+	err := row.Scan(&portal.Key.JID, &portal.Key.Receiver, &mxid, &portal.Name, &portal.NameSet, &portal.Topic, &portal.TopicSet, &portal.Avatar, &avatarURL, &portal.AvatarSet, &portal.Encrypted, &lastSyncTs, &firstEventID, &nextBatchID, &relayUserID, &portal.ExpirationTime)
 	if err != nil {
 		if err != sql.ErrNoRows {
 			portal.log.Errorln("Database scan failed:", err)
 		}
 		return nil
+	}
+	if lastSyncTs > 0 {
+		portal.LastSync = time.Unix(lastSyncTs, 0)
 	}
 	portal.MXID = id.RoomID(mxid.String)
 	portal.AvatarURL, _ = id.ParseContentURI(avatarURL.String)
@@ -182,15 +188,22 @@ func (portal *Portal) relayUserPtr() *id.UserID {
 	return nil
 }
 
+func (portal *Portal) lastSyncTs() int64 {
+	if portal.LastSync.IsZero() {
+		return 0
+	}
+	return portal.LastSync.Unix()
+}
+
 func (portal *Portal) Insert() {
 	_, err := portal.db.Exec(`
 		INSERT INTO portal (jid, receiver, mxid, name, name_set, topic, topic_set, avatar, avatar_url, avatar_set,
-		                    encrypted, first_event_id, next_batch_id, relay_user_id, expiration_time)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+		                    encrypted, last_sync, first_event_id, next_batch_id, relay_user_id, expiration_time)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
 	`,
 		portal.Key.JID, portal.Key.Receiver, portal.mxidPtr(), portal.Name, portal.NameSet, portal.Topic, portal.TopicSet,
-		portal.Avatar, portal.AvatarURL.String(), portal.AvatarSet, portal.Encrypted, portal.FirstEventID.String(),
-		portal.NextBatchID.String(), portal.relayUserPtr(), portal.ExpirationTime)
+		portal.Avatar, portal.AvatarURL.String(), portal.AvatarSet, portal.Encrypted, portal.lastSyncTs(),
+		portal.FirstEventID.String(), portal.NextBatchID.String(), portal.relayUserPtr(), portal.ExpirationTime)
 	if err != nil {
 		portal.log.Warnfln("Failed to insert %s: %v", portal.Key, err)
 	}
@@ -200,13 +213,13 @@ func (portal *Portal) Update(txn *sql.Tx) {
 	query := `
 		UPDATE portal
 		SET mxid=$1, name=$2, name_set=$3, topic=$4, topic_set=$5, avatar=$6, avatar_url=$7, avatar_set=$8,
-		    encrypted=$9, first_event_id=$10, next_batch_id=$11, relay_user_id=$12, expiration_time=$13
-		WHERE jid=$14 AND receiver=$15
+		    encrypted=$9, last_sync=$10, first_event_id=$11, next_batch_id=$12, relay_user_id=$13, expiration_time=$14
+		WHERE jid=$15 AND receiver=$16
 	`
 	args := []interface{}{
-		portal.mxidPtr(), portal.Name, portal.Topic, portal.Avatar, portal.AvatarURL.String(), portal.Encrypted,
-		portal.FirstEventID.String(), portal.NextBatchID.String(), portal.relayUserPtr(), portal.ExpirationTime,
-		portal.Key.JID, portal.Key.Receiver,
+		portal.mxidPtr(), portal.Name, portal.NameSet, portal.Topic, portal.TopicSet, portal.Avatar, portal.AvatarURL.String(),
+		portal.AvatarSet, portal.Encrypted, portal.lastSyncTs(), portal.FirstEventID.String(), portal.NextBatchID.String(),
+		portal.relayUserPtr(), portal.ExpirationTime, portal.Key.JID, portal.Key.Receiver,
 	}
 	var err error
 	if txn != nil {
