@@ -18,14 +18,27 @@ package config
 
 import (
 	"fmt"
-	"strconv"
 	"strings"
 	"text/template"
 
 	"go.mau.fi/whatsmeow/types"
 
+	"maunium.net/go/mautrix/bridge/bridgeconfig"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
+)
+
+type DeferredConfig struct {
+	StartDaysAgo   int `yaml:"start_days_ago"`
+	MaxBatchEvents int `yaml:"max_batch_events"`
+	BatchDelay     int `yaml:"batch_delay"`
+}
+
+type MediaRequestMethod string
+
+const (
+	MediaRequestMethodImmediate MediaRequestMethod = "immediate"
+	MediaRequestMethodLocalTime                    = "local_time"
 )
 
 type BridgeConfig struct {
@@ -35,25 +48,42 @@ type BridgeConfig struct {
 	PersonalFilteringSpaces bool `yaml:"personal_filtering_spaces"`
 
 	DeliveryReceipts      bool `yaml:"delivery_receipts"`
+	MessageStatusEvents   bool `yaml:"message_status_events"`
+	MessageErrorNotices   bool `yaml:"message_error_notices"`
 	PortalMessageBuffer   int  `yaml:"portal_message_buffer"`
 	CallStartNotices      bool `yaml:"call_start_notices"`
 	IdentityChangeNotices bool `yaml:"identity_change_notices"`
 
 	HistorySync struct {
-		CreatePortals        bool  `yaml:"create_portals"`
-		MaxAge               int64 `yaml:"max_age"`
-		Backfill             bool  `yaml:"backfill"`
-		DoublePuppetBackfill bool  `yaml:"double_puppet_backfill"`
-		RequestFullSync      bool  `yaml:"request_full_sync"`
+		CreatePortals bool `yaml:"create_portals"`
+		Backfill      bool `yaml:"backfill"`
+
+		DoublePuppetBackfill    bool `yaml:"double_puppet_backfill"`
+		RequestFullSync         bool `yaml:"request_full_sync"`
+		MaxInitialConversations int  `yaml:"max_initial_conversations"`
+
+		Immediate struct {
+			WorkerCount int `yaml:"worker_count"`
+			MaxEvents   int `yaml:"max_events"`
+		} `yaml:"immediate"`
+
+		MediaRequests struct {
+			AutoRequestMedia bool               `yaml:"auto_request_media"`
+			RequestMethod    MediaRequestMethod `yaml:"request_method"`
+			RequestLocalTime int                `yaml:"request_local_time"`
+		} `yaml:"media_requests"`
+
+		Deferred []DeferredConfig `yaml:"deferred"`
 	} `yaml:"history_sync"`
 	UserAvatarSync    bool `yaml:"user_avatar_sync"`
 	BridgeMatrixLeave bool `yaml:"bridge_matrix_leave"`
 
-	SyncWithCustomPuppets bool `yaml:"sync_with_custom_puppets"`
-	SyncDirectChatList    bool `yaml:"sync_direct_chat_list"`
-	DefaultBridgeReceipts bool `yaml:"default_bridge_receipts"`
-	DefaultBridgePresence bool `yaml:"default_bridge_presence"`
-	SendPresenceOnTyping  bool `yaml:"send_presence_on_typing"`
+	SyncWithCustomPuppets  bool `yaml:"sync_with_custom_puppets"`
+	SyncDirectChatList     bool `yaml:"sync_direct_chat_list"`
+	SyncManualMarkedUnread bool `yaml:"sync_manual_marked_unread"`
+	DefaultBridgeReceipts  bool `yaml:"default_bridge_receipts"`
+	DefaultBridgePresence  bool `yaml:"default_bridge_presence"`
+	SendPresenceOnTyping   bool `yaml:"send_presence_on_typing"`
 
 	ForceActiveDeliveryReceipts bool `yaml:"force_active_delivery_receipts"`
 
@@ -71,41 +101,46 @@ type BridgeConfig struct {
 	MarkReadOnlyOnCreate  bool   `yaml:"mark_read_only_on_create"`
 	EnableStatusBroadcast bool   `yaml:"enable_status_broadcast"`
 	MuteStatusBroadcast   bool   `yaml:"mute_status_broadcast"`
+	StatusBroadcastTag    string `yaml:"status_broadcast_tag"`
 	WhatsappThumbnail     bool   `yaml:"whatsapp_thumbnail"`
 	AllowUserInvite       bool   `yaml:"allow_user_invite"`
 	FederateRooms         bool   `yaml:"federate_rooms"`
 	URLPreviews           bool   `yaml:"url_previews"`
 
+	DisableStatusBroadcastSend   bool `yaml:"disable_status_broadcast_send"`
 	DisappearingMessagesInGroups bool `yaml:"disappearing_messages_in_groups"`
 
 	DisableBridgeAlerts bool `yaml:"disable_bridge_alerts"`
 
 	CommandPrefix string `yaml:"command_prefix"`
 
-	ManagementRoomText struct {
-		Welcome            string `yaml:"welcome"`
-		WelcomeConnected   string `yaml:"welcome_connected"`
-		WelcomeUnconnected string `yaml:"welcome_unconnected"`
-		AdditionalHelp     string `yaml:"additional_help"`
-	} `yaml:"management_room_text"`
+	ManagementRoomText bridgeconfig.ManagementRoomTexts `yaml:"management_room_text"`
 
-	Encryption struct {
-		Allow   bool `yaml:"allow"`
-		Default bool `yaml:"default"`
+	Encryption bridgeconfig.EncryptionConfig `yaml:"encryption"`
 
-		KeySharing struct {
-			Allow               bool `yaml:"allow"`
-			RequireCrossSigning bool `yaml:"require_cross_signing"`
-			RequireVerification bool `yaml:"require_verification"`
-		} `yaml:"key_sharing"`
-	} `yaml:"encryption"`
+	Provisioning struct {
+		Prefix       string `yaml:"prefix"`
+		SharedSecret string `yaml:"shared_secret"`
+	} `yaml:"provisioning"`
 
-	Permissions PermissionConfig `yaml:"permissions"`
+	Permissions bridgeconfig.PermissionConfig `yaml:"permissions"`
 
 	Relay RelaybotConfig `yaml:"relay"`
 
-	usernameTemplate    *template.Template `yaml:"-"`
-	displaynameTemplate *template.Template `yaml:"-"`
+	ParsedUsernameTemplate *template.Template `yaml:"-"`
+	displaynameTemplate    *template.Template `yaml:"-"`
+}
+
+func (bc BridgeConfig) GetEncryptionConfig() bridgeconfig.EncryptionConfig {
+	return bc.Encryption
+}
+
+func (bc BridgeConfig) GetCommandPrefix() string {
+	return bc.CommandPrefix
+}
+
+func (bc BridgeConfig) GetManagementRoomTexts() bridgeconfig.ManagementRoomTexts {
+	return bc.ManagementRoomText
 }
 
 type umBridgeConfig BridgeConfig
@@ -116,7 +151,7 @@ func (bc *BridgeConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
 		return err
 	}
 
-	bc.usernameTemplate, err = template.New("username").Parse(bc.UsernameTemplate)
+	bc.ParsedUsernameTemplate, err = template.New("username").Parse(bc.UsernameTemplate)
 	if err != nil {
 		return err
 	} else if !strings.Contains(bc.FormatUsername("1234567890"), "1234567890") {
@@ -146,6 +181,12 @@ type legacyContactInfo struct {
 	JID    string
 }
 
+const (
+	NameQualityPush    = 3
+	NameQualityContact = 2
+	NameQualityPhone   = 1
+)
+
 func (bc BridgeConfig) FormatDisplayname(jid types.JID, contact types.ContactInfo) (string, int8) {
 	var buf strings.Builder
 	_ = bc.displaynameTemplate.Execute(&buf, legacyContactInfo{
@@ -160,112 +201,19 @@ func (bc BridgeConfig) FormatDisplayname(jid types.JID, contact types.ContactInf
 	var quality int8
 	switch {
 	case len(contact.PushName) > 0 || len(contact.BusinessName) > 0:
-		quality = 3
+		quality = NameQualityPush
 	case len(contact.FullName) > 0 || len(contact.FirstName) > 0:
-		quality = 2
+		quality = NameQualityContact
 	default:
-		quality = 1
+		quality = NameQualityPhone
 	}
 	return buf.String(), quality
 }
 
 func (bc BridgeConfig) FormatUsername(username string) string {
 	var buf strings.Builder
-	_ = bc.usernameTemplate.Execute(&buf, username)
+	_ = bc.ParsedUsernameTemplate.Execute(&buf, username)
 	return buf.String()
-}
-
-type PermissionConfig map[string]PermissionLevel
-
-type PermissionLevel int
-
-const (
-	PermissionLevelDefault PermissionLevel = 0
-	PermissionLevelRelay   PermissionLevel = 5
-	PermissionLevelUser    PermissionLevel = 10
-	PermissionLevelAdmin   PermissionLevel = 100
-)
-
-func (pc *PermissionConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
-	rawPC := make(map[string]string)
-	err := unmarshal(&rawPC)
-	if err != nil {
-		return err
-	}
-
-	if *pc == nil {
-		*pc = make(map[string]PermissionLevel)
-	}
-	for key, value := range rawPC {
-		switch strings.ToLower(value) {
-		case "relaybot", "relay":
-			(*pc)[key] = PermissionLevelRelay
-		case "user":
-			(*pc)[key] = PermissionLevelUser
-		case "admin":
-			(*pc)[key] = PermissionLevelAdmin
-		default:
-			val, err := strconv.Atoi(value)
-			if err != nil {
-				(*pc)[key] = PermissionLevelDefault
-			} else {
-				(*pc)[key] = PermissionLevel(val)
-			}
-		}
-	}
-	return nil
-}
-
-func (pc *PermissionConfig) MarshalYAML() (interface{}, error) {
-	if *pc == nil {
-		return nil, nil
-	}
-	rawPC := make(map[string]string)
-	for key, value := range *pc {
-		switch value {
-		case PermissionLevelRelay:
-			rawPC[key] = "relay"
-		case PermissionLevelUser:
-			rawPC[key] = "user"
-		case PermissionLevelAdmin:
-			rawPC[key] = "admin"
-		default:
-			rawPC[key] = strconv.Itoa(int(value))
-		}
-	}
-	return rawPC, nil
-}
-
-func (pc PermissionConfig) IsRelayWhitelisted(userID id.UserID) bool {
-	return pc.GetPermissionLevel(userID) >= PermissionLevelRelay
-}
-
-func (pc PermissionConfig) IsWhitelisted(userID id.UserID) bool {
-	return pc.GetPermissionLevel(userID) >= PermissionLevelUser
-}
-
-func (pc PermissionConfig) IsAdmin(userID id.UserID) bool {
-	return pc.GetPermissionLevel(userID) >= PermissionLevelAdmin
-}
-
-func (pc PermissionConfig) GetPermissionLevel(userID id.UserID) PermissionLevel {
-	permissions, ok := pc[string(userID)]
-	if ok {
-		return permissions
-	}
-
-	_, homeserver, _ := userID.Parse()
-	permissions, ok = pc[homeserver]
-	if len(homeserver) > 0 && ok {
-		return permissions
-	}
-
-	permissions, ok = pc["*"]
-	if ok {
-		return permissions
-	}
-
-	return PermissionLevelDefault
 }
 
 type RelaybotConfig struct {

@@ -19,6 +19,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http"
 
 	log "maunium.net/go/maulogger/v2"
@@ -27,64 +28,63 @@ import (
 
 const SegmentURL = "https://api.segment.io/v1/track"
 
-type Segment struct {
-	segmentKey string
-	log        log.Logger
-	client     *http.Client
+type SegmentClient struct {
+	key    string
+	log    log.Logger
+	client http.Client
 }
 
-func NewSegment(segmentKey string, parentLogger log.Logger) *Segment {
-	return &Segment{
-		segmentKey: segmentKey,
-		log:        parentLogger.Sub("Segment"),
-		client:     &http.Client{},
-	}
-}
+var Segment SegmentClient
 
-func (segment *Segment) track(userID id.UserID, event string, properties map[string]interface{}) error {
-	data := map[string]interface{}{
+func (sc *SegmentClient) trackSync(userID id.UserID, event string, properties map[string]interface{}) error {
+	var buf bytes.Buffer
+	err := json.NewEncoder(&buf).Encode(map[string]interface{}{
 		"userId":     userID,
 		"event":      event,
 		"properties": properties,
-	}
-	json_data, err := json.Marshal(data)
+	})
 	if err != nil {
 		return err
 	}
 
-	req, err := http.NewRequest("POST", SegmentURL, bytes.NewBuffer(json_data))
+	req, err := http.NewRequest("POST", SegmentURL, &buf)
 	if err != nil {
 		return err
 	}
-	req.SetBasicAuth(segment.segmentKey, "")
-	resp, err := segment.client.Do(req)
+	req.SetBasicAuth(sc.key, "")
+	resp, err := sc.client.Do(req)
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	_ = resp.Body.Close()
+	if resp.StatusCode != 200 {
+		return fmt.Errorf("unexpected status code %d", resp.StatusCode)
+	}
 	return nil
 }
 
-func (segment *Segment) Track(userID id.UserID, event string, properties ...map[string]interface{}) {
-	if segment.segmentKey == "" {
+func (sc *SegmentClient) IsEnabled() bool {
+	return len(sc.key) > 0
+}
+
+func (sc *SegmentClient) Track(userID id.UserID, event string, properties ...map[string]interface{}) {
+	if !sc.IsEnabled() {
 		return
-	}
-	if len(properties) > 1 {
-		segment.log.Fatalf("Track should be called with at most one property map")
+	} else if len(properties) > 1 {
+		panic("Track should be called with at most one property map")
 	}
 
-	go (func() error {
+	go func() {
 		props := map[string]interface{}{}
 		if len(properties) > 0 {
 			props = properties[0]
 		}
 		props["bridge"] = "whatsapp"
-		err := segment.track(userID, event, props)
+		err := sc.trackSync(userID, event, props)
 		if err != nil {
-			segment.log.Errorf("Error tracking %s: %v+", event, err)
-			return err
+			sc.log.Errorfln("Error tracking %s: %v", event, err)
+		} else {
+			sc.log.Debugln("Tracked", event)
 		}
-		segment.log.Debug("Tracked ", event)
-		return nil
-	})()
+	}()
 }

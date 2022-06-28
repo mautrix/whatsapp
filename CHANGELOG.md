@@ -1,8 +1,41 @@
-# unreleased
+# v0.5.0 (2022-06-16)
+
+* Moved a lot of code to mautrix-go.
+* Improved handling edge cases in backfill system.
+* Improved handling errors in Matrix->WhatsApp message bridging.
+* Disallowed sending status broadcast messages by default, as it breaks with
+  big contact lists. Sending can be re-enabled in the config.
+* Fixed some cases where the first outgoing message was undecryptable for
+  WhatsApp users.
+* Fixed chats not being marked as read when sending a message from another
+  WhatsApp client after receiving a call.
+* Fixed other bridge users being added to status broadcasts rooms through
+  double puppeting.
+* Fixed edge cases in the deferred backfill queue.
+
+# v0.4.0 (2022-05-16)
+
+* Switched from `/r0` to `/v3` paths everywhere.
+  * The new `v3` paths are implemented since Synapse 1.48, Dendrite 0.6.5,
+    and Conduit 0.4.0. Servers older than these are no longer supported.
+* Added new deferred backfill system to allow backfilling historical messages
+  later instead of doing everything at login.
+* Added option to automatically request old media from phone after backfilling.
+* Added experimental provisioning API to check if a phone number is registered
+  on WhatsApp.
+* Added automatic retrying if the websocket dies while sending a message.
+* Added experimental support for sending status broadcast messages.
+* Added command to change disappearing message timer in chats.
+* Improved error handling if Postgres dies while the bridge is running.
+* Fixed bridging stickers sent from WhatsApp web.
+* Fixed registration generation not regex-escaping user ID namespaces.
+
+# v0.3.1 (2022-04-16)
 
 * Added emoji normalization for reactions in both directions to add/remove
   variation selector 16 as appropriate.
 * Added option to use [MSC2246] async media uploads.
+* Fixed custom fields in messages being unencrypted in history syncs.
 
 [MSC2246]: https://github.com/matrix-org/matrix-spec-proposals/pull/2246
 

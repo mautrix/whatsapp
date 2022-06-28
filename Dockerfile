@@ -4,7 +4,6 @@ RUN apk add --no-cache git ca-certificates build-base su-exec olm-dev
 
 COPY . /build
 WORKDIR /build
-RUN ./check-upgrade-numbers.sh
 RUN go build -o /usr/bin/mautrix-whatsapp
 
 FROM alpine:3.15
