@@ -334,7 +334,7 @@ func (user *User) doPuppetResync() {
 		} else if contact.Found {
 			contactPtr = &contact
 		}
-		puppet.Sync(user, contactPtr, info.PictureID != puppet.Avatar)
+		puppet.Sync(user, contactPtr, info.PictureID != "" && info.PictureID != puppet.Avatar)
 	}
 }
 
