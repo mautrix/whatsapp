@@ -967,6 +967,7 @@ func (user *User) updateAvatar(jid types.JID, avatarID *string, avatarURL *id.Co
 		}
 		*avatarURL = url
 	}
+	log.Debugfln("Updated avatar %s -> %s", *avatarID, avatar.ID)
 	*avatarID = avatar.ID
 	*avatarSet = false
 	return true
@@ -2777,12 +2778,12 @@ func createJPEGThumbnail(source []byte) ([]byte, error) {
 	return data, err
 }
 
-func (portal *Portal) downloadThumbnail(original []byte, thumbnailURL id.ContentURIString, eventID id.EventID) ([]byte, error) {
+func (portal *Portal) downloadThumbnail(ctx context.Context, original []byte, thumbnailURL id.ContentURIString, eventID id.EventID) ([]byte, error) {
 	if len(thumbnailURL) == 0 {
 		// just fall back to making thumbnail of original
 	} else if mxc, err := thumbnailURL.Parse(); err != nil {
 		portal.log.Warnfln("Malformed thumbnail URL in %s: %v (falling back to generating thumbnail from source)", eventID, err)
-	} else if thumbnail, err := portal.MainIntent().DownloadBytes(mxc); err != nil {
+	} else if thumbnail, err := portal.MainIntent().DownloadBytesContext(ctx, mxc); err != nil {
 		portal.log.Warnfln("Failed to download thumbnail in %s: %v (falling back to generating thumbnail from source)", eventID, err)
 	} else {
 		return createJPEGThumbnail(thumbnail)
@@ -2804,7 +2805,7 @@ func (portal *Portal) convertWebPtoPNG(webpImage []byte) ([]byte, error) {
 	return pngBuffer.Bytes(), nil
 }
 
-func (portal *Portal) preprocessMatrixMedia(sender *User, relaybotFormatted bool, content *event.MessageEventContent, eventID id.EventID, mediaType whatsmeow.MediaType) (*MediaUpload, error) {
+func (portal *Portal) preprocessMatrixMedia(ctx context.Context, sender *User, relaybotFormatted bool, content *event.MessageEventContent, eventID id.EventID, mediaType whatsmeow.MediaType) (*MediaUpload, error) {
 	var caption string
 	var mentionedJIDs []string
 	if relaybotFormatted {
@@ -2821,7 +2822,7 @@ func (portal *Portal) preprocessMatrixMedia(sender *User, relaybotFormatted bool
 	if err != nil {
 		return nil, err
 	}
-	data, err := portal.MainIntent().DownloadBytes(mxc)
+	data, err := portal.MainIntent().DownloadBytesContext(ctx, mxc)
 	if err != nil {
 		return nil, util.NewDualError(errMediaDownloadFailed, err)
 	}
@@ -2832,7 +2833,7 @@ func (portal *Portal) preprocessMatrixMedia(sender *User, relaybotFormatted bool
 		}
 	}
 	if mediaType == whatsmeow.MediaVideo && content.GetInfo().MimeType == "image/gif" {
-		data, err = ffmpeg.ConvertBytes(data, ".mp4", []string{"-f", "gif"}, []string{
+		data, err = ffmpeg.ConvertBytes(ctx, data, ".mp4", []string{"-f", "gif"}, []string{
 			"-pix_fmt", "yuv420p", "-c:v", "libx264", "-movflags", "+faststart",
 			"-filter:v", "crop='floor(in_w/2)*2:floor(in_h/2)*2'",
 		}, content.GetInfo().MimeType)
@@ -2848,7 +2849,7 @@ func (portal *Portal) preprocessMatrixMedia(sender *User, relaybotFormatted bool
 		}
 		content.Info.MimeType = "image/png"
 	}
-	uploadResp, err := sender.Client.Upload(context.Background(), data, mediaType)
+	uploadResp, err := sender.Client.Upload(ctx, data, mediaType)
 	if err != nil {
 		return nil, util.NewDualError(errMediaWhatsAppUploadFailed, err)
 	}
@@ -2856,7 +2857,7 @@ func (portal *Portal) preprocessMatrixMedia(sender *User, relaybotFormatted bool
 	// Audio doesn't have thumbnails
 	var thumbnail []byte
 	if mediaType != whatsmeow.MediaAudio {
-		thumbnail, err = portal.downloadThumbnail(data, content.GetInfo().ThumbnailURL, eventID)
+		thumbnail, err = portal.downloadThumbnail(ctx, data, content.GetInfo().ThumbnailURL, eventID)
 		// Ignore format errors for non-image files, we don't care about those thumbnails
 		if err != nil && (!errors.Is(err, image.ErrFormat) || mediaType == whatsmeow.MediaImage) {
 			portal.log.Warnfln("Failed to generate thumbnail for %s: %v", eventID, err)
@@ -2947,7 +2948,7 @@ func getUnstableWaveform(content map[string]interface{}) []byte {
 	return output
 }
 
-func (portal *Portal) convertMatrixMessage(sender *User, evt *event.Event) (*waProto.Message, *User, error) {
+func (portal *Portal) convertMatrixMessage(ctx context.Context, sender *User, evt *event.Event) (*waProto.Message, *User, error) {
 	content, ok := evt.Content.Parsed.(*event.MessageEventContent)
 	if !ok {
 		return nil, sender, fmt.Errorf("%w %T", errUnexpectedParsedContentType, evt.Content.Parsed)
@@ -3003,14 +3004,17 @@ func (portal *Portal) convertMatrixMessage(sender *User, evt *event.Event) (*waP
 			Text:        &text,
 			ContextInfo: &ctxInfo,
 		}
-		hasPreview := portal.convertURLPreviewToWhatsApp(sender, evt, msg.ExtendedTextMessage)
+		hasPreview := portal.convertURLPreviewToWhatsApp(ctx, sender, evt, msg.ExtendedTextMessage)
+		if ctx.Err() != nil {
+			return nil, nil, ctx.Err()
+		}
 		if ctxInfo.StanzaId == nil && ctxInfo.MentionedJid == nil && ctxInfo.Expiration == nil && !hasPreview {
 			// No need for extended message
 			msg.ExtendedTextMessage = nil
 			msg.Conversation = &text
 		}
 	case event.MsgImage:
-		media, err := portal.preprocessMatrixMedia(sender, relaybotFormatted, content, evt.ID, whatsmeow.MediaImage)
+		media, err := portal.preprocessMatrixMedia(ctx, sender, relaybotFormatted, content, evt.ID, whatsmeow.MediaImage)
 		if media == nil {
 			return nil, sender, err
 		}
@@ -3028,7 +3032,7 @@ func (portal *Portal) convertMatrixMessage(sender *User, evt *event.Event) (*waP
 		}
 	case event.MsgVideo:
 		gifPlayback := content.GetInfo().MimeType == "image/gif"
-		media, err := portal.preprocessMatrixMedia(sender, relaybotFormatted, content, evt.ID, whatsmeow.MediaVideo)
+		media, err := portal.preprocessMatrixMedia(ctx, sender, relaybotFormatted, content, evt.ID, whatsmeow.MediaVideo)
 		if media == nil {
 			return nil, sender, err
 		}
@@ -3048,7 +3052,7 @@ func (portal *Portal) convertMatrixMessage(sender *User, evt *event.Event) (*waP
 			FileLength:    proto.Uint64(uint64(media.FileLength)),
 		}
 	case event.MsgAudio:
-		media, err := portal.preprocessMatrixMedia(sender, relaybotFormatted, content, evt.ID, whatsmeow.MediaAudio)
+		media, err := portal.preprocessMatrixMedia(ctx, sender, relaybotFormatted, content, evt.ID, whatsmeow.MediaAudio)
 		if media == nil {
 			return nil, sender, err
 		}
@@ -3071,7 +3075,7 @@ func (portal *Portal) convertMatrixMessage(sender *User, evt *event.Event) (*waP
 			msg.AudioMessage.Mimetype = proto.String(addCodecToMime(content.GetInfo().MimeType, "opus"))
 		}
 	case event.MsgFile:
-		media, err := portal.preprocessMatrixMedia(sender, relaybotFormatted, content, evt.ID, whatsmeow.MediaDocument)
+		media, err := portal.preprocessMatrixMedia(ctx, sender, relaybotFormatted, content, evt.ID, whatsmeow.MediaDocument)
 		if media == nil {
 			return nil, sender, err
 		}
@@ -3159,6 +3163,8 @@ func errorToStatusReason(err error) (reason event.MessageStatusReason, isCertain
 		errors.Is(err, errBroadcastReactionNotSupported),
 		errors.Is(err, errBroadcastSendDisabled):
 		return event.MessageStatusUnsupported, true, false, true
+	case errors.Is(err, context.DeadlineExceeded):
+		return event.MessageStatusTooOld, false, true, true
 	case errors.Is(err, errTargetNotFound),
 		errors.Is(err, errTargetIsFake),
 		errors.Is(err, errReactionDatabaseNotFound),
@@ -3179,9 +3185,12 @@ func errorToStatusReason(err error) (reason event.MessageStatusReason, isCertain
 	}
 }
 
-func (portal *Portal) sendStatusEvent(evtID id.EventID, err error) {
+func (portal *Portal) sendStatusEvent(evtID, lastRetry id.EventID, err error) {
 	if !portal.bridge.Config.Bridge.MessageStatusEvents {
 		return
+	}
+	if lastRetry == evtID {
+		lastRetry = ""
 	}
 	intent := portal.bridge.Bot
 	if !portal.Encrypted {
@@ -3194,7 +3203,8 @@ func (portal *Portal) sendStatusEvent(evtID id.EventID, err error) {
 			Type:    event.RelReference,
 			EventID: evtID,
 		},
-		Success: err == nil,
+		Success:   err == nil,
+		LastRetry: lastRetry,
 	}
 	if !content.Success {
 		reason, isCertain, canRetry, _ := errorToStatusReason(err)
@@ -3247,6 +3257,10 @@ func (portal *Portal) sendMessageMetrics(evt *event.Event, err error, part strin
 	if evt.Type == event.EventRedaction {
 		evtDescription += fmt.Sprintf(" of %s", evt.Redacts)
 	}
+	origEvtID := evt.ID
+	if retryMeta := evt.Content.AsMessage().MessageSendRetry; retryMeta != nil {
+		origEvtID = retryMeta.OriginalEventID
+	}
 	if err != nil {
 		level := log.LevelError
 		if part == "Ignoring" {
@@ -3259,12 +3273,12 @@ func (portal *Portal) sendMessageMetrics(evt *event.Event, err error, part strin
 		if sendNotice {
 			portal.sendErrorMessage(err.Error(), isCertain)
 		}
-		portal.sendStatusEvent(evt.ID, err)
+		portal.sendStatusEvent(origEvtID, evt.ID, err)
 	} else {
 		portal.log.Debugfln("Handled Matrix %s %s", msgType, evtDescription)
 		portal.sendDeliveryReceipt(evt.ID)
 		portal.bridge.SendMessageSuccessCheckpoint(evt, bridge.MsgStepRemote, 0)
-		portal.sendStatusEvent(evt.ID, nil)
+		portal.sendStatusEvent(origEvtID, evt.ID, nil)
 	}
 }
 
@@ -3276,17 +3290,45 @@ func (portal *Portal) HandleMatrixMessage(sender *User, evt *event.Event) {
 		go portal.sendMessageMetrics(evt, errBroadcastSendDisabled, "Ignoring")
 		return
 	}
-	portal.log.Debugfln("Received message %s from %s", evt.ID, evt.Sender)
-	msg, sender, err := portal.convertMatrixMessage(sender, evt)
+	origEvtID := evt.ID
+	var dbMsg *database.Message
+	if retryMeta := evt.Content.AsMessage().MessageSendRetry; retryMeta != nil {
+		origEvtID = retryMeta.OriginalEventID
+		dbMsg = portal.bridge.DB.Message.GetByMXID(origEvtID)
+		if dbMsg != nil && dbMsg.Sent {
+			portal.log.Debugfln("Ignoring retry request %s (#%d) for %s/%s from %s as message was already sent", evt.ID, retryMeta.RetryCount, origEvtID, dbMsg.JID, evt.Sender)
+			go portal.sendMessageMetrics(evt, nil, "")
+			return
+		} else if dbMsg != nil {
+			portal.log.Debugfln("Got retry request %s (#%d) for %s/%s from %s", evt.ID, retryMeta.RetryCount, origEvtID, dbMsg.JID, evt.Sender)
+		} else {
+			portal.log.Debugfln("Got retry request %s (#%d) for %s from %s (original message not known)", evt.ID, retryMeta.RetryCount, origEvtID, evt.Sender)
+		}
+	} else {
+		portal.log.Debugfln("Received message %s from %s", evt.ID, evt.Sender)
+	}
+
+	ctx := context.Background()
+	if portal.bridge.Config.Bridge.MessageHandlingDeadline > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, portal.bridge.Config.Bridge.MessageHandlingDeadline)
+		defer cancel()
+	}
+
+	msg, sender, err := portal.convertMatrixMessage(ctx, sender, evt)
 	if msg == nil {
 		go portal.sendMessageMetrics(evt, err, "Error converting")
 		return
 	}
-	portal.MarkDisappearing(evt.ID, portal.ExpirationTime, true)
+	portal.MarkDisappearing(origEvtID, portal.ExpirationTime, true)
 	info := portal.generateMessageInfo(sender)
-	dbMsg := portal.markHandled(nil, nil, info, evt.ID, false, true, database.MsgNormal, database.MsgNoError)
+	if dbMsg == nil {
+		dbMsg = portal.markHandled(nil, nil, info, evt.ID, false, true, database.MsgNormal, database.MsgNoError)
+	} else {
+		info.ID = dbMsg.JID
+	}
 	portal.log.Debugln("Sending event", evt.ID, "to WhatsApp", info.ID)
-	ts, err := sender.Client.SendMessage(portal.Key.JID, info.ID, msg)
+	ts, err := sender.Client.SendMessage(ctx, portal.Key.JID, info.ID, msg)
 	go portal.sendMessageMetrics(evt, err, "Error sending")
 	if err == nil {
 		dbMsg.MarkSent(ts)
@@ -3346,7 +3388,7 @@ func (portal *Portal) sendReactionToWhatsApp(sender *User, id types.MessageID, t
 		messageKeyParticipant = proto.String(target.Sender.ToNonAD().String())
 	}
 	key = variationselector.Remove(key)
-	return sender.Client.SendMessage(portal.Key.JID, id, &waProto.Message{
+	return sender.Client.SendMessage(context.TODO(), portal.Key.JID, id, &waProto.Message{
 		ReactionMessage: &waProto.ReactionMessage{
 			Key: &waProto.MessageKey{
 				RemoteJid:   proto.String(portal.Key.JID.String()),

@@ -363,7 +363,7 @@ func fnCreate(ce *WrappedCommandEvent) {
 	}
 
 	ce.Log.Infofln("Creating group for %s with name %s and participants %+v", ce.RoomID, roomNameEvent.Name, participants)
-	resp, err := ce.User.Client.CreateGroup(roomNameEvent.Name, participants)
+	resp, err := ce.User.Client.CreateGroup(roomNameEvent.Name, participants, "")
 	if err != nil {
 		ce.Reply("Failed to create group: %v", err)
 		return

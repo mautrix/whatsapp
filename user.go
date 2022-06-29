@@ -671,7 +671,7 @@ func (user *User) sendHackyPhonePing() {
 	} else {
 		user.log.Warnfln("Failed to get last app state key ID to send hacky phone ping: %v - sending empty request", err)
 	}
-	ts, err := user.Client.SendMessage(user.JID.ToNonAD(), msgID, &waProto.Message{
+	ts, err := user.Client.SendMessage(context.Background(), user.JID.ToNonAD(), msgID, &waProto.Message{
 		ProtocolMessage: &waProto.ProtocolMessage{
 			Type: waProto.ProtocolMessage_APP_STATE_SYNC_KEY_REQUEST.Enum(),
 			AppStateSyncKeyRequest: &waProto.AppStateSyncKeyRequest{

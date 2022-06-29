@@ -91,6 +91,8 @@ func DoUpgrade(helper *up.Helper) {
 	helper.Copy(up.Bool, "bridge", "disable_bridge_alerts")
 	helper.Copy(up.Bool, "bridge", "url_previews")
 	helper.Copy(up.Bool, "bridge", "caption_in_message")
+	helper.Copy(up.Str|up.Null, "bridge", "message_handling_deadline")
+
 	helper.Copy(up.Str, "bridge", "management_room_text", "welcome")
 	helper.Copy(up.Str, "bridge", "management_room_text", "welcome_connected")
 	helper.Copy(up.Str, "bridge", "management_room_text", "welcome_unconnected")

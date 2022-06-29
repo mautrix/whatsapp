@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"strings"
 	"text/template"
+	"time"
 
 	"go.mau.fi/whatsmeow/types"
 
@@ -109,6 +110,9 @@ type BridgeConfig struct {
 	URLPreviews           bool   `yaml:"url_previews"`
 	CaptionInMessage      bool   `yaml:"caption_in_message"`
 
+	MessageHandlingDeadlineStr string        `yaml:"message_handling_deadline"`
+	MessageHandlingDeadline    time.Duration `yaml:"-"`
+
 	DisableStatusBroadcastSend   bool `yaml:"disable_status_broadcast_send"`
 	DisappearingMessagesInGroups bool `yaml:"disappearing_messages_in_groups"`
 
@@ -193,6 +197,13 @@ func (bc *BridgeConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	bc.displaynameTemplate, err = template.New("displayname").Parse(bc.DisplaynameTemplate)
 	if err != nil {
 		return err
+	}
+
+	if bc.MessageHandlingDeadlineStr != "" {
+		bc.MessageHandlingDeadline, err = time.ParseDuration(bc.MessageHandlingDeadlineStr)
+		if err != nil {
+			return err
+		}
 	}
 
 	return nil
