@@ -71,12 +71,8 @@ func errorToStatusReason(err error) (reason event.MessageStatusReason, isCertain
 		return event.MessageStatusUnsupported, true, false, true
 	case errors.Is(err, errTimeoutBeforeHandling):
 		return event.MessageStatusTooOld, true, true, true
-	case errors.Is(err, context.DeadlineExceeded):
+	case errors.Is(err, context.DeadlineExceeded), errors.Is(err, errMessageTakingLong):
 		return event.MessageStatusTooOld, false, true, true
-	case errors.Is(err, errMessageTakingLong):
-		// Set can_retry=false here since we'll send another status event allowing the retry later
-		// Technically retrying when this happens is fine, but we'd just ignore it anyway.
-		return event.MessageStatusTooOld, false, false, true
 	case errors.Is(err, errTargetNotFound),
 		errors.Is(err, errTargetIsFake),
 		errors.Is(err, errReactionDatabaseNotFound),
