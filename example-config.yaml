@@ -284,8 +284,10 @@ bridge:
     # Null means there's no enforced timeout.
     message_handling_timeout:
         # Send an error message after this timeout, but keep waiting for the response until the deadline.
+        # This is counted from the origin_server_ts, so the warning time is consistent regardless of the source of delay.
         error_after: 10s
         # Drop messages after this timeout. They may still go through if the message got sent to the servers.
+        # This is counted from the time the bridge starts handling the message.
         deadline: 60s
 
     # The prefix for commands. Only required in non-management rooms.

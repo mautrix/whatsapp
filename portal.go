@@ -3156,6 +3156,8 @@ func (portal *Portal) HandleMatrixMessage(sender *User, evt *event.Event) {
 		if remainingTime < 0 {
 			go ms.sendMessageMetrics(evt, fmt.Errorf("%w (message is %s old)", errTimeoutBeforeHandling, messageAge), "Timeout handling", true)
 			return
+		} else if remainingTime < 1*time.Second {
+			portal.log.Warnfln("Message %s was delayed before reaching the bridge, only have %s (of %s timeout) until delay warning", evt.ID, remainingTime, portal.bridge.Config.Bridge.MessageHandlingTimeout.ErrorAfter)
 		}
 		go func() {
 			time.Sleep(remainingTime)
