@@ -110,8 +110,13 @@ type BridgeConfig struct {
 	URLPreviews           bool   `yaml:"url_previews"`
 	CaptionInMessage      bool   `yaml:"caption_in_message"`
 
-	MessageHandlingDeadlineStr string        `yaml:"message_handling_deadline"`
-	MessageHandlingDeadline    time.Duration `yaml:"-"`
+	MessageHandlingTimeout struct {
+		ErrorAfterStr string `yaml:"error_after"`
+		DeadlineStr   string `yaml:"deadline"`
+
+		ErrorAfter time.Duration `yaml:"-"`
+		Deadline   time.Duration `yaml:"-"`
+	} `yaml:"message_handling_timeout"`
 
 	DisableStatusBroadcastSend   bool `yaml:"disable_status_broadcast_send"`
 	DisappearingMessagesInGroups bool `yaml:"disappearing_messages_in_groups"`
@@ -199,8 +204,14 @@ func (bc *BridgeConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
 		return err
 	}
 
-	if bc.MessageHandlingDeadlineStr != "" {
-		bc.MessageHandlingDeadline, err = time.ParseDuration(bc.MessageHandlingDeadlineStr)
+	if bc.MessageHandlingTimeout.ErrorAfterStr != "" {
+		bc.MessageHandlingTimeout.ErrorAfter, err = time.ParseDuration(bc.MessageHandlingTimeout.ErrorAfterStr)
+		if err != nil {
+			return err
+		}
+	}
+	if bc.MessageHandlingTimeout.DeadlineStr != "" {
+		bc.MessageHandlingTimeout.Deadline, err = time.ParseDuration(bc.MessageHandlingTimeout.DeadlineStr)
 		if err != nil {
 			return err
 		}

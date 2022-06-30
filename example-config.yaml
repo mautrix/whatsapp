@@ -280,9 +280,13 @@ bridge:
     # Send captions in the same message as images. This will send data compatible with both MSC2530 and MSC3552.
     # This is currently not supported in most clients.
     caption_in_message: false
-    # Maximum time for handling Matrix events. A duration string formatted for https://pkg.go.dev/time#ParseDuration
+    # Maximum time for handling Matrix events. Duration strings formatted for https://pkg.go.dev/time#ParseDuration
     # Null means there's no enforced timeout.
-    message_handling_deadline: null
+    message_handling_timeout:
+        # Send an error message after this timeout, but keep waiting for the response until the deadline.
+        error_after: 10s
+        # Drop messages after this timeout. They may still go through if the message got sent to the servers.
+        deadline: 60s
 
     # The prefix for commands. Only required in non-management rooms.
     command_prefix: "!wa"
