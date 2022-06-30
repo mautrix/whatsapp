@@ -238,9 +238,9 @@ func (br *WABridge) CheckFeatures(versions *mautrix.RespVersions) (string, bool)
 	if br.Config.Bridge.HistorySync.Backfill {
 		supported, known := versions.UnstableFeatures[unstableFeatureBatchSending]
 		if !known {
-			return "Backfilling is enabled in bridge config, but server does not support MSC2716 batch sending", false
+			return "Backfilling is enabled in bridge config, but homeserver does not support MSC2716 batch sending", false
 		} else if !supported {
-			return "Backfilling is enabled in bridge config, but MSC2716 batch sending is not enabled on server", false
+			return "Backfilling is enabled in bridge config, but MSC2716 batch sending is not enabled on homeserver", false
 		}
 	}
 	return "", true
