@@ -309,8 +309,13 @@ func (user *User) doPuppetResync() {
 		}
 	}
 	for _, portal := range portals {
-		user.log.Debugfln("Doing background sync for %s", portal.Key.JID)
-		portal.UpdateMatrixRoom(user, nil)
+		groupInfo, err := user.Client.GetGroupInfo(portal.Key.JID)
+		if err != nil {
+			user.log.Warnfln("Failed to get group info for %s to do background sync: %v", portal.Key.JID, err)
+		} else {
+			user.log.Debugfln("Doing background sync for %s", portal.Key.JID)
+			portal.UpdateMatrixRoom(user, groupInfo)
+		}
 	}
 	if len(puppetJIDs) == 0 {
 		return
