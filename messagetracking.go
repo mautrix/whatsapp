@@ -195,6 +195,9 @@ func (portal *Portal) sendMessageMetrics(evt *event.Event, err error, part strin
 		portal.log.Logfln(level, "%s %s %s from %s: %v", part, msgType, evtDescription, evt.Sender, err)
 		reason, isCertain, _, sendNotice := errorToStatusReason(err)
 		status := bridge.ReasonToCheckpointStatus(reason)
+		if errors.Is(err, errMessageTakingLong) {
+			status = bridge.MsgStatusWillRetry
+		}
 		portal.bridge.SendMessageCheckpoint(evt, bridge.MsgStepRemote, err, status, ms.getRetryNum())
 		if sendNotice {
 			ms.setNoticeID(portal.sendErrorMessage(err, isCertain, ms.getNoticeID()))
