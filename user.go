@@ -344,18 +344,15 @@ func (user *User) doPuppetResync() {
 }
 
 func (user *User) ensureInvited(intent *appservice.IntentAPI, roomID id.RoomID, isDirect bool) (ok bool) {
-	inviteContent := event.Content{
-		Parsed: &event.MemberEventContent{
-			Membership: event.MembershipInvite,
-			IsDirect:   isDirect,
-		},
-		Raw: map[string]interface{}{},
+	extraContent := make(map[string]interface{})
+	if isDirect {
+		extraContent["is_direct"] = true
 	}
 	customPuppet := user.bridge.GetPuppetByCustomMXID(user.MXID)
 	if customPuppet != nil && customPuppet.CustomIntent() != nil {
-		inviteContent.Raw["fi.mau.will_auto_accept"] = true
+		extraContent["fi.mau.will_auto_accept"] = true
 	}
-	_, err := intent.SendStateEvent(roomID, event.StateMember, user.MXID.String(), &inviteContent)
+	_, err := intent.InviteUser(roomID, &mautrix.ReqInviteUser{UserID: user.MXID}, extraContent)
 	var httpErr mautrix.HTTPError
 	if err != nil && errors.As(err, &httpErr) && httpErr.RespError != nil && strings.Contains(httpErr.RespError.Err, "is already in the room") {
 		user.bridge.StateStore.SetMembership(roomID, user.MXID, event.MembershipJoin)
@@ -981,9 +978,9 @@ func (user *User) updateChatTag(intent *appservice.IntentAPI, portal *Portal, ta
 	currentTag, ok := existingTags.Tags[tag]
 	if active && !ok {
 		user.log.Debugln("Adding tag", tag, "to", portal.MXID)
-		data := CustomTagData{"0.5", doublePuppetValue}
+		data := CustomTagData{Order: "0.5", DoublePuppet: user.bridge.Name}
 		err = intent.AddTagWithCustomData(portal.MXID, tag, &data)
-	} else if !active && ok && currentTag.DoublePuppet == doublePuppetValue {
+	} else if !active && ok && currentTag.DoublePuppet == user.bridge.Name {
 		user.log.Debugln("Removing tag", tag, "from", portal.MXID)
 		err = intent.RemoveTag(portal.MXID, tag)
 	} else {
@@ -1210,10 +1207,10 @@ func (user *User) handleReceipt(receipt *events.Receipt) {
 	portal.messages <- PortalMessage{receipt: receipt, source: user}
 }
 
-func makeReadMarkerContent(eventID id.EventID, doublePuppet bool) CustomReadMarkers {
+func (user *User) makeReadMarkerContent(eventID id.EventID, doublePuppet bool) CustomReadMarkers {
 	var extra CustomReadReceipt
 	if doublePuppet {
-		extra.DoublePuppetSource = doublePuppetValue
+		extra.DoublePuppetSource = user.bridge.Name
 	}
 	return CustomReadMarkers{
 		ReqSetReadMarkers: mautrix.ReqSetReadMarkers{
@@ -1235,7 +1232,7 @@ func (user *User) markSelfReadFull(portal *Portal) {
 		return
 	}
 	user.SetLastReadTS(portal.Key, lastMessage.Timestamp)
-	err := puppet.CustomIntent().SetReadMarkers(portal.MXID, makeReadMarkerContent(lastMessage.MXID, true))
+	err := puppet.CustomIntent().SetReadMarkers(portal.MXID, user.makeReadMarkerContent(lastMessage.MXID, true))
 	if err != nil {
 		user.log.Warnfln("Failed to mark %s (last message) in %s as read: %v", lastMessage.MXID, portal.MXID, err)
 	} else {

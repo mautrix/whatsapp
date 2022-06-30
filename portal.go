@@ -331,7 +331,7 @@ func (portal *Portal) handleReceipt(receipt *events.Receipt, source *User) {
 	}
 	intent := portal.bridge.GetPuppetByJID(receipt.Sender).IntentFor(portal)
 	for _, msg := range markAsRead {
-		err := intent.SetReadMarkers(portal.MXID, makeReadMarkerContent(msg.MXID, intent.IsCustomPuppet))
+		err := intent.SetReadMarkers(portal.MXID, source.makeReadMarkerContent(msg.MXID, intent.IsCustomPuppet))
 		if err != nil {
 			portal.log.Warnfln("Failed to mark message %s as read by %s: %v", msg.MXID, intent.UserID, err)
 		} else {
@@ -740,7 +740,7 @@ func (portal *Portal) handleMessage(source *User, evt *events.Message) {
 		if source.MXID == intent.UserID {
 			// There are some edge cases (like call notices) where previous messages aren't marked as read
 			// when the user sends a message from another device, so just mark the new message as read to be safe.
-			err = intent.SetReadMarkers(portal.MXID, makeReadMarkerContent(lastEventID, true))
+			err = intent.SetReadMarkers(portal.MXID, source.makeReadMarkerContent(lastEventID, true))
 			if err != nil {
 				portal.log.Warnfln("Failed to mark own message %s as read by %s: %v", lastEventID, source.MXID, err)
 			}
@@ -1588,11 +1588,6 @@ func (portal *Portal) SetReply(content *event.MessageEventContent, replyToID typ
 	return true
 }
 
-type sendReactionContent struct {
-	event.ReactionEventContent
-	DoublePuppet string `json:"fi.mau.double_puppet_source,omitempty"`
-}
-
 func (portal *Portal) HandleMessageReaction(intent *appservice.IntentAPI, user *User, info *types.MessageInfo, reaction *waProto.ReactionMessage, existingMsg *database.Message) {
 	if existingMsg != nil {
 		_, _ = portal.MainIntent().RedactEvent(portal.MXID, existingMsg.MXID, mautrix.ReqRedact{
@@ -1608,11 +1603,7 @@ func (portal *Portal) HandleMessageReaction(intent *appservice.IntentAPI, user *
 			return
 		}
 
-		extra := make(map[string]interface{})
-		if intent.IsCustomPuppet {
-			extra[doublePuppetKey] = doublePuppetValue
-		}
-		resp, err := intent.RedactEvent(portal.MXID, existing.MXID, mautrix.ReqRedact{Extra: extra})
+		resp, err := intent.RedactEvent(portal.MXID, existing.MXID)
 		if err != nil {
 			portal.log.Errorfln("Failed to redact reaction %s/%s from %s to %s: %v", existing.MXID, existing.JID, info.Sender, targetJID, err)
 		}
@@ -1625,14 +1616,11 @@ func (portal *Portal) HandleMessageReaction(intent *appservice.IntentAPI, user *
 			return
 		}
 
-		var content sendReactionContent
+		var content event.ReactionEventContent
 		content.RelatesTo = event.RelatesTo{
 			Type:    event.RelAnnotation,
 			EventID: target.MXID,
 			Key:     variationselector.Add(reaction.GetText()),
-		}
-		if intent.IsCustomPuppet {
-			content.DoublePuppet = doublePuppetValue
 		}
 		resp, err := intent.SendMassagedMessageEvent(portal.MXID, event.EventReaction, &content, info.Timestamp.UnixMilli())
 		if err != nil {
@@ -1651,14 +1639,10 @@ func (portal *Portal) HandleMessageRevoke(user *User, info *types.MessageInfo, k
 		return false
 	}
 	intent := portal.bridge.GetPuppetByJID(info.Sender).IntentFor(portal)
-	redactionReq := mautrix.ReqRedact{Extra: map[string]interface{}{}}
-	if intent.IsCustomPuppet {
-		redactionReq.Extra[doublePuppetKey] = doublePuppetValue
-	}
-	_, err := intent.RedactEvent(portal.MXID, msg.MXID, redactionReq)
+	_, err := intent.RedactEvent(portal.MXID, msg.MXID)
 	if err != nil {
 		if errors.Is(err, mautrix.MForbidden) {
-			_, err = portal.MainIntent().RedactEvent(portal.MXID, msg.MXID, redactionReq)
+			_, err = portal.MainIntent().RedactEvent(portal.MXID, msg.MXID)
 			if err != nil {
 				portal.log.Errorln("Failed to redact %s: %v", msg.JID, err)
 			}
@@ -1673,47 +1657,27 @@ func (portal *Portal) sendMainIntentMessage(content *event.MessageEventContent) 
 	return portal.sendMessage(portal.MainIntent(), event.EventMessage, content, nil, 0)
 }
 
-func (portal *Portal) encrypt(content *event.Content, eventType event.Type) (event.Type, error) {
-	if portal.Encrypted && portal.bridge.Crypto != nil {
-		// TODO maybe the locking should be inside mautrix-go?
-		portal.encryptLock.Lock()
-		encrypted, err := portal.bridge.Crypto.Encrypt(portal.MXID, eventType, *content)
-		portal.encryptLock.Unlock()
-		if err != nil {
-			return eventType, fmt.Errorf("failed to encrypt event: %w", err)
-		}
-		eventType = event.EventEncrypted
-		content.Parsed = encrypted
+func (portal *Portal) encrypt(intent *appservice.IntentAPI, content *event.Content, eventType event.Type) (event.Type, error) {
+	if !portal.Encrypted || portal.bridge.Crypto == nil {
+		return eventType, nil
 	}
-	return eventType, nil
+	intent.AddDoublePuppetValue(content)
+	// TODO maybe the locking should be inside mautrix-go?
+	portal.encryptLock.Lock()
+	defer portal.encryptLock.Unlock()
+	err := portal.bridge.Crypto.Encrypt(portal.MXID, eventType, content)
+	if err != nil {
+		return eventType, fmt.Errorf("failed to encrypt event: %w", err)
+	}
+	return event.EventEncrypted, nil
 }
-
-const doublePuppetKey = "fi.mau.double_puppet_source"
-const doublePuppetValue = "mautrix-whatsapp"
 
 func (portal *Portal) sendMessage(intent *appservice.IntentAPI, eventType event.Type, content *event.MessageEventContent, extraContent map[string]interface{}, timestamp int64) (*mautrix.RespSendEvent, error) {
 	wrappedContent := event.Content{Parsed: content, Raw: extraContent}
-	if timestamp != 0 && intent.IsCustomPuppet {
-		if wrappedContent.Raw == nil {
-			wrappedContent.Raw = map[string]interface{}{}
-		}
-		if intent.IsCustomPuppet {
-			wrappedContent.Raw[doublePuppetKey] = doublePuppetValue
-		}
-	}
 	var err error
-	eventType, err = portal.encrypt(&wrappedContent, eventType)
+	eventType, err = portal.encrypt(intent, &wrappedContent, eventType)
 	if err != nil {
 		return nil, err
-	}
-
-	if eventType == event.EventEncrypted {
-		// Clear other custom keys if the event was encrypted, but keep the double puppet identifier
-		if intent.IsCustomPuppet {
-			wrappedContent.Raw = map[string]interface{}{doublePuppetKey: doublePuppetValue}
-		} else {
-			wrappedContent.Raw = nil
-		}
 	}
 
 	_, _ = intent.UserTyping(portal.MXID, false, 0)
@@ -2142,11 +2106,11 @@ func (portal *Portal) removeUser(isSameUser bool, kicker *appservice.IntentAPI, 
 		if err != nil {
 			portal.log.Warnfln("Failed to kick %s from %s: %v", target, portal.MXID, err)
 			if targetIntent != nil {
-				_, _ = portal.leaveWithPuppetMeta(targetIntent)
+				_, _ = targetIntent.LeaveRoom(portal.MXID)
 			}
 		}
 	} else {
-		_, err := portal.leaveWithPuppetMeta(targetIntent)
+		_, err := targetIntent.LeaveRoom(portal.MXID)
 		if err != nil {
 			portal.log.Warnfln("Failed to leave portal as %s: %v", target, err)
 			_, _ = portal.MainIntent().KickUser(portal.MXID, &mautrix.ReqKickUser{UserID: target})
@@ -2178,19 +2142,6 @@ func (portal *Portal) HandleWhatsAppKick(source *User, senderJID types.JID, jids
 	}
 }
 
-func (portal *Portal) leaveWithPuppetMeta(intent *appservice.IntentAPI) (*mautrix.RespSendEvent, error) {
-	content := event.Content{
-		Parsed: event.MemberEventContent{
-			Membership: event.MembershipLeave,
-		},
-		Raw: map[string]interface{}{
-			doublePuppetKey: doublePuppetValue,
-		},
-	}
-	// Bypass IntentAPI, we don't want to EnsureJoined here
-	return intent.Client.SendStateEvent(portal.MXID, event.StateMember, intent.UserID.String(), &content)
-}
-
 func (portal *Portal) HandleWhatsAppInvite(source *User, senderJID *types.JID, jids []types.JID) (evtID id.EventID) {
 	intent := portal.MainIntent()
 	if senderJID != nil && !senderJID.IsEmpty() {
@@ -2200,17 +2151,11 @@ func (portal *Portal) HandleWhatsAppInvite(source *User, senderJID *types.JID, j
 	for _, jid := range jids {
 		puppet := portal.bridge.GetPuppetByJID(jid)
 		puppet.SyncContact(source, true, false, "handling whatsapp invite")
-		content := event.Content{
-			Parsed: event.MemberEventContent{
-				Membership:  "invite",
-				Displayname: puppet.Displayname,
-				AvatarURL:   puppet.AvatarURL.CUString(),
-			},
-			Raw: map[string]interface{}{
-				doublePuppetKey: doublePuppetValue,
-			},
-		}
-		resp, err := intent.SendStateEvent(portal.MXID, event.StateMember, puppet.MXID.String(), &content)
+		resp, err := intent.SendStateEvent(portal.MXID, event.StateMember, puppet.MXID.String(), &event.MemberEventContent{
+			Membership:  event.MembershipInvite,
+			Displayname: puppet.Displayname,
+			AvatarURL:   puppet.AvatarURL.CUString(),
+		})
 		if err != nil {
 			portal.log.Warnfln("Failed to invite %s as %s: %v", puppet.MXID, intent.UserID, err)
 			_ = portal.MainIntent().EnsureInvited(portal.MXID, puppet.MXID)
@@ -3270,11 +3215,7 @@ func (portal *Portal) upsertReaction(intent *appservice.IntentAPI, targetJID typ
 		portal.log.Debugfln("Redacting old Matrix reaction %s after new one (%s) was sent", dbReaction.MXID, mxid)
 		var err error
 		if intent != nil {
-			extra := make(map[string]interface{})
-			if intent.IsCustomPuppet {
-				extra[doublePuppetKey] = doublePuppetValue
-			}
-			_, err = intent.RedactEvent(portal.MXID, dbReaction.MXID, mautrix.ReqRedact{Extra: extra})
+			_, err = intent.RedactEvent(portal.MXID, dbReaction.MXID)
 		}
 		if intent == nil || errors.Is(err, mautrix.MForbidden) {
 			_, err = portal.MainIntent().RedactEvent(portal.MXID, dbReaction.MXID)

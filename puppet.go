@@ -201,6 +201,16 @@ type Puppet struct {
 	syncLock sync.Mutex
 }
 
+var _ bridge.GhostWithProfile = (*Puppet)(nil)
+
+func (puppet *Puppet) GetDisplayname() string {
+	return puppet.Displayname
+}
+
+func (puppet *Puppet) GetAvatarURL() id.ContentURI {
+	return puppet.AvatarURL
+}
+
 func (puppet *Puppet) IntentFor(portal *Portal) *appservice.IntentAPI {
 	if puppet.customIntent == nil || portal.Key.JID == puppet.JID || (portal.Key.JID.Server == types.BroadcastServer && portal.Key.Receiver != puppet.JID) {
 		return puppet.DefaultIntent()
