@@ -1143,10 +1143,15 @@ var cmdDisappearingTimer = &commands.FullHandler{
 		Description: "Set future messages in the room to disappear after the given time.",
 		Args:        "<off/1d/7d/90d>",
 	},
-	RequiresLogin: true,
+	RequiresLogin:  true,
+	RequiresPortal: true,
 }
 
 func fnDisappearingTimer(ce *WrappedCommandEvent) {
+	if len(ce.Args) == 0 {
+		ce.Reply("**Usage:** `disappearing-timer <off/1d/7d/90d>`")
+		return
+	}
 	duration, ok := whatsmeow.ParseDisappearingTimerString(ce.Args[0])
 	if !ok {
 		ce.Reply("Invalid timer '%s'", ce.Args[0])
