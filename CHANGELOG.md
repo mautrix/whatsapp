@@ -20,6 +20,10 @@
 * Added option to include captions in the same message as the media to
   implement [MSC2530].
 * Added basic support for fancy business messages (template and list messages).
+* Added periodic background sync of user and group avatars.
+* Added maximum message handling duration config options to prevent messages
+  getting stuck and blocking everything.
+* Changed message send error notices to be replies to the errored message.
 * Fixed backfill queue on SQLite.
 
 [MSC2530]: https://github.com/matrix-org/matrix-spec-proposals/pull/2530
