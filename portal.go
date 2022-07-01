@@ -3075,7 +3075,7 @@ func (portal *Portal) HandleMatrixMessage(sender *User, evt *event.Event) {
 		return
 	}
 
-	messageAge := time.Now().Sub(time.UnixMilli(evt.Timestamp))
+	messageAge := time.Since(time.UnixMilli(evt.Timestamp))
 	ms := metricSender{portal: portal}
 
 	origEvtID := evt.ID
