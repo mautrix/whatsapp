@@ -285,10 +285,11 @@ bridge:
     message_handling_timeout:
         # Send an error message after this timeout, but keep waiting for the response until the deadline.
         # This is counted from the origin_server_ts, so the warning time is consistent regardless of the source of delay.
-        error_after: 10s
+        # If the message is older than this when it reaches the bridge, the message won't be handled at all.
+        error_after: null
         # Drop messages after this timeout. They may still go through if the message got sent to the servers.
         # This is counted from the time the bridge starts handling the message.
-        deadline: 60s
+        deadline: 120s
 
     # The prefix for commands. Only required in non-management rooms.
     command_prefix: "!wa"
