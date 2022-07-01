@@ -24,6 +24,7 @@ import (
 
 	"go.mau.fi/whatsmeow"
 	log "maunium.net/go/maulogger/v2"
+
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/bridge"
 	"maunium.net/go/mautrix/event"
@@ -146,6 +147,7 @@ func (portal *Portal) sendStatusEvent(evtID, lastRetry id.EventID, err error) {
 		content.Reason = reason
 		content.IsCertain = &isCertain
 		content.CanRetry = &canRetry
+		content.StillWorking = errors.Is(err, errMessageTakingLong)
 		content.Error = err.Error()
 	}
 	_, err = intent.SendMessageEvent(portal.MXID, event.BeeperMessageStatus, &content)

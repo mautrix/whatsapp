@@ -3099,7 +3099,7 @@ func (portal *Portal) HandleMatrixMessage(sender *User, evt *event.Event) {
 	if portal.bridge.Config.Bridge.MessageHandlingTimeout.ErrorAfter > 0 {
 		remainingTime := portal.bridge.Config.Bridge.MessageHandlingTimeout.ErrorAfter - messageAge
 		if remainingTime < 0 {
-			go ms.sendMessageMetrics(evt, fmt.Errorf("%w (message is %s old)", errTimeoutBeforeHandling, messageAge), "Timeout handling", true)
+			go ms.sendMessageMetrics(evt, errTimeoutBeforeHandling, "Timeout handling", true)
 			return
 		} else if remainingTime < 1*time.Second {
 			portal.log.Warnfln("Message %s was delayed before reaching the bridge, only have %s (of %s timeout) until delay warning", evt.ID, remainingTime, portal.bridge.Config.Bridge.MessageHandlingTimeout.ErrorAfter)
