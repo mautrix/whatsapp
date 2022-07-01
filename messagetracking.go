@@ -94,7 +94,7 @@ func errorToStatusReason(err error) (reason event.MessageStatusReason, isCertain
 	}
 }
 
-func (portal *Portal) sendErrorMessage(err error, confirmed bool, editID id.EventID) id.EventID {
+func (portal *Portal) sendErrorMessage(evt *event.Event, err error, confirmed bool, editID id.EventID) id.EventID {
 	if !portal.bridge.Config.Bridge.MessageErrorNotices {
 		return ""
 	}
@@ -112,6 +112,8 @@ func (portal *Portal) sendErrorMessage(err error, confirmed bool, editID id.Even
 	}
 	if editID != "" {
 		content.SetEdit(editID)
+	} else {
+		content.SetReply(evt)
 	}
 	resp, err := portal.sendMainIntentMessage(content)
 	if err != nil {
@@ -198,7 +200,7 @@ func (portal *Portal) sendMessageMetrics(evt *event.Event, err error, part strin
 		}
 		portal.bridge.SendMessageCheckpoint(evt, bridge.MsgStepRemote, err, status, ms.getRetryNum())
 		if sendNotice {
-			ms.setNoticeID(portal.sendErrorMessage(err, isCertain, ms.getNoticeID()))
+			ms.setNoticeID(portal.sendErrorMessage(evt, err, isCertain, ms.getNoticeID()))
 		}
 		portal.sendStatusEvent(origEvtID, evt.ID, err)
 	} else {
