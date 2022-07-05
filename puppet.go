@@ -246,7 +246,6 @@ func reuploadAvatar(intent *appservice.IntentAPI, url string) (id.ContentURI, er
 }
 
 func (puppet *Puppet) UpdateAvatar(source *User) bool {
-	oldAvatarID := puppet.Avatar
 	changed := source.updateAvatar(puppet.JID, &puppet.Avatar, &puppet.AvatarURL, &puppet.AvatarSet, puppet.log, puppet.DefaultIntent())
 	if !changed || puppet.Avatar == "unauthorized" {
 		return changed
@@ -255,7 +254,6 @@ func (puppet *Puppet) UpdateAvatar(source *User) bool {
 	if err != nil {
 		puppet.log.Warnln("Failed to set avatar:", err)
 	} else {
-		puppet.log.Debugln("Updated avatar", oldAvatarID, "->", puppet.Avatar)
 		puppet.AvatarSet = true
 	}
 	go puppet.updatePortalAvatar()
@@ -294,28 +292,28 @@ func (puppet *Puppet) updatePortalMeta(meta func(portal *Portal)) {
 
 func (puppet *Puppet) updatePortalAvatar() {
 	puppet.updatePortalMeta(func(portal *Portal) {
+		if portal.Avatar == puppet.Avatar && portal.AvatarURL == puppet.AvatarURL && portal.AvatarSet {
+			return
+		}
+		portal.AvatarURL = puppet.AvatarURL
+		portal.Avatar = puppet.Avatar
+		portal.AvatarSet = false
+		defer portal.Update(nil)
 		if len(portal.MXID) > 0 {
 			_, err := portal.MainIntent().SetRoomAvatar(portal.MXID, puppet.AvatarURL)
 			if err != nil {
 				portal.log.Warnln("Failed to set avatar:", err)
+			} else {
+				portal.AvatarSet = true
+				portal.UpdateBridgeInfo()
 			}
 		}
-		portal.AvatarURL = puppet.AvatarURL
-		portal.Avatar = puppet.Avatar
-		portal.Update(nil)
 	})
 }
 
 func (puppet *Puppet) updatePortalName() {
 	puppet.updatePortalMeta(func(portal *Portal) {
-		if len(portal.MXID) > 0 {
-			_, err := portal.MainIntent().SetRoomName(portal.MXID, puppet.Displayname)
-			if err != nil {
-				portal.log.Warnln("Failed to set name:", err)
-			}
-		}
-		portal.Name = puppet.Displayname
-		portal.Update(nil)
+		portal.UpdateName(puppet.Displayname, types.EmptyJID, true)
 	})
 }
 
