@@ -339,7 +339,7 @@ func (user *User) doPuppetResync() {
 		} else if contact.Found {
 			contactPtr = &contact
 		}
-		puppet.Sync(user, contactPtr, info.PictureID != "" && info.PictureID != puppet.Avatar)
+		puppet.Sync(user, contactPtr, info.PictureID != "" && info.PictureID != puppet.Avatar, true)
 	}
 }
 
@@ -1143,7 +1143,7 @@ func (user *User) ResyncContacts(forceAvatarSync bool) error {
 	for jid, contact := range contacts {
 		puppet := user.bridge.GetPuppetByJID(jid)
 		if puppet != nil {
-			puppet.Sync(user, &contact, forceAvatarSync)
+			puppet.Sync(user, &contact, forceAvatarSync, true)
 		} else {
 			user.log.Warnfln("Got a nil puppet for %s while syncing contacts", jid)
 		}
@@ -1310,7 +1310,7 @@ func (user *User) handlePictureUpdate(evt *events.Picture) {
 		puppet := user.bridge.GetPuppetByJID(evt.JID)
 		user.log.Debugfln("Received picture update for puppet %s (current: %s, new: %s)", evt.JID, puppet.Avatar, evt.PictureID)
 		if puppet.Avatar != evt.PictureID {
-			puppet.Sync(user, nil, true)
+			puppet.Sync(user, nil, true, false)
 		}
 	} else if portal := user.GetPortalByJID(evt.JID); portal != nil {
 		user.log.Debugfln("Received picture update for portal %s (current: %s, new: %s)", evt.JID, portal.Avatar, evt.PictureID)

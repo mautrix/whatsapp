@@ -245,9 +245,12 @@ func reuploadAvatar(intent *appservice.IntentAPI, url string) (id.ContentURI, er
 	return resp.ContentURI, nil
 }
 
-func (puppet *Puppet) UpdateAvatar(source *User) bool {
+func (puppet *Puppet) UpdateAvatar(source *User, forcePortalSync bool) bool {
 	changed := source.updateAvatar(puppet.JID, &puppet.Avatar, &puppet.AvatarURL, &puppet.AvatarSet, puppet.log, puppet.DefaultIntent())
 	if !changed || puppet.Avatar == "unauthorized" {
+		if forcePortalSync {
+			go puppet.updatePortalAvatar()
+		}
 		return changed
 	}
 	err := puppet.DefaultIntent().SetAvatarURL(puppet.AvatarURL)
@@ -260,7 +263,7 @@ func (puppet *Puppet) UpdateAvatar(source *User) bool {
 	return true
 }
 
-func (puppet *Puppet) UpdateName(contact types.ContactInfo) bool {
+func (puppet *Puppet) UpdateName(contact types.ContactInfo, forcePortalSync bool) bool {
 	newName, quality := puppet.bridge.Config.Bridge.FormatDisplayname(puppet.JID, contact)
 	if (puppet.Displayname != newName || !puppet.NameSet) && quality >= puppet.NameQuality {
 		puppet.Displayname = newName
@@ -275,6 +278,8 @@ func (puppet *Puppet) UpdateName(contact types.ContactInfo) bool {
 			puppet.log.Warnln("Failed to set display name:", err)
 		}
 		return true
+	} else if forcePortalSync {
+		go puppet.updatePortalName()
 	}
 	return false
 }
@@ -329,10 +334,10 @@ func (puppet *Puppet) SyncContact(source *User, onlyIfNoName, shouldHavePushName
 	} else if !contact.Found {
 		puppet.log.Warnfln("No contact info found through %s in SyncContact (sync reason: %s)", source.MXID, reason)
 	}
-	puppet.Sync(source, &contact, false)
+	puppet.Sync(source, &contact, false, false)
 }
 
-func (puppet *Puppet) Sync(source *User, contact *types.ContactInfo, forceAvatarSync bool) {
+func (puppet *Puppet) Sync(source *User, contact *types.ContactInfo, forceAvatarSync, forcePortalSync bool) {
 	puppet.syncLock.Lock()
 	defer puppet.syncLock.Unlock()
 	err := puppet.DefaultIntent().EnsureRegistered()
@@ -347,10 +352,10 @@ func (puppet *Puppet) Sync(source *User, contact *types.ContactInfo, forceAvatar
 		if puppet.JID.User == source.JID.User {
 			contact.PushName = source.Client.Store.PushName
 		}
-		update = puppet.UpdateName(*contact) || update
+		update = puppet.UpdateName(*contact, forcePortalSync) || update
 	}
 	if len(puppet.Avatar) == 0 || forceAvatarSync || puppet.bridge.Config.Bridge.UserAvatarSync {
-		update = puppet.UpdateAvatar(source) || update
+		update = puppet.UpdateAvatar(source, forcePortalSync) || update
 	}
 	if update || puppet.LastSync.Add(24*time.Hour).Before(time.Now()) {
 		puppet.LastSync = time.Now()
