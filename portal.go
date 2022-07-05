@@ -2276,6 +2276,8 @@ type MediaMessageWithDuration interface {
 	GetSeconds() uint32
 }
 
+const WhatsAppStickerSize = 190
+
 func (portal *Portal) convertMediaMessageContent(intent *appservice.IntentAPI, msg MediaMessage) *ConvertedMessage {
 	content := &event.MessageEventContent{
 		Info: &event.FileInfo{
@@ -2355,6 +2357,16 @@ func (portal *Portal) convertMediaMessageContent(intent *appservice.IntentAPI, m
 		content.MsgType = event.MsgImage
 	case *waProto.StickerMessage:
 		eventType = event.EventSticker
+		if content.Info.Width > content.Info.Height {
+			content.Info.Height /= content.Info.Width / WhatsAppStickerSize
+			content.Info.Width = WhatsAppStickerSize
+		} else if content.Info.Width < content.Info.Height {
+			content.Info.Width /= content.Info.Height / WhatsAppStickerSize
+			content.Info.Height = WhatsAppStickerSize
+		} else {
+			content.Info.Width = WhatsAppStickerSize
+			content.Info.Height = WhatsAppStickerSize
+		}
 	case *waProto.VideoMessage:
 		content.MsgType = event.MsgVideo
 	case *waProto.AudioMessage:
