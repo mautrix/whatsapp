@@ -665,6 +665,9 @@ func (portal *Portal) wrapBatchEvent(info *types.MessageInfo, intent *appservice
 	if err != nil {
 		return nil, err
 	}
+	if newEventType != eventType {
+		intent.AddDoublePuppetValue(&wrappedContent)
+	}
 
 	return &event.Event{
 		Sender:    intent.UserID,
