@@ -1011,28 +1011,32 @@ func (portal *Portal) UpdateName(name string, setBy types.JID, updateInfo bool) 
 	if name == "" && portal.IsBroadcastList() {
 		name = UnnamedBroadcastName
 	}
-	if portal.Name != name || !portal.NameSet {
+	if portal.Name != name || (!portal.NameSet && len(portal.MXID) > 0) {
 		portal.log.Debugfln("Updating name %q -> %q", portal.Name, name)
 		portal.Name = name
 		portal.NameSet = false
+		if updateInfo {
+			defer portal.Update(nil)
+		}
 
-		intent := portal.MainIntent()
-		if !setBy.IsEmpty() {
-			intent = portal.bridge.GetPuppetByJID(setBy).IntentFor(portal)
-		}
-		_, err := intent.SetRoomName(portal.MXID, name)
-		if errors.Is(err, mautrix.MForbidden) && intent != portal.MainIntent() {
-			_, err = portal.MainIntent().SetRoomName(portal.MXID, name)
-		}
-		if err == nil {
-			portal.NameSet = true
-			if updateInfo {
-				portal.UpdateBridgeInfo()
-				portal.Update(nil)
+		if len(portal.MXID) > 0 {
+			intent := portal.MainIntent()
+			if !setBy.IsEmpty() {
+				intent = portal.bridge.GetPuppetByJID(setBy).IntentFor(portal)
 			}
-			return true
-		} else {
-			portal.log.Warnln("Failed to set room name:", err)
+			_, err := intent.SetRoomName(portal.MXID, name)
+			if errors.Is(err, mautrix.MForbidden) && intent != portal.MainIntent() {
+				_, err = portal.MainIntent().SetRoomName(portal.MXID, name)
+			}
+			if err == nil {
+				portal.NameSet = true
+				if updateInfo {
+					portal.UpdateBridgeInfo()
+				}
+				return true
+			} else {
+				portal.log.Warnln("Failed to set room name:", err)
+			}
 		}
 	}
 	return false
