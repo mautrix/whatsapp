@@ -2349,23 +2349,21 @@ func (portal *Portal) convertMediaMessageContent(intent *appservice.IntentAPI, m
 		}
 	}
 
-	_, isSticker := msg.(*waProto.StickerMessage)
-	switch strings.ToLower(strings.Split(msg.GetMimetype(), "/")[0]) {
-	case "image":
-		if !isSticker {
-			content.MsgType = event.MsgImage
-		}
-	case "video":
-		content.MsgType = event.MsgVideo
-	case "audio":
-		content.MsgType = event.MsgAudio
-	default:
-		content.MsgType = event.MsgFile
-	}
-
 	eventType := event.EventMessage
-	if isSticker {
+	switch msg.(type) {
+	case *waProto.ImageMessage:
+		content.MsgType = event.MsgImage
+	case *waProto.StickerMessage:
 		eventType = event.EventSticker
+	case *waProto.VideoMessage:
+		content.MsgType = event.MsgVideo
+	case *waProto.AudioMessage:
+		content.MsgType = event.MsgAudio
+	case *waProto.DocumentMessage:
+		content.MsgType = event.MsgFile
+	default:
+		portal.log.Warnfln("Unexpected media type %T in convertMediaMessageContent", msg)
+		content.MsgType = event.MsgFile
 	}
 
 	audioMessage, ok := msg.(*waProto.AudioMessage)
