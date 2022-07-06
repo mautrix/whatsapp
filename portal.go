@@ -944,9 +944,13 @@ func (user *User) updateAvatar(jid types.JID, avatarID *string, avatarURL *id.Co
 		}
 		return false
 	} else if errors.Is(err, whatsmeow.ErrProfilePictureNotSet) {
-		*avatarURL = id.ContentURI{}
 		avatar = &types.ProfilePictureInfo{ID: "remove"}
-		// Fall through to the rest of the avatar handling code
+		if avatar.ID == *avatarID && *avatarSet {
+			return false
+		}
+		*avatarID = avatar.ID
+		*avatarURL = id.ContentURI{}
+		return true
 	} else if err != nil {
 		log.Warnln("Failed to get avatar URL:", err)
 		return false
