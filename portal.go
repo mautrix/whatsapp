@@ -3294,7 +3294,7 @@ func (portal *Portal) HandleMatrixReadReceipt(sender bridge.User, eventID id.Eve
 func (portal *Portal) handleMatrixReadReceipt(sender *User, eventID id.EventID, receiptTimestamp time.Time, isExplicit bool) {
 	if !sender.IsLoggedIn() {
 		if isExplicit {
-			portal.log.Debugfln("Ignoring read receipt by %s: user is not connected to WhatsApp", sender.JID)
+			portal.log.Debugfln("Ignoring read receipt by %s/%s: user is not connected to WhatsApp", sender.MXID, sender.JID)
 		}
 		return
 	}

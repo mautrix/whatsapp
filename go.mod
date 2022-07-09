@@ -6,16 +6,16 @@ require (
 	github.com/gorilla/mux v1.8.0
 	github.com/gorilla/websocket v1.5.0
 	github.com/lib/pq v1.10.6
-	github.com/mattn/go-sqlite3 v1.14.13
+	github.com/mattn/go-sqlite3 v1.14.14
 	github.com/prometheus/client_golang v1.12.2-0.20220613221938-ebd77f036066
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
 	github.com/tidwall/gjson v1.14.1
-	go.mau.fi/whatsmeow v0.0.0-20220629192020-6e4a9fb4bbe6
+	go.mau.fi/whatsmeow v0.0.0-20220709074059-aef48d107b24
 	golang.org/x/image v0.0.0-20220617043117-41969df76e82
 	golang.org/x/net v0.0.0-20220624214902-1bab6f366d9e
 	google.golang.org/protobuf v1.28.0
 	maunium.net/go/maulogger/v2 v2.3.2
-	maunium.net/go/mautrix v0.11.1-0.20220705131441-28320db1cc9c
+	maunium.net/go/mautrix v0.11.1-0.20220708152210-84b367ef7282
 )
 
 require (

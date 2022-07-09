@@ -1187,7 +1187,7 @@ func (user *User) handleChatPresence(presence *events.ChatPresence) {
 			}
 			_, _ = puppet.IntentFor(portal).UserTyping(puppet.typingIn, false, 0)
 		}
-		_, _ = puppet.IntentFor(portal).UserTyping(portal.MXID, true, WATypingTimeout.Milliseconds())
+		_, _ = puppet.IntentFor(portal).UserTyping(portal.MXID, true, WATypingTimeout)
 		puppet.typingIn = portal.MXID
 		puppet.typingAt = time.Now()
 	} else {
