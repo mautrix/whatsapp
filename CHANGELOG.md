@@ -24,6 +24,10 @@
 * Added maximum message handling duration config options to prevent messages
   getting stuck and blocking everything.
 * Changed message send error notices to be replies to the errored message.
+* Changed dimensions of stickers bridged from WhatsApp to match WhatsApp web.
+* Changed attachment bridging to find the Matrix `msgtype` based on the
+  WhatsApp message type instead of the file mimetype.
+* Updated Docker image to Alpine 3.16.
 * Fixed backfill queue on SQLite.
 
 [MSC2530]: https://github.com/matrix-org/matrix-spec-proposals/pull/2530
