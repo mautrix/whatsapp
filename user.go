@@ -264,7 +264,7 @@ func (user *User) EnqueuePuppetResync(puppet *Puppet) {
 }
 
 func (user *User) EnqueuePortalResync(portal *Portal) {
-	if portal.IsPrivateChat() || portal.LastSync.Add(resyncMinInterval).After(time.Now()) {
+	if !portal.IsGroupChat() || portal.LastSync.Add(resyncMinInterval).After(time.Now()) {
 		return
 	}
 	user.resyncQueueLock.Lock()
