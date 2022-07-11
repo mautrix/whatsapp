@@ -2779,9 +2779,16 @@ func (portal *Portal) convertWebPtoPNG(webpImage []byte) ([]byte, error) {
 }
 
 func (portal *Portal) preprocessMatrixMedia(ctx context.Context, sender *User, relaybotFormatted bool, content *event.MessageEventContent, eventID id.EventID, mediaType whatsmeow.MediaType) (*MediaUpload, error) {
+	fileName := content.Body
 	var caption string
 	var mentionedJIDs []string
-	if relaybotFormatted {
+	var hasHTMLCaption bool
+	if content.FileName != "" && content.Body != content.FileName {
+		fileName = content.FileName
+		caption = content.Body
+		hasHTMLCaption = content.Format == event.FormatHTML
+	}
+	if relaybotFormatted || hasHTMLCaption {
 		caption, mentionedJIDs = portal.bridge.Formatter.ParseMatrix(content.FormattedBody)
 	}
 
@@ -2839,6 +2846,7 @@ func (portal *Portal) preprocessMatrixMedia(ctx context.Context, sender *User, r
 
 	return &MediaUpload{
 		UploadResponse: uploadResp,
+		FileName:       fileName,
 		Caption:        caption,
 		MentionedJIDs:  mentionedJIDs,
 		Thumbnail:      thumbnail,
@@ -2849,6 +2857,7 @@ func (portal *Portal) preprocessMatrixMedia(ctx context.Context, sender *User, r
 type MediaUpload struct {
 	whatsmeow.UploadResponse
 	Caption       string
+	FileName      string
 	MentionedJIDs []string
 	Thumbnail     []byte
 	FileLength    int
@@ -3054,10 +3063,11 @@ func (portal *Portal) convertMatrixMessage(ctx context.Context, sender *User, ev
 		}
 		msg.DocumentMessage = &waProto.DocumentMessage{
 			ContextInfo:   &ctxInfo,
+			Caption:       &media.Caption,
 			JpegThumbnail: media.Thumbnail,
 			Url:           &media.URL,
-			Title:         &content.Body,
-			FileName:      &content.Body,
+			Title:         &media.FileName,
+			FileName:      &media.FileName,
 			MediaKey:      media.MediaKey,
 			Mimetype:      &content.GetInfo().MimeType,
 			FileEncSha256: media.FileEncSHA256,
