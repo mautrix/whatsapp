@@ -673,7 +673,7 @@ func (user *User) sendHackyPhonePing() {
 	} else {
 		user.log.Warnfln("Failed to get last app state key ID to send hacky phone ping: %v - sending empty request", err)
 	}
-	ts, err := user.Client.SendMessage(context.Background(), user.JID.ToNonAD(), msgID, &waProto.Message{
+	resp, err := user.Client.SendMessage(context.Background(), user.JID.ToNonAD(), msgID, &waProto.Message{
 		ProtocolMessage: &waProto.ProtocolMessage{
 			Type: waProto.ProtocolMessage_APP_STATE_SYNC_KEY_REQUEST.Enum(),
 			AppStateSyncKeyRequest: &waProto.AppStateSyncKeyRequest{
@@ -684,8 +684,8 @@ func (user *User) sendHackyPhonePing() {
 	if err != nil {
 		user.log.Warnfln("Failed to send hacky phone ping: %v", err)
 	} else {
-		user.log.Debugfln("Sent hacky phone ping %s/%s because phone has been offline for >10 days", msgID, ts.Unix())
-		user.PhoneLastPinged = ts
+		user.log.Debugfln("Sent hacky phone ping %s/%s because phone has been offline for >10 days", msgID, resp.Timestamp.Unix())
+		user.PhoneLastPinged = resp.Timestamp
 		user.Update()
 	}
 }

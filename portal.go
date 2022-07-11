@@ -100,7 +100,7 @@ func (portal *Portal) MarkEncrypted() {
 
 func (portal *Portal) ReceiveMatrixEvent(user bridge.User, evt *event.Event) {
 	if user.GetPermissionLevel() >= bridgeconfig.PermissionLevelUser || portal.HasRelaybot() {
-		portal.matrixMessages <- PortalMatrixMessage{user: user.(*User), evt: evt}
+		portal.matrixMessages <- PortalMatrixMessage{user: user.(*User), evt: evt, receivedAt: time.Now()}
 	}
 }
 
@@ -216,8 +216,9 @@ type PortalMessage struct {
 }
 
 type PortalMatrixMessage struct {
-	evt  *event.Event
-	user *User
+	evt        *event.Event
+	user       *User
+	receivedAt time.Time
 }
 
 type PortalMediaRetry struct {
@@ -290,10 +291,19 @@ func (portal *Portal) handleMessageLoopItem(msg PortalMessage) {
 }
 
 func (portal *Portal) handleMatrixMessageLoopItem(msg PortalMatrixMessage) {
-	portal.handleMatrixReadReceipt(msg.user, "", time.UnixMilli(msg.evt.Timestamp), false)
+	evtTS := time.UnixMilli(msg.evt.Timestamp)
+	timings := messageTimings{
+		initReceive:  msg.evt.Mautrix.ReceivedAt.Sub(evtTS),
+		decrypt:      msg.evt.Mautrix.DecryptionDuration,
+		portalQueue:  time.Since(msg.receivedAt),
+		totalReceive: time.Since(evtTS),
+	}
+	implicitRRStart := time.Now()
+	portal.handleMatrixReadReceipt(msg.user, "", evtTS, false)
+	timings.implicitRR = time.Since(implicitRRStart)
 	switch msg.evt.Type {
 	case event.EventMessage, event.EventSticker:
-		portal.HandleMatrixMessage(msg.user, msg.evt)
+		portal.HandleMatrixMessage(msg.user, msg.evt, timings)
 	case event.EventRedaction:
 		portal.HandleMatrixRedaction(msg.user, msg.evt)
 	case event.EventReaction:
@@ -3084,18 +3094,19 @@ func (portal *Portal) generateMessageInfo(sender *User) *types.MessageInfo {
 	}
 }
 
-func (portal *Portal) HandleMatrixMessage(sender *User, evt *event.Event) {
+func (portal *Portal) HandleMatrixMessage(sender *User, evt *event.Event, timings messageTimings) {
+	start := time.Now()
+	ms := metricSender{portal: portal, timings: &timings}
+
 	if err := portal.canBridgeFrom(sender, true); err != nil {
-		go portal.sendMessageMetrics(evt, err, "Ignoring", nil)
+		go ms.sendMessageMetrics(evt, err, "Ignoring", true)
 		return
 	} else if portal.Key.JID == types.StatusBroadcastJID && portal.bridge.Config.Bridge.DisableStatusBroadcastSend {
-		go portal.sendMessageMetrics(evt, errBroadcastSendDisabled, "Ignoring", nil)
+		go ms.sendMessageMetrics(evt, errBroadcastSendDisabled, "Ignoring", true)
 		return
 	}
 
-	messageAge := time.Since(time.UnixMilli(evt.Timestamp))
-	ms := metricSender{portal: portal}
-
+	messageAge := timings.totalReceive
 	origEvtID := evt.ID
 	var dbMsg *database.Message
 	if retryMeta := evt.Content.AsMessage().MessageSendRetry; retryMeta != nil {
@@ -3135,7 +3146,10 @@ func (portal *Portal) HandleMatrixMessage(sender *User, evt *event.Event) {
 		defer cancel()
 	}
 
+	timings.preproc = time.Since(start)
+	start = time.Now()
 	msg, sender, err := portal.convertMatrixMessage(ctx, sender, evt)
+	timings.convert = time.Since(start)
 	if msg == nil {
 		go ms.sendMessageMetrics(evt, err, "Error converting", true)
 		return
@@ -3148,10 +3162,13 @@ func (portal *Portal) HandleMatrixMessage(sender *User, evt *event.Event) {
 		info.ID = dbMsg.JID
 	}
 	portal.log.Debugln("Sending event", evt.ID, "to WhatsApp", info.ID)
-	ts, err := sender.Client.SendMessage(ctx, portal.Key.JID, info.ID, msg)
+	start = time.Now()
+	resp, err := sender.Client.SendMessage(ctx, portal.Key.JID, info.ID, msg)
+	timings.totalSend = time.Since(start)
+	timings.whatsmeow = resp.DebugTimings
 	go ms.sendMessageMetrics(evt, err, "Error sending", true)
 	if err == nil {
-		dbMsg.MarkSent(ts)
+		dbMsg.MarkSent(resp.Timestamp)
 	}
 }
 
@@ -3195,14 +3212,14 @@ func (portal *Portal) handleMatrixReaction(sender *User, evt *event.Event) error
 	dbMsg := portal.markHandled(nil, nil, info, evt.ID, false, true, database.MsgReaction, database.MsgNoError)
 	portal.upsertReaction(nil, target.JID, sender.JID, evt.ID, info.ID)
 	portal.log.Debugln("Sending reaction", evt.ID, "to WhatsApp", info.ID)
-	ts, err := portal.sendReactionToWhatsApp(sender, info.ID, target, content.RelatesTo.Key, evt.Timestamp)
+	resp, err := portal.sendReactionToWhatsApp(sender, info.ID, target, content.RelatesTo.Key, evt.Timestamp)
 	if err == nil {
-		dbMsg.MarkSent(ts)
+		dbMsg.MarkSent(resp.Timestamp)
 	}
 	return err
 }
 
-func (portal *Portal) sendReactionToWhatsApp(sender *User, id types.MessageID, target *database.Message, key string, timestamp int64) (time.Time, error) {
+func (portal *Portal) sendReactionToWhatsApp(sender *User, id types.MessageID, target *database.Message, key string, timestamp int64) (whatsmeow.SendResponse, error) {
 	var messageKeyParticipant *string
 	if !portal.IsPrivateChat() {
 		messageKeyParticipant = proto.String(target.Sender.ToNonAD().String())

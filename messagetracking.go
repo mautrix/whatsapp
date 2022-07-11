@@ -21,9 +21,11 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"time"
+
+	log "maunium.net/go/maulogger/v2"
 
 	"go.mau.fi/whatsmeow"
-	log "maunium.net/go/maulogger/v2"
 
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/bridge"
@@ -214,6 +216,65 @@ func (portal *Portal) sendMessageMetrics(evt *event.Event, err error, part strin
 			})
 		}
 	}
+	if ms != nil {
+		portal.log.Debugfln("Timings for %s: %s", evt.ID, ms.timings.String())
+	}
+}
+
+type messageTimings struct {
+	initReceive  time.Duration
+	decrypt      time.Duration
+	implicitRR   time.Duration
+	portalQueue  time.Duration
+	totalReceive time.Duration
+
+	preproc   time.Duration
+	convert   time.Duration
+	whatsmeow whatsmeow.MessageDebugTimings
+	totalSend time.Duration
+}
+
+func niceRound(dur time.Duration) time.Duration {
+	switch {
+	case dur < time.Millisecond:
+		return dur
+	case dur < time.Second:
+		return dur.Round(100 * time.Microsecond)
+	default:
+		return dur.Round(time.Millisecond)
+	}
+}
+
+func (mt *messageTimings) String() string {
+	mt.initReceive = niceRound(mt.initReceive)
+	mt.decrypt = niceRound(mt.decrypt)
+	mt.portalQueue = niceRound(mt.portalQueue)
+	mt.totalReceive = niceRound(mt.totalReceive)
+	mt.implicitRR = niceRound(mt.implicitRR)
+	mt.preproc = niceRound(mt.preproc)
+	mt.convert = niceRound(mt.convert)
+	mt.whatsmeow.Queue = niceRound(mt.whatsmeow.Queue)
+	mt.whatsmeow.Marshal = niceRound(mt.whatsmeow.Marshal)
+	mt.whatsmeow.GetParticipants = niceRound(mt.whatsmeow.GetParticipants)
+	mt.whatsmeow.GetDevices = niceRound(mt.whatsmeow.GetDevices)
+	mt.whatsmeow.GroupEncrypt = niceRound(mt.whatsmeow.GroupEncrypt)
+	mt.whatsmeow.PeerEncrypt = niceRound(mt.whatsmeow.PeerEncrypt)
+	mt.whatsmeow.Send = niceRound(mt.whatsmeow.Send)
+	mt.whatsmeow.Resp = niceRound(mt.whatsmeow.Resp)
+	mt.whatsmeow.Retry = niceRound(mt.whatsmeow.Retry)
+	mt.totalSend = niceRound(mt.totalSend)
+	whatsmeowTimings := "N/A"
+	if mt.totalSend > 0 {
+		format := "queue: %[1]s, marshal: %[2]s, ske: %[3]s, pcp: %[4]s, dev: %[5]s, encrypt: %[6]s, send: %[7]s, resp: %[8]s"
+		if mt.whatsmeow.GetParticipants == 0 && mt.whatsmeow.GroupEncrypt == 0 {
+			format = "queue: %[1]s, marshal: %[2]s, dev: %[5]s, encrypt: %[6]s, send: %[7]s, resp: %[8]s"
+		}
+		if mt.whatsmeow.Retry > 0 {
+			format += ", retry: %[9]s"
+		}
+		whatsmeowTimings = fmt.Sprintf(format, mt.whatsmeow.Queue, mt.whatsmeow.Marshal, mt.whatsmeow.GroupEncrypt, mt.whatsmeow.GetParticipants, mt.whatsmeow.GetDevices, mt.whatsmeow.PeerEncrypt, mt.whatsmeow.Send, mt.whatsmeow.Resp, mt.whatsmeow.Retry)
+	}
+	return fmt.Sprintf("BRIDGE: receive: %s, decrypt: %s, queue: %s, total hs->portal: %s, implicit rr: %s -- PORTAL: preprocess: %s, convert: %s, total send: %s -- WHATSMEOW: %s", mt.initReceive, mt.decrypt, mt.implicitRR, mt.portalQueue, mt.totalReceive, mt.preproc, mt.convert, mt.totalSend, whatsmeowTimings)
 }
 
 type metricSender struct {
@@ -222,6 +283,7 @@ type metricSender struct {
 	lock           sync.Mutex
 	completed      bool
 	retryNum       int
+	timings        *messageTimings
 }
 
 func (ms *metricSender) getRetryNum() int {
