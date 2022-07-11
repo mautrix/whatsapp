@@ -3135,13 +3135,22 @@ func (portal *Portal) HandleMatrixMessage(sender *User, evt *event.Event, timing
 		portal.log.Debugfln("Received message %s from %s (age: %s)", evt.ID, evt.Sender, messageAge)
 	}
 
-	if portal.bridge.Config.Bridge.MessageHandlingTimeout.ErrorAfter > 0 {
-		remainingTime := portal.bridge.Config.Bridge.MessageHandlingTimeout.ErrorAfter - messageAge
+	errorAfter := portal.bridge.Config.Bridge.MessageHandlingTimeout.ErrorAfter
+	deadline := portal.bridge.Config.Bridge.MessageHandlingTimeout.Deadline
+	isScheduled, _ := evt.Content.Raw["com.beeper.scheduled"].(bool)
+	if isScheduled {
+		portal.log.Debugfln("%s is a scheduled message, extending handling timeouts", evt.ID)
+		errorAfter *= 10
+		deadline *= 10
+	}
+
+	if errorAfter > 0 {
+		remainingTime := errorAfter - messageAge
 		if remainingTime < 0 {
 			go ms.sendMessageMetrics(evt, errTimeoutBeforeHandling, "Timeout handling", true)
 			return
 		} else if remainingTime < 1*time.Second {
-			portal.log.Warnfln("Message %s was delayed before reaching the bridge, only have %s (of %s timeout) until delay warning", evt.ID, remainingTime, portal.bridge.Config.Bridge.MessageHandlingTimeout.ErrorAfter)
+			portal.log.Warnfln("Message %s was delayed before reaching the bridge, only have %s (of %s timeout) until delay warning", evt.ID, remainingTime, errorAfter)
 		}
 		go func() {
 			time.Sleep(remainingTime)
@@ -3150,9 +3159,9 @@ func (portal *Portal) HandleMatrixMessage(sender *User, evt *event.Event, timing
 	}
 
 	ctx := context.Background()
-	if portal.bridge.Config.Bridge.MessageHandlingTimeout.Deadline > 0 {
+	if deadline > 0 {
 		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, portal.bridge.Config.Bridge.MessageHandlingTimeout.Deadline)
+		ctx, cancel = context.WithTimeout(ctx, deadline)
 		defer cancel()
 	}
 
