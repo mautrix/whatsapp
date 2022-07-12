@@ -61,7 +61,7 @@ var (
 	errTimeoutBeforeHandling = errors.New("message timed out before handling was started")
 )
 
-func errorToStatusReason(err error) (reason event.MessageStatusReason, isCertain, canRetry, sendNotice bool) {
+func errorToStatusReason(err error) (reason event.MessageStatusReason, status event.MessageStatus, isCertain, sendNotice bool, humanMessage string) {
 	switch {
 	case errors.Is(err, whatsmeow.ErrBroadcastListUnsupported),
 		errors.Is(err, errUnexpectedParsedContentType),
@@ -71,28 +71,30 @@ func errorToStatusReason(err error) (reason event.MessageStatusReason, isCertain
 		errors.Is(err, whatsmeow.ErrRecipientADJID),
 		errors.Is(err, errBroadcastReactionNotSupported),
 		errors.Is(err, errBroadcastSendDisabled):
-		return event.MessageStatusUnsupported, true, false, true
+		return event.MessageStatusUnsupported, event.MessageStatusFail, true, true, ""
 	case errors.Is(err, errTimeoutBeforeHandling):
-		return event.MessageStatusTooOld, true, true, true
-	case errors.Is(err, context.DeadlineExceeded), errors.Is(err, errMessageTakingLong):
-		return event.MessageStatusTooOld, false, true, true
+		return event.MessageStatusTooOld, event.MessageStatusRetriable, true, true, "the message was too old when it reached the bridge, so it was not handled"
+	case errors.Is(err, context.DeadlineExceeded):
+		return event.MessageStatusTooOld, event.MessageStatusRetriable, false, true, "handling the message took too long and was cancelled"
+	case errors.Is(err, errMessageTakingLong):
+		return event.MessageStatusTooOld, event.MessageStatusPending, false, true, err.Error()
 	case errors.Is(err, errTargetNotFound),
 		errors.Is(err, errTargetIsFake),
 		errors.Is(err, errReactionDatabaseNotFound),
 		errors.Is(err, errReactionTargetNotFound),
 		errors.Is(err, errTargetSentBySomeoneElse):
-		return event.MessageStatusGenericError, true, false, false
+		return event.MessageStatusGenericError, event.MessageStatusFail, true, false, ""
 	case errors.Is(err, whatsmeow.ErrNotConnected),
 		errors.Is(err, errUserNotConnected):
-		return event.MessageStatusGenericError, true, true, true
+		return event.MessageStatusGenericError, event.MessageStatusRetriable, true, true, ""
 	case errors.Is(err, errUserNotLoggedIn),
 		errors.Is(err, errDifferentUser):
-		return event.MessageStatusGenericError, true, true, false
+		return event.MessageStatusGenericError, event.MessageStatusRetriable, true, false, ""
 	case errors.Is(err, errMessageDisconnected),
 		errors.Is(err, errMessageRetryDisconnected):
-		return event.MessageStatusGenericError, false, true, true
+		return event.MessageStatusGenericError, event.MessageStatusRetriable, false, true, ""
 	default:
-		return event.MessageStatusGenericError, false, true, true
+		return event.MessageStatusGenericError, event.MessageStatusRetriable, false, true, ""
 	}
 }
 
@@ -143,17 +145,15 @@ func (portal *Portal) sendStatusEvent(evtID, lastRetry id.EventID, err error) {
 			Type:    event.RelReference,
 			EventID: evtID,
 		},
-		Success:   err == nil,
 		LastRetry: lastRetry,
 	}
-	if !content.Success {
-		reason, isCertain, canRetry, _ := errorToStatusReason(err)
-		content.Reason = reason
-		content.IsCertain = &isCertain
-		content.CanRetry = &canRetry
-		content.StillWorking = errors.Is(err, errMessageTakingLong)
+	if err == nil {
+		content.Status = event.MessageStatusSuccess
+	} else {
+		content.Reason, content.Status, _, _, content.Message = errorToStatusReason(err)
 		content.Error = err.Error()
 	}
+	content.FillLegacyBooleans()
 	_, err = intent.SendMessageEvent(portal.MXID, event.BeeperMessageStatus, &content)
 	if err != nil {
 		portal.log.Warnln("Failed to send message status event:", err)
@@ -195,12 +195,9 @@ func (portal *Portal) sendMessageMetrics(evt *event.Event, err error, part strin
 			level = log.LevelDebug
 		}
 		portal.log.Logfln(level, "%s %s %s from %s: %v", part, msgType, evtDescription, evt.Sender, err)
-		reason, isCertain, _, sendNotice := errorToStatusReason(err)
-		status := bridge.ReasonToCheckpointStatus(reason)
-		if errors.Is(err, errMessageTakingLong) {
-			status = bridge.MsgStatusWillRetry
-		}
-		portal.bridge.SendMessageCheckpoint(evt, bridge.MsgStepRemote, err, status, ms.getRetryNum())
+		reason, status, isCertain, sendNotice, _ := errorToStatusReason(err)
+		checkpointStatus := bridge.ReasonToCheckpointStatus(reason, status)
+		portal.bridge.SendMessageCheckpoint(evt, bridge.MsgStepRemote, err, checkpointStatus, ms.getRetryNum())
 		if sendNotice {
 			ms.setNoticeID(portal.sendErrorMessage(evt, err, isCertain, ms.getNoticeID()))
 		}
