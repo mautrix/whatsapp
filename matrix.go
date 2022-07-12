@@ -41,9 +41,9 @@ func (br *WABridge) CreatePrivatePortal(roomID id.RoomID, brInviter bridge.User,
 		return
 	}
 
-	err := portal.MainIntent().EnsureInvited(portal.MXID, inviter.MXID)
-	if err != nil {
-		br.Log.Warnfln("Failed to invite %s to existing private chat portal %s with %s: %v. Redirecting portal to new room...", inviter.MXID, portal.MXID, puppet.JID, err)
+	ok := portal.ensureUserInvited(inviter)
+	if !ok {
+		br.Log.Warnfln("Failed to invite %s to existing private chat portal %s with %s. Redirecting portal to new room...", inviter.MXID, portal.MXID, puppet.JID)
 		br.createPrivatePortalFromInvite(roomID, inviter, puppet, portal)
 		return
 	}

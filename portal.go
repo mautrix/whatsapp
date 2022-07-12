@@ -1131,13 +1131,6 @@ func (portal *Portal) UpdateMetadata(user *User, groupInfo *types.GroupInfo) boo
 	return update
 }
 
-func (portal *Portal) ensureMXIDInvited(mxid id.UserID) {
-	err := portal.MainIntent().EnsureInvited(portal.MXID, mxid)
-	if err != nil {
-		portal.log.Warnfln("Failed to ensure %s is invited to %s: %v", mxid, portal.MXID, err)
-	}
-}
-
 func (portal *Portal) ensureUserInvited(user *User) bool {
 	return user.ensureInvited(portal.MainIntent(), portal.MXID, portal.IsPrivateChat())
 }
