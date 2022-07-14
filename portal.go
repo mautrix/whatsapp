@@ -1664,6 +1664,29 @@ func (portal *Portal) HandleMessageRevoke(user *User, info *types.MessageInfo, k
 	return true
 }
 
+func (portal *Portal) deleteForMe(user *User, content *events.DeleteForMe) bool {
+	// TODO: only delete if I'm the only Matrix user in the portal!
+	// portal.bridge.AS.StateStore.(*sqlstatestore.SQLStateStore).GetRoomMembers(portal.MXID)
+	// is apparently a bad way to check because it casts stuff and it also returned inaccurate results for me
+
+	msg := portal.bridge.DB.Message.GetByJID(portal.Key, content.MessageID)
+	if msg == nil || msg.IsFakeMXID() {
+		return false
+	}
+	_, err := user.bridge.Bot.RedactEvent(portal.MXID, msg.MXID)
+	if err != nil {
+		if errors.Is(err, mautrix.MForbidden) {
+			_, err = portal.MainIntent().RedactEvent(portal.MXID, msg.MXID)
+			if err != nil {
+				portal.log.Errorln("Failed to redact %s: %v", msg.JID, err)
+			}
+		}
+	} else {
+		msg.Delete()
+	}
+	return true
+}
+
 func (portal *Portal) sendMainIntentMessage(content *event.MessageEventContent) (*mautrix.RespSendEvent, error) {
 	return portal.sendMessage(portal.MainIntent(), event.EventMessage, content, nil, 0)
 }
