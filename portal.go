@@ -1673,14 +1673,9 @@ func (portal *Portal) deleteForMe(user *User, content *events.DeleteForMe) bool 
 	if msg == nil || msg.IsFakeMXID() {
 		return false
 	}
-	_, err := user.bridge.Bot.RedactEvent(portal.MXID, msg.MXID)
+	_, err := portal.MainIntent().RedactEvent(portal.MXID, msg.MXID)
 	if err != nil {
-		if errors.Is(err, mautrix.MForbidden) {
-			_, err = portal.MainIntent().RedactEvent(portal.MXID, msg.MXID)
-			if err != nil {
-				portal.log.Errorln("Failed to redact %s: %v", msg.JID, err)
-			}
-		}
+		portal.log.Errorln("Failed to redact %s: %v", msg.JID, err)
 	} else {
 		msg.Delete()
 	}
