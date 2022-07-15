@@ -921,6 +921,11 @@ func (user *User) HandleEvent(event interface{}) {
 		if user.bridge.Config.Bridge.SyncManualMarkedUnread {
 			user.markUnread(user.GetPortalByJID(v.JID), !v.Action.GetRead())
 		}
+	case *events.DeleteChat:
+		portal := user.GetPortalByJID(v.JID)
+		if portal != nil {
+			portal.HandleWhatsAppDeleteChat()
+		}
 	default:
 		user.log.Debugfln("Unknown type of event in HandleEvent: %T", v)
 	}

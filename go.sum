@@ -66,6 +66,8 @@ go.mau.fi/libsignal v0.0.0-20220628090436-4d18b66b087e h1:ByHDg+D+dMIGuBA2n+1xOU
 go.mau.fi/libsignal v0.0.0-20220628090436-4d18b66b087e/go.mod h1:RCdzkTWSJv0AKGqurzPXJsEGIVMuQps3E/h7CMUPous=
 go.mau.fi/whatsmeow v0.0.0-20220711111122-6340068d67de h1:ZrxHSdpUGODtCtq/0A6CXisEgWtcNwK6BGG4f+WVTlM=
 go.mau.fi/whatsmeow v0.0.0-20220711111122-6340068d67de/go.mod h1:hsjqq2xLuoFew8vbsDCJcGf5EbXCRcR/yoQ+87w6m3k=
+go.mau.fi/whatsmeow v0.0.0-20220715134127-5e6b9804193a h1:Ki4Y9d+qW/ED+7gsQ26AlQxUUyZOQ9bQEiVyjTWRmCQ=
+go.mau.fi/whatsmeow v0.0.0-20220715134127-5e6b9804193a/go.mod h1:hsjqq2xLuoFew8vbsDCJcGf5EbXCRcR/yoQ+87w6m3k=
 golang.org/x/crypto v0.0.0-20220622213112-05595931fe9d h1:sK3txAijHtOK88l68nt020reeT1ZdKLIYetKl95FzVY=
 golang.org/x/crypto v0.0.0-20220622213112-05595931fe9d/go.mod h1:IxCIyHEi3zRg3s0A5j5BB6A9Jmi73HwBIUl50j+osU4=
 golang.org/x/image v0.0.0-20220617043117-41969df76e82 h1:KpZB5pUSBvrHltNEdK/tw0xlPeD13M6M6aGP32gKqiw=
