@@ -1670,7 +1670,7 @@ func (portal *Portal) deleteForMe(user *User, content *events.DeleteForMe) bool 
 		portal.log.Errorfln("Unable to get Matrix users for portal, to see if DeleteForMe should be handled or not")
 		return false
 	}
-	if len(matrixUsers) == 1 {
+	if len(matrixUsers) == 1 && matrixUsers[0] == user.MXID {
 		msg := portal.bridge.DB.Message.GetByJID(portal.Key, content.MessageID)
 		if msg == nil || msg.IsFakeMXID() {
 			return false
