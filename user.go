@@ -921,6 +921,11 @@ func (user *User) HandleEvent(event interface{}) {
 		if user.bridge.Config.Bridge.SyncManualMarkedUnread {
 			user.markUnread(user.GetPortalByJID(v.JID), !v.Action.GetRead())
 		}
+	case *events.DeleteForMe:
+		portal := user.GetPortalByJID(v.ChatJID)
+		if portal != nil {
+			portal.deleteForMe(user, v)
+		}
 	case *events.DeleteChat:
 		portal := user.GetPortalByJID(v.JID)
 		if portal != nil {

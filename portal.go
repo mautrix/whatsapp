@@ -1664,6 +1664,28 @@ func (portal *Portal) HandleMessageRevoke(user *User, info *types.MessageInfo, k
 	return true
 }
 
+func (portal *Portal) deleteForMe(user *User, content *events.DeleteForMe) bool {
+	matrixUsers, err := portal.GetMatrixUsers()
+	if err != nil {
+		portal.log.Errorln("Failed to get Matrix users in portal to see if DeleteForMe should be handled:", err)
+		return false
+	}
+	if len(matrixUsers) == 1 && matrixUsers[0] == user.MXID {
+		msg := portal.bridge.DB.Message.GetByJID(portal.Key, content.MessageID)
+		if msg == nil || msg.IsFakeMXID() {
+			return false
+		}
+		_, err := portal.MainIntent().RedactEvent(portal.MXID, msg.MXID)
+		if err != nil {
+			portal.log.Errorln("Failed to redact %s: %v", msg.JID, err)
+		} else {
+			msg.Delete()
+		}
+		return true
+	}
+	return false
+}
+
 func (portal *Portal) sendMainIntentMessage(content *event.MessageEventContent) (*mautrix.RespSendEvent, error) {
 	return portal.sendMessage(portal.MainIntent(), event.EventMessage, content, nil, 0)
 }
