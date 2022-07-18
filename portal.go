@@ -2149,6 +2149,7 @@ func (portal *Portal) removeUser(isSameUser bool, kicker *appservice.IntentAPI, 
 			_, _ = portal.MainIntent().KickUser(portal.MXID, &mautrix.ReqKickUser{UserID: target})
 		}
 	}
+	portal.CleanupIfEmpty()
 }
 
 func (portal *Portal) HandleWhatsAppKick(source *User, senderJID types.JID, jids []types.JID) {
@@ -2201,6 +2202,22 @@ func (portal *Portal) HandleWhatsAppInvite(source *User, senderJID *types.JID, j
 		}
 	}
 	return
+}
+
+func (portal *Portal) HandleWhatsAppDeleteChat(user *User) {
+	matrixUsers, err := portal.GetMatrixUsers()
+	if err != nil {
+		portal.log.Errorln("Failed to get Matrix users to see if DeleteChat should be handled:", err)
+		return
+	}
+	if len(matrixUsers) > 1 {
+		portal.log.Infoln("Portal contains more than one Matrix user, so deleteChat will not be handled.")
+		return
+	} else if (len(matrixUsers) == 1 && matrixUsers[0] == user.MXID) || len(matrixUsers) < 1 {
+		portal.log.Debugln("User deleted chat and there are no other Matrix users using it, deleting portal...")
+		portal.Delete()
+		portal.Cleanup(false)
+	}
 }
 
 const failedMediaField = "fi.mau.whatsapp.failed_media"

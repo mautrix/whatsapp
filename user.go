@@ -926,6 +926,11 @@ func (user *User) HandleEvent(event interface{}) {
 		if portal != nil {
 			portal.deleteForMe(user, v)
 		}
+	case *events.DeleteChat:
+		portal := user.GetPortalByJID(v.JID)
+		if portal != nil {
+			portal.HandleWhatsAppDeleteChat(user)
+		}
 	default:
 		user.log.Debugfln("Unknown type of event in HandleEvent: %T", v)
 	}
