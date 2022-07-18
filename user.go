@@ -924,7 +924,7 @@ func (user *User) HandleEvent(event interface{}) {
 	case *events.DeleteChat:
 		portal := user.GetPortalByJID(v.JID)
 		if portal != nil {
-			portal.HandleWhatsAppDeleteChat()
+			portal.HandleWhatsAppDeleteChat(user)
 		}
 	default:
 		user.log.Debugfln("Unknown type of event in HandleEvent: %T", v)
