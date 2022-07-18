@@ -3529,13 +3529,6 @@ func (portal *Portal) Cleanup(puppetsOnly bool) {
 	if len(portal.MXID) == 0 {
 		return
 	}
-	if portal.IsPrivateChat() {
-		_, err := portal.MainIntent().LeaveRoom(portal.MXID)
-		if err != nil {
-			portal.log.Warnln("Failed to leave private chat portal with main intent:", err)
-		}
-		return
-	}
 	intent := portal.MainIntent()
 	members, err := intent.JoinedMembers(portal.MXID)
 	if err != nil {
