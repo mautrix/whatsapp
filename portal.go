@@ -1667,7 +1667,7 @@ func (portal *Portal) HandleMessageRevoke(user *User, info *types.MessageInfo, k
 func (portal *Portal) deleteForMe(user *User, content *events.DeleteForMe) bool {
 	matrixUsers, err := portal.GetMatrixUsers()
 	if err != nil {
-		portal.log.Errorfln("Unable to get Matrix users for portal, to see if DeleteForMe should be handled or not")
+		portal.log.Errorln("Failed to get Matrix users in portal to see if DeleteForMe should be handled:", err)
 		return false
 	}
 	if len(matrixUsers) == 1 && matrixUsers[0] == user.MXID {
