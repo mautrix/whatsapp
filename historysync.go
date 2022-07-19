@@ -484,6 +484,7 @@ func (portal *Portal) backfill(source *User, messages []*waProto.WebMessageInfo,
 		if _, alreadyAdded := addedMembers[puppet.MXID]; alreadyAdded {
 			return
 		}
+		puppet.IntentFor(portal).EnsureRegistered()
 		mxid := puppet.MXID.String()
 		content := event.MemberEventContent{
 			Membership:  event.MembershipJoin,
