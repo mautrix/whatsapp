@@ -84,7 +84,7 @@ func (pq *PortalQuery) GetAllByJID(jid types.JID) []*Portal {
 }
 
 func (pq *PortalQuery) FindPrivateChats(receiver types.JID) []*Portal {
-	return pq.getAll(fmt.Sprintf("SELECT %s FROM portal WHERE receiver=$1 AND jid LIKE '%@s.whatsapp.net'", portalColumns), receiver.ToNonAD())
+	return pq.getAll(fmt.Sprintf("SELECT %s FROM portal WHERE receiver=$1 AND jid LIKE '%%@s.whatsapp.net'", portalColumns), receiver.ToNonAD())
 }
 
 func (pq *PortalQuery) FindPrivateChatsNotInSpace(receiver types.JID) (keys []PortalKey) {
