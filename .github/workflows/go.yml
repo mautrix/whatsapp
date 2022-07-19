@@ -17,6 +17,9 @@ jobs:
         with:
           go-version: ${{ matrix.go-version }}
 
+      - name: Install libolm
+        run: sudo apt-get install libolm-dev libolm3
+
       - name: Install goimports
         run: |
           go install golang.org/x/tools/cmd/goimports@latest
