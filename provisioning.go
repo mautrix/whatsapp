@@ -111,8 +111,9 @@ func (prov *ProvisioningAPI) AuthMiddleware(h http.Handler) http.Handler {
 			auth = auth[len("Bearer "):]
 		}
 		if auth != prov.bridge.Config.Bridge.Provisioning.SharedSecret {
+			prov.log.Infof("Authentication token does not match shared secret")
 			jsonResponse(w, http.StatusForbidden, map[string]interface{}{
-				"error":   "Invalid auth token",
+				"error":   "Authentication token does not match shared secret",
 				"errcode": "M_FORBIDDEN",
 			})
 			return
