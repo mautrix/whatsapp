@@ -119,9 +119,9 @@ func (br *WABridge) Init() {
 		store.DeviceProps.Version.Secondary = proto.Uint32(uint32(secondary))
 		store.DeviceProps.Version.Tertiary = proto.Uint32(uint32(tertiary))
 	}
-	platformID, ok := waProto.DeviceProps_DevicePropsPlatformType_value[strings.ToUpper(br.Config.WhatsApp.BrowserName)]
+	platformID, ok := waProto.DeviceProps_PlatformType_value[strings.ToUpper(br.Config.WhatsApp.BrowserName)]
 	if ok {
-		store.DeviceProps.PlatformType = waProto.DeviceProps_DevicePropsPlatformType(platformID).Enum()
+		store.DeviceProps.PlatformType = waProto.DeviceProps_PlatformType(platformID).Enum()
 	}
 }
 

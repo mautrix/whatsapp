@@ -1823,15 +1823,15 @@ func (portal *Portal) convertTemplateMessage(intent *appservice.IntentAPI, sourc
 
 	var convertedTitle *ConvertedMessage
 	switch title := tpl.GetTitle().(type) {
-	case *waProto.HydratedFourRowTemplate_DocumentMessage:
+	case *waProto.TemplateMessage_HydratedFourRowTemplate_DocumentMessage:
 		convertedTitle = portal.convertMediaMessage(intent, source, info, title.DocumentMessage, "file attachment", false)
-	case *waProto.HydratedFourRowTemplate_ImageMessage:
+	case *waProto.TemplateMessage_HydratedFourRowTemplate_ImageMessage:
 		convertedTitle = portal.convertMediaMessage(intent, source, info, title.ImageMessage, "photo", false)
-	case *waProto.HydratedFourRowTemplate_VideoMessage:
+	case *waProto.TemplateMessage_HydratedFourRowTemplate_VideoMessage:
 		convertedTitle = portal.convertMediaMessage(intent, source, info, title.VideoMessage, "video attachment", false)
-	case *waProto.HydratedFourRowTemplate_LocationMessage:
+	case *waProto.TemplateMessage_HydratedFourRowTemplate_LocationMessage:
 		content = fmt.Sprintf("Unsupported location message\n\n%s", content)
-	case *waProto.HydratedFourRowTemplate_HydratedTitleText:
+	case *waProto.TemplateMessage_HydratedFourRowTemplate_HydratedTitleText:
 		content = fmt.Sprintf("%s\n\n%s", title.HydratedTitleText, content)
 	}
 
@@ -2646,7 +2646,7 @@ func (portal *Portal) handleMediaRetry(retry *events.MediaRetry, source *User) {
 		portal.sendMediaRetryFailureEdit(intent, msg, err)
 		return
 	} else if retryData.GetResult() != waProto.MediaRetryNotification_SUCCESS {
-		errorName := waProto.MediaRetryNotification_MediaRetryNotificationResultType_name[int32(retryData.GetResult())]
+		errorName := waProto.MediaRetryNotification_ResultType_name[int32(retryData.GetResult())]
 		if retryData.GetDirectPath() == "" {
 			portal.log.Warnfln("Got error response in media retry notification for %s: %s", retry.MessageID, errorName)
 			portal.log.Debugfln("Error response contents: %+v", retryData)

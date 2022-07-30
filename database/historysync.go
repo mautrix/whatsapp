@@ -22,8 +22,9 @@ import (
 	"fmt"
 	"time"
 
-	waProto "go.mau.fi/whatsmeow/binary/proto"
 	"google.golang.org/protobuf/proto"
+
+	waProto "go.mau.fi/whatsmeow/binary/proto"
 
 	_ "github.com/mattn/go-sqlite3"
 	log "maunium.net/go/maulogger/v2"
@@ -48,8 +49,8 @@ type HistorySyncConversation struct {
 	MuteEndTime              time.Time
 	Archived                 bool
 	Pinned                   uint32
-	DisappearingMode         waProto.DisappearingMode_DisappearingModeInitiator
-	EndOfHistoryTransferType waProto.Conversation_ConversationEndOfHistoryTransferType
+	DisappearingMode         waProto.DisappearingMode_Initiator
+	EndOfHistoryTransferType waProto.Conversation_EndOfHistoryTransferType
 	EphemeralExpiration      *uint32
 	MarkedAsUnread           bool
 	UnreadCount              uint32
@@ -71,8 +72,8 @@ func (hsq *HistorySyncQuery) NewConversationWithValues(
 	muteEndTime uint64,
 	archived bool,
 	pinned uint32,
-	disappearingMode waProto.DisappearingMode_DisappearingModeInitiator,
-	endOfHistoryTransferType waProto.Conversation_ConversationEndOfHistoryTransferType,
+	disappearingMode waProto.DisappearingMode_Initiator,
+	endOfHistoryTransferType waProto.Conversation_EndOfHistoryTransferType,
 	ephemeralExpiration *uint32,
 	markedAsUnread bool,
 	unreadCount uint32) *HistorySyncConversation {
