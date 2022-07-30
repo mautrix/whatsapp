@@ -49,7 +49,8 @@ var (
 	errReactionDatabaseNotFound    = errors.New("reaction database entry not found")
 	errReactionTargetNotFound      = errors.New("reaction target message not found")
 	errTargetIsFake                = errors.New("target is a fake event")
-	errTargetSentBySomeoneElse     = errors.New("target is a fake event")
+	errReactionSentBySomeoneElse   = errors.New("target reaction was sent by someone else")
+	errDMSentByOtherUser           = errors.New("target message was sent by the other user in a DM")
 
 	errBroadcastReactionNotSupported = errors.New("reacting to status messages is not currently supported")
 	errBroadcastSendDisabled         = errors.New("sending status messages is disabled")
@@ -82,7 +83,8 @@ func errorToStatusReason(err error) (reason event.MessageStatusReason, status ev
 		errors.Is(err, errTargetIsFake),
 		errors.Is(err, errReactionDatabaseNotFound),
 		errors.Is(err, errReactionTargetNotFound),
-		errors.Is(err, errTargetSentBySomeoneElse):
+		errors.Is(err, errReactionSentBySomeoneElse),
+		errors.Is(err, errDMSentByOtherUser):
 		return event.MessageStatusGenericError, event.MessageStatusFail, true, false, ""
 	case errors.Is(err, whatsmeow.ErrNotConnected),
 		errors.Is(err, errUserNotConnected):

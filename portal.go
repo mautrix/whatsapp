@@ -3106,6 +3106,14 @@ func (portal *Portal) convertMatrixMessage(ctx context.Context, sender *User, ev
 			FileSha256:    media.FileSHA256,
 			FileLength:    proto.Uint64(uint64(media.FileLength)),
 		}
+		if media.Caption != "" {
+			msg.DocumentWithCaptionMessage = &waProto.FutureProofMessage{
+				Message: &waProto.Message{
+					DocumentMessage: msg.DocumentMessage,
+				},
+			}
+			msg.DocumentMessage = nil
+		}
 	case event.MsgLocation:
 		lat, long, err := parseGeoURI(content.GeoURI)
 		if err != nil {
@@ -3333,13 +3341,12 @@ func (portal *Portal) HandleMatrixRedaction(sender *User, evt *event.Event) {
 		go portal.sendMessageMetrics(evt, errTargetNotFound, "Ignoring", nil)
 	} else if msg.IsFakeJID() {
 		go portal.sendMessageMetrics(evt, errTargetIsFake, "Ignoring", nil)
-	} else if msg.Sender.User != sender.JID.User {
-		go portal.sendMessageMetrics(evt, errTargetSentBySomeoneElse, "Ignoring", nil)
 	} else if portal.Key.JID == types.StatusBroadcastJID && portal.bridge.Config.Bridge.DisableStatusBroadcastSend {
 		go portal.sendMessageMetrics(evt, errBroadcastSendDisabled, "Ignoring", nil)
-		return
 	} else if msg.Type == database.MsgReaction {
-		if reaction := portal.bridge.DB.Reaction.GetByMXID(evt.Redacts); reaction == nil {
+		if msg.Sender.User != sender.JID.User {
+			go portal.sendMessageMetrics(evt, errReactionSentBySomeoneElse, "Ignoring", nil)
+		} else if reaction := portal.bridge.DB.Reaction.GetByMXID(evt.Redacts); reaction == nil {
 			go portal.sendMessageMetrics(evt, errReactionDatabaseNotFound, "Ignoring", nil)
 		} else if reactionTarget := reaction.GetTarget(); reactionTarget == nil {
 			go portal.sendMessageMetrics(evt, errReactionTargetNotFound, "Ignoring", nil)
@@ -3349,8 +3356,26 @@ func (portal *Portal) HandleMatrixRedaction(sender *User, evt *event.Event) {
 			go portal.sendMessageMetrics(evt, err, "Error sending", nil)
 		}
 	} else {
+		key := &waProto.MessageKey{
+			FromMe:    proto.Bool(true),
+			Id:        proto.String(msg.JID),
+			RemoteJid: proto.String(portal.Key.JID.String()),
+		}
+		if msg.Sender.User != sender.JID.User {
+			if portal.IsPrivateChat() {
+				go portal.sendMessageMetrics(evt, errDMSentByOtherUser, "Ignoring", nil)
+				return
+			}
+			key.FromMe = proto.Bool(false)
+			key.Participant = proto.String(msg.Sender.ToNonAD().String())
+		}
 		portal.log.Debugfln("Sending redaction %s of %s/%s to WhatsApp", evt.ID, msg.MXID, msg.JID)
-		_, err := sender.Client.RevokeMessage(portal.Key.JID, msg.JID)
+		_, err := sender.Client.SendMessage(context.TODO(), portal.Key.JID, "", &waProto.Message{
+			ProtocolMessage: &waProto.ProtocolMessage{
+				Type: waProto.ProtocolMessage_REVOKE.Enum(),
+				Key:  key,
+			},
+		})
 		go portal.sendMessageMetrics(evt, err, "Error sending", nil)
 	}
 }
