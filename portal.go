@@ -3147,6 +3147,7 @@ func (portal *Portal) convertMatrixMessage(ctx context.Context, sender *User, ev
 		}
 	default:
 		if evt.Type == event.EventSticker {
+			content.MsgType = ""
 			media, err := portal.preprocessMatrixMedia(ctx, sender, relaybotFormatted, content, evt.ID, whatsmeow.MediaImage)
 			if media == nil {
 				return nil, sender, err
