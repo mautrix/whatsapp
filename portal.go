@@ -36,6 +36,7 @@ import (
 	"sync"
 	"time"
 
+	webpEnc "github.com/chai2010/webp"
 	"github.com/tidwall/gjson"
 	"golang.org/x/image/draw"
 	"golang.org/x/image/webp"
@@ -2810,6 +2811,20 @@ func (portal *Portal) convertWebPtoPNG(webpImage []byte) ([]byte, error) {
 	return pngBuffer.Bytes(), nil
 }
 
+func (portal *Portal) convertToWebP(oldImage []byte) ([]byte, error) {
+	oldDecoded, _, err := image.Decode(bytes.NewReader(oldImage))
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode image: %w", err)
+	}
+
+	var webpBuffer bytes.Buffer
+	if err := webpEnc.Encode(&webpBuffer, oldDecoded, &webpEnc.Options{}); err != nil {
+		return nil, fmt.Errorf("failed to encode webp image: %w", err)
+	}
+
+	return webpBuffer.Bytes(), nil
+}
+
 func (portal *Portal) preprocessMatrixMedia(ctx context.Context, sender *User, relaybotFormatted bool, content *event.MessageEventContent, eventID id.EventID, mediaType whatsmeow.MediaType) (*MediaUpload, error) {
 	fileName := content.Body
 	var caption string
@@ -2854,12 +2869,20 @@ func (portal *Portal) preprocessMatrixMedia(ctx context.Context, sender *User, r
 		}
 		content.Info.MimeType = "video/mp4"
 	}
-	if mediaType == whatsmeow.MediaImage && content.GetInfo().MimeType == "image/webp" {
+	sticker := content.MsgType == ""
+	if !sticker && mediaType == whatsmeow.MediaImage && content.GetInfo().MimeType == "image/webp" {
 		data, err = portal.convertWebPtoPNG(data)
 		if err != nil {
 			return nil, util.NewDualError(fmt.Errorf("%w (webp to png)", errMediaConvertFailed), err)
 		}
 		content.Info.MimeType = "image/png"
+	}
+	if sticker && mediaType == whatsmeow.MediaImage && content.GetInfo().MimeType != "image/webp" {
+		data, err = portal.convertToWebP(data)
+		if err != nil {
+			return nil, util.NewDualError(fmt.Errorf("%w (to webp)", errMediaConvertFailed), err)
+		}
+		content.Info.MimeType = "image/webp"
 	}
 	uploadResp, err := sender.Client.Upload(ctx, data, mediaType)
 	if err != nil {
@@ -2995,9 +3018,6 @@ func (portal *Portal) convertMatrixMessage(ctx context.Context, sender *User, ev
 		relaybotFormatted = portal.addRelaybotFormat(sender, content)
 		sender = portal.GetRelayUser()
 	}
-	if evt.Type == event.EventSticker {
-		content.MsgType = event.MsgImage
-	}
 	if content.MsgType == event.MsgImage && content.GetInfo().MimeType == "image/gif" {
 		content.MsgType = event.MsgVideo
 	}
@@ -3126,7 +3146,23 @@ func (portal *Portal) convertMatrixMessage(ctx context.Context, sender *User, ev
 			ContextInfo:      &ctxInfo,
 		}
 	default:
-		return nil, sender, fmt.Errorf("%w %q", errUnknownMsgType, content.MsgType)
+		if evt.Type == event.EventSticker {
+			media, err := portal.preprocessMatrixMedia(ctx, sender, relaybotFormatted, content, evt.ID, whatsmeow.MediaImage)
+			if media == nil {
+				return nil, sender, err
+			}
+			msg.StickerMessage = &waProto.StickerMessage{
+				ContextInfo:   &ctxInfo,
+				Url:           &media.URL,
+				MediaKey:      media.MediaKey,
+				Mimetype:      &content.GetInfo().MimeType,
+				FileEncSha256: media.FileEncSHA256,
+				FileSha256:    media.FileSHA256,
+				FileLength:    proto.Uint64(uint64(media.FileLength)),
+			}
+		} else {
+			return nil, sender, fmt.Errorf("%w %q", errUnknownMsgType, content.MsgType)
+		}
 	}
 	return &msg, sender, nil
 }
