@@ -1889,7 +1889,7 @@ func (portal *Portal) convertListMessage(intent *appservice.IntentAPI, source *U
 			body = fmt.Sprintf("%s\n\n%s", msg.GetTitle(), body)
 		}
 	}
-	randomID := appservice.RandomString(64)
+	randomID := util.RandomString(64)
 	body = fmt.Sprintf("%s\n%s", body, randomID)
 	if msg.GetFooterText() != "" {
 		body = fmt.Sprintf("%s\n\n%s", body, msg.GetFooterText())
