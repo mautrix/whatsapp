@@ -209,7 +209,7 @@ func (portal *Portal) Insert() {
 	}
 }
 
-func (portal *Portal) Update(txn *sql.Tx) {
+func (portal *Portal) Update(txn dbutil.Transaction) {
 	query := `
 		UPDATE portal
 		SET mxid=$1, name=$2, name_set=$3, topic=$4, topic_set=$5, avatar=$6, avatar_url=$7, avatar_set=$8,

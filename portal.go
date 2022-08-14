@@ -19,7 +19,6 @@ package main
 import (
 	"bytes"
 	"context"
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -52,6 +51,7 @@ import (
 	"maunium.net/go/mautrix/format"
 	"maunium.net/go/mautrix/id"
 	"maunium.net/go/mautrix/util"
+	"maunium.net/go/mautrix/util/dbutil"
 	"maunium.net/go/mautrix/util/ffmpeg"
 	"maunium.net/go/mautrix/util/variationselector"
 
@@ -792,7 +792,7 @@ func (portal *Portal) isRecentlyHandled(id types.MessageID, error database.Messa
 	return false
 }
 
-func (portal *Portal) markHandled(txn *sql.Tx, msg *database.Message, info *types.MessageInfo, mxid id.EventID, isSent, recent bool, msgType database.MessageType, errType database.MessageErrorType) *database.Message {
+func (portal *Portal) markHandled(txn dbutil.Transaction, msg *database.Message, info *types.MessageInfo, mxid id.EventID, isSent, recent bool, msgType database.MessageType, errType database.MessageErrorType) *database.Message {
 	if msg == nil {
 		msg = portal.bridge.DB.Message.New()
 		msg.Chat = portal.Key

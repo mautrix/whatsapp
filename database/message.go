@@ -179,7 +179,7 @@ func (msg *Message) Scan(row dbutil.Scannable) *Message {
 	return msg
 }
 
-func (msg *Message) Insert(txn *sql.Tx) {
+func (msg *Message) Insert(txn dbutil.Transaction) {
 	var sender interface{} = msg.Sender
 	// Slightly hacky hack to allow inserting empty senders (used for post-backfill dummy events)
 	if msg.Sender.IsEmpty() {
@@ -213,7 +213,7 @@ func (msg *Message) MarkSent(ts time.Time) {
 	}
 }
 
-func (msg *Message) UpdateMXID(txn *sql.Tx, mxid id.EventID, newType MessageType, newError MessageErrorType) {
+func (msg *Message) UpdateMXID(txn dbutil.Transaction, mxid id.EventID, newType MessageType, newError MessageErrorType) {
 	msg.MXID = mxid
 	msg.Type = newType
 	msg.Error = newError

@@ -93,8 +93,8 @@ func (br *WABridge) Init() {
 		Segment.log.Infoln("Segment metrics are enabled")
 	}
 
-	br.DB = database.New(br.Bridge.DB)
-	br.WAContainer = sqlstore.NewWithDB(br.DB.DB, br.DB.Dialect.String(), &waLogger{br.DB.Log.Sub("WhatsApp")})
+	br.DB = database.New(br.Bridge.DB, br.Log.Sub("Database"))
+	br.WAContainer = sqlstore.NewWithDB(br.DB.RawDB, br.DB.Dialect.String(), &waLogger{br.Log.Sub("Database").Sub("WhatsApp")})
 	br.WAContainer.DatabaseErrorHandler = br.DB.HandleSignalStoreError
 
 	ss := br.Config.Bridge.Provisioning.SharedSecret
