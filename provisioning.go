@@ -39,7 +39,7 @@ import (
 
 	log "maunium.net/go/maulogger/v2"
 
-	"maunium.net/go/mautrix/bridge"
+	"maunium.net/go/mautrix/bridge/status"
 	"maunium.net/go/mautrix/id"
 )
 
@@ -151,7 +151,7 @@ func (prov *ProvisioningAPI) DeleteSession(w http.ResponseWriter, r *http.Reques
 	user.DeleteConnection()
 	user.DeleteSession()
 	jsonResponse(w, http.StatusOK, Response{true, "Session information purged"})
-	user.removeFromJIDMap(bridge.State{StateEvent: bridge.StateLoggedOut})
+	user.removeFromJIDMap(status.BridgeState{StateEvent: status.StateLoggedOut})
 }
 
 func (prov *ProvisioningAPI) Disconnect(w http.ResponseWriter, r *http.Request) {
@@ -165,7 +165,7 @@ func (prov *ProvisioningAPI) Disconnect(w http.ResponseWriter, r *http.Request) 
 	}
 	user.DeleteConnection()
 	jsonResponse(w, http.StatusOK, Response{true, "Disconnected from WhatsApp"})
-	user.BridgeState.Send(bridge.State{StateEvent: bridge.StateBadCredentials, Error: WANotConnected})
+	user.BridgeState.Send(status.BridgeState{StateEvent: status.StateBadCredentials, Error: WANotConnected})
 }
 
 func (prov *ProvisioningAPI) Reconnect(w http.ResponseWriter, r *http.Request) {
@@ -182,7 +182,7 @@ func (prov *ProvisioningAPI) Reconnect(w http.ResponseWriter, r *http.Request) {
 		}
 	} else {
 		user.DeleteConnection()
-		user.BridgeState.Send(bridge.State{StateEvent: bridge.StateTransientDisconnect, Error: WANotConnected})
+		user.BridgeState.Send(status.BridgeState{StateEvent: status.StateTransientDisconnect, Error: WANotConnected})
 		user.Connect()
 		jsonResponse(w, http.StatusAccepted, Response{true, "Restarted connection to WhatsApp"})
 	}
@@ -577,7 +577,7 @@ func (prov *ProvisioningAPI) Logout(w http.ResponseWriter, r *http.Request) {
 	}
 
 	user.bridge.Metrics.TrackConnectionState(user.JID, false)
-	user.removeFromJIDMap(bridge.State{StateEvent: bridge.StateLoggedOut})
+	user.removeFromJIDMap(status.BridgeState{StateEvent: status.StateLoggedOut})
 	user.DeleteSession()
 	jsonResponse(w, http.StatusOK, Response{true, "Logged out successfully."})
 }

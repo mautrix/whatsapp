@@ -38,6 +38,7 @@ import (
 	"maunium.net/go/mautrix/appservice"
 	"maunium.net/go/mautrix/bridge"
 	"maunium.net/go/mautrix/bridge/bridgeconfig"
+	"maunium.net/go/mautrix/bridge/status"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/format"
 	"maunium.net/go/mautrix/id"
@@ -161,7 +162,7 @@ func (user *User) addToJIDMap() {
 	user.bridge.usersLock.Unlock()
 }
 
-func (user *User) removeFromJIDMap(state bridge.State) {
+func (user *User) removeFromJIDMap(state status.BridgeState) {
 	user.bridge.usersLock.Lock()
 	jidUser, ok := user.bridge.usersByUsername[user.JID.User]
 	if ok && user == jidUser {
@@ -533,13 +534,13 @@ func (user *User) Connect() bool {
 		return false
 	}
 	user.log.Debugln("Connecting to WhatsApp")
-	user.BridgeState.Send(bridge.State{StateEvent: bridge.StateConnecting, Error: WAConnecting})
+	user.BridgeState.Send(status.BridgeState{StateEvent: status.StateConnecting, Error: WAConnecting})
 	user.createClient(user.Session)
 	err := user.Client.Connect()
 	if err != nil {
 		user.log.Warnln("Error connecting to WhatsApp:", err)
-		user.BridgeState.Send(bridge.State{
-			StateEvent: bridge.StateUnknownError,
+		user.BridgeState.Send(status.BridgeState{
+			StateEvent: status.StateUnknownError,
 			Error:      WAConnectionFailed,
 			Info: map[string]interface{}{
 				"go_error": err.Error(),
@@ -708,7 +709,7 @@ func (user *User) phoneSeen(ts time.Time) {
 	} else if !user.PhoneRecentlySeen(false) {
 		if user.BridgeState.GetPrev().Error == WAPhoneOffline && user.IsConnected() {
 			user.log.Debugfln("Saw phone after current bridge state said it has been offline, switching state back to connected")
-			go user.BridgeState.Send(bridge.State{StateEvent: bridge.StateConnected})
+			go user.BridgeState.Send(status.BridgeState{StateEvent: status.StateConnected})
 		} else {
 			user.log.Debugfln("Saw phone after current bridge state said it has been offline, not sending new bridge state (prev: %s, connected: %t)", user.BridgeState.GetPrev().Error, user.IsConnected())
 		}
@@ -762,19 +763,19 @@ func (user *User) HandleEvent(event interface{}) {
 		}
 	case *events.OfflineSyncPreview:
 		user.log.Infofln("Server says it's going to send %d messages and %d receipts that were missed during downtime", v.Messages, v.Receipts)
-		go user.BridgeState.Send(bridge.State{
-			StateEvent: bridge.StateBackfilling,
+		go user.BridgeState.Send(status.BridgeState{
+			StateEvent: status.StateBackfilling,
 			Message:    fmt.Sprintf("backfilling %d messages and %d receipts", v.Messages, v.Receipts),
 		})
 	case *events.OfflineSyncCompleted:
 		if !user.PhoneRecentlySeen(true) {
 			user.log.Infofln("Offline sync completed, but phone last seen date is still %s - sending phone offline bridge status", user.PhoneLastSeen)
-			go user.BridgeState.Send(bridge.State{StateEvent: bridge.StateTransientDisconnect, Error: WAPhoneOffline})
+			go user.BridgeState.Send(status.BridgeState{StateEvent: status.StateTransientDisconnect, Error: WAPhoneOffline})
 		} else {
-			if user.BridgeState.GetPrev().StateEvent == bridge.StateBackfilling {
+			if user.BridgeState.GetPrev().StateEvent == status.StateBackfilling {
 				user.log.Infoln("Offline sync completed")
 			}
-			go user.BridgeState.Send(bridge.State{StateEvent: bridge.StateConnected})
+			go user.BridgeState.Send(status.BridgeState{StateEvent: status.StateConnected})
 		}
 	case *events.AppStateSyncComplete:
 		if len(user.Client.Store.PushName) > 0 && v.Name == appstate.WAPatchCriticalBlock {
@@ -812,23 +813,23 @@ func (user *User) HandleEvent(event interface{}) {
 		} else {
 			message = "Unknown stream error"
 		}
-		go user.BridgeState.Send(bridge.State{StateEvent: bridge.StateUnknownError, Message: message})
+		go user.BridgeState.Send(status.BridgeState{StateEvent: status.StateUnknownError, Message: message})
 		user.bridge.Metrics.TrackConnectionState(user.JID, false)
 	case *events.ConnectFailure:
-		go user.BridgeState.Send(bridge.State{StateEvent: bridge.StateUnknownError, Message: fmt.Sprintf("Unknown connection failure: %s", v.Reason)})
+		go user.BridgeState.Send(status.BridgeState{StateEvent: status.StateUnknownError, Message: fmt.Sprintf("Unknown connection failure: %s", v.Reason)})
 		user.bridge.Metrics.TrackConnectionState(user.JID, false)
 	case *events.ClientOutdated:
 		user.log.Errorfln("Got a client outdated connect failure. The bridge is likely out of date, please update immediately.")
-		go user.BridgeState.Send(bridge.State{StateEvent: bridge.StateUnknownError, Message: "Connect failure: 405 client outdated"})
+		go user.BridgeState.Send(status.BridgeState{StateEvent: status.StateUnknownError, Message: "Connect failure: 405 client outdated"})
 		user.bridge.Metrics.TrackConnectionState(user.JID, false)
 	case *events.TemporaryBan:
-		go user.BridgeState.Send(bridge.State{StateEvent: bridge.StateBadCredentials, Message: v.String()})
+		go user.BridgeState.Send(status.BridgeState{StateEvent: status.StateBadCredentials, Message: v.String()})
 		user.bridge.Metrics.TrackConnectionState(user.JID, false)
 	case *events.Disconnected:
 		// Don't send the normal transient disconnect state if we're already in a different transient disconnect state.
 		// TODO remove this if/when the phone offline state is moved to a sub-state of CONNECTED
 		if user.BridgeState.GetPrev().Error != WAPhoneOffline && user.PhoneRecentlySeen(false) {
-			go user.BridgeState.Send(bridge.State{StateEvent: bridge.StateTransientDisconnect, Message: "Disconnected from WhatsApp. Trying to reconnect."})
+			go user.BridgeState.Send(status.BridgeState{StateEvent: status.StateTransientDisconnect, Message: "Disconnected from WhatsApp. Trying to reconnect."})
 		}
 		user.bridge.Metrics.TrackConnectionState(user.JID, false)
 	case *events.Contact:
@@ -913,10 +914,10 @@ func (user *User) HandleEvent(event interface{}) {
 	case *events.AppState:
 		// Ignore
 	case *events.KeepAliveTimeout:
-		go user.BridgeState.Send(bridge.State{StateEvent: bridge.StateTransientDisconnect, Error: WAKeepaliveTimeout})
+		go user.BridgeState.Send(status.BridgeState{StateEvent: status.StateTransientDisconnect, Error: WAKeepaliveTimeout})
 	case *events.KeepAliveRestored:
 		user.log.Infof("Keepalive restored after timeouts, sending connected event")
-		go user.BridgeState.Send(bridge.State{StateEvent: bridge.StateConnected})
+		go user.BridgeState.Send(status.BridgeState{StateEvent: status.StateConnected})
 	case *events.MarkChatAsRead:
 		if user.bridge.Config.Bridge.SyncManualMarkedUnread {
 			user.markUnread(user.GetPortalByJID(v.JID), !v.Action.GetRead())
@@ -1109,7 +1110,7 @@ func (user *User) handleLoggedOut(onConnect bool, reason events.ConnectFailureRe
 	} else if reason == events.ConnectFailureMainDeviceGone {
 		errorCode = WAMainDeviceGone
 	}
-	user.removeFromJIDMap(bridge.State{StateEvent: bridge.StateBadCredentials, Error: errorCode})
+	user.removeFromJIDMap(status.BridgeState{StateEvent: status.StateBadCredentials, Error: errorCode})
 	user.DeleteConnection()
 	user.Session = nil
 	user.JID = types.EmptyJID

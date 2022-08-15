@@ -36,6 +36,7 @@ import (
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/bridge"
 	"maunium.net/go/mautrix/bridge/commands"
+	"maunium.net/go/mautrix/bridge/status"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 	"maunium.net/go/mautrix/util/configupgrade"
@@ -194,7 +195,7 @@ func (br *WABridge) StartUsers() {
 		go user.Connect()
 	}
 	if !foundAnySessions {
-		br.SendGlobalBridgeState(bridge.State{StateEvent: bridge.StateUnconfigured}.Fill(nil))
+		br.SendGlobalBridgeState(status.BridgeState{StateEvent: status.StateUnconfigured}.Fill(nil))
 	}
 	br.Log.Debugln("Starting custom puppets")
 	for _, loopuppet := range br.GetAllPuppetsWithCustomMXID() {

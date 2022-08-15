@@ -38,6 +38,7 @@ import (
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/bridge"
 	"maunium.net/go/mautrix/bridge/commands"
+	"maunium.net/go/mautrix/bridge/status"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 
@@ -518,7 +519,7 @@ func fnLogout(ce *WrappedCommandEvent) {
 		return
 	}
 	ce.User.Session = nil
-	ce.User.removeFromJIDMap(bridge.State{StateEvent: bridge.StateLoggedOut})
+	ce.User.removeFromJIDMap(status.BridgeState{StateEvent: status.StateLoggedOut})
 	ce.User.DeleteConnection()
 	ce.User.DeleteSession()
 	ce.Reply("Logged out successfully.")
@@ -575,7 +576,7 @@ func fnDeleteSession(ce *WrappedCommandEvent) {
 		ce.Reply("Nothing to purge: no session information stored and no active connection.")
 		return
 	}
-	ce.User.removeFromJIDMap(bridge.State{StateEvent: bridge.StateLoggedOut})
+	ce.User.removeFromJIDMap(status.BridgeState{StateEvent: status.StateLoggedOut})
 	ce.User.DeleteConnection()
 	ce.User.DeleteSession()
 	ce.Reply("Session information purged")
@@ -600,7 +601,7 @@ func fnReconnect(ce *WrappedCommandEvent) {
 		}
 	} else {
 		ce.User.DeleteConnection()
-		ce.User.BridgeState.Send(bridge.State{StateEvent: bridge.StateTransientDisconnect, Error: WANotConnected})
+		ce.User.BridgeState.Send(status.BridgeState{StateEvent: status.StateTransientDisconnect, Error: WANotConnected})
 		ce.User.Connect()
 		ce.Reply("Restarted connection to WhatsApp")
 	}
@@ -622,7 +623,7 @@ func fnDisconnect(ce *WrappedCommandEvent) {
 	}
 	ce.User.DeleteConnection()
 	ce.Reply("Successfully disconnected. Use the `reconnect` command to reconnect.")
-	ce.User.BridgeState.Send(bridge.State{StateEvent: bridge.StateBadCredentials, Error: WANotConnected})
+	ce.User.BridgeState.Send(status.BridgeState{StateEvent: status.StateBadCredentials, Error: WANotConnected})
 }
 
 var cmdPing = &commands.FullHandler{

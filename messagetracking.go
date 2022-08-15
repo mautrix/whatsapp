@@ -28,7 +28,7 @@ import (
 	"go.mau.fi/whatsmeow"
 
 	"maunium.net/go/mautrix"
-	"maunium.net/go/mautrix/bridge"
+	"maunium.net/go/mautrix/bridge/status"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 )
@@ -197,9 +197,9 @@ func (portal *Portal) sendMessageMetrics(evt *event.Event, err error, part strin
 			level = log.LevelDebug
 		}
 		portal.log.Logfln(level, "%s %s %s from %s: %v", part, msgType, evtDescription, evt.Sender, err)
-		reason, status, isCertain, sendNotice, _ := errorToStatusReason(err)
-		checkpointStatus := bridge.ReasonToCheckpointStatus(reason, status)
-		portal.bridge.SendMessageCheckpoint(evt, bridge.MsgStepRemote, err, checkpointStatus, ms.getRetryNum())
+		reason, statusCode, isCertain, sendNotice, _ := errorToStatusReason(err)
+		checkpointStatus := status.ReasonToCheckpointStatus(reason, statusCode)
+		portal.bridge.SendMessageCheckpoint(evt, status.MsgStepRemote, err, checkpointStatus, ms.getRetryNum())
 		if sendNotice {
 			ms.setNoticeID(portal.sendErrorMessage(evt, err, isCertain, ms.getNoticeID()))
 		}
@@ -207,7 +207,7 @@ func (portal *Portal) sendMessageMetrics(evt *event.Event, err error, part strin
 	} else {
 		portal.log.Debugfln("Handled Matrix %s %s", msgType, evtDescription)
 		portal.sendDeliveryReceipt(evt.ID)
-		portal.bridge.SendMessageSuccessCheckpoint(evt, bridge.MsgStepRemote, ms.getRetryNum())
+		portal.bridge.SendMessageSuccessCheckpoint(evt, status.MsgStepRemote, ms.getRetryNum())
 		portal.sendStatusEvent(origEvtID, evt.ID, nil)
 		if prevNotice := ms.popNoticeID(); prevNotice != "" {
 			_, _ = portal.MainIntent().RedactEvent(portal.MXID, prevNotice, mautrix.ReqRedact{
