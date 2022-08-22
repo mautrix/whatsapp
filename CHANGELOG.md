@@ -1,3 +1,14 @@
+# unreleased
+
+* Bumped minimum Go version to 1.18.
+* Added hidden option to use appservice login for double puppeting.
+  * This can be used by adding everyone to a non-exclusive namespace in the
+    registration, and setting the login shared secret to the string `appservice`.
+* Enabled appservice ephemeral events by default for new installations.
+  * Existing bridges can turn it on by enabling `ephemeral_events` and disabling
+    `sync_with_custom_puppets` in the config, then regenerating the registration
+    file.
+
 # v0.6.1 (2022-08-16)
 
 * Added support for "Delete for me" and deleting private chats from WhatsApp.
