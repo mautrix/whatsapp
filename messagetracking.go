@@ -45,6 +45,7 @@ var (
 	errMediaDecryptFailed          = errors.New("failed to decrypt media")
 	errMediaConvertFailed          = errors.New("failed to convert media")
 	errMediaWhatsAppUploadFailed   = errors.New("failed to upload media to WhatsApp")
+	errMediaUnsupportedType        = errors.New("unsupported media type")
 	errTargetNotFound              = errors.New("target event not found")
 	errReactionDatabaseNotFound    = errors.New("reaction database entry not found")
 	errReactionTargetNotFound      = errors.New("reaction target message not found")
@@ -73,6 +74,8 @@ func errorToStatusReason(err error) (reason event.MessageStatusReason, status ev
 		errors.Is(err, errBroadcastReactionNotSupported),
 		errors.Is(err, errBroadcastSendDisabled):
 		return event.MessageStatusUnsupported, event.MessageStatusFail, true, true, ""
+	case errors.Is(err, errMediaUnsupportedType):
+		return event.MessageStatusUnsupported, event.MessageStatusFail, true, true, err.Error()
 	case errors.Is(err, errTimeoutBeforeHandling):
 		return event.MessageStatusTooOld, event.MessageStatusRetriable, true, true, "the message was too old when it reached the bridge, so it was not handled"
 	case errors.Is(err, context.DeadlineExceeded):

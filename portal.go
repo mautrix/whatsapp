@@ -35,9 +35,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/chai2010/webp"
 	"github.com/tidwall/gjson"
 	"golang.org/x/image/draw"
-	"golang.org/x/image/webp"
 	"google.golang.org/protobuf/proto"
 
 	log "maunium.net/go/maulogger/v2"
@@ -2526,7 +2526,7 @@ func (portal *Portal) convertMediaMessage(intent *appservice.IntentAPI, source *
 		if portal.bridge.Config.Bridge.HistorySync.MediaRequests.AutoRequestMedia && isBackfill {
 			errorText += " Media will be automatically requested from your phone later."
 		} else {
-			errorText += ` React with the \u267b (recycle) emoji to request this media from your phone.`
+			errorText += " React with the \u267b (recycle) emoji to request this media from your phone."
 		}
 
 		return portal.makeMediaBridgeFailureMessage(info, err, converted, &FailedMediaKeys{
@@ -2737,7 +2737,7 @@ func (portal *Portal) requestMediaRetry(user *User, eventID id.EventID, mediaKey
 const thumbnailMaxSize = 72
 const thumbnailMinSize = 24
 
-func createJPEGThumbnailAndGetSize(source []byte) ([]byte, int, int, error) {
+func createThumbnailAndGetSize(source []byte, pngThumbnail bool) ([]byte, int, int, error) {
 	src, _, err := image.Decode(bytes.NewReader(source))
 	if err != nil {
 		return nil, 0, 0, fmt.Errorf("failed to decode thumbnail: %w", err)
@@ -2771,19 +2771,23 @@ func createJPEGThumbnailAndGetSize(source []byte) ([]byte, int, int, error) {
 	}
 
 	var buf bytes.Buffer
-	err = jpeg.Encode(&buf, img, &jpeg.Options{Quality: jpeg.DefaultQuality})
+	if pngThumbnail {
+		err = png.Encode(&buf, img)
+	} else {
+		err = jpeg.Encode(&buf, img, &jpeg.Options{Quality: jpeg.DefaultQuality})
+	}
 	if err != nil {
 		return nil, width, height, fmt.Errorf("failed to re-encode thumbnail: %w", err)
 	}
 	return buf.Bytes(), width, height, nil
 }
 
-func createJPEGThumbnail(source []byte) ([]byte, error) {
-	data, _, _, err := createJPEGThumbnailAndGetSize(source)
+func createThumbnail(source []byte, png bool) ([]byte, error) {
+	data, _, _, err := createThumbnailAndGetSize(source, png)
 	return data, err
 }
 
-func (portal *Portal) downloadThumbnail(ctx context.Context, original []byte, thumbnailURL id.ContentURIString, eventID id.EventID) ([]byte, error) {
+func (portal *Portal) downloadThumbnail(ctx context.Context, original []byte, thumbnailURL id.ContentURIString, eventID id.EventID, png bool) ([]byte, error) {
 	if len(thumbnailURL) == 0 {
 		// just fall back to making thumbnail of original
 	} else if mxc, err := thumbnailURL.Parse(); err != nil {
@@ -2791,9 +2795,9 @@ func (portal *Portal) downloadThumbnail(ctx context.Context, original []byte, th
 	} else if thumbnail, err := portal.MainIntent().DownloadBytesContext(ctx, mxc); err != nil {
 		portal.log.Warnfln("Failed to download thumbnail in %s: %v (falling back to generating thumbnail from source)", eventID, err)
 	} else {
-		return createJPEGThumbnail(thumbnail)
+		return createThumbnail(thumbnail, png)
 	}
-	return createJPEGThumbnail(original)
+	return createThumbnail(original, png)
 }
 
 func (portal *Portal) convertWebPtoPNG(webpImage []byte) ([]byte, error) {
@@ -2803,7 +2807,21 @@ func (portal *Portal) convertWebPtoPNG(webpImage []byte) ([]byte, error) {
 	}
 
 	var pngBuffer bytes.Buffer
-	if err := png.Encode(&pngBuffer, webpDecoded); err != nil {
+	if err = png.Encode(&pngBuffer, webpDecoded); err != nil {
+		return nil, fmt.Errorf("failed to encode png image: %w", err)
+	}
+
+	return pngBuffer.Bytes(), nil
+}
+
+func (portal *Portal) convertToWebP(img []byte) ([]byte, error) {
+	webpDecoded, _, err := image.Decode(bytes.NewReader(img))
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode image: %w", err)
+	}
+
+	var pngBuffer bytes.Buffer
+	if err = webp.Encode(&pngBuffer, webpDecoded, nil); err != nil {
 		return nil, fmt.Errorf("failed to encode png image: %w", err)
 	}
 
@@ -2815,6 +2833,7 @@ func (portal *Portal) preprocessMatrixMedia(ctx context.Context, sender *User, r
 	var caption string
 	var mentionedJIDs []string
 	var hasHTMLCaption bool
+	isSticker := string(content.MsgType) == event.EventSticker.Type
 	if content.FileName != "" && content.Body != content.FileName {
 		fileName = content.FileName
 		caption = content.Body
@@ -2844,22 +2863,58 @@ func (portal *Portal) preprocessMatrixMedia(ctx context.Context, sender *User, r
 			return nil, util.NewDualError(errMediaDecryptFailed, err)
 		}
 	}
-	if mediaType == whatsmeow.MediaVideo && content.GetInfo().MimeType == "image/gif" {
-		data, err = ffmpeg.ConvertBytes(ctx, data, ".mp4", []string{"-f", "gif"}, []string{
-			"-pix_fmt", "yuv420p", "-c:v", "libx264", "-movflags", "+faststart",
-			"-filter:v", "crop='floor(in_w/2)*2:floor(in_h/2)*2'",
-		}, content.GetInfo().MimeType)
-		if err != nil {
-			return nil, util.NewDualError(fmt.Errorf("%w (gif to mp4)", errMediaConvertFailed), err)
+	mimeType := content.GetInfo().MimeType
+	var convertErr error
+	// Allowed mime types from https://developers.facebook.com/docs/whatsapp/on-premises/reference/media
+	switch {
+	case isSticker:
+		if mimeType != "image/webp" {
+			data, convertErr = portal.convertToWebP(data)
+			content.Info.MimeType = "image/webp"
 		}
-		content.Info.MimeType = "video/mp4"
+	case mediaType == whatsmeow.MediaVideo:
+		switch mimeType {
+		case "video/mp4", "video/3gpp":
+			// Allowed
+		case "image/gif":
+			data, convertErr = ffmpeg.ConvertBytes(ctx, data, ".mp4", []string{"-f", "gif"}, []string{
+				"-pix_fmt", "yuv420p", "-c:v", "libx264", "-movflags", "+faststart",
+				"-filter:v", "crop='floor(in_w/2)*2:floor(in_h/2)*2'",
+			}, mimeType)
+			content.Info.MimeType = "video/mp4"
+		case "video/webm":
+			data, convertErr = ffmpeg.ConvertBytes(ctx, data, ".mp4", []string{"-f", "webm"}, []string{
+				"-pix_fmt", "yuv420p", "-c:v", "libx264",
+			}, mimeType)
+			content.Info.MimeType = "video/mp4"
+		default:
+			return nil, fmt.Errorf("%w %q in video message", errMediaUnsupportedType, mimeType)
+		}
+	case mediaType == whatsmeow.MediaImage:
+		switch mimeType {
+		case "image/jpeg", "image/png":
+			// Allowed
+		case "image/webp":
+			data, convertErr = portal.convertWebPtoPNG(data)
+			content.Info.MimeType = "image/png"
+		default:
+			return nil, fmt.Errorf("%w %q in image message", errMediaUnsupportedType, mimeType)
+		}
+	case mediaType == whatsmeow.MediaAudio:
+		switch mimeType {
+		case "audio/aac", "audio/mp4", "audio/amr", "audio/mpeg", "audio/ogg; codecs=opus":
+			// Allowed
+		case "audio/ogg":
+			// Hopefully it's opus already
+			content.Info.MimeType = "audio/ogg; codecs=opus"
+		default:
+			return nil, fmt.Errorf("%w %q in audio message", errMediaUnsupportedType, mimeType)
+		}
+	case mediaType == whatsmeow.MediaDocument:
+		// Everything is allowed
 	}
-	if mediaType == whatsmeow.MediaImage && content.GetInfo().MimeType == "image/webp" {
-		data, err = portal.convertWebPtoPNG(data)
-		if err != nil {
-			return nil, util.NewDualError(fmt.Errorf("%w (webp to png)", errMediaConvertFailed), err)
-		}
-		content.Info.MimeType = "image/png"
+	if convertErr != nil {
+		return nil, util.NewDualError(fmt.Errorf("%w (%s to %s)", errMediaConvertFailed, mimeType, content.Info.MimeType), err)
 	}
 	uploadResp, err := sender.Client.Upload(ctx, data, mediaType)
 	if err != nil {
@@ -2869,7 +2924,7 @@ func (portal *Portal) preprocessMatrixMedia(ctx context.Context, sender *User, r
 	// Audio doesn't have thumbnails
 	var thumbnail []byte
 	if mediaType != whatsmeow.MediaAudio {
-		thumbnail, err = portal.downloadThumbnail(ctx, data, content.GetInfo().ThumbnailURL, eventID)
+		thumbnail, err = portal.downloadThumbnail(ctx, data, content.GetInfo().ThumbnailURL, eventID, isSticker)
 		// Ignore format errors for non-image files, we don't care about those thumbnails
 		if err != nil && (!errors.Is(err, image.ErrFormat) || mediaType == whatsmeow.MediaImage) {
 			portal.log.Warnfln("Failed to generate thumbnail for %s: %v", eventID, err)
@@ -2996,7 +3051,12 @@ func (portal *Portal) convertMatrixMessage(ctx context.Context, sender *User, ev
 		sender = portal.GetRelayUser()
 	}
 	if evt.Type == event.EventSticker {
-		content.MsgType = event.MsgImage
+		if relaybotFormatted {
+			// Stickers can't have captions, so force relaybot stickers to be images
+			content.MsgType = event.MsgImage
+		} else {
+			content.MsgType = event.MessageType(event.EventSticker.Type)
+		}
 	}
 	if content.MsgType == event.MsgImage && content.GetInfo().MimeType == "image/gif" {
 		content.MsgType = event.MsgVideo
@@ -3037,6 +3097,22 @@ func (portal *Portal) convertMatrixMessage(ctx context.Context, sender *User, ev
 			ContextInfo:   &ctxInfo,
 			Caption:       &media.Caption,
 			JpegThumbnail: media.Thumbnail,
+			Url:           &media.URL,
+			MediaKey:      media.MediaKey,
+			Mimetype:      &content.GetInfo().MimeType,
+			FileEncSha256: media.FileEncSHA256,
+			FileSha256:    media.FileSHA256,
+			FileLength:    proto.Uint64(uint64(media.FileLength)),
+		}
+	case event.MessageType(event.EventSticker.Type):
+		media, err := portal.preprocessMatrixMedia(ctx, sender, relaybotFormatted, content, evt.ID, whatsmeow.MediaImage)
+		if media == nil {
+			return nil, sender, err
+		}
+		ctxInfo.MentionedJid = media.MentionedJIDs
+		msg.StickerMessage = &waProto.StickerMessage{
+			ContextInfo:   &ctxInfo,
+			PngThumbnail:  media.Thumbnail,
 			Url:           &media.URL,
 			MediaKey:      media.MediaKey,
 			Mimetype:      &content.GetInfo().MimeType,

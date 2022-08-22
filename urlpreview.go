@@ -186,7 +186,7 @@ func (portal *Portal) convertURLPreviewToWhatsApp(ctx context.Context, sender *U
 		dest.ThumbnailDirectPath = &uploadResp.DirectPath
 		dest.MediaKey = uploadResp.MediaKey
 		var width, height int
-		dest.JpegThumbnail, width, height, err = createJPEGThumbnailAndGetSize(data)
+		dest.JpegThumbnail, width, height, err = createThumbnailAndGetSize(data, false)
 		if err != nil {
 			portal.log.Warnfln("Failed to create JPEG thumbnail for URL preview in %s: %v", evt.ID, err)
 		}
