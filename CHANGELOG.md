@@ -1,3 +1,45 @@
+# v0.6.1 (2022-08-16)
+
+* Added support for "Delete for me" and deleting private chats from WhatsApp.
+* Added support for admin deletions in groups.
+* Document with caption messages should work with the bridge as soon as
+  WhatsApp enables them in their apps.
+
+# v0.6.0 (2022-07-16)
+
+* Started requiring homeservers to advertise Matrix v1.1 support.
+  * This bumps up the minimum homeserver versions to Synapse 1.54 and
+    Dendrite 0.8.7. Minimum Conduit version remains at 0.4.0.
+  * The bridge will also refuse to start if backfilling is enabled in the
+    config, but the homeserver isn't advertising support for MSC2716. Only
+    Synapse supports backfilling at the moment.
+* Added options to make encryption more secure.
+  * The `encryption` -> `verification_levels` config options can be used to
+    make the bridge require encrypted messages to come from cross-signed
+    devices, with trust-on-first-use validation of the cross-signing master
+    key.
+  * The `encryption` -> `require` option can be used to make the bridge ignore
+    any unencrypted messages.
+  * Key rotation settings can be configured with the `encryption` -> `rotation`
+    config.
+* Added config validation to make the bridge refuse to start if critical fields
+  like homeserver or database address haven't been changed from the defaults.
+* Added option to include captions in the same message as the media to
+  implement [MSC2530]. Sending captions the same way is also supported and
+  enabled by default.
+* Added basic support for fancy business messages (template and list messages).
+* Added periodic background sync of user and group avatars.
+* Added maximum message handling duration config options to prevent messages
+  getting stuck and blocking everything.
+* Changed message send error notices to be replies to the errored message.
+* Changed dimensions of stickers bridged from WhatsApp to match WhatsApp web.
+* Changed attachment bridging to find the Matrix `msgtype` based on the
+  WhatsApp message type instead of the file mimetype.
+* Updated Docker image to Alpine 3.16.
+* Fixed backfill queue on SQLite.
+
+[MSC2530]: https://github.com/matrix-org/matrix-spec-proposals/pull/2530
+
 # v0.5.0 (2022-06-16)
 
 * Moved a lot of code to mautrix-go.

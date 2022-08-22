@@ -41,9 +41,9 @@ func (br *WABridge) CreatePrivatePortal(roomID id.RoomID, brInviter bridge.User,
 		return
 	}
 
-	err := portal.MainIntent().EnsureInvited(portal.MXID, inviter.MXID)
-	if err != nil {
-		br.Log.Warnfln("Failed to invite %s to existing private chat portal %s with %s: %v. Redirecting portal to new room...", inviter.MXID, portal.MXID, puppet.JID, err)
+	ok := portal.ensureUserInvited(inviter)
+	if !ok {
+		br.Log.Warnfln("Failed to invite %s to existing private chat portal %s with %s. Redirecting portal to new room...", inviter.MXID, portal.MXID, puppet.JID)
 		br.createPrivatePortalFromInvite(roomID, inviter, puppet, portal)
 		return
 	}
@@ -80,7 +80,7 @@ func (br *WABridge) createPrivatePortalFromInvite(roomID id.RoomID, inviter *Use
 		if err != nil {
 			portal.log.Warnln("Failed to join as bridge bot to enable e2be:", err)
 		}
-		_, err = intent.SendStateEvent(roomID, event.StateEncryption, "", &event.EncryptionEventContent{Algorithm: id.AlgorithmMegolmV1})
+		_, err = intent.SendStateEvent(roomID, event.StateEncryption, "", portal.GetEncryptionEventContent())
 		if err != nil {
 			portal.log.Warnln("Failed to enable e2be:", err)
 		}

@@ -113,7 +113,7 @@ func (portal *Portal) convertURLPreviewToBeeper(intent *appservice.IntentAPI, so
 
 var URLRegex = regexp.MustCompile(`https?://[^\s/_*]+(?:/\S*)?`)
 
-func (portal *Portal) convertURLPreviewToWhatsApp(sender *User, evt *event.Event, dest *waProto.ExtendedTextMessage) bool {
+func (portal *Portal) convertURLPreviewToWhatsApp(ctx context.Context, sender *User, evt *event.Event, dest *waProto.ExtendedTextMessage) bool {
 	var preview *BeeperLinkPreview
 
 	rawPreview := gjson.GetBytes(evt.Content.VeryRaw, `com\.beeper\.linkpreviews`)
@@ -163,7 +163,7 @@ func (portal *Portal) convertURLPreviewToWhatsApp(sender *User, evt *event.Event
 		imageMXC = preview.ImageEncryption.URL.ParseOrIgnore()
 	}
 	if !imageMXC.IsEmpty() {
-		data, err := portal.MainIntent().DownloadBytes(imageMXC)
+		data, err := portal.MainIntent().DownloadBytesContext(ctx, imageMXC)
 		if err != nil {
 			portal.log.Errorfln("Failed to download URL preview image %s in %s: %v", preview.ImageURL, evt.ID, err)
 			return true
@@ -176,7 +176,7 @@ func (portal *Portal) convertURLPreviewToWhatsApp(sender *User, evt *event.Event
 			}
 		}
 		dest.MediaKeyTimestamp = proto.Int64(time.Now().Unix())
-		uploadResp, err := sender.Client.Upload(context.Background(), data, whatsmeow.MediaLinkThumbnail)
+		uploadResp, err := sender.Client.Upload(ctx, data, whatsmeow.MediaLinkThumbnail)
 		if err != nil {
 			portal.log.Errorfln("Failed to upload URL preview thumbnail in %s: %v", evt.ID, err)
 			return true

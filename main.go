@@ -33,8 +33,10 @@ import (
 	"go.mau.fi/whatsmeow/store/sqlstore"
 	"go.mau.fi/whatsmeow/types"
 
+	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/bridge"
 	"maunium.net/go/mautrix/bridge/commands"
+	"maunium.net/go/mautrix/bridge/status"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 	"maunium.net/go/mautrix/util/configupgrade"
@@ -96,8 +98,8 @@ func (br *WABridge) Init() {
 		Segment.log.Infoln("Segment metrics are enabled")
 	}
 
-	br.DB = database.New(br.Bridge.DB)
-	br.WAContainer = sqlstore.NewWithDB(br.DB.DB, br.DB.Dialect.String(), &waLogger{br.DB.Log.Sub("WhatsApp")})
+	br.DB = database.New(br.Bridge.DB, br.Log.Sub("Database"))
+	br.WAContainer = sqlstore.NewWithDB(br.DB.RawDB, br.DB.Dialect.String(), &waLogger{br.Log.Sub("Database").Sub("WhatsApp")})
 	br.WAContainer.DatabaseErrorHandler = br.DB.HandleSignalStoreError
 
 	ss := br.Config.Bridge.Provisioning.SharedSecret
@@ -122,9 +124,9 @@ func (br *WABridge) Init() {
 		store.DeviceProps.Version.Secondary = proto.Uint32(uint32(secondary))
 		store.DeviceProps.Version.Tertiary = proto.Uint32(uint32(tertiary))
 	}
-	platformID, ok := waProto.DeviceProps_DevicePropsPlatformType_value[strings.ToUpper(br.Config.WhatsApp.BrowserName)]
+	platformID, ok := waProto.DeviceProps_PlatformType_value[strings.ToUpper(br.Config.WhatsApp.BrowserName)]
 	if ok {
-		store.DeviceProps.PlatformType = waProto.DeviceProps_DevicePropsPlatformType(platformID).Enum()
+		store.DeviceProps.PlatformType = waProto.DeviceProps_PlatformType(platformID).Enum()
 	}
 }
 
@@ -145,9 +147,6 @@ func (br *WABridge) Start() {
 		go br.Metrics.Start()
 	}
 
-	if br.Config.Bridge.ResendBridgeInfo {
-		go br.ResendBridgeInfo()
-	}
 	go br.Loop()
 }
 
@@ -191,25 +190,6 @@ func (br *WABridge) WarnUsersAboutDisconnection() {
 	br.usersLock.Unlock()
 }
 
-func (br *WABridge) ResendBridgeInfo() {
-	// FIXME
-	//if *dontSaveConfig {
-	//	br.Log.Warnln("Not setting resend_bridge_info to false in config due to --no-update flag")
-	//} else {
-	//	err := config.Mutate(*configPath, func(helper *configupgrade.Helper) {
-	//		helper.Set(configupgrade.Bool, "false", "bridge", "resend_bridge_info")
-	//	})
-	//	if err != nil {
-	//		br.Log.Errorln("Failed to save config after setting resend_bridge_info to false:", err)
-	//	}
-	//}
-	//br.Log.Infoln("Re-sending bridge info state event to all portals")
-	//for _, portal := range br.GetAllPortals() {
-	//	portal.UpdateBridgeInfo()
-	//}
-	//br.Log.Infoln("Finished re-sending bridge info state events")
-}
-
 func (br *WABridge) StartUsers() {
 	br.Log.Debugln("Starting users")
 	foundAnySessions := false
@@ -220,7 +200,7 @@ func (br *WABridge) StartUsers() {
 		go user.Connect()
 	}
 	if !foundAnySessions {
-		br.SendGlobalBridgeState(bridge.State{StateEvent: bridge.StateUnconfigured}.Fill(nil))
+		br.SendGlobalBridgeState(status.BridgeState{StateEvent: status.StateUnconfigured}.Fill(nil))
 	}
 	br.Log.Debugln("Starting custom puppets")
 	for _, loopuppet := range br.GetAllPuppetsWithCustomMXID() {
@@ -258,6 +238,20 @@ func (br *WABridge) GetConfigPtr() interface{} {
 	return br.Config
 }
 
+const unstableFeatureBatchSending = "org.matrix.msc2716"
+
+func (br *WABridge) CheckFeatures(versions *mautrix.RespVersions) (string, bool) {
+	if br.Config.Bridge.HistorySync.Backfill {
+		supported, known := versions.UnstableFeatures[unstableFeatureBatchSending]
+		if !known {
+			return "Backfilling is enabled in bridge config, but homeserver does not support MSC2716 batch sending", false
+		} else if !supported {
+			return "Backfilling is enabled in bridge config, but MSC2716 batch sending is not enabled on homeserver", false
+		}
+	}
+	return "", true
+}
+
 func main() {
 	br := &WABridge{
 		usersByMXID:         make(map[id.UserID]*User),
@@ -277,7 +271,7 @@ func main() {
 		Name:         "mautrix-whatsapp",
 		URL:          "https://github.com/vector-im/mautrix-whatsapp",
 		Description:  "A Matrix-WhatsApp puppeting bridge (Element fork).",
-		Version:      "0.5.0-mod-1",
+		Version:      "0.6.1-mod-1",
 		ProtocolName: "WhatsApp",
 
 		CryptoPickleKey: "maunium.net/go/mautrix-whatsapp",

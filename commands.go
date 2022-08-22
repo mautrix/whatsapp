@@ -38,6 +38,7 @@ import (
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/bridge"
 	"maunium.net/go/mautrix/bridge/commands"
+	"maunium.net/go/mautrix/bridge/status"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 
@@ -363,7 +364,7 @@ func fnCreate(ce *WrappedCommandEvent) {
 	}
 
 	ce.Log.Infofln("Creating group for %s with name %s and participants %+v", ce.RoomID, roomNameEvent.Name, participants)
-	resp, err := ce.User.Client.CreateGroup(roomNameEvent.Name, participants)
+	resp, err := ce.User.Client.CreateGroup(roomNameEvent.Name, participants, "")
 	if err != nil {
 		ce.Reply("Failed to create group: %v", err)
 		return
@@ -379,7 +380,7 @@ func fnCreate(ce *WrappedCommandEvent) {
 	portal.Name = roomNameEvent.Name
 	portal.Encrypted = encryptionEvent.Algorithm == id.AlgorithmMegolmV1
 	if !portal.Encrypted && ce.Bridge.Config.Bridge.Encryption.Default {
-		_, err = portal.MainIntent().SendStateEvent(portal.MXID, event.StateEncryption, "", &event.EncryptionEventContent{Algorithm: id.AlgorithmMegolmV1})
+		_, err = portal.MainIntent().SendStateEvent(portal.MXID, event.StateEncryption, "", portal.GetEncryptionEventContent())
 		if err != nil {
 			portal.log.Warnln("Failed to enable encryption in room:", err)
 			if errors.Is(err, mautrix.MForbidden) {
@@ -518,7 +519,7 @@ func fnLogout(ce *WrappedCommandEvent) {
 		return
 	}
 	ce.User.Session = nil
-	ce.User.removeFromJIDMap(bridge.State{StateEvent: bridge.StateLoggedOut})
+	ce.User.removeFromJIDMap(status.BridgeState{StateEvent: status.StateLoggedOut})
 	ce.User.DeleteConnection()
 	ce.User.DeleteSession()
 	ce.Reply("Logged out successfully.")
@@ -575,7 +576,7 @@ func fnDeleteSession(ce *WrappedCommandEvent) {
 		ce.Reply("Nothing to purge: no session information stored and no active connection.")
 		return
 	}
-	ce.User.removeFromJIDMap(bridge.State{StateEvent: bridge.StateLoggedOut})
+	ce.User.removeFromJIDMap(status.BridgeState{StateEvent: status.StateLoggedOut})
 	ce.User.DeleteConnection()
 	ce.User.DeleteSession()
 	ce.Reply("Session information purged")
@@ -600,7 +601,7 @@ func fnReconnect(ce *WrappedCommandEvent) {
 		}
 	} else {
 		ce.User.DeleteConnection()
-		ce.User.BridgeState.Send(bridge.State{StateEvent: bridge.StateTransientDisconnect, Error: WANotConnected})
+		ce.User.BridgeState.Send(status.BridgeState{StateEvent: status.StateTransientDisconnect, Error: WANotConnected})
 		ce.User.Connect()
 		ce.Reply("Restarted connection to WhatsApp")
 	}
@@ -622,7 +623,7 @@ func fnDisconnect(ce *WrappedCommandEvent) {
 	}
 	ce.User.DeleteConnection()
 	ce.Reply("Successfully disconnected. Use the `reconnect` command to reconnect.")
-	ce.User.BridgeState.Send(bridge.State{StateEvent: bridge.StateBadCredentials, Error: WANotConnected})
+	ce.User.BridgeState.Send(status.BridgeState{StateEvent: status.StateBadCredentials, Error: WANotConnected})
 }
 
 var cmdPing = &commands.FullHandler{
@@ -1069,7 +1070,7 @@ var cmdSync = &commands.FullHandler{
 
 func fnSync(ce *WrappedCommandEvent) {
 	if len(ce.Args) == 0 {
-		ce.Reply("**Usage:** `sync <appstate/contacts/groups/space> [--create-portals]`")
+		ce.Reply("**Usage:** `sync <appstate/contacts/avatars/groups/space> [--contact-avatars] [--create-portals]`")
 		return
 	}
 	args := strings.ToLower(strings.Join(ce.Args, " "))
@@ -1078,6 +1079,11 @@ func fnSync(ce *WrappedCommandEvent) {
 	space := strings.Contains(args, "space")
 	groups := strings.Contains(args, "groups") || space
 	createPortals := strings.Contains(args, "--create-portals")
+	contactAvatars := strings.Contains(args, "--contact-avatars")
+	if contactAvatars && (!contacts || appState) {
+		ce.Reply("`--contact-avatars` can only be used with `sync contacts`")
+		return
+	}
 
 	if appState {
 		for _, name := range appstate.AllPatchNames {
@@ -1094,7 +1100,7 @@ func fnSync(ce *WrappedCommandEvent) {
 			}
 		}
 	} else if contacts {
-		err := ce.User.ResyncContacts()
+		err := ce.User.ResyncContacts(contactAvatars)
 		if err != nil {
 			ce.Reply("Error resyncing contacts: %v", err)
 		} else {
@@ -1138,10 +1144,15 @@ var cmdDisappearingTimer = &commands.FullHandler{
 		Description: "Set future messages in the room to disappear after the given time.",
 		Args:        "<off/1d/7d/90d>",
 	},
-	RequiresLogin: true,
+	RequiresLogin:  true,
+	RequiresPortal: true,
 }
 
 func fnDisappearingTimer(ce *WrappedCommandEvent) {
+	if len(ce.Args) == 0 {
+		ce.Reply("**Usage:** `disappearing-timer <off/1d/7d/90d>`")
+		return
+	}
 	duration, ok := whatsmeow.ParseDisappearingTimerString(ce.Args[0])
 	if !ok {
 		ce.Reply("Invalid timer '%s'", ce.Args[0])

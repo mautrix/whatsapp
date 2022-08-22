@@ -29,12 +29,12 @@ appservice:
     # Database config.
     database:
         # The database type. "sqlite3" and "postgres" are supported.
-        type: sqlite3
+        type: postgres
         # The database URI.
         #   SQLite: File name is enough. https://github.com/mattn/go-sqlite3#connection-string
         #   Postgres: Connection string. For example, postgres://user:password@host/database?sslmode=disable
         #             To connect via Unix socket, use something like postgres:///dbname?host=/var/run/postgresql
-        uri: mautrix-whatsapp.db
+        uri: postgres://user:password@host/database?sslmode=disable
         # Maximum number of connections. Mostly relevant for Postgres.
         max_open_conns: 20
         max_idle_conns: 2
@@ -105,7 +105,7 @@ bridge:
     # The following variables are also available, but will cause problems on multi-user instances:
     # {{.FullName}}  - full name from contact list
     # {{.FirstName}} - first name from contact list
-    displayname_template: "{{if .PushName}}{{.PushName}}{{else if .BusinessName}}{{.BusinessName}}{{else}}{{.JID}}{{end}} (WA)"
+    displayname_template: "{{if .BusinessName}}{{.BusinessName}}{{else if .PushName}}{{.PushName}}{{else}}{{.JID}}{{end}} (WA)"
     # Should the bridge create a space for each logged-in user and add bridged rooms to it?
     # Users who logged in before turning this on should run `!wa sync space` to create and fill the space for the first time.
     personal_filtering_spaces: false
@@ -288,6 +288,19 @@ bridge:
     # and send it to WhatsApp? URL previews can always be sent using the `com.beeper.linkpreviews`
     # key in the event content even if this is disabled.
     url_previews: false
+    # Send captions in the same message as images. This will send data compatible with both MSC2530 and MSC3552.
+    # This is currently not supported in most clients.
+    caption_in_message: false
+    # Maximum time for handling Matrix events. Duration strings formatted for https://pkg.go.dev/time#ParseDuration
+    # Null means there's no enforced timeout.
+    message_handling_timeout:
+        # Send an error message after this timeout, but keep waiting for the response until the deadline.
+        # This is counted from the origin_server_ts, so the warning time is consistent regardless of the source of delay.
+        # If the message is older than this when it reaches the bridge, the message won't be handled at all.
+        error_after: null
+        # Drop messages after this timeout. They may still go through if the message got sent to the servers.
+        # This is counted from the time the bridge starts handling the message.
+        deadline: 120s
 
     # The prefix for commands. Only required in non-management rooms.
     command_prefix: "!wa"
@@ -314,18 +327,45 @@ bridge:
         # This will cause the bridge bot to be in private chats for the encryption to work properly.
         # It is recommended to also set private_chat_portal_meta to true when using this.
         default: false
-        # Options for automatic key sharing.
-        key_sharing:
-            # Enable key sharing? If enabled, key requests for rooms where users are in will be fulfilled.
-            # You must use a client that supports requesting keys from other users to use this feature.
-            allow: false
-            # Require the requesting device to have a valid cross-signing signature?
-            # This doesn't require that the bridge has verified the device, only that the user has verified it.
-            # Not yet implemented.
-            require_cross_signing: false
-            # Require devices to be verified by the bridge?
-            # Verification by the bridge is not yet implemented.
-            require_verification: true
+        # Require encryption, drop any unencrypted messages.
+        require: false
+        # Enable key sharing? If enabled, key requests for rooms where users are in will be fulfilled.
+        # You must use a client that supports requesting keys from other users to use this feature.
+        allow_key_sharing: false
+        # What level of device verification should be required from users?
+        #
+        # Valid levels:
+        #   unverified - Send keys to all device in the room.
+        #   cross-signed-untrusted - Require valid cross-signing, but trust all cross-signing keys.
+        #   cross-signed-tofu - Require valid cross-signing, trust cross-signing keys on first use (and reject changes).
+        #   cross-signed-verified - Require valid cross-signing, plus a valid user signature from the bridge bot.
+        #                           Note that creating user signatures from the bridge bot is not currently possible.
+        #   verified - Require manual per-device verification
+        #              (currently only possible by modifying the `trust` column in the `crypto_device` database table).
+        verification_levels:
+            # Minimum level for which the bridge should send keys to when bridging messages from WhatsApp to Matrix.
+            receive: unverified
+            # Minimum level that the bridge should accept for incoming Matrix messages.
+            send: unverified
+            # Minimum level that the bridge should require for accepting key requests.
+            share: cross-signed-tofu
+        # Options for Megolm room key rotation. These options allow you to
+        # configure the m.room.encryption event content. See:
+        # https://spec.matrix.org/v1.3/client-server-api/#mroomencryption for
+        # more information about that event.
+        rotation:
+            # Enable custom Megolm room key rotation settings. Note that these
+            # settings will only apply to rooms created after this option is
+            # set.
+            enable_custom: false
+            # The maximum number of milliseconds a session should be used
+            # before changing it. The Matrix spec recommends 604800000 (a week)
+            # as the default.
+            milliseconds: 604800000
+            # The maximum number of messages that should be sent with a given a
+            # session before changing it. The Matrix spec recommends 100 as the
+            # default.
+            messages: 100
 
     # Settings for provisioning API
     provisioning:

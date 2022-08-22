@@ -17,7 +17,6 @@
 package main
 
 import (
-	"database/sql"
 	"fmt"
 	"time"
 
@@ -28,6 +27,7 @@ import (
 	"maunium.net/go/mautrix/appservice"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
+	"maunium.net/go/mautrix/util/dbutil"
 
 	"maunium.net/go/mautrix-whatsapp/config"
 	"maunium.net/go/mautrix-whatsapp/database"
@@ -629,6 +629,9 @@ func (portal *Portal) appendBatchEvents(converted *ConvertedMessage, info *types
 	if err != nil {
 		return err
 	}
+	if portal.bridge.Config.Bridge.CaptionInMessage {
+		converted.MergeCaption()
+	}
 	if converted.Caption != nil {
 		captionEvt, err := portal.wrapBatchEvent(info, converted.Intent, converted.Type, converted.Caption, nil)
 		if err != nil {
@@ -653,31 +656,17 @@ func (portal *Portal) appendBatchEvents(converted *ConvertedMessage, info *types
 	return nil
 }
 
-const backfillIDField = "fi.mau.whatsapp.backfill_msg_id"
-
 func (portal *Portal) wrapBatchEvent(info *types.MessageInfo, intent *appservice.IntentAPI, eventType event.Type, content *event.MessageEventContent, extraContent map[string]interface{}) (*event.Event, error) {
-	if extraContent == nil {
-		extraContent = map[string]interface{}{}
-	}
-	extraContent[backfillIDField] = info.ID
-	if intent.IsCustomPuppet {
-		extraContent[doublePuppetKey] = doublePuppetValue
-	}
 	wrappedContent := event.Content{
 		Parsed: content,
 		Raw:    extraContent,
 	}
-	newEventType, err := portal.encrypt(&wrappedContent, eventType)
+	newEventType, err := portal.encrypt(intent, &wrappedContent, eventType)
 	if err != nil {
 		return nil, err
 	}
-
-	if newEventType == event.EventEncrypted {
-		// Clear other custom keys if the event was encrypted, but keep the double puppet identifier
-		wrappedContent.Raw = map[string]interface{}{backfillIDField: info.ID}
-		if intent.IsCustomPuppet {
-			wrappedContent.Raw[doublePuppetKey] = doublePuppetValue
-		}
+	if newEventType != eventType {
+		intent.AddDoublePuppetValue(&wrappedContent)
 	}
 
 	return &event.Event{
@@ -688,7 +677,7 @@ func (portal *Portal) wrapBatchEvent(info *types.MessageInfo, intent *appservice
 	}, nil
 }
 
-func (portal *Portal) finishBatch(txn *sql.Tx, eventIDs []id.EventID, infos []*wrappedInfo) {
+func (portal *Portal) finishBatch(txn dbutil.Transaction, eventIDs []id.EventID, infos []*wrappedInfo) {
 	for i, info := range infos {
 		if info == nil {
 			continue

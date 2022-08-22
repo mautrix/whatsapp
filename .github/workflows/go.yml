@@ -8,7 +8,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        go-version: [1.18]
+        go-version: [1.19]
     steps:
       - uses: actions/checkout@v3
 
@@ -16,6 +16,9 @@ jobs:
         uses: actions/setup-go@v3
         with:
           go-version: ${{ matrix.go-version }}
+
+      - name: Install libolm
+        run: sudo apt-get install libolm-dev libolm3
 
       - name: Install goimports
         run: |
