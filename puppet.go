@@ -17,7 +17,6 @@
 package main
 
 import (
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -25,7 +24,6 @@ import (
 	"sync"
 	"time"
 
-	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/types"
 
 	log "maunium.net/go/maulogger/v2"
@@ -208,6 +206,16 @@ type Puppet struct {
 	syncLock sync.Mutex
 }
 
+var _ bridge.GhostWithProfile = (*Puppet)(nil)
+
+func (puppet *Puppet) GetDisplayname() string {
+	return puppet.Displayname
+}
+
+func (puppet *Puppet) GetAvatarURL() id.ContentURI {
+	return puppet.AvatarURL
+}
+
 func (puppet *Puppet) IntentFor(portal *Portal) *appservice.IntentAPI {
 	if puppet.customIntent == nil || portal.Key.JID == puppet.JID || (portal.Key.JID.Server == types.BroadcastServer && portal.Key.Receiver != puppet.JID) {
 		return puppet.DefaultIntent()
@@ -242,61 +250,41 @@ func reuploadAvatar(intent *appservice.IntentAPI, url string) (id.ContentURI, er
 	return resp.ContentURI, nil
 }
 
-func (puppet *Puppet) UpdateAvatar(source *User) bool {
-	avatar, err := source.Client.GetProfilePictureInfo(puppet.JID, false)
-	if err != nil {
-		if !errors.Is(err, whatsmeow.ErrProfilePictureUnauthorized) {
-			puppet.log.Warnln("Failed to get avatar URL:", err)
-		} else if puppet.Avatar == "" {
-			puppet.Avatar = "unauthorized"
-			return true
+func (puppet *Puppet) UpdateAvatar(source *User, forcePortalSync bool) bool {
+	changed := source.updateAvatar(puppet.JID, &puppet.Avatar, &puppet.AvatarURL, &puppet.AvatarSet, puppet.log, puppet.DefaultIntent())
+	if !changed || puppet.Avatar == "unauthorized" {
+		if forcePortalSync {
+			go puppet.updatePortalAvatar()
 		}
-		return false
-	} else if avatar == nil {
-		if puppet.Avatar == "remove" {
-			return false
-		}
-		puppet.AvatarURL = id.ContentURI{}
-		avatar = &types.ProfilePictureInfo{ID: "remove"}
-	} else if avatar.ID == puppet.Avatar {
-		return false
-	} else if len(avatar.URL) == 0 {
-		puppet.log.Warnln("Didn't get URL in response to avatar query")
-		return false
-	} else {
-		url, err := reuploadAvatar(puppet.DefaultIntent(), avatar.URL)
-		if err != nil {
-			puppet.log.Warnln("Failed to reupload avatar:", err)
-			return false
-		}
-
-		puppet.AvatarURL = url
+		return changed
 	}
-
-	err = puppet.DefaultIntent().SetAvatarURL(puppet.AvatarURL)
+	err := puppet.DefaultIntent().SetAvatarURL(puppet.AvatarURL)
 	if err != nil {
 		puppet.log.Warnln("Failed to set avatar:", err)
+	} else {
+		puppet.AvatarSet = true
 	}
-	puppet.log.Debugln("Updated avatar", puppet.Avatar, "->", avatar.ID)
-	puppet.Avatar = avatar.ID
 	go puppet.updatePortalAvatar()
 	return true
 }
 
-func (puppet *Puppet) UpdateName(source *User, contact types.ContactInfo) bool {
+func (puppet *Puppet) UpdateName(contact types.ContactInfo, forcePortalSync bool) bool {
 	newName, quality := puppet.bridge.Config.Bridge.FormatDisplayname(puppet.JID, contact)
-	if puppet.Displayname != newName && quality >= puppet.NameQuality {
+	if (puppet.Displayname != newName || !puppet.NameSet) && quality >= puppet.NameQuality {
+		puppet.Displayname = newName
+		puppet.NameQuality = quality
+		puppet.NameSet = false
 		err := puppet.DefaultIntent().SetDisplayName(newName)
 		if err == nil {
 			puppet.log.Debugln("Updated name", puppet.Displayname, "->", newName)
-			puppet.Displayname = newName
-			puppet.NameQuality = quality
+			puppet.NameSet = true
 			go puppet.updatePortalName()
-			puppet.Update()
 		} else {
 			puppet.log.Warnln("Failed to set display name:", err)
 		}
 		return true
+	} else if forcePortalSync {
+		go puppet.updatePortalName()
 	}
 	return false
 }
@@ -314,33 +302,34 @@ func (puppet *Puppet) updatePortalMeta(meta func(portal *Portal)) {
 
 func (puppet *Puppet) updatePortalAvatar() {
 	puppet.updatePortalMeta(func(portal *Portal) {
+		if portal.Avatar == puppet.Avatar && portal.AvatarURL == puppet.AvatarURL && portal.AvatarSet {
+			return
+		}
+		portal.AvatarURL = puppet.AvatarURL
+		portal.Avatar = puppet.Avatar
+		portal.AvatarSet = false
+		defer portal.Update(nil)
 		if len(portal.MXID) > 0 {
 			_, err := portal.MainIntent().SetRoomAvatar(portal.MXID, puppet.AvatarURL)
 			if err != nil {
 				portal.log.Warnln("Failed to set avatar:", err)
+			} else {
+				portal.AvatarSet = true
+				portal.UpdateBridgeInfo()
 			}
 		}
-		portal.AvatarURL = puppet.AvatarURL
-		portal.Avatar = puppet.Avatar
-		portal.Update(nil)
 	})
 }
 
 func (puppet *Puppet) updatePortalName() {
 	puppet.updatePortalMeta(func(portal *Portal) {
-		if len(portal.MXID) > 0 {
-			_, err := portal.MainIntent().SetRoomName(portal.MXID, puppet.Displayname)
-			if err != nil {
-				portal.log.Warnln("Failed to set name:", err)
-			}
-		}
-		portal.Name = puppet.Displayname
-		portal.Update(nil)
+		portal.UpdateName(puppet.Displayname, types.EmptyJID, true)
 	})
 }
 
 func (puppet *Puppet) SyncContact(source *User, onlyIfNoName, shouldHavePushName bool, reason string) {
 	if onlyIfNoName && len(puppet.Displayname) > 0 && (!shouldHavePushName || puppet.NameQuality > config.NameQualityPhone) {
+		source.EnqueuePuppetResync(puppet)
 		return
 	}
 
@@ -350,10 +339,10 @@ func (puppet *Puppet) SyncContact(source *User, onlyIfNoName, shouldHavePushName
 	} else if !contact.Found {
 		puppet.log.Warnfln("No contact info found through %s in SyncContact (sync reason: %s)", source.MXID, reason)
 	}
-	puppet.Sync(source, contact)
+	puppet.Sync(source, &contact, false, false)
 }
 
-func (puppet *Puppet) Sync(source *User, contact types.ContactInfo) {
+func (puppet *Puppet) Sync(source *User, contact *types.ContactInfo, forceAvatarSync, forcePortalSync bool) {
 	puppet.syncLock.Lock()
 	defer puppet.syncLock.Unlock()
 	err := puppet.DefaultIntent().EnsureRegistered()
@@ -361,16 +350,20 @@ func (puppet *Puppet) Sync(source *User, contact types.ContactInfo) {
 		puppet.log.Errorln("Failed to ensure registered:", err)
 	}
 
-	if puppet.JID.User == source.JID.User {
-		contact.PushName = source.Client.Store.PushName
-	}
+	puppet.log.Debugfln("Syncing info through %s", source.JID)
 
 	update := false
-	update = puppet.UpdateName(source, contact) || update
-	if len(puppet.Avatar) == 0 || puppet.bridge.Config.Bridge.UserAvatarSync {
-		update = puppet.UpdateAvatar(source) || update
+	if contact != nil {
+		if puppet.JID.User == source.JID.User {
+			contact.PushName = source.Client.Store.PushName
+		}
+		update = puppet.UpdateName(*contact, forcePortalSync) || update
 	}
-	if update {
+	if len(puppet.Avatar) == 0 || forceAvatarSync || puppet.bridge.Config.Bridge.UserAvatarSync {
+		update = puppet.UpdateAvatar(source, forcePortalSync) || update
+	}
+	if update || puppet.LastSync.Add(24*time.Hour).Before(time.Now()) {
+		puppet.LastSync = time.Now()
 		puppet.Update()
 	}
 }

@@ -18,6 +18,8 @@ package database
 
 import (
 	"database/sql"
+	"fmt"
+	"time"
 
 	log "maunium.net/go/maulogger/v2"
 
@@ -63,32 +65,26 @@ func (pq *PortalQuery) New() *Portal {
 	}
 }
 
-func (pq *PortalQuery) GetAll() []*Portal {
-	return pq.getAll("SELECT * FROM portal")
-}
+const portalColumns = "jid, receiver, mxid, name, name_set, topic, topic_set, avatar, avatar_url, avatar_set, encrypted, last_sync, first_event_id, next_batch_id, relay_user_id, expiration_time"
 
-func (pq *PortalQuery) GetAllForUser(userID id.UserID) []*Portal {
-	return pq.getAll(`
-		SELECT p.* FROM portal p
-		LEFT JOIN user_portal up ON p.jid=up.portal_jid AND p.receiver=up.portal_receiver
-		WHERE mxid<>'' AND up.user_mxid=$1
-	`, userID)
+func (pq *PortalQuery) GetAll() []*Portal {
+	return pq.getAll(fmt.Sprintf("SELECT %s FROM portal", portalColumns))
 }
 
 func (pq *PortalQuery) GetByJID(key PortalKey) *Portal {
-	return pq.get("SELECT * FROM portal WHERE jid=$1 AND receiver=$2", key.JID, key.Receiver)
+	return pq.get(fmt.Sprintf("SELECT %s FROM portal WHERE jid=$1 AND receiver=$2", portalColumns), key.JID, key.Receiver)
 }
 
 func (pq *PortalQuery) GetByMXID(mxid id.RoomID) *Portal {
-	return pq.get("SELECT * FROM portal WHERE mxid=$1", mxid)
+	return pq.get(fmt.Sprintf("SELECT %s FROM portal WHERE mxid=$1", portalColumns), mxid)
 }
 
 func (pq *PortalQuery) GetAllByJID(jid types.JID) []*Portal {
-	return pq.getAll("SELECT * FROM portal WHERE jid=$1", jid.ToNonAD())
+	return pq.getAll(fmt.Sprintf("SELECT %s FROM portal WHERE jid=$1", portalColumns), jid.ToNonAD())
 }
 
 func (pq *PortalQuery) FindPrivateChats(receiver types.JID) []*Portal {
-	return pq.getAll("SELECT * FROM portal WHERE receiver=$1 AND jid LIKE '%@s.whatsapp.net'", receiver.ToNonAD())
+	return pq.getAll(fmt.Sprintf("SELECT %s FROM portal WHERE receiver=$1 AND jid LIKE '%%@s.whatsapp.net'", portalColumns), receiver.ToNonAD())
 }
 
 func (pq *PortalQuery) FindPrivateChatsNotInSpace(receiver types.JID) (keys []PortalKey) {
@@ -140,10 +136,14 @@ type Portal struct {
 	MXID id.RoomID
 
 	Name      string
+	NameSet   bool
 	Topic     string
+	TopicSet  bool
 	Avatar    string
 	AvatarURL id.ContentURI
+	AvatarSet bool
 	Encrypted bool
+	LastSync  time.Time
 
 	FirstEventID id.EventID
 	NextBatchID  id.BatchID
@@ -155,12 +155,16 @@ type Portal struct {
 
 func (portal *Portal) Scan(row dbutil.Scannable) *Portal {
 	var mxid, avatarURL, firstEventID, nextBatchID, relayUserID sql.NullString
-	err := row.Scan(&portal.Key.JID, &portal.Key.Receiver, &mxid, &portal.Name, &portal.Topic, &portal.Avatar, &avatarURL, &portal.Encrypted, &firstEventID, &nextBatchID, &relayUserID, &portal.ExpirationTime)
+	var lastSyncTs int64
+	err := row.Scan(&portal.Key.JID, &portal.Key.Receiver, &mxid, &portal.Name, &portal.NameSet, &portal.Topic, &portal.TopicSet, &portal.Avatar, &avatarURL, &portal.AvatarSet, &portal.Encrypted, &lastSyncTs, &firstEventID, &nextBatchID, &relayUserID, &portal.ExpirationTime)
 	if err != nil {
 		if err != sql.ErrNoRows {
 			portal.log.Errorln("Database scan failed:", err)
 		}
 		return nil
+	}
+	if lastSyncTs > 0 {
+		portal.LastSync = time.Unix(lastSyncTs, 0)
 	}
 	portal.MXID = id.RoomID(mxid.String)
 	portal.AvatarURL, _ = id.ParseContentURI(avatarURL.String)
@@ -184,22 +188,38 @@ func (portal *Portal) relayUserPtr() *id.UserID {
 	return nil
 }
 
+func (portal *Portal) lastSyncTs() int64 {
+	if portal.LastSync.IsZero() {
+		return 0
+	}
+	return portal.LastSync.Unix()
+}
+
 func (portal *Portal) Insert() {
-	_, err := portal.db.Exec("INSERT INTO portal (jid, receiver, mxid, name, topic, avatar, avatar_url, encrypted, first_event_id, next_batch_id, relay_user_id, expiration_time) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)",
-		portal.Key.JID, portal.Key.Receiver, portal.mxidPtr(), portal.Name, portal.Topic, portal.Avatar, portal.AvatarURL.String(), portal.Encrypted, portal.FirstEventID.String(), portal.NextBatchID.String(), portal.relayUserPtr(), portal.ExpirationTime)
+	_, err := portal.db.Exec(`
+		INSERT INTO portal (jid, receiver, mxid, name, name_set, topic, topic_set, avatar, avatar_url, avatar_set,
+		                    encrypted, last_sync, first_event_id, next_batch_id, relay_user_id, expiration_time)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+	`,
+		portal.Key.JID, portal.Key.Receiver, portal.mxidPtr(), portal.Name, portal.NameSet, portal.Topic, portal.TopicSet,
+		portal.Avatar, portal.AvatarURL.String(), portal.AvatarSet, portal.Encrypted, portal.lastSyncTs(),
+		portal.FirstEventID.String(), portal.NextBatchID.String(), portal.relayUserPtr(), portal.ExpirationTime)
 	if err != nil {
 		portal.log.Warnfln("Failed to insert %s: %v", portal.Key, err)
 	}
 }
 
-func (portal *Portal) Update(txn *sql.Tx) {
+func (portal *Portal) Update(txn dbutil.Transaction) {
 	query := `
 		UPDATE portal
-		SET mxid=$1, name=$2, topic=$3, avatar=$4, avatar_url=$5, encrypted=$6, first_event_id=$7, next_batch_id=$8, relay_user_id=$9, expiration_time=$10
-		WHERE jid=$11 AND receiver=$12
+		SET mxid=$1, name=$2, name_set=$3, topic=$4, topic_set=$5, avatar=$6, avatar_url=$7, avatar_set=$8,
+		    encrypted=$9, last_sync=$10, first_event_id=$11, next_batch_id=$12, relay_user_id=$13, expiration_time=$14
+		WHERE jid=$15 AND receiver=$16
 	`
 	args := []interface{}{
-		portal.mxidPtr(), portal.Name, portal.Topic, portal.Avatar, portal.AvatarURL.String(), portal.Encrypted, portal.FirstEventID.String(), portal.NextBatchID.String(), portal.relayUserPtr(), portal.ExpirationTime, portal.Key.JID, portal.Key.Receiver,
+		portal.mxidPtr(), portal.Name, portal.NameSet, portal.Topic, portal.TopicSet, portal.Avatar, portal.AvatarURL.String(),
+		portal.AvatarSet, portal.Encrypted, portal.lastSyncTs(), portal.FirstEventID.String(), portal.NextBatchID.String(),
+		portal.relayUserPtr(), portal.ExpirationTime, portal.Key.JID, portal.Key.Receiver,
 	}
 	var err error
 	if txn != nil {

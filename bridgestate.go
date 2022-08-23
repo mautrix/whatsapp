@@ -20,23 +20,23 @@ import (
 	"fmt"
 	"net/http"
 
-	"maunium.net/go/mautrix/bridge"
+	"maunium.net/go/mautrix/bridge/status"
 	"maunium.net/go/mautrix/id"
 )
 
 const (
-	WALoggedOut        bridge.StateErrorCode = "wa-logged-out"
-	WAMainDeviceGone   bridge.StateErrorCode = "wa-main-device-gone"
-	WAUnknownLogout    bridge.StateErrorCode = "wa-unknown-logout"
-	WANotConnected     bridge.StateErrorCode = "wa-not-connected"
-	WAConnecting       bridge.StateErrorCode = "wa-connecting"
-	WAKeepaliveTimeout bridge.StateErrorCode = "wa-keepalive-timeout"
-	WAPhoneOffline     bridge.StateErrorCode = "wa-phone-offline"
-	WAConnectionFailed bridge.StateErrorCode = "wa-connection-failed"
+	WALoggedOut        status.BridgeStateErrorCode = "wa-logged-out"
+	WAMainDeviceGone   status.BridgeStateErrorCode = "wa-main-device-gone"
+	WAUnknownLogout    status.BridgeStateErrorCode = "wa-unknown-logout"
+	WANotConnected     status.BridgeStateErrorCode = "wa-not-connected"
+	WAConnecting       status.BridgeStateErrorCode = "wa-connecting"
+	WAKeepaliveTimeout status.BridgeStateErrorCode = "wa-keepalive-timeout"
+	WAPhoneOffline     status.BridgeStateErrorCode = "wa-phone-offline"
+	WAConnectionFailed status.BridgeStateErrorCode = "wa-connection-failed"
 )
 
 func init() {
-	bridge.StateHumanErrors.Update(bridge.StateErrorMap{
+	status.BridgeStateHumanErrors.Update(status.BridgeStateErrorMap{
 		WALoggedOut:        "You were logged out from another device. Relogin to continue using the bridge.",
 		WAMainDeviceGone:   "Your phone was logged out from WhatsApp. Relogin to continue using the bridge.",
 		WAUnknownLogout:    "You were logged out for an unknown reason. Relogin to continue using the bridge.",
@@ -68,24 +68,24 @@ func (prov *ProvisioningAPI) BridgeStatePing(w http.ResponseWriter, r *http.Requ
 	}
 	userID := r.URL.Query().Get("user_id")
 	user := prov.bridge.GetUserByMXID(id.UserID(userID))
-	var global bridge.State
-	global.StateEvent = bridge.StateRunning
-	var remote bridge.State
+	var global status.BridgeState
+	global.StateEvent = status.StateRunning
+	var remote status.BridgeState
 	if user.IsConnected() {
 		if user.Client.IsLoggedIn() {
-			remote.StateEvent = bridge.StateConnected
+			remote.StateEvent = status.StateConnected
 		} else if user.Session != nil {
-			remote.StateEvent = bridge.StateConnecting
+			remote.StateEvent = status.StateConnecting
 			remote.Error = WAConnecting
 		} // else: unconfigured
 	} else if user.Session != nil {
-		remote.StateEvent = bridge.StateBadCredentials
+		remote.StateEvent = status.StateBadCredentials
 		remote.Error = WANotConnected
 	} // else: unconfigured
 	global = global.Fill(nil)
-	resp := bridge.GlobalState{
+	resp := status.GlobalBridgeState{
 		BridgeState:  global,
-		RemoteStates: map[string]bridge.State{},
+		RemoteStates: map[string]status.BridgeState{},
 	}
 	if len(remote.StateEvent) > 0 {
 		remote = remote.Fill(user)

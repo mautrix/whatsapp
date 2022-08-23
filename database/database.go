@@ -25,6 +25,7 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 	"go.mau.fi/whatsmeow/store"
 	"go.mau.fi/whatsmeow/store/sqlstore"
+	"maunium.net/go/maulogger/v2"
 
 	"maunium.net/go/mautrix-whatsapp/database/upgrades"
 	"maunium.net/go/mautrix/util/dbutil"
@@ -49,44 +50,44 @@ type Database struct {
 	MediaBackfillRequest *MediaBackfillRequestQuery
 }
 
-func New(baseDB *dbutil.Database) *Database {
+func New(baseDB *dbutil.Database, log maulogger.Logger) *Database {
 	db := &Database{Database: baseDB}
 	db.UpgradeTable = upgrades.Table
 	db.User = &UserQuery{
 		db:  db,
-		log: db.Log.Sub("User"),
+		log: log.Sub("User"),
 	}
 	db.Portal = &PortalQuery{
 		db:  db,
-		log: db.Log.Sub("Portal"),
+		log: log.Sub("Portal"),
 	}
 	db.Puppet = &PuppetQuery{
 		db:  db,
-		log: db.Log.Sub("Puppet"),
+		log: log.Sub("Puppet"),
 	}
 	db.Message = &MessageQuery{
 		db:  db,
-		log: db.Log.Sub("Message"),
+		log: log.Sub("Message"),
 	}
 	db.Reaction = &ReactionQuery{
 		db:  db,
-		log: db.Log.Sub("Reaction"),
+		log: log.Sub("Reaction"),
 	}
 	db.DisappearingMessage = &DisappearingMessageQuery{
 		db:  db,
-		log: db.Log.Sub("DisappearingMessage"),
+		log: log.Sub("DisappearingMessage"),
 	}
 	db.Backfill = &BackfillQuery{
 		db:  db,
-		log: db.Log.Sub("Backfill"),
+		log: log.Sub("Backfill"),
 	}
 	db.HistorySync = &HistorySyncQuery{
 		db:  db,
-		log: db.Log.Sub("HistorySync"),
+		log: log.Sub("HistorySync"),
 	}
 	db.MediaBackfillRequest = &MediaBackfillRequestQuery{
 		db:  db,
-		log: db.Log.Sub("MediaBackfillRequest"),
+		log: log.Sub("MediaBackfillRequest"),
 	}
 	return db
 }

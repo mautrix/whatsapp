@@ -19,8 +19,8 @@ package config
 import (
 	"strings"
 
-	"maunium.net/go/mautrix/appservice"
 	"maunium.net/go/mautrix/bridge/bridgeconfig"
+	"maunium.net/go/mautrix/util"
 	up "maunium.net/go/mautrix/util/configupgrade"
 )
 
@@ -90,15 +90,36 @@ func DoUpgrade(helper *up.Helper) {
 	helper.Copy(up.Bool, "bridge", "disappearing_messages_in_groups")
 	helper.Copy(up.Bool, "bridge", "disable_bridge_alerts")
 	helper.Copy(up.Bool, "bridge", "url_previews")
+	helper.Copy(up.Bool, "bridge", "caption_in_message")
+	helper.Copy(up.Str|up.Null, "bridge", "message_handling_timeout", "error_after")
+	helper.Copy(up.Str|up.Null, "bridge", "message_handling_timeout", "deadline")
+
 	helper.Copy(up.Str, "bridge", "management_room_text", "welcome")
 	helper.Copy(up.Str, "bridge", "management_room_text", "welcome_connected")
 	helper.Copy(up.Str, "bridge", "management_room_text", "welcome_unconnected")
 	helper.Copy(up.Str|up.Null, "bridge", "management_room_text", "additional_help")
 	helper.Copy(up.Bool, "bridge", "encryption", "allow")
 	helper.Copy(up.Bool, "bridge", "encryption", "default")
-	helper.Copy(up.Bool, "bridge", "encryption", "key_sharing", "allow")
-	helper.Copy(up.Bool, "bridge", "encryption", "key_sharing", "require_cross_signing")
-	helper.Copy(up.Bool, "bridge", "encryption", "key_sharing", "require_verification")
+	helper.Copy(up.Bool, "bridge", "encryption", "require")
+	helper.Copy(up.Str, "bridge", "encryption", "verification_levels", "receive")
+	helper.Copy(up.Str, "bridge", "encryption", "verification_levels", "send")
+	helper.Copy(up.Str, "bridge", "encryption", "verification_levels", "share")
+
+	legacyKeyShareAllow, ok := helper.Get(up.Bool, "bridge", "encryption", "key_sharing", "allow")
+	if ok {
+		helper.Set(up.Bool, legacyKeyShareAllow, "bridge", "encryption", "allow_key_sharing")
+		legacyKeyShareRequireCS, legacyOK1 := helper.Get(up.Bool, "bridge", "encryption", "key_sharing", "require_cross_signing")
+		legacyKeyShareRequireVerification, legacyOK2 := helper.Get(up.Bool, "bridge", "encryption", "key_sharing", "require_verification")
+		if legacyOK1 && legacyOK2 && legacyKeyShareRequireVerification == "false" && legacyKeyShareRequireCS == "false" {
+			helper.Set(up.Str, "unverified", "bridge", "encryption", "verification_levels", "share")
+		}
+	} else {
+		helper.Copy(up.Bool, "bridge", "encryption", "allow_key_sharing")
+	}
+
+	helper.Copy(up.Bool, "bridge", "encryption", "rotation", "enable_custom")
+	helper.Copy(up.Int, "bridge", "encryption", "rotation", "milliseconds")
+	helper.Copy(up.Int, "bridge", "encryption", "rotation", "messages")
 	if prefix, ok := helper.Get(up.Str, "appservice", "provisioning", "prefix"); ok {
 		helper.Set(up.Str, strings.TrimSuffix(prefix, "/v1"), "bridge", "provisioning", "prefix")
 	} else {
@@ -107,7 +128,7 @@ func DoUpgrade(helper *up.Helper) {
 	if secret, ok := helper.Get(up.Str, "appservice", "provisioning", "shared_secret"); ok && secret != "generate" {
 		helper.Set(up.Str, secret, "bridge", "provisioning", "shared_secret")
 	} else if secret, ok = helper.Get(up.Str, "bridge", "provisioning", "shared_secret"); !ok || secret == "generate" {
-		sharedSecret := appservice.RandomString(64)
+		sharedSecret := util.RandomString(64)
 		helper.Set(up.Str, sharedSecret, "bridge", "provisioning", "shared_secret")
 	} else {
 		helper.Copy(up.Str, "bridge", "provisioning", "shared_secret")

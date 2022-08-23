@@ -1,4 +1,4 @@
--- v0 -> v50: Latest revision
+-- v0 -> v51: Latest revision
 
 CREATE TABLE "user" (
     mxid     TEXT PRIMARY KEY,
@@ -19,11 +19,15 @@ CREATE TABLE portal (
     jid        TEXT,
     receiver   TEXT,
     mxid       TEXT UNIQUE,
-    name       TEXT NOT NULL,
-    topic      TEXT NOT NULL,
-    avatar     TEXT NOT NULL,
+    name       TEXT    NOT NULL,
+    name_set   BOOLEAN NOT NULL DEFAULT false,
+    topic      TEXT    NOT NULL,
+    topic_set  BOOLEAN NOT NULL DEFAULT false,
+    avatar     TEXT    NOT NULL,
     avatar_url TEXT,
+    avatar_set BOOLEAN NOT NULL DEFAULT false,
     encrypted  BOOLEAN NOT NULL DEFAULT false,
+    last_sync  BIGINT NOT NULL DEFAULT 0,
 
     first_event_id  TEXT,
     next_batch_id   TEXT,
@@ -39,6 +43,9 @@ CREATE TABLE puppet (
     name_quality SMALLINT,
     avatar       TEXT,
     avatar_url   TEXT,
+    name_set     BOOLEAN NOT NULL DEFAULT false,
+    avatar_set   BOOLEAN NOT NULL DEFAULT false,
+    last_sync    BIGINT NOT NULL DEFAULT 0,
 
     custom_mxid  TEXT,
     access_token TEXT,

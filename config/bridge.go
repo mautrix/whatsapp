@@ -17,9 +17,11 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"text/template"
+	"time"
 
 	"go.mau.fi/whatsmeow/types"
 
@@ -106,6 +108,15 @@ type BridgeConfig struct {
 	AllowUserInvite       bool   `yaml:"allow_user_invite"`
 	FederateRooms         bool   `yaml:"federate_rooms"`
 	URLPreviews           bool   `yaml:"url_previews"`
+	CaptionInMessage      bool   `yaml:"caption_in_message"`
+
+	MessageHandlingTimeout struct {
+		ErrorAfterStr string `yaml:"error_after"`
+		DeadlineStr   string `yaml:"deadline"`
+
+		ErrorAfter time.Duration `yaml:"-"`
+		Deadline   time.Duration `yaml:"-"`
+	} `yaml:"message_handling_timeout"`
 
 	DisableStatusBroadcastSend   bool `yaml:"disable_status_broadcast_send"`
 	DisappearingMessagesInGroups bool `yaml:"disappearing_messages_in_groups"`
@@ -135,12 +146,42 @@ func (bc BridgeConfig) GetEncryptionConfig() bridgeconfig.EncryptionConfig {
 	return bc.Encryption
 }
 
+func (bc BridgeConfig) EnableMessageStatusEvents() bool {
+	return bc.MessageStatusEvents
+}
+
+func (bc BridgeConfig) EnableMessageErrorNotices() bool {
+	return bc.MessageErrorNotices
+}
+
 func (bc BridgeConfig) GetCommandPrefix() string {
 	return bc.CommandPrefix
 }
 
 func (bc BridgeConfig) GetManagementRoomTexts() bridgeconfig.ManagementRoomTexts {
 	return bc.ManagementRoomText
+}
+
+func (bc BridgeConfig) GetResendBridgeInfo() bool {
+	return bc.ResendBridgeInfo
+}
+
+func boolToInt(val bool) int {
+	if val {
+		return 1
+	}
+	return 0
+}
+
+func (bc BridgeConfig) Validate() error {
+	_, hasWildcard := bc.Permissions["*"]
+	_, hasExampleDomain := bc.Permissions["example.com"]
+	_, hasExampleUser := bc.Permissions["@admin:example.com"]
+	exampleLen := boolToInt(hasWildcard) + boolToInt(hasExampleUser) + boolToInt(hasExampleDomain)
+	if len(bc.Permissions) <= exampleLen {
+		return errors.New("bridge.permissions not configured")
+	}
+	return nil
 }
 
 type umBridgeConfig BridgeConfig
@@ -161,6 +202,19 @@ func (bc *BridgeConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	bc.displaynameTemplate, err = template.New("displayname").Parse(bc.DisplaynameTemplate)
 	if err != nil {
 		return err
+	}
+
+	if bc.MessageHandlingTimeout.ErrorAfterStr != "" {
+		bc.MessageHandlingTimeout.ErrorAfter, err = time.ParseDuration(bc.MessageHandlingTimeout.ErrorAfterStr)
+		if err != nil {
+			return err
+		}
+	}
+	if bc.MessageHandlingTimeout.DeadlineStr != "" {
+		bc.MessageHandlingTimeout.Deadline, err = time.ParseDuration(bc.MessageHandlingTimeout.DeadlineStr)
+		if err != nil {
+			return err
+		}
 	}
 
 	return nil
