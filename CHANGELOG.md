@@ -1,4 +1,4 @@
-# unreleased
+# v0.7.0 (unreleased)
 
 * Bumped minimum Go version to 1.18.
 * Added hidden option to use appservice login for double puppeting.
@@ -8,6 +8,10 @@
   * Existing bridges can turn it on by enabling `ephemeral_events` and disabling
     `sync_with_custom_puppets` in the config, then regenerating the registration
     file.
+* Updated sticker bridging to send actual sticker messages to WhatsApp rather
+  than sending as image. This includes converting stickers to webp.
+* Added automatic webm -> mp4 conversion when sending videos to WhatsApp.
+* Started rejecting unsupported mime types when sending media to WhatsApp.
 
 # v0.6.1 (2022-08-16)
 
