@@ -3172,8 +3172,6 @@ func (portal *Portal) generateMessageInfo(sender *User) *types.MessageInfo {
 func (portal *Portal) HandleMatrixMessage(sender *User, evt *event.Event, timings messageTimings) {
 	start := time.Now()
 	ms := metricSender{portal: portal, timings: &timings}
-
-func (portal *Portal) HandleMatrixMessage(sender *User, evt *event.Event) {
 	if portal.bridge.PuppetActivity.isBlocked {
 		portal.log.Warnln("Bridge is blocking messages")
 		return
