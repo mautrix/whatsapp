@@ -1,4 +1,4 @@
--- v50: Add last sync timestamp for puppets
+-- v51: Add last sync timestamp for puppets
 
 ALTER TABLE puppet ADD COLUMN last_sync BIGINT NOT NULL DEFAULT 0;
 ALTER TABLE puppet ADD COLUMN name_set BOOLEAN NOT NULL DEFAULT false;
