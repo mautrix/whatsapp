@@ -74,6 +74,8 @@ func errorToStatusReason(err error) (reason event.MessageStatusReason, status ev
 		errors.Is(err, errBroadcastReactionNotSupported),
 		errors.Is(err, errBroadcastSendDisabled):
 		return event.MessageStatusUnsupported, event.MessageStatusFail, true, true, ""
+	case errors.Is(err, errMNoticeDisabled):
+		return event.MessageStatusUnsupported, event.MessageStatusFail, true, false, ""
 	case errors.Is(err, errMediaUnsupportedType):
 		return event.MessageStatusUnsupported, event.MessageStatusFail, true, true, err.Error()
 	case errors.Is(err, errTimeoutBeforeHandling):
