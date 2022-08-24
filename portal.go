@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"html"
 	"image"
+	"image/color"
 	_ "image/gif"
 	"image/jpeg"
 	"image/png"
@@ -2814,10 +2815,43 @@ func (portal *Portal) convertWebPtoPNG(webpImage []byte) ([]byte, error) {
 	return pngBuffer.Bytes(), nil
 }
 
+type PaddedImage struct {
+	image.Image
+	Size    int
+	OffsetX int
+	OffsetY int
+}
+
+func (img *PaddedImage) Bounds() image.Rectangle {
+	return image.Rect(0, 0, img.Size, img.Size)
+}
+
+func (img *PaddedImage) At(x, y int) color.Color {
+	return img.Image.At(x+img.OffsetX, y+img.OffsetY)
+}
+
 func (portal *Portal) convertToWebP(img []byte) ([]byte, error) {
 	webpDecoded, _, err := image.Decode(bytes.NewReader(img))
 	if err != nil {
 		return nil, fmt.Errorf("failed to decode image: %w", err)
+	}
+
+	bounds := webpDecoded.Bounds()
+	width, height := bounds.Dx(), bounds.Dy()
+	if width != height {
+		paddedImg := &PaddedImage{
+			Image:   webpDecoded,
+			OffsetX: bounds.Min.Y,
+			OffsetY: bounds.Min.X,
+		}
+		if width > height {
+			paddedImg.Size = width
+			paddedImg.OffsetY -= (paddedImg.Size - height) / 2
+		} else {
+			paddedImg.Size = height
+			paddedImg.OffsetX -= (paddedImg.Size - width) / 2
+		}
+		webpDecoded = paddedImg
 	}
 
 	var pngBuffer bytes.Buffer
