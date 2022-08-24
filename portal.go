@@ -2831,16 +2831,16 @@ func (img *PaddedImage) At(x, y int) color.Color {
 }
 
 func (portal *Portal) convertToWebP(img []byte) ([]byte, error) {
-	webpDecoded, _, err := image.Decode(bytes.NewReader(img))
+	decodedImg, _, err := image.Decode(bytes.NewReader(img))
 	if err != nil {
 		return nil, fmt.Errorf("failed to decode image: %w", err)
 	}
 
-	bounds := webpDecoded.Bounds()
+	bounds := decodedImg.Bounds()
 	width, height := bounds.Dx(), bounds.Dy()
 	if width != height {
 		paddedImg := &PaddedImage{
-			Image:   webpDecoded,
+			Image:   decodedImg,
 			OffsetX: bounds.Min.Y,
 			OffsetY: bounds.Min.X,
 		}
@@ -2851,15 +2851,15 @@ func (portal *Portal) convertToWebP(img []byte) ([]byte, error) {
 			paddedImg.Size = height
 			paddedImg.OffsetX -= (paddedImg.Size - width) / 2
 		}
-		webpDecoded = paddedImg
+		decodedImg = paddedImg
 	}
 
-	var pngBuffer bytes.Buffer
-	if err = webp.Encode(&pngBuffer, webpDecoded, nil); err != nil {
+	var webpBuffer bytes.Buffer
+	if err = webp.Encode(&webpBuffer, decodedImg, nil); err != nil {
 		return nil, fmt.Errorf("failed to encode png image: %w", err)
 	}
 
-	return pngBuffer.Bytes(), nil
+	return webpBuffer.Bytes(), nil
 }
 
 func (portal *Portal) preprocessMatrixMedia(ctx context.Context, sender *User, relaybotFormatted bool, content *event.MessageEventContent, eventID id.EventID, mediaType whatsmeow.MediaType) (*MediaUpload, error) {
