@@ -716,8 +716,8 @@ func (portal *Portal) handleMessage(source *User, evt *events.Message) {
 		if existingMsg != nil {
 			portal.MarkDisappearing(existingMsg.MXID, converted.ExpiresIn, false)
 			converted.Content.SetEdit(existingMsg.MXID)
-		} else if len(converted.ReplyTo) > 0 {
-			portal.SetReply(converted.Content, converted.ReplyTo)
+		} else if converted.ReplyTo != nil {
+			portal.SetReply(converted.Content, converted.ReplyTo, false)
 		}
 		resp, err := portal.sendMessage(converted.Intent, converted.Type, converted.Content, converted.Extra, evt.Info.Timestamp.UnixMilli())
 		if err != nil {
@@ -1573,12 +1573,16 @@ func (portal *Portal) MainIntent() *appservice.IntentAPI {
 	return portal.bridge.Bot
 }
 
-func (portal *Portal) SetReply(content *event.MessageEventContent, replyToID types.MessageID) bool {
-	if len(replyToID) == 0 {
+func (portal *Portal) SetReply(content *event.MessageEventContent, replyTo *ReplyInfo, isBackfill bool) bool {
+	if replyTo == nil {
 		return false
 	}
-	message := portal.bridge.DB.Message.GetByJID(portal.Key, replyToID)
+	message := portal.bridge.DB.Message.GetByJID(portal.Key, replyTo.MessageID)
 	if message == nil || message.IsFakeMXID() {
+		if isBackfill && portal.bridge.Config.Homeserver.Software == bridgeconfig.SoftwareHungry {
+			content.RelatesTo = (&event.RelatesTo{}).SetReplyTo(portal.deterministicEventID(replyTo.Sender, replyTo.MessageID))
+			return true
+		}
 		return false
 	}
 	evt, err := portal.MainIntent().GetEvent(portal.MXID, message.MXID)
@@ -1722,6 +1726,30 @@ func (portal *Portal) sendMessage(intent *appservice.IntentAPI, eventType event.
 	}
 }
 
+type ReplyInfo struct {
+	MessageID types.MessageID
+	Sender    types.JID
+}
+
+type Replyable interface {
+	GetStanzaId() string
+	GetParticipant() string
+}
+
+func GetReply(replyable Replyable) *ReplyInfo {
+	if replyable.GetStanzaId() == "" {
+		return nil
+	}
+	sender, err := types.ParseJID(replyable.GetParticipant())
+	if err != nil {
+		return nil
+	}
+	return &ReplyInfo{
+		MessageID: types.MessageID(replyable.GetStanzaId()),
+		Sender:    sender,
+	}
+}
+
 type ConvertedMessage struct {
 	Intent  *appservice.IntentAPI
 	Type    event.Type
@@ -1731,7 +1759,7 @@ type ConvertedMessage struct {
 
 	MultiEvent []*event.MessageEventContent
 
-	ReplyTo   types.MessageID
+	ReplyTo   *ReplyInfo
 	ExpiresIn uint32
 	Error     database.MessageErrorType
 	MediaKey  []byte
@@ -1754,7 +1782,6 @@ func (cm *ConvertedMessage) MergeCaption() {
 	}
 	cm.Caption = nil
 }
-
 func (portal *Portal) convertTextMessage(intent *appservice.IntentAPI, source *User, msg *waProto.Message) *ConvertedMessage {
 	content := &event.MessageEventContent{
 		Body:    msg.GetConversation(),
@@ -1766,7 +1793,6 @@ func (portal *Portal) convertTextMessage(intent *appservice.IntentAPI, source *U
 
 	contextInfo := msg.GetExtendedTextMessage().GetContextInfo()
 	portal.bridge.Formatter.ParseWhatsApp(portal.MXID, content, contextInfo.GetMentionedJid(), false, false)
-	replyTo := contextInfo.GetStanzaId()
 	expiresIn := contextInfo.GetExpiration()
 	extraAttrs := map[string]interface{}{}
 	extraAttrs["com.beeper.linkpreviews"] = portal.convertURLPreviewToBeeper(intent, source, msg.GetExtendedTextMessage())
@@ -1775,7 +1801,7 @@ func (portal *Portal) convertTextMessage(intent *appservice.IntentAPI, source *U
 		Intent:    intent,
 		Type:      event.EventMessage,
 		Content:   content,
-		ReplyTo:   replyTo,
+		ReplyTo:   GetReply(contextInfo),
 		ExpiresIn: expiresIn,
 		Extra:     extraAttrs,
 	}
@@ -1789,7 +1815,7 @@ func (portal *Portal) convertTemplateMessage(intent *appservice.IntentAPI, sourc
 			Body:    "Unsupported business message",
 			MsgType: event.MsgText,
 		},
-		ReplyTo:   tplMsg.GetContextInfo().GetStanzaId(),
+		ReplyTo:   GetReply(tplMsg.GetContextInfo()),
 		ExpiresIn: tplMsg.GetContextInfo().GetExpiration(),
 	}
 
@@ -1866,7 +1892,7 @@ func (portal *Portal) convertTemplateButtonReplyMessage(intent *appservice.Inten
 				"index": msg.GetSelectedIndex(),
 			},
 		},
-		ReplyTo:   msg.GetContextInfo().GetStanzaId(),
+		ReplyTo:   GetReply(msg.GetContextInfo()),
 		ExpiresIn: msg.GetContextInfo().GetExpiration(),
 	}
 }
@@ -1879,7 +1905,7 @@ func (portal *Portal) convertListMessage(intent *appservice.IntentAPI, source *U
 			Body:    "Unsupported business message",
 			MsgType: event.MsgText,
 		},
-		ReplyTo:   msg.GetContextInfo().GetStanzaId(),
+		ReplyTo:   GetReply(msg.GetContextInfo()),
 		ExpiresIn: msg.GetContextInfo().GetExpiration(),
 	}
 	body := msg.GetDescription()
@@ -1946,7 +1972,7 @@ func (portal *Portal) convertListResponseMessage(intent *appservice.IntentAPI, m
 				"row_id": msg.GetSingleSelectReply().GetSelectedRowId(),
 			},
 		},
-		ReplyTo:   msg.GetContextInfo().GetStanzaId(),
+		ReplyTo:   GetReply(msg.GetContextInfo()),
 		ExpiresIn: msg.GetContextInfo().GetExpiration(),
 	}
 }
@@ -1963,7 +1989,7 @@ func (portal *Portal) convertLiveLocationMessage(intent *appservice.IntentAPI, m
 		Intent:    intent,
 		Type:      event.EventMessage,
 		Content:   content,
-		ReplyTo:   msg.GetContextInfo().GetStanzaId(),
+		ReplyTo:   GetReply(msg.GetContextInfo()),
 		ExpiresIn: msg.GetContextInfo().GetExpiration(),
 	}
 }
@@ -2015,7 +2041,7 @@ func (portal *Portal) convertLocationMessage(intent *appservice.IntentAPI, msg *
 		Intent:    intent,
 		Type:      event.EventMessage,
 		Content:   content,
-		ReplyTo:   msg.GetContextInfo().GetStanzaId(),
+		ReplyTo:   GetReply(msg.GetContextInfo()),
 		ExpiresIn: msg.GetContextInfo().GetExpiration(),
 	}
 }
@@ -2057,7 +2083,7 @@ func (portal *Portal) convertGroupInviteMessage(intent *appservice.IntentAPI, in
 		Type:      event.EventMessage,
 		Content:   content,
 		Extra:     extraAttrs,
-		ReplyTo:   msg.GetContextInfo().GetStanzaId(),
+		ReplyTo:   GetReply(msg.GetContextInfo()),
 		ExpiresIn: msg.GetContextInfo().GetExpiration(),
 	}
 }
@@ -2093,7 +2119,7 @@ func (portal *Portal) convertContactMessage(intent *appservice.IntentAPI, msg *w
 		Intent:    intent,
 		Type:      event.EventMessage,
 		Content:   content,
-		ReplyTo:   msg.GetContextInfo().GetStanzaId(),
+		ReplyTo:   GetReply(msg.GetContextInfo()),
 		ExpiresIn: msg.GetContextInfo().GetExpiration(),
 	}
 }
@@ -2117,7 +2143,7 @@ func (portal *Portal) convertContactsArrayMessage(intent *appservice.IntentAPI, 
 			MsgType: event.MsgNotice,
 			Body:    fmt.Sprintf("Sent %s", name),
 		},
-		ReplyTo:    msg.GetContextInfo().GetStanzaId(),
+		ReplyTo:    GetReply(msg.GetContextInfo()),
 		ExpiresIn:  msg.GetContextInfo().GetExpiration(),
 		MultiEvent: contacts,
 	}
@@ -2473,7 +2499,7 @@ func (portal *Portal) convertMediaMessageContent(intent *appservice.IntentAPI, m
 		Type:      eventType,
 		Content:   content,
 		Caption:   captionContent,
-		ReplyTo:   msg.GetContextInfo().GetStanzaId(),
+		ReplyTo:   GetReply(msg.GetContextInfo()),
 		ExpiresIn: msg.GetContextInfo().GetExpiration(),
 		Extra:     extraContent,
 	}

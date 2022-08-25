@@ -17,11 +17,14 @@
 package main
 
 import (
+	"crypto/sha256"
+	"encoding/base64"
 	"fmt"
 	"time"
 
 	waProto "go.mau.fi/whatsmeow/binary/proto"
 	"go.mau.fi/whatsmeow/types"
+	"maunium.net/go/mautrix/bridge/bridgeconfig"
 
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/appservice"
@@ -450,6 +453,12 @@ func (user *User) EnqueueForwardBackfills(portals []*Portal) {
 // endregion
 // region Portal backfilling
 
+func (portal *Portal) deterministicEventID(sender types.JID, messageID types.MessageID) id.EventID {
+	data := fmt.Sprintf("%s/whatsapp/%s/%s", portal.MXID, sender.User, messageID)
+	sum := sha256.Sum256([]byte(data))
+	return id.EventID(fmt.Sprintf("$%s:whatsapp.com", base64.RawURLEncoding.EncodeToString(sum[:])))
+}
+
 var (
 	PortalCreationDummyEvent = event.Type{Type: "fi.mau.dummy.portal_created", Class: event.MessageEventType}
 	PreBackfillDummyEvent    = event.Type{Type: "fi.mau.dummy.pre_backfill", Class: event.MessageEventType}
@@ -552,9 +561,8 @@ func (portal *Portal) backfill(source *User, messages []*waProto.WebMessageInfo,
 		if !intent.IsCustomPuppet && !portal.bridge.StateStore.IsInRoom(portal.MXID, puppet.MXID) {
 			addMember(puppet)
 		}
-		// TODO this won't work for history
-		if len(converted.ReplyTo) > 0 {
-			portal.SetReply(converted.Content, converted.ReplyTo)
+		if converted.ReplyTo != nil {
+			portal.SetReply(converted.Content, converted.ReplyTo, true)
 		}
 		err = portal.appendBatchEvents(converted, &msgEvt.Info, webMsg.GetEphemeralStartTimestamp(), &req.Events, &infos)
 		if err != nil {
@@ -668,8 +676,13 @@ func (portal *Portal) wrapBatchEvent(info *types.MessageInfo, intent *appservice
 	if newEventType != eventType {
 		intent.AddDoublePuppetValue(&wrappedContent)
 	}
+	var eventID id.EventID
+	if portal.bridge.Config.Homeserver.Software == bridgeconfig.SoftwareHungry {
+		eventID = portal.deterministicEventID(info.Sender, info.ID)
+	}
 
 	return &event.Event{
+		ID:        eventID,
 		Sender:    intent.UserID,
 		Type:      newEventType,
 		Timestamp: info.Timestamp.UnixMilli(),
