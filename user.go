@@ -1072,7 +1072,7 @@ func (user *User) UpdateDirectChats(chats map[id.UserID][]id.RoomID) {
 	}
 	user.log.Debugln("Updating m.direct list on homeserver")
 	var err error
-	if user.bridge.Config.Homeserver.Asmux {
+	if user.bridge.Config.Homeserver.Software == "asmux" {
 		urlPath := intent.BuildClientURL("unstable", "com.beeper.asmux", "dms")
 		_, err = intent.MakeFullRequest(mautrix.FullRequest{
 			Method:      method,

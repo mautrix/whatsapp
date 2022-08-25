@@ -51,7 +51,7 @@ func (config *Config) CanDoublePuppetBackfill(userID id.UserID) bool {
 	}
 	_, homeserver, _ := userID.Parse()
 	// Batch sending can only use local users, so don't allow double puppets on other servers.
-	if homeserver != config.Homeserver.Domain {
+	if homeserver != config.Homeserver.Domain && config.Homeserver.Software != "hungry" {
 		return false
 	}
 	return true

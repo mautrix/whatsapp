@@ -3,6 +3,7 @@ module maunium.net/go/mautrix-whatsapp
 go 1.18
 
 require (
+	github.com/chai2010/webp v1.1.1
 	github.com/gorilla/mux v1.8.0
 	github.com/gorilla/websocket v1.5.0
 	github.com/lib/pq v1.10.6
@@ -15,14 +16,13 @@ require (
 	golang.org/x/net v0.0.0-20220812174116-3211cb980234
 	google.golang.org/protobuf v1.28.1
 	maunium.net/go/maulogger/v2 v2.3.2
-	maunium.net/go/mautrix v0.12.1-0.20220822105214-a9d9c9ba569d
+	maunium.net/go/mautrix v0.12.1-0.20220825085831-88c1e0dc4593
 )
 
 require (
 	filippo.io/edwards25519 v1.0.0 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cespare/xxhash/v2 v2.1.2 // indirect
-	github.com/chai2010/webp v1.1.1 // indirect
 	github.com/golang/protobuf v1.5.2 // indirect
 	github.com/mattn/go-colorable v0.1.12 // indirect
 	github.com/mattn/go-isatty v0.0.14 // indirect
