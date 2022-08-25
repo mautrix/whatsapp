@@ -2902,7 +2902,7 @@ func (portal *Portal) preprocessMatrixMedia(ctx context.Context, sender *User, r
 	// Allowed mime types from https://developers.facebook.com/docs/whatsapp/on-premises/reference/media
 	switch {
 	case isSticker:
-		if mimeType != "image/webp" {
+		if mimeType != "image/webp" || content.Info.Width != content.Info.Height {
 			data, convertErr = portal.convertToWebP(data)
 			content.Info.MimeType = "image/webp"
 		}
