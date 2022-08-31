@@ -2974,7 +2974,7 @@ func (portal *Portal) preprocessMatrixMedia(ctx context.Context, sender *User, r
 		// Everything is allowed
 	}
 	if convertErr != nil {
-		return nil, util.NewDualError(fmt.Errorf("%w (%s to %s)", errMediaConvertFailed, mimeType, content.Info.MimeType), err)
+		return nil, util.NewDualError(fmt.Errorf("%w (%s to %s)", errMediaConvertFailed, mimeType, content.Info.MimeType), convertErr)
 	}
 	uploadResp, err := sender.Client.Upload(ctx, data, mediaType)
 	if err != nil {
