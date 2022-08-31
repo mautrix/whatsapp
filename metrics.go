@@ -270,7 +270,7 @@ func (mh *MetricsHandler) startUpdatingStats() {
 			mh.log.Fatalfln("Panic in metric updater: %v\n%s", err, string(debug.Stack()))
 		}
 	}()
-	ticker := time.Tick(10 * time.Second)
+	ticker := time.Tick(60 * time.Second)
 	for {
 		mh.updateStats()
 		select {
