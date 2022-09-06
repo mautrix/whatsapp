@@ -121,7 +121,8 @@ type BridgeConfig struct {
 	DisableStatusBroadcastSend   bool `yaml:"disable_status_broadcast_send"`
 	DisappearingMessagesInGroups bool `yaml:"disappearing_messages_in_groups"`
 
-	DisableBridgeAlerts bool `yaml:"disable_bridge_alerts"`
+	DisableBridgeAlerts   bool `yaml:"disable_bridge_alerts"`
+	CrashOnStreamReplaced bool `yaml:"crash_on_stream_replaced"`
 
 	CommandPrefix string `yaml:"command_prefix"`
 

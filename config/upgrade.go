@@ -89,6 +89,7 @@ func DoUpgrade(helper *up.Helper) {
 	helper.Copy(up.Bool, "bridge", "federate_rooms")
 	helper.Copy(up.Bool, "bridge", "disappearing_messages_in_groups")
 	helper.Copy(up.Bool, "bridge", "disable_bridge_alerts")
+	helper.Copy(up.Bool, "bridge", "crash_on_stream_replaced")
 	helper.Copy(up.Bool, "bridge", "url_previews")
 	helper.Copy(up.Bool, "bridge", "caption_in_message")
 	helper.Copy(up.Str|up.Null, "bridge", "message_handling_timeout", "error_after")

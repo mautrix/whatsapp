@@ -815,6 +815,15 @@ func (user *User) HandleEvent(event interface{}) {
 		}
 		go user.BridgeState.Send(status.BridgeState{StateEvent: status.StateUnknownError, Message: message})
 		user.bridge.Metrics.TrackConnectionState(user.JID, false)
+	case *events.StreamReplaced:
+		if user.bridge.Config.Bridge.CrashOnStreamReplaced {
+			user.log.Infofln("Stopping bridge due to StreamReplaced event")
+			user.bridge.ManualStop(60)
+		} else {
+			go user.BridgeState.Send(status.BridgeState{StateEvent: status.StateUnknownError, Message: "Stream replaced"})
+			user.bridge.Metrics.TrackConnectionState(user.JID, false)
+			user.sendMarkdownBridgeAlert("The bridge was started in another location. Use `reconnect` to reconnect this one.")
+		}
 	case *events.ConnectFailure:
 		go user.BridgeState.Send(status.BridgeState{StateEvent: status.StateUnknownError, Message: fmt.Sprintf("Unknown connection failure: %s", v.Reason)})
 		user.bridge.Metrics.TrackConnectionState(user.JID, false)
