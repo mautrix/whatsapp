@@ -2859,7 +2859,7 @@ func (img *PaddedImage) At(x, y int) color.Color {
 func (portal *Portal) convertToWebP(img []byte) ([]byte, error) {
 	decodedImg, _, err := image.Decode(bytes.NewReader(img))
 	if err != nil {
-		return nil, fmt.Errorf("failed to decode image: %w", err)
+		return img, fmt.Errorf("failed to decode image: %w", err)
 	}
 
 	bounds := decodedImg.Bounds()
@@ -2882,7 +2882,7 @@ func (portal *Portal) convertToWebP(img []byte) ([]byte, error) {
 
 	var webpBuffer bytes.Buffer
 	if err = webp.Encode(&webpBuffer, decodedImg, nil); err != nil {
-		return nil, fmt.Errorf("failed to encode png image: %w", err)
+		return img, fmt.Errorf("failed to encode webp image: %w", err)
 	}
 
 	return webpBuffer.Bytes(), nil
@@ -2974,7 +2974,12 @@ func (portal *Portal) preprocessMatrixMedia(ctx context.Context, sender *User, r
 		// Everything is allowed
 	}
 	if convertErr != nil {
-		return nil, util.NewDualError(fmt.Errorf("%w (%s to %s)", errMediaConvertFailed, mimeType, content.Info.MimeType), convertErr)
+		if content.Info.MimeType != mimeType || data == nil {
+			return nil, util.NewDualError(fmt.Errorf("%w (%s to %s)", errMediaConvertFailed, mimeType, content.Info.MimeType), convertErr)
+		} else {
+			// If the mime type didn't change and the errored conversion function returned the original data, just log a warning and continue
+			portal.log.Warnfln("Failed to re-encode %s media: %v, continuing with original file", mimeType, convertErr)
+		}
 	}
 	uploadResp, err := sender.Client.Upload(ctx, data, mediaType)
 	if err != nil {
