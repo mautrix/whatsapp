@@ -490,7 +490,10 @@ func (portal *Portal) backfill(source *User, messages []*waProto.WebMessageInfo,
 
 	addedMembers := make(map[id.UserID]struct{})
 	addMember := func(puppet *Puppet) {
-		if _, alreadyAdded := addedMembers[puppet.MXID]; alreadyAdded {
+		if portal.bridge.Config.Homeserver.Software == bridgeconfig.SoftwareHungry {
+			// Hungryserv doesn't need state_events_at_start, it can figure out memberships automatically
+			return
+		} else if _, alreadyAdded := addedMembers[puppet.MXID]; alreadyAdded {
 			return
 		}
 		mxid := puppet.MXID.String()
