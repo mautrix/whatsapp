@@ -1,4 +1,4 @@
-# v0.7.0 (unreleased)
+# v0.7.0 (2022-09-16)
 
 * Bumped minimum Go version to 1.18.
 * Added hidden option to use appservice login for double puppeting.
