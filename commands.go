@@ -1063,21 +1063,21 @@ var cmdSync = &commands.FullHandler{
 	Help: commands.HelpMeta{
 		Section:     HelpSectionMiscellaneous,
 		Description: "Synchronize data from WhatsApp.",
-		Args:        "<appstate/contacts/groups/space> [--create-portals]",
+		Args:        "<appstate/contacts/groups/space> [--contact-avatars] [--create-portals]",
 	},
 	RequiresLogin: true,
 }
 
 func fnSync(ce *WrappedCommandEvent) {
-	if len(ce.Args) == 0 {
-		ce.Reply("**Usage:** `sync <appstate/contacts/avatars/groups/space> [--contact-avatars] [--create-portals]`")
-		return
-	}
 	args := strings.ToLower(strings.Join(ce.Args, " "))
 	contacts := strings.Contains(args, "contacts")
 	appState := strings.Contains(args, "appstate")
 	space := strings.Contains(args, "space")
 	groups := strings.Contains(args, "groups") || space
+	if !contacts && !appState && !space && !groups {
+		ce.Reply("**Usage:** `sync <appstate/contacts/groups/space> [--contact-avatars] [--create-portals]`")
+		return
+	}
 	createPortals := strings.Contains(args, "--create-portals")
 	contactAvatars := strings.Contains(args, "--contact-avatars")
 	if contactAvatars && (!contacts || appState) {
