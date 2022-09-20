@@ -24,10 +24,10 @@ import (
 
 	waProto "go.mau.fi/whatsmeow/binary/proto"
 	"go.mau.fi/whatsmeow/types"
-	"maunium.net/go/mautrix/bridge/bridgeconfig"
 
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/appservice"
+	"maunium.net/go/mautrix/bridge/bridgeconfig"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 	"maunium.net/go/mautrix/util/dbutil"
@@ -453,8 +453,11 @@ func (user *User) EnqueueForwardBackfills(portals []*Portal) {
 // endregion
 // region Portal backfilling
 
-func (portal *Portal) deterministicEventID(sender types.JID, messageID types.MessageID) id.EventID {
+func (portal *Portal) deterministicEventID(sender types.JID, messageID types.MessageID, partName string) id.EventID {
 	data := fmt.Sprintf("%s/whatsapp/%s/%s", portal.MXID, sender.User, messageID)
+	if partName != "" {
+		data += "/" + partName
+	}
 	sum := sha256.Sum256([]byte(data))
 	return id.EventID(fmt.Sprintf("$%s:whatsapp.com", base64.RawURLEncoding.EncodeToString(sum[:])))
 }
@@ -636,7 +639,7 @@ func (portal *Portal) requestMediaRetries(source *User, eventIDs []id.EventID, i
 }
 
 func (portal *Portal) appendBatchEvents(converted *ConvertedMessage, info *types.MessageInfo, expirationStart uint64, eventsArray *[]*event.Event, infoArray *[]*wrappedInfo) error {
-	mainEvt, err := portal.wrapBatchEvent(info, converted.Intent, converted.Type, converted.Content, converted.Extra)
+	mainEvt, err := portal.wrapBatchEvent(info, converted.Intent, converted.Type, converted.Content, converted.Extra, "")
 	if err != nil {
 		return err
 	}
@@ -644,7 +647,7 @@ func (portal *Portal) appendBatchEvents(converted *ConvertedMessage, info *types
 		converted.MergeCaption()
 	}
 	if converted.Caption != nil {
-		captionEvt, err := portal.wrapBatchEvent(info, converted.Intent, converted.Type, converted.Caption, nil)
+		captionEvt, err := portal.wrapBatchEvent(info, converted.Intent, converted.Type, converted.Caption, nil, "caption")
 		if err != nil {
 			return err
 		}
@@ -655,8 +658,8 @@ func (portal *Portal) appendBatchEvents(converted *ConvertedMessage, info *types
 		*infoArray = append(*infoArray, &wrappedInfo{info, database.MsgNormal, converted.Error, converted.MediaKey, expirationStart, converted.ExpiresIn})
 	}
 	if converted.MultiEvent != nil {
-		for _, subEvtContent := range converted.MultiEvent {
-			subEvt, err := portal.wrapBatchEvent(info, converted.Intent, converted.Type, subEvtContent, nil)
+		for i, subEvtContent := range converted.MultiEvent {
+			subEvt, err := portal.wrapBatchEvent(info, converted.Intent, converted.Type, subEvtContent, nil, fmt.Sprintf("multi-%d", i))
 			if err != nil {
 				return err
 			}
@@ -667,7 +670,7 @@ func (portal *Portal) appendBatchEvents(converted *ConvertedMessage, info *types
 	return nil
 }
 
-func (portal *Portal) wrapBatchEvent(info *types.MessageInfo, intent *appservice.IntentAPI, eventType event.Type, content *event.MessageEventContent, extraContent map[string]interface{}) (*event.Event, error) {
+func (portal *Portal) wrapBatchEvent(info *types.MessageInfo, intent *appservice.IntentAPI, eventType event.Type, content *event.MessageEventContent, extraContent map[string]interface{}, partName string) (*event.Event, error) {
 	wrappedContent := event.Content{
 		Parsed: content,
 		Raw:    extraContent,
@@ -681,7 +684,7 @@ func (portal *Portal) wrapBatchEvent(info *types.MessageInfo, intent *appservice
 	}
 	var eventID id.EventID
 	if portal.bridge.Config.Homeserver.Software == bridgeconfig.SoftwareHungry {
-		eventID = portal.deterministicEventID(info.Sender, info.ID)
+		eventID = portal.deterministicEventID(info.Sender, info.ID, partName)
 	}
 
 	return &event.Event{

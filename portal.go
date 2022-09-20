@@ -1580,7 +1580,7 @@ func (portal *Portal) SetReply(content *event.MessageEventContent, replyTo *Repl
 	message := portal.bridge.DB.Message.GetByJID(portal.Key, replyTo.MessageID)
 	if message == nil || message.IsFakeMXID() {
 		if isBackfill && portal.bridge.Config.Homeserver.Software == bridgeconfig.SoftwareHungry {
-			content.RelatesTo = (&event.RelatesTo{}).SetReplyTo(portal.deterministicEventID(replyTo.Sender, replyTo.MessageID))
+			content.RelatesTo = (&event.RelatesTo{}).SetReplyTo(portal.deterministicEventID(replyTo.Sender, replyTo.MessageID, ""))
 			return true
 		}
 		return false
