@@ -271,7 +271,7 @@ func main() {
 		Name:         "mautrix-whatsapp",
 		URL:          "https://github.com/vector-im/mautrix-whatsapp",
 		Description:  "A Matrix-WhatsApp puppeting bridge (Element fork).",
-		Version:      "0.6.1-mod-4",
+		Version:      "0.7.0-mod-1",
 		ProtocolName: "WhatsApp",
 
 		CryptoPickleKey: "maunium.net/go/mautrix-whatsapp",

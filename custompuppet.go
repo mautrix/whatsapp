@@ -65,19 +65,26 @@ func (puppet *Puppet) SwitchCustomMXID(accessToken string, mxid id.UserID) error
 func (puppet *Puppet) loginWithSharedSecret(mxid id.UserID) (string, error) {
 	_, homeserver, _ := mxid.Parse()
 	puppet.log.Debugfln("Logging into %s with shared secret", mxid)
-	mac := hmac.New(sha512.New, []byte(puppet.bridge.Config.Bridge.LoginSharedSecretMap[homeserver]))
-	mac.Write([]byte(mxid))
+	loginSecret := puppet.bridge.Config.Bridge.LoginSharedSecretMap[homeserver]
 	client, err := puppet.bridge.newDoublePuppetClient(mxid, "")
 	if err != nil {
 		return "", fmt.Errorf("failed to create mautrix client to log in: %v", err)
 	}
-	resp, err := client.Login(&mautrix.ReqLogin{
-		Type:                     mautrix.AuthTypePassword,
+	req := mautrix.ReqLogin{
 		Identifier:               mautrix.UserIdentifier{Type: mautrix.IdentifierTypeUser, User: string(mxid)},
-		Password:                 hex.EncodeToString(mac.Sum(nil)),
 		DeviceID:                 "WhatsApp Bridge",
 		InitialDeviceDisplayName: "WhatsApp Bridge",
-	})
+	}
+	if loginSecret == "appservice" {
+		client.AccessToken = puppet.bridge.AS.Registration.AppToken
+		req.Type = mautrix.AuthTypeAppservice
+	} else {
+		mac := hmac.New(sha512.New, []byte(loginSecret))
+		mac.Write([]byte(mxid))
+		req.Password = hex.EncodeToString(mac.Sum(nil))
+		req.Type = mautrix.AuthTypePassword
+	}
+	resp, err := client.Login(&req)
 	if err != nil {
 		return "", err
 	}

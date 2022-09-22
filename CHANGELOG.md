@@ -1,3 +1,25 @@
+# v0.7.0 (2022-09-16)
+
+* Bumped minimum Go version to 1.18.
+* Added hidden option to use appservice login for double puppeting.
+  * This can be used by adding everyone to a non-exclusive namespace in the
+    registration, and setting the login shared secret to the string `appservice`.
+* Enabled appservice ephemeral events by default for new installations.
+  * Existing bridges can turn it on by enabling `ephemeral_events` and disabling
+    `sync_with_custom_puppets` in the config, then regenerating the registration
+    file.
+* Updated sticker bridging to send actual sticker messages to WhatsApp rather
+  than sending as image. This includes converting stickers to webp and adding
+  transparent padding to make the aspect ratio 1:1.
+* Added automatic webm -> mp4 conversion when sending videos to WhatsApp.
+* Started rejecting unsupported mime types when sending media to WhatsApp.
+* Added option to use [MSC2409] and [MSC3202] for end-to-bridge encryption.
+  However, this may not work with the Synapse implementation as it hasn't
+  been tested yet.
+* Added error notice if the bridge is started twice.
+
+[MSC3202]: https://github.com/matrix-org/matrix-spec-proposals/pull/3202
+
 # v0.6.1 (2022-08-16)
 
 * Added support for "Delete for me" and deleting private chats from WhatsApp.
