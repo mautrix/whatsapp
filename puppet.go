@@ -266,12 +266,13 @@ func (puppet *Puppet) UpdateAvatar(source *User, forcePortalSync bool) bool {
 func (puppet *Puppet) UpdateName(contact types.ContactInfo, forcePortalSync bool) bool {
 	newName, quality := puppet.bridge.Config.Bridge.FormatDisplayname(puppet.JID, contact)
 	if (puppet.Displayname != newName || !puppet.NameSet) && quality >= puppet.NameQuality {
+		oldName := puppet.Displayname
 		puppet.Displayname = newName
 		puppet.NameQuality = quality
 		puppet.NameSet = false
 		err := puppet.DefaultIntent().SetDisplayName(newName)
 		if err == nil {
-			puppet.log.Debugln("Updated name", puppet.Displayname, "->", newName)
+			puppet.log.Debugln("Updated name", oldName, "->", newName)
 			puppet.NameSet = true
 			go puppet.updatePortalName()
 		} else {
