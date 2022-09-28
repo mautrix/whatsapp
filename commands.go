@@ -177,7 +177,7 @@ var cmdResolveLink = &commands.FullHandler{
 	Help: commands.HelpMeta{
 		Section:     HelpSectionInvites,
 		Description: "Resolve a WhatsApp group invite or business message link.",
-		Args:        "<_group or message link_>",
+		Args:        "<_group, contact, or message link_>",
 	},
 	RequiresLogin: true,
 }
@@ -209,6 +209,17 @@ func fnResolveLink(ce *WrappedCommandEvent) {
 			message = fmt.Sprintf(" The following prefilled message is attached:\n\n%s", strings.Join(parts, "\n"))
 		}
 		ce.Reply("That link points at %s (+%s).%s", target.PushName, target.JID.User, message)
+	} else if strings.HasPrefix(ce.Args[0], whatsmeow.ContactQRLinkPrefix) || strings.HasPrefix(ce.Args[0], whatsmeow.ContactQRLinkDirectPrefix) {
+		target, err := ce.User.Client.ResolveContactQRLink(ce.Args[0])
+		if err != nil {
+			ce.Reply("Failed to get contact info: %v", err)
+			return
+		}
+		if target.PushName != "" {
+			ce.Reply("That link points at %s (+%s)", target.PushName, target.JID.User)
+		} else {
+			ce.Reply("That link points at +%s", target.JID.User)
+		}
 	} else {
 		ce.Reply("That doesn't look like a group invite link nor a business message link.")
 	}
