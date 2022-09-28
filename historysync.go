@@ -643,12 +643,12 @@ func (portal *Portal) requestMediaRetries(source *User, eventIDs []id.EventID, i
 }
 
 func (portal *Portal) appendBatchEvents(source *User, converted *ConvertedMessage, info *types.MessageInfo, raw *waProto.WebMessageInfo, eventsArray *[]*event.Event, infoArray *[]*wrappedInfo) error {
+	if portal.bridge.Config.Bridge.CaptionInMessage {
+		converted.MergeCaption()
+	}
 	mainEvt, err := portal.wrapBatchEvent(info, converted.Intent, converted.Type, converted.Content, converted.Extra, "")
 	if err != nil {
 		return err
-	}
-	if portal.bridge.Config.Bridge.CaptionInMessage {
-		converted.MergeCaption()
 	}
 	expirationStart := raw.GetEphemeralStartTimestamp()
 	mainInfo := &wrappedInfo{
