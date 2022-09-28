@@ -28,6 +28,7 @@ import (
 	_ "image/gif"
 	"image/jpeg"
 	"image/png"
+	"io"
 	"math"
 	"mime"
 	"net/http"
@@ -939,6 +940,24 @@ func (portal *Portal) SyncParticipants(source *User, metadata *types.GroupInfo) 
 		}
 	}
 	portal.kickExtraUsers(participantMap)
+}
+
+func reuploadAvatar(intent *appservice.IntentAPI, url string) (id.ContentURI, error) {
+	getResp, err := http.DefaultClient.Get(url)
+	if err != nil {
+		return id.ContentURI{}, fmt.Errorf("failed to download avatar: %w", err)
+	}
+	data, err := io.ReadAll(getResp.Body)
+	_ = getResp.Body.Close()
+	if err != nil {
+		return id.ContentURI{}, fmt.Errorf("failed to read avatar bytes: %w", err)
+	}
+
+	resp, err := intent.UploadBytes(data, http.DetectContentType(data))
+	if err != nil {
+		return id.ContentURI{}, fmt.Errorf("failed to upload avatar to Matrix: %w", err)
+	}
+	return resp.ContentURI, nil
 }
 
 func (user *User) updateAvatar(jid types.JID, avatarID *string, avatarURL *id.ContentURI, avatarSet *bool, log log.Logger, intent *appservice.IntentAPI) bool {

@@ -18,8 +18,6 @@ package main
 
 import (
 	"fmt"
-	"io"
-	"net/http"
 	"regexp"
 	"sync"
 	"time"
@@ -224,25 +222,6 @@ func (puppet *Puppet) CustomIntent() *appservice.IntentAPI {
 
 func (puppet *Puppet) DefaultIntent() *appservice.IntentAPI {
 	return puppet.bridge.AS.Intent(puppet.MXID)
-}
-
-func reuploadAvatar(intent *appservice.IntentAPI, url string) (id.ContentURI, error) {
-	getResp, err := http.DefaultClient.Get(url)
-	if err != nil {
-		return id.ContentURI{}, fmt.Errorf("failed to download avatar: %w", err)
-	}
-	data, err := io.ReadAll(getResp.Body)
-	_ = getResp.Body.Close()
-	if err != nil {
-		return id.ContentURI{}, fmt.Errorf("failed to read avatar bytes: %w", err)
-	}
-
-	mime := http.DetectContentType(data)
-	resp, err := intent.UploadBytes(data, mime)
-	if err != nil {
-		return id.ContentURI{}, fmt.Errorf("failed to upload avatar to Matrix: %w", err)
-	}
-	return resp.ContentURI, nil
 }
 
 func (puppet *Puppet) UpdateAvatar(source *User, forcePortalSync bool) bool {
