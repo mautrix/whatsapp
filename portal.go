@@ -1664,7 +1664,7 @@ func (portal *Portal) HandleMessageReaction(intent *appservice.IntentAPI, user *
 		}
 
 		portal.finishHandling(existingMsg, info, resp.EventID, database.MsgReaction, database.MsgNoError)
-		portal.upsertReaction(intent, target.JID, info.Sender, resp.EventID, info.ID)
+		portal.upsertReaction(nil, intent, target.JID, info.Sender, resp.EventID, info.ID)
 	}
 }
 
@@ -3429,7 +3429,7 @@ func (portal *Portal) handleMatrixReaction(sender *User, evt *event.Event) error
 	}
 	info := portal.generateMessageInfo(sender)
 	dbMsg := portal.markHandled(nil, nil, info, evt.ID, false, true, database.MsgReaction, database.MsgNoError)
-	portal.upsertReaction(nil, target.JID, sender.JID, evt.ID, info.ID)
+	portal.upsertReaction(nil, nil, target.JID, sender.JID, evt.ID, info.ID)
 	portal.log.Debugln("Sending reaction", evt.ID, "to WhatsApp", info.ID)
 	resp, err := portal.sendReactionToWhatsApp(sender, info.ID, target, content.RelatesTo.Key, evt.Timestamp)
 	if err == nil {
@@ -3458,7 +3458,7 @@ func (portal *Portal) sendReactionToWhatsApp(sender *User, id types.MessageID, t
 	})
 }
 
-func (portal *Portal) upsertReaction(intent *appservice.IntentAPI, targetJID types.MessageID, senderJID types.JID, mxid id.EventID, jid types.MessageID) {
+func (portal *Portal) upsertReaction(txn dbutil.Transaction, intent *appservice.IntentAPI, targetJID types.MessageID, senderJID types.JID, mxid id.EventID, jid types.MessageID) {
 	dbReaction := portal.bridge.DB.Reaction.GetByTargetJID(portal.Key, targetJID, senderJID)
 	if dbReaction == nil {
 		dbReaction = portal.bridge.DB.Reaction.New()
@@ -3480,7 +3480,7 @@ func (portal *Portal) upsertReaction(intent *appservice.IntentAPI, targetJID typ
 	}
 	dbReaction.MXID = mxid
 	dbReaction.JID = jid
-	dbReaction.Upsert()
+	dbReaction.Upsert(txn)
 }
 
 func (portal *Portal) HandleMatrixRedaction(sender *User, evt *event.Event) {

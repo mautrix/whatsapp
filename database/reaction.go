@@ -97,9 +97,12 @@ func (reaction *Reaction) Scan(row dbutil.Scannable) *Reaction {
 	return reaction
 }
 
-func (reaction *Reaction) Upsert() {
+func (reaction *Reaction) Upsert(txn dbutil.Execable) {
 	reaction.Sender = reaction.Sender.ToNonAD()
-	_, err := reaction.db.Exec(upsertReactionQuery, reaction.Chat.JID, reaction.Chat.Receiver, reaction.TargetJID, reaction.Sender, reaction.MXID, reaction.JID)
+	if txn == nil {
+		txn = reaction.db
+	}
+	_, err := txn.Exec(upsertReactionQuery, reaction.Chat.JID, reaction.Chat.Receiver, reaction.TargetJID, reaction.Sender, reaction.MXID, reaction.JID)
 	if err != nil {
 		reaction.log.Warnfln("Failed to upsert reaction to %s@%s by %s: %v", reaction.Chat, reaction.TargetJID, reaction.Sender, err)
 	}

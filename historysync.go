@@ -779,7 +779,7 @@ func (portal *Portal) finishBatch(txn dbutil.Transaction, eventIDs []id.EventID,
 		eventID := eventIDs[i]
 		portal.markHandled(txn, nil, info.MessageInfo, eventID, true, false, info.Type, info.Error)
 		if info.Type == database.MsgReaction {
-			portal.upsertReaction(nil, info.ReactionTarget, info.Sender, eventID, info.ID)
+			portal.upsertReaction(txn, nil, info.ReactionTarget, info.Sender, eventID, info.ID)
 		}
 
 		if info.ExpiresIn > 0 {
