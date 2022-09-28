@@ -828,7 +828,7 @@ func (portal *Portal) getMessagePuppet(user *User, info *types.MessageInfo) (pup
 		return portal.bridge.GetPuppetByJID(user.JID)
 	} else if portal.IsPrivateChat() {
 		puppet = portal.bridge.GetPuppetByJID(portal.Key.JID)
-	} else {
+	} else if !info.Sender.IsEmpty() {
 		puppet = portal.bridge.GetPuppetByJID(info.Sender)
 	}
 	if puppet == nil {
@@ -3465,7 +3465,7 @@ func (portal *Portal) upsertReaction(intent *appservice.IntentAPI, targetJID typ
 		dbReaction.Chat = portal.Key
 		dbReaction.TargetJID = targetJID
 		dbReaction.Sender = senderJID
-	} else {
+	} else if intent != nil {
 		portal.log.Debugfln("Redacting old Matrix reaction %s after new one (%s) was sent", dbReaction.MXID, mxid)
 		var err error
 		if intent != nil {

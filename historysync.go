@@ -22,6 +22,8 @@ import (
 	"fmt"
 	"time"
 
+	"maunium.net/go/mautrix/util/variationselector"
+
 	waProto "go.mau.fi/whatsmeow/binary/proto"
 	"go.mau.fi/whatsmeow/types"
 
@@ -42,6 +44,8 @@ type wrappedInfo struct {
 	*types.MessageInfo
 	Type  database.MessageType
 	Error database.MessageErrorType
+
+	ReactionTarget types.MessageID
 
 	MediaKey []byte
 
@@ -570,7 +574,7 @@ func (portal *Portal) backfill(source *User, messages []*waProto.WebMessageInfo,
 		if converted.ReplyTo != nil {
 			portal.SetReply(converted.Content, converted.ReplyTo, true)
 		}
-		err = portal.appendBatchEvents(converted, &msgEvt.Info, webMsg.GetEphemeralStartTimestamp(), &req.Events, &infos)
+		err = portal.appendBatchEvents(source, converted, &msgEvt.Info, webMsg, &req.Events, &infos)
 		if err != nil {
 			portal.log.Errorfln("Error handling message %s during backfill: %v", msgEvt.Info.ID, err)
 		}
@@ -638,7 +642,7 @@ func (portal *Portal) requestMediaRetries(source *User, eventIDs []id.EventID, i
 	}
 }
 
-func (portal *Portal) appendBatchEvents(converted *ConvertedMessage, info *types.MessageInfo, expirationStart uint64, eventsArray *[]*event.Event, infoArray *[]*wrappedInfo) error {
+func (portal *Portal) appendBatchEvents(source *User, converted *ConvertedMessage, info *types.MessageInfo, raw *waProto.WebMessageInfo, eventsArray *[]*event.Event, infoArray *[]*wrappedInfo) error {
 	mainEvt, err := portal.wrapBatchEvent(info, converted.Intent, converted.Type, converted.Content, converted.Extra, "")
 	if err != nil {
 		return err
@@ -646,16 +650,25 @@ func (portal *Portal) appendBatchEvents(converted *ConvertedMessage, info *types
 	if portal.bridge.Config.Bridge.CaptionInMessage {
 		converted.MergeCaption()
 	}
+	expirationStart := raw.GetEphemeralStartTimestamp()
+	mainInfo := &wrappedInfo{
+		MessageInfo:     info,
+		Type:            database.MsgNormal,
+		Error:           converted.Error,
+		MediaKey:        converted.MediaKey,
+		ExpirationStart: expirationStart,
+		ExpiresIn:       converted.ExpiresIn,
+	}
 	if converted.Caption != nil {
 		captionEvt, err := portal.wrapBatchEvent(info, converted.Intent, converted.Type, converted.Caption, nil, "caption")
 		if err != nil {
 			return err
 		}
 		*eventsArray = append(*eventsArray, mainEvt, captionEvt)
-		*infoArray = append(*infoArray, &wrappedInfo{info, database.MsgNormal, converted.Error, converted.MediaKey, expirationStart, converted.ExpiresIn}, nil)
+		*infoArray = append(*infoArray, mainInfo, nil)
 	} else {
 		*eventsArray = append(*eventsArray, mainEvt)
-		*infoArray = append(*infoArray, &wrappedInfo{info, database.MsgNormal, converted.Error, converted.MediaKey, expirationStart, converted.ExpiresIn})
+		*infoArray = append(*infoArray, mainInfo)
 	}
 	if converted.MultiEvent != nil {
 		for i, subEvtContent := range converted.MultiEvent {
@@ -667,7 +680,68 @@ func (portal *Portal) appendBatchEvents(converted *ConvertedMessage, info *types
 			*infoArray = append(*infoArray, nil)
 		}
 	}
+	// Sending reactions in the same batch requires deterministic event IDs, so only do it on hungryserv
+	if portal.bridge.Config.Homeserver.Software == bridgeconfig.SoftwareHungry {
+		for _, reaction := range raw.GetReactions() {
+			reactionEvent, reactionInfo := portal.wrapBatchReaction(source, reaction, mainEvt.ID, info.Timestamp)
+			if reactionEvent != nil {
+				*eventsArray = append(*eventsArray, reactionEvent)
+				*infoArray = append(*infoArray, &wrappedInfo{
+					MessageInfo:    reactionInfo,
+					ReactionTarget: info.ID,
+					Type:           database.MsgReaction,
+				})
+			}
+		}
+	}
 	return nil
+}
+
+func (portal *Portal) wrapBatchReaction(source *User, reaction *waProto.Reaction, mainEventID id.EventID, mainEventTS time.Time) (reactionEvent *event.Event, reactionInfo *types.MessageInfo) {
+	var senderJID types.JID
+	if reaction.GetKey().GetFromMe() {
+		senderJID = source.JID.ToNonAD()
+	} else if reaction.GetKey().GetParticipant() != "" {
+		senderJID, _ = types.ParseJID(reaction.GetKey().GetParticipant())
+	} else if portal.IsPrivateChat() {
+		senderJID = portal.Key.JID
+	}
+	if senderJID.IsEmpty() {
+		return
+	}
+	reactionInfo = &types.MessageInfo{
+		MessageSource: types.MessageSource{
+			Chat:     portal.Key.JID,
+			Sender:   senderJID,
+			IsFromMe: reaction.GetKey().GetFromMe(),
+			IsGroup:  portal.IsGroupChat(),
+		},
+		ID:        reaction.GetKey().GetId(),
+		Timestamp: mainEventTS,
+	}
+	puppet := portal.getMessagePuppet(source, reactionInfo)
+	if puppet == nil {
+		return
+	}
+	intent := puppet.IntentFor(portal)
+	content := event.ReactionEventContent{
+		RelatesTo: event.RelatesTo{
+			Type:    event.RelAnnotation,
+			EventID: mainEventID,
+			Key:     variationselector.Add(reaction.GetText()),
+		},
+	}
+	if rawTS := reaction.GetSenderTimestampMs(); rawTS >= mainEventTS.UnixMilli() && rawTS <= time.Now().UnixMilli() {
+		reactionInfo.Timestamp = time.UnixMilli(rawTS)
+	}
+	reactionEvent = &event.Event{
+		ID:        portal.deterministicEventID(senderJID, reactionInfo.ID, ""),
+		Type:      event.EventReaction,
+		Content:   event.Content{Parsed: content},
+		Sender:    intent.UserID,
+		Timestamp: reactionInfo.Timestamp.UnixMilli(),
+	}
+	return
 }
 
 func (portal *Portal) wrapBatchEvent(info *types.MessageInfo, intent *appservice.IntentAPI, eventType event.Type, content *event.MessageEventContent, extraContent map[string]interface{}, partName string) (*event.Event, error) {
@@ -704,6 +778,9 @@ func (portal *Portal) finishBatch(txn dbutil.Transaction, eventIDs []id.EventID,
 
 		eventID := eventIDs[i]
 		portal.markHandled(txn, nil, info.MessageInfo, eventID, true, false, info.Type, info.Error)
+		if info.Type == database.MsgReaction {
+			portal.upsertReaction(nil, info.ReactionTarget, info.Sender, eventID, info.ID)
+		}
 
 		if info.ExpiresIn > 0 {
 			if info.ExpirationStart > 0 {
