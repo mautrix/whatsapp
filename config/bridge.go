@@ -94,6 +94,7 @@ type BridgeConfig struct {
 	LoginSharedSecretMap       map[string]string `yaml:"login_shared_secret_map"`
 
 	PrivateChatPortalMeta bool   `yaml:"private_chat_portal_meta"`
+	ParallelMemberSync    bool   `yaml:"parallel_member_sync"`
 	BridgeNotices         bool   `yaml:"bridge_notices"`
 	ResendBridgeInfo      bool   `yaml:"resend_bridge_info"`
 	MuteBridging          bool   `yaml:"mute_bridging"`

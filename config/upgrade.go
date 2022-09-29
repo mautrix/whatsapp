@@ -73,6 +73,7 @@ func DoUpgrade(helper *up.Helper) {
 		helper.Copy(up.Map, "bridge", "login_shared_secret_map")
 	}
 	helper.Copy(up.Bool, "bridge", "private_chat_portal_meta")
+	helper.Copy(up.Bool, "bridge", "parallel_member_sync")
 	helper.Copy(up.Bool, "bridge", "bridge_notices")
 	helper.Copy(up.Bool, "bridge", "resend_bridge_info")
 	helper.Copy(up.Bool, "bridge", "mute_bridging")

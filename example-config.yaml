@@ -232,6 +232,8 @@ bridge:
         example.com: foobar
     # Should the bridge explicitly set the avatar and room name for private chat portal rooms?
     private_chat_portal_meta: false
+    # Should group members be synced in parallel? This makes member sync faster
+    parallel_member_sync: false
     # Should Matrix m.notice-type messages be bridged?
     bridge_notices: true
     # Set this to true to tell the bridge to re-send m.bridge events to all rooms on the next run.

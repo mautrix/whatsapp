@@ -32,6 +32,7 @@ import (
 	"math"
 	"mime"
 	"net/http"
+	"runtime/debug"
 	"strconv"
 	"strings"
 	"sync"
@@ -898,6 +899,25 @@ func (portal *Portal) kickExtraUsers(participantMap map[types.JID]bool) {
 //	portal.kickExtraUsers(participantMap)
 //}
 
+func (portal *Portal) syncParticipant(source *User, participant types.GroupParticipant, puppet *Puppet, user *User, wg *sync.WaitGroup) {
+	defer func() {
+		wg.Done()
+		if err := recover(); err != nil {
+			portal.log.Errorfln("Syncing participant %s panicked: %v\n%s", participant.JID, err, debug.Stack())
+		}
+	}()
+	puppet.SyncContact(source, true, false, "group participant")
+	if user != nil && user != source {
+		portal.ensureUserInvited(user)
+	}
+	if user == nil || !puppet.IntentFor(portal).IsCustomPuppet {
+		err := puppet.IntentFor(portal).EnsureJoined(portal.MXID)
+		if err != nil {
+			portal.log.Warnfln("Failed to make puppet of %s join %s: %v", participant.JID, portal.MXID, err)
+		}
+	}
+}
+
 func (portal *Portal) SyncParticipants(source *User, metadata *types.GroupInfo) {
 	changed := false
 	levels, err := portal.MainIntent().PowerLevels(portal.MXID)
@@ -906,20 +926,18 @@ func (portal *Portal) SyncParticipants(source *User, metadata *types.GroupInfo) 
 		changed = true
 	}
 	changed = portal.applyPowerLevelFixes(levels) || changed
+	var wg sync.WaitGroup
+	wg.Add(len(metadata.Participants))
 	participantMap := make(map[types.JID]bool)
 	for _, participant := range metadata.Participants {
+		portal.log.Debugfln("Syncing participant %s (admin: %t)", participant.JID, participant.IsAdmin)
 		participantMap[participant.JID] = true
 		puppet := portal.bridge.GetPuppetByJID(participant.JID)
-		puppet.SyncContact(source, true, false, "group participant")
 		user := portal.bridge.GetUserByJID(participant.JID)
-		if user != nil && user != source {
-			portal.ensureUserInvited(user)
-		}
-		if user == nil || !puppet.IntentFor(portal).IsCustomPuppet {
-			err = puppet.IntentFor(portal).EnsureJoined(portal.MXID)
-			if err != nil {
-				portal.log.Warnfln("Failed to make puppet of %s join %s: %v", participant.JID, portal.MXID, err)
-			}
+		if portal.bridge.Config.Bridge.ParallelMemberSync {
+			go portal.syncParticipant(source, participant, puppet, user, &wg)
+		} else {
+			portal.syncParticipant(source, participant, puppet, user, &wg)
 		}
 
 		expectedLevel := 0
@@ -940,6 +958,8 @@ func (portal *Portal) SyncParticipants(source *User, metadata *types.GroupInfo) 
 		}
 	}
 	portal.kickExtraUsers(participantMap)
+	wg.Wait()
+	portal.log.Debugln("Participant sync completed")
 }
 
 func reuploadAvatar(intent *appservice.IntentAPI, url string) (id.ContentURI, error) {
