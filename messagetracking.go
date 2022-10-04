@@ -45,6 +45,7 @@ var (
 	errMediaDecryptFailed          = errors.New("failed to decrypt media")
 	errMediaConvertFailed          = errors.New("failed to convert media")
 	errMediaWhatsAppUploadFailed   = errors.New("failed to upload media to WhatsApp")
+	errMediaUnsupportedType        = errors.New("unsupported media type")
 	errTargetNotFound              = errors.New("target event not found")
 	errReactionDatabaseNotFound    = errors.New("reaction database entry not found")
 	errReactionTargetNotFound      = errors.New("reaction target message not found")
@@ -73,6 +74,10 @@ func errorToStatusReason(err error) (reason event.MessageStatusReason, status ev
 		errors.Is(err, errBroadcastReactionNotSupported),
 		errors.Is(err, errBroadcastSendDisabled):
 		return event.MessageStatusUnsupported, event.MessageStatusFail, true, true, ""
+	case errors.Is(err, errMNoticeDisabled):
+		return event.MessageStatusUnsupported, event.MessageStatusFail, true, false, ""
+	case errors.Is(err, errMediaUnsupportedType):
+		return event.MessageStatusUnsupported, event.MessageStatusFail, true, true, err.Error()
 	case errors.Is(err, errTimeoutBeforeHandling):
 		return event.MessageStatusTooOld, event.MessageStatusRetriable, true, true, "the message was too old when it reached the bridge, so it was not handled"
 	case errors.Is(err, context.DeadlineExceeded):
@@ -100,7 +105,7 @@ func errorToStatusReason(err error) (reason event.MessageStatusReason, status ev
 	}
 }
 
-func (portal *Portal) sendErrorMessage(evt *event.Event, err error, confirmed bool, editID id.EventID) id.EventID {
+func (portal *Portal) sendErrorMessage(evt *event.Event, err error, msgType string, confirmed bool, editID id.EventID) id.EventID {
 	if !portal.bridge.Config.Bridge.MessageErrorNotices {
 		return ""
 	}
@@ -108,9 +113,9 @@ func (portal *Portal) sendErrorMessage(evt *event.Event, err error, confirmed bo
 	if confirmed {
 		certainty = "was not"
 	}
-	msg := fmt.Sprintf("\u26a0 Your message %s bridged: %v", certainty, err)
+	msg := fmt.Sprintf("\u26a0 Your %s %s bridged: %v", msgType, certainty, err)
 	if errors.Is(err, errMessageTakingLong) {
-		msg = "\u26a0 Bridging your message is taking longer than usual"
+		msg = fmt.Sprintf("\u26a0 Bridging your %s is taking longer than usual", msgType)
 	}
 	content := &event.MessageEventContent{
 		MsgType: event.MsgNotice,
@@ -201,7 +206,7 @@ func (portal *Portal) sendMessageMetrics(evt *event.Event, err error, part strin
 		checkpointStatus := status.ReasonToCheckpointStatus(reason, statusCode)
 		portal.bridge.SendMessageCheckpoint(evt, status.MsgStepRemote, err, checkpointStatus, ms.getRetryNum())
 		if sendNotice {
-			ms.setNoticeID(portal.sendErrorMessage(evt, err, isCertain, ms.getNoticeID()))
+			ms.setNoticeID(portal.sendErrorMessage(evt, err, msgType, isCertain, ms.getNoticeID()))
 		}
 		portal.sendStatusEvent(origEvtID, evt.ID, err)
 	} else {
