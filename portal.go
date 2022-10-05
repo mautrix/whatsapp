@@ -263,6 +263,15 @@ type Portal struct {
 	relayUser *User
 }
 
+var (
+	_ bridge.Portal                    = (*Portal)(nil)
+	_ bridge.ReadReceiptHandlingPortal = (*Portal)(nil)
+	_ bridge.MembershipHandlingPortal  = (*Portal)(nil)
+	_ bridge.MetaHandlingPortal        = (*Portal)(nil)
+	_ bridge.TypingPortal              = (*Portal)(nil)
+	_ bridge.DisappearingPortal        = (*Portal)(nil)
+)
+
 func (portal *Portal) handleMessageLoopItem(msg PortalMessage) {
 	if len(portal.MXID) == 0 {
 		if msg.fake == nil && msg.undecryptable == nil && (msg.evt == nil || !containsSupportedMessage(msg.evt.Message)) {
@@ -3563,8 +3572,8 @@ func (portal *Portal) HandleMatrixRedaction(sender *User, evt *event.Event) {
 	}
 }
 
-func (portal *Portal) HandleMatrixReadReceipt(sender bridge.User, eventID id.EventID, receiptTimestamp time.Time) {
-	portal.handleMatrixReadReceipt(sender.(*User), eventID, receiptTimestamp, true)
+func (portal *Portal) HandleMatrixReadReceipt(sender bridge.User, eventID id.EventID, receipt event.ReadReceipt) {
+	portal.handleMatrixReadReceipt(sender.(*User), eventID, receipt.Timestamp, true)
 }
 
 func (portal *Portal) handleMatrixReadReceipt(sender *User, eventID id.EventID, receiptTimestamp time.Time, isExplicit bool) {
