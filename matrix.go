@@ -56,10 +56,19 @@ func (br *WABridge) CreatePrivatePortal(roomID id.RoomID, brInviter bridge.User,
 }
 
 func (br *WABridge) createPrivatePortalFromInvite(roomID id.RoomID, inviter *User, puppet *Puppet, portal *Portal) {
+	// TODO check if room is already encrypted
+	var existingEncryption event.EncryptionEventContent
+	var encryptionEnabled bool
+	err := portal.MainIntent().StateEvent(roomID, event.StateEncryption, "", &existingEncryption)
+	if err != nil {
+		portal.log.Warnfln("Failed to check if encryption is enabled in private chat room %s", roomID)
+	} else {
+		encryptionEnabled = existingEncryption.Algorithm == id.AlgorithmMegolmV1
+	}
 	portal.MXID = roomID
 	portal.Topic = PrivateChatTopic
 	_, _ = portal.MainIntent().SetRoomTopic(portal.MXID, portal.Topic)
-	if portal.bridge.Config.Bridge.PrivateChatPortalMeta {
+	if portal.bridge.Config.Bridge.PrivateChatPortalMeta || br.Config.Bridge.Encryption.Default || encryptionEnabled {
 		portal.Name = puppet.Displayname
 		portal.AvatarURL = puppet.AvatarURL
 		portal.Avatar = puppet.Avatar
@@ -71,7 +80,7 @@ func (br *WABridge) createPrivatePortalFromInvite(roomID id.RoomID, inviter *Use
 	portal.log.Infofln("Created private chat portal in %s after invite from %s", roomID, inviter.MXID)
 	intent := puppet.DefaultIntent()
 
-	if br.Config.Bridge.Encryption.Default {
+	if br.Config.Bridge.Encryption.Default || encryptionEnabled {
 		_, err := intent.InviteUser(roomID, &mautrix.ReqInviteUser{UserID: br.Bot.UserID})
 		if err != nil {
 			portal.log.Warnln("Failed to invite bridge bot to enable e2be:", err)
@@ -80,9 +89,11 @@ func (br *WABridge) createPrivatePortalFromInvite(roomID id.RoomID, inviter *Use
 		if err != nil {
 			portal.log.Warnln("Failed to join as bridge bot to enable e2be:", err)
 		}
-		_, err = intent.SendStateEvent(roomID, event.StateEncryption, "", portal.GetEncryptionEventContent())
-		if err != nil {
-			portal.log.Warnln("Failed to enable e2be:", err)
+		if !encryptionEnabled {
+			_, err = intent.SendStateEvent(roomID, event.StateEncryption, "", portal.GetEncryptionEventContent())
+			if err != nil {
+				portal.log.Warnln("Failed to enable e2be:", err)
+			}
 		}
 		br.AS.StateStore.SetMembership(roomID, inviter.MXID, event.MembershipJoin)
 		br.AS.StateStore.SetMembership(roomID, puppet.MXID, event.MembershipJoin)

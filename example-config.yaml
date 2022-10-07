@@ -231,6 +231,7 @@ bridge:
     login_shared_secret_map:
         example.com: foobar
     # Should the bridge explicitly set the avatar and room name for private chat portal rooms?
+    # This is implicitly enabled in encrypted rooms.
     private_chat_portal_meta: false
     # Should group members be synced in parallel? This makes member sync faster
     parallel_member_sync: false
@@ -320,7 +321,6 @@ bridge:
         allow: false
         # Default to encryption, force-enable encryption in all portals the bridge creates
         # This will cause the bridge bot to be in private chats for the encryption to work properly.
-        # It is recommended to also set private_chat_portal_meta to true when using this.
         default: false
         # Whether to use MSC2409/MSC3202 instead of /sync long polling for receiving encryption-related data.
         appservice: false

@@ -1388,7 +1388,7 @@ func (portal *Portal) CreateMatrixRoom(user *User, groupInfo *types.GroupInfo, i
 	if portal.IsPrivateChat() {
 		puppet := portal.bridge.GetPuppetByJID(portal.Key.JID)
 		puppet.SyncContact(user, true, false, "creating private chat portal")
-		if portal.bridge.Config.Bridge.PrivateChatPortalMeta {
+		if portal.bridge.Config.Bridge.PrivateChatPortalMeta || portal.bridge.Config.Bridge.Encryption.Default {
 			portal.Name = puppet.Displayname
 			portal.AvatarURL = puppet.AvatarURL
 			portal.Avatar = puppet.Avatar

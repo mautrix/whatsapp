@@ -265,8 +265,11 @@ func (puppet *Puppet) UpdateName(contact types.ContactInfo, forcePortalSync bool
 }
 
 func (puppet *Puppet) updatePortalMeta(meta func(portal *Portal)) {
-	if puppet.bridge.Config.Bridge.PrivateChatPortalMeta {
+	if puppet.bridge.Config.Bridge.PrivateChatPortalMeta || puppet.bridge.Config.Bridge.Encryption.Allow {
 		for _, portal := range puppet.bridge.GetAllPortalsByJID(puppet.JID) {
+			if !puppet.bridge.Config.Bridge.PrivateChatPortalMeta && !portal.Encrypted {
+				continue
+			}
 			// Get room create lock to prevent races between receiving contact info and room creation.
 			portal.roomCreateLock.Lock()
 			meta(portal)
