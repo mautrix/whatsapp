@@ -287,6 +287,9 @@ bridge:
     # Send captions in the same message as images. This will send data compatible with both MSC2530 and MSC3552.
     # This is currently not supported in most clients.
     caption_in_message: false
+    # Should Matrix edits be bridged to WhatsApp edits?
+    # Official WhatsApp clients don't render edits yet, but once they do, the bridge should work with them right away.
+    send_whatsapp_edits: false
     # Maximum time for handling Matrix events. Duration strings formatted for https://pkg.go.dev/time#ParseDuration
     # Null means there's no enforced timeout.
     message_handling_timeout:

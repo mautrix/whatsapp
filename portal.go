@@ -422,6 +422,8 @@ func getMessageType(waMsg *waProto.Message) string {
 				return "ignore"
 			}
 			return "revoke"
+		case waProto.ProtocolMessage_MESSAGE_EDIT:
+			return "edit"
 		case waProto.ProtocolMessage_EPHEMERAL_SETTING:
 			return "disappearing timer change"
 		case waProto.ProtocolMessage_APP_STATE_SYNC_KEY_SHARE, waProto.ProtocolMessage_HISTORY_SYNC_NOTIFICATION, waProto.ProtocolMessage_INITIAL_SECURITY_NOTIFICATION_SETTING_SYNC:
@@ -703,6 +705,22 @@ func (portal *Portal) handleMessage(source *User, evt *events.Message) {
 			return
 		}
 	}
+	var editTargetMsg *database.Message
+	if msgType == "edit" {
+		editTargetID := evt.Message.GetProtocolMessage().GetKey().GetId()
+		editTargetMsg = portal.bridge.DB.Message.GetByJID(portal.Key, editTargetID)
+		if editTargetMsg == nil {
+			portal.log.Warnfln("Not handling %s: couldn't find edit target %s", msgID, editTargetID)
+			return
+		} else if editTargetMsg.Type != database.MsgNormal {
+			portal.log.Warnfln("Not handling %s: edit target %s is not a normal message (it's %s)", msgID, editTargetID, editTargetMsg.Type)
+			return
+		} else if editTargetMsg.Sender.User != evt.Info.Sender.User {
+			portal.log.Warnfln("Not handling %s: edit target %s was sent by %s, not %s", msgID, editTargetID, editTargetMsg.Sender.User, evt.Info.Sender.User)
+			return
+		}
+		evt.Message = evt.Message.GetProtocolMessage().GetEditedMessage()
+	}
 
 	intent := portal.getMessageIntent(source, &evt.Info)
 	if intent == nil {
@@ -730,16 +748,23 @@ func (portal *Portal) handleMessage(source *User, evt *events.Message) {
 		} else if converted.ReplyTo != nil {
 			portal.SetReply(converted.Content, converted.ReplyTo, false)
 		}
+		dbMsgType := database.MsgNormal
+		if editTargetMsg != nil {
+			dbMsgType = database.MsgEdit
+			converted.Content.SetEdit(editTargetMsg.MXID)
+		}
 		resp, err := portal.sendMessage(converted.Intent, converted.Type, converted.Content, converted.Extra, evt.Info.Timestamp.UnixMilli())
 		if err != nil {
 			portal.log.Errorfln("Failed to send %s to Matrix: %v", msgID, err)
 		} else {
-			portal.MarkDisappearing(resp.EventID, converted.ExpiresIn, false)
+			if editTargetMsg == nil {
+				portal.MarkDisappearing(resp.EventID, converted.ExpiresIn, false)
+			}
 			eventID = resp.EventID
 			lastEventID = eventID
 		}
 		// TODO figure out how to handle captions with undecryptable messages turning decryptable
-		if converted.Caption != nil && existingMsg == nil {
+		if converted.Caption != nil && existingMsg == nil && editTargetMsg == nil {
 			resp, err = portal.sendMessage(converted.Intent, converted.Type, converted.Caption, nil, evt.Info.Timestamp.UnixMilli())
 			if err != nil {
 				portal.log.Errorfln("Failed to send caption of %s to Matrix: %v", msgID, err)
@@ -748,7 +773,7 @@ func (portal *Portal) handleMessage(source *User, evt *events.Message) {
 				lastEventID = resp.EventID
 			}
 		}
-		if converted.MultiEvent != nil && existingMsg == nil {
+		if converted.MultiEvent != nil && existingMsg == nil && editTargetMsg == nil {
 			for index, subEvt := range converted.MultiEvent {
 				resp, err = portal.sendMessage(converted.Intent, converted.Type, subEvt, nil, evt.Info.Timestamp.UnixMilli())
 				if err != nil {
@@ -759,16 +784,17 @@ func (portal *Portal) handleMessage(source *User, evt *events.Message) {
 				}
 			}
 		}
-		if source.MXID == intent.UserID {
+		if source.MXID == intent.UserID && portal.bridge.Config.Homeserver.Software != bridgeconfig.SoftwareHungry {
 			// There are some edge cases (like call notices) where previous messages aren't marked as read
 			// when the user sends a message from another device, so just mark the new message as read to be safe.
+			// Hungryserv does this automatically, so the bridge doesn't need to do it manually.
 			err = intent.SetReadMarkers(portal.MXID, source.makeReadMarkerContent(lastEventID, true))
 			if err != nil {
 				portal.log.Warnfln("Failed to mark own message %s as read by %s: %v", lastEventID, source.MXID, err)
 			}
 		}
 		if len(eventID) != 0 {
-			portal.finishHandling(existingMsg, &evt.Info, eventID, database.MsgNormal, converted.Error)
+			portal.finishHandling(existingMsg, &evt.Info, eventID, dbMsgType, converted.Error)
 		}
 	} else if msgType == "reaction" {
 		portal.HandleMessageReaction(intent, source, &evt.Info, evt.Message.GetReactionMessage(), existingMsg)
@@ -3138,8 +3164,18 @@ func (portal *Portal) convertMatrixMessage(ctx context.Context, sender *User, ev
 	if !ok {
 		return nil, sender, fmt.Errorf("%w %T", errUnexpectedParsedContentType, evt.Content.Parsed)
 	}
+	var editRootMsg *database.Message
+	if editEventID := content.RelatesTo.GetReplaceID(); editEventID != "" && portal.bridge.Config.Bridge.SendWhatsAppEdits {
+		editRootMsg = portal.bridge.DB.Message.GetByMXID(editEventID)
+		if editRootMsg == nil || editRootMsg.Type != database.MsgNormal || editRootMsg.IsFakeJID() || editRootMsg.Sender.User != sender.JID.User {
+			return nil, sender, fmt.Errorf("edit rejected") // TODO more specific error message
+		}
+		if content.NewContent != nil {
+			content = content.NewContent
+		}
+	}
 
-	var msg waProto.Message
+	msg := &waProto.Message{}
 	var ctxInfo waProto.ContextInfo
 	replyToID := content.GetReplyTo()
 	if len(replyToID) > 0 {
@@ -3320,7 +3356,26 @@ func (portal *Portal) convertMatrixMessage(ctx context.Context, sender *User, ev
 	default:
 		return nil, sender, fmt.Errorf("%w %q", errUnknownMsgType, content.MsgType)
 	}
-	return &msg, sender, nil
+
+	if editRootMsg != nil {
+		msg = &waProto.Message{
+			EditedMessage: &waProto.FutureProofMessage{
+				Message: &waProto.Message{
+					ProtocolMessage: &waProto.ProtocolMessage{
+						Key: &waProto.MessageKey{
+							FromMe:    proto.Bool(true),
+							Id:        proto.String(editRootMsg.JID),
+							RemoteJid: proto.String(portal.Key.JID.String()),
+						},
+						Type:          waProto.ProtocolMessage_MESSAGE_EDIT.Enum(),
+						EditedMessage: msg,
+					},
+				},
+			},
+		}
+	}
+
+	return msg, sender, nil
 }
 
 func (portal *Portal) generateMessageInfo(sender *User) *types.MessageInfo {
@@ -3405,10 +3460,15 @@ func (portal *Portal) HandleMatrixMessage(sender *User, evt *event.Event, timing
 		go ms.sendMessageMetrics(evt, err, "Error converting", true)
 		return
 	}
-	portal.MarkDisappearing(origEvtID, portal.ExpirationTime, true)
+	dbMsgType := database.MsgNormal
+	if msg.EditedMessage == nil {
+		portal.MarkDisappearing(origEvtID, portal.ExpirationTime, true)
+	} else {
+		dbMsgType = database.MsgEdit
+	}
 	info := portal.generateMessageInfo(sender)
 	if dbMsg == nil {
-		dbMsg = portal.markHandled(nil, nil, info, evt.ID, false, true, database.MsgNormal, database.MsgNoError)
+		dbMsg = portal.markHandled(nil, nil, info, evt.ID, false, true, dbMsgType, database.MsgNoError)
 	} else {
 		info.ID = dbMsg.JID
 	}

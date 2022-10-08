@@ -1,3 +1,18 @@
+# v0.7.1 (unreleased)
+
+* Added support for wa.me/qr links in `!wa resolve-link`.
+* Added option to sync group members in parallel to speed up syncing large
+  groups.
+* Added initial support for WhatsApp message editing.
+  * Sending edits will be disabled by default until official WhatsApp clients
+    start rendering edits.
+* Changed `private_chat_portal_meta` config option to be implicitly enabled in
+  encrypted rooms, matching the behavior of other mautrix bridges.
+* Updated media bridging to check homeserver media size limit before
+  downloading media to avoid running out of memory.
+  * The bridge may still run out of ram when bridging files if your homeserver
+    has a large media size limit and a low bridge memory limit.
+
 # v0.7.0 (2022-09-16)
 
 * Bumped minimum Go version to 1.18.

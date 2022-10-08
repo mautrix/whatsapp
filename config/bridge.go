@@ -110,6 +110,7 @@ type BridgeConfig struct {
 	FederateRooms         bool   `yaml:"federate_rooms"`
 	URLPreviews           bool   `yaml:"url_previews"`
 	CaptionInMessage      bool   `yaml:"caption_in_message"`
+	SendWhatsAppEdits     bool   `yaml:"send_whatsapp_edits"`
 
 	MessageHandlingTimeout struct {
 		ErrorAfterStr string `yaml:"error_after"`

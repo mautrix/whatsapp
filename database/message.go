@@ -138,6 +138,7 @@ const (
 	MsgFake     MessageType = "fake"
 	MsgNormal   MessageType = "message"
 	MsgReaction MessageType = "reaction"
+	MsgEdit     MessageType = "edit"
 )
 
 type Message struct {

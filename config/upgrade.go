@@ -93,6 +93,7 @@ func DoUpgrade(helper *up.Helper) {
 	helper.Copy(up.Bool, "bridge", "crash_on_stream_replaced")
 	helper.Copy(up.Bool, "bridge", "url_previews")
 	helper.Copy(up.Bool, "bridge", "caption_in_message")
+	helper.Copy(up.Bool, "bridge", "send_whatsapp_edits")
 	helper.Copy(up.Str|up.Null, "bridge", "message_handling_timeout", "error_after")
 	helper.Copy(up.Str|up.Null, "bridge", "message_handling_timeout", "deadline")
 
