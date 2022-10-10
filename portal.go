@@ -942,21 +942,27 @@ func (portal *Portal) syncParticipant(source *User, participant types.GroupParti
 		}
 	}()
 	puppet.SyncContact(source, true, false, "group participant")
-	if user != nil && user != source {
-		portal.ensureUserInvited(user)
-	}
-	if user == nil || !puppet.IntentFor(portal).IsCustomPuppet {
-		err := puppet.IntentFor(portal).EnsureJoined(portal.MXID)
-		if err != nil {
-			portal.log.Warnfln("Failed to make puppet of %s join %s: %v", participant.JID, portal.MXID, err)
+	if portal.MXID != "" {
+		if user != nil && user != source {
+			portal.ensureUserInvited(user)
+		}
+		if user == nil || !puppet.IntentFor(portal).IsCustomPuppet {
+			err := puppet.IntentFor(portal).EnsureJoined(portal.MXID)
+			if err != nil {
+				portal.log.Warnfln("Failed to make puppet of %s join %s: %v", participant.JID, portal.MXID, err)
+			}
 		}
 	}
 }
 
-func (portal *Portal) SyncParticipants(source *User, metadata *types.GroupInfo) {
+func (portal *Portal) SyncParticipants(source *User, metadata *types.GroupInfo) ([]id.UserID, *event.PowerLevelsEventContent) {
 	changed := false
-	levels, err := portal.MainIntent().PowerLevels(portal.MXID)
-	if err != nil {
+	var levels *event.PowerLevelsEventContent
+	var err error
+	if portal.MXID != "" {
+		levels, err = portal.MainIntent().PowerLevels(portal.MXID)
+	}
+	if levels == nil || err != nil {
 		levels = portal.GetBasePowerLevels()
 		changed = true
 	}
@@ -964,6 +970,7 @@ func (portal *Portal) SyncParticipants(source *User, metadata *types.GroupInfo) 
 	var wg sync.WaitGroup
 	wg.Add(len(metadata.Participants))
 	participantMap := make(map[types.JID]bool)
+	userIDs := make([]id.UserID, 0, len(metadata.Participants))
 	for _, participant := range metadata.Participants {
 		portal.log.Debugfln("Syncing participant %s (admin: %t)", participant.JID, participant.IsAdmin)
 		participantMap[participant.JID] = true
@@ -983,18 +990,25 @@ func (portal *Portal) SyncParticipants(source *User, metadata *types.GroupInfo) 
 		}
 		changed = levels.EnsureUserLevel(puppet.MXID, expectedLevel) || changed
 		if user != nil {
+			userIDs = append(userIDs, user.MXID)
 			changed = levels.EnsureUserLevel(user.MXID, expectedLevel) || changed
 		}
-	}
-	if changed {
-		_, err = portal.MainIntent().SetPowerLevels(portal.MXID, levels)
-		if err != nil {
-			portal.log.Errorln("Failed to change power levels:", err)
+		if user == nil || puppet.CustomMXID != user.MXID {
+			userIDs = append(userIDs, puppet.MXID)
 		}
 	}
-	portal.kickExtraUsers(participantMap)
+	if portal.MXID != "" {
+		if changed {
+			_, err = portal.MainIntent().SetPowerLevels(portal.MXID, levels)
+			if err != nil {
+				portal.log.Errorln("Failed to change power levels:", err)
+			}
+		}
+		portal.kickExtraUsers(participantMap)
+	}
 	wg.Wait()
 	portal.log.Debugln("Participant sync completed")
+	return userIDs, levels
 }
 
 func reuploadAvatar(intent *appservice.IntentAPI, url string) (id.ContentURI, error) {
@@ -1517,6 +1531,21 @@ func (portal *Portal) CreateMatrixRoom(user *User, groupInfo *types.GroupInfo, i
 	if !portal.bridge.Config.Bridge.FederateRooms {
 		creationContent["m.federate"] = false
 	}
+	autoJoinInvites := portal.bridge.Config.Homeserver.Software == bridgeconfig.SoftwareHungry
+	if autoJoinInvites {
+		portal.log.Debugfln("Hungryserv mode: adding all group members in create request")
+		if groupInfo != nil {
+			// TODO non-hungryserv could also include all members in invites, and then send joins manually?
+			participants, powerLevels := portal.SyncParticipants(user, groupInfo)
+			invite = append(invite, participants...)
+			if initialState[0].Type != event.StatePowerLevels {
+				panic(fmt.Errorf("unexpected type %s in first initial state event", initialState[0].Type.Type))
+			}
+			initialState[0].Content.Parsed = powerLevels
+		} else {
+			invite = append(invite, user.MXID)
+		}
+	}
 	resp, err := intent.CreateRoom(&mautrix.ReqCreateRoom{
 		Visibility:      "private",
 		Name:            portal.Name,
@@ -1526,6 +1555,8 @@ func (portal *Portal) CreateMatrixRoom(user *User, groupInfo *types.GroupInfo, i
 		IsDirect:        portal.IsPrivateChat(),
 		InitialState:    initialState,
 		CreationContent: creationContent,
+
+		BeeperAutoJoinInvites: autoJoinInvites,
 	})
 	if err != nil {
 		return err
@@ -1540,11 +1571,17 @@ func (portal *Portal) CreateMatrixRoom(user *User, groupInfo *types.GroupInfo, i
 	portal.log.Infoln("Matrix room created:", portal.MXID)
 
 	// We set the memberships beforehand to make sure the encryption key exchange in initial backfill knows the users are here.
+	inviteMembership := event.MembershipInvite
+	if autoJoinInvites {
+		inviteMembership = event.MembershipJoin
+	}
 	for _, userID := range invite {
-		portal.bridge.StateStore.SetMembership(portal.MXID, userID, event.MembershipInvite)
+		portal.bridge.StateStore.SetMembership(portal.MXID, userID, inviteMembership)
 	}
 
-	portal.ensureUserInvited(user)
+	if !autoJoinInvites {
+		portal.ensureUserInvited(user)
+	}
 	user.syncChatDoublePuppetDetails(portal, true)
 
 	go portal.addToSpace(user)
@@ -1554,7 +1591,9 @@ func (portal *Portal) CreateMatrixRoom(user *User, groupInfo *types.GroupInfo, i
 			portal.ExpirationTime = groupInfo.DisappearingTimer
 			portal.Update(nil)
 		}
-		portal.SyncParticipants(user, groupInfo)
+		if !autoJoinInvites {
+			portal.SyncParticipants(user, groupInfo)
+		}
 		if groupInfo.IsAnnounce {
 			portal.RestrictMessageSending(groupInfo.IsAnnounce)
 		}
