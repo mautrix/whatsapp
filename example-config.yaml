@@ -149,6 +149,12 @@ bridge:
         # provisioning endpoint is used or when a message comes in from that
         # chat.
         max_initial_conversations: -1
+        # If this value is greater than 0, then if the conversation's last
+        # message was more than this number of hours ago, then the conversation
+        # will automatically be marked it as read.
+        # Conversations that have a last message that is less than this number
+        # of hours ago will have their unread status synced from WhatsApp.
+        unread_hours_threshold: 0
         # Settings for immediate backfills. These backfills should generally be
         # small and their main purpose is to populate each of the initial chats
         # (as configured by max_initial_conversations) with a few messages so
