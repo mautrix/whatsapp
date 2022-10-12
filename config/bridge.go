@@ -63,6 +63,7 @@ type BridgeConfig struct {
 		DoublePuppetBackfill    bool `yaml:"double_puppet_backfill"`
 		RequestFullSync         bool `yaml:"request_full_sync"`
 		MaxInitialConversations int  `yaml:"max_initial_conversations"`
+		UnreadHoursThreshold    int  `yaml:"unread_hours_threshold"`
 
 		Immediate struct {
 			WorkerCount int `yaml:"worker_count"`

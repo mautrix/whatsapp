@@ -292,6 +292,8 @@ func (user *User) backfillInChunks(req *database.Backfill, conv *database.Histor
 
 	if !conv.MarkedAsUnread && conv.UnreadCount == 0 {
 		user.markSelfReadFull(portal)
+	} else if user.bridge.Config.Bridge.HistorySync.UnreadHoursThreshold > 0 && conv.LastMessageTimestamp.Before(time.Now().Add(time.Duration(-user.bridge.Config.Bridge.HistorySync.UnreadHoursThreshold)*time.Hour)) {
+		user.markSelfReadFull(portal)
 	} else if user.bridge.Config.Bridge.SyncManualMarkedUnread {
 		user.markUnread(portal, true)
 	}
