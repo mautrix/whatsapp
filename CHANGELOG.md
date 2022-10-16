@@ -1,4 +1,4 @@
-# v0.7.1 (unreleased)
+# v0.7.1 (2022-10-16)
 
 * Added support for wa.me/qr links in `!wa resolve-link`.
 * Added option to sync group members in parallel to speed up syncing large
