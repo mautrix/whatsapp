@@ -3408,6 +3408,7 @@ func (portal *Portal) convertMatrixMessage(ctx context.Context, sender *User, ev
 						},
 						Type:          waProto.ProtocolMessage_MESSAGE_EDIT.Enum(),
 						EditedMessage: msg,
+						TimestampMs:   proto.Int64(evt.Timestamp),
 					},
 				},
 			},
