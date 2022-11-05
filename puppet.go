@@ -38,9 +38,7 @@ var userIDRegex *regexp.Regexp
 
 func (br *WABridge) ParsePuppetMXID(mxid id.UserID) (jid types.JID, ok bool) {
 	if userIDRegex == nil {
-		userIDRegex = regexp.MustCompile(fmt.Sprintf("^@%s:%s$",
-			br.Config.Bridge.FormatUsername("([0-9]+)"),
-			br.Config.Homeserver.Domain))
+		userIDRegex = br.Config.MakeUserIDRegex("([0-9]+)")
 	}
 	match := userIDRegex.FindStringSubmatch(string(mxid))
 	if len(match) == 2 {
