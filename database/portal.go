@@ -209,24 +209,18 @@ func (portal *Portal) Insert() {
 	}
 }
 
-func (portal *Portal) Update(txn dbutil.Transaction) {
-	query := `
+func (portal *Portal) Update(txn dbutil.Execable) {
+	if txn == nil {
+		txn = portal.db
+	}
+	_, err := txn.Exec(`
 		UPDATE portal
 		SET mxid=$1, name=$2, name_set=$3, topic=$4, topic_set=$5, avatar=$6, avatar_url=$7, avatar_set=$8,
 		    encrypted=$9, last_sync=$10, first_event_id=$11, next_batch_id=$12, relay_user_id=$13, expiration_time=$14
 		WHERE jid=$15 AND receiver=$16
-	`
-	args := []interface{}{
-		portal.mxidPtr(), portal.Name, portal.NameSet, portal.Topic, portal.TopicSet, portal.Avatar, portal.AvatarURL.String(),
+	`, portal.mxidPtr(), portal.Name, portal.NameSet, portal.Topic, portal.TopicSet, portal.Avatar, portal.AvatarURL.String(),
 		portal.AvatarSet, portal.Encrypted, portal.lastSyncTs(), portal.FirstEventID.String(), portal.NextBatchID.String(),
-		portal.relayUserPtr(), portal.ExpirationTime, portal.Key.JID, portal.Key.Receiver,
-	}
-	var err error
-	if txn != nil {
-		_, err = txn.Exec(query, args...)
-	} else {
-		_, err = portal.db.Exec(query, args...)
-	}
+		portal.relayUserPtr(), portal.ExpirationTime, portal.Key.JID, portal.Key.Receiver)
 	if err != nil {
 		portal.log.Warnfln("Failed to update %s: %v", portal.Key, err)
 	}
