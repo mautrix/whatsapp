@@ -112,13 +112,16 @@ func (msg *DisappearingMessage) Scan(row dbutil.Scannable) *DisappearingMessage 
 	return msg
 }
 
-func (msg *DisappearingMessage) Insert() {
+func (msg *DisappearingMessage) Insert(txn dbutil.Execable) {
+	if txn == nil {
+		txn = msg.db
+	}
 	var expireAt sql.NullInt64
 	if !msg.ExpireAt.IsZero() {
 		expireAt.Valid = true
 		expireAt.Int64 = msg.ExpireAt.UnixMilli()
 	}
-	_, err := msg.db.Exec(`INSERT INTO disappearing_message (room_id, event_id, expire_in, expire_at) VALUES ($1, $2, $3, $4)`,
+	_, err := txn.Exec(`INSERT INTO disappearing_message (room_id, event_id, expire_in, expire_at) VALUES ($1, $2, $3, $4)`,
 		msg.RoomID, msg.EventID, msg.ExpireIn.Milliseconds(), expireAt)
 	if err != nil {
 		msg.log.Warnfln("Failed to insert %s/%s: %v", msg.RoomID, msg.EventID, err)

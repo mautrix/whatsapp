@@ -22,17 +22,18 @@ import (
 
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/id"
+	"maunium.net/go/mautrix/util/dbutil"
 
 	"maunium.net/go/mautrix-whatsapp/database"
 )
 
-func (portal *Portal) MarkDisappearing(eventID id.EventID, expiresIn uint32, startNow bool) {
+func (portal *Portal) MarkDisappearing(txn dbutil.Execable, eventID id.EventID, expiresIn uint32, startNow bool) {
 	if expiresIn == 0 || (!portal.bridge.Config.Bridge.DisappearingMessagesInGroups && portal.IsGroupChat()) {
 		return
 	}
 
 	msg := portal.bridge.DB.DisappearingMessage.NewWithValues(portal.MXID, eventID, time.Duration(expiresIn)*time.Second, startNow)
-	msg.Insert()
+	msg.Insert(txn)
 	if startNow {
 		go portal.sleepAndDelete(msg)
 	}

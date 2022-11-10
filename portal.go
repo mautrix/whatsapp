@@ -743,7 +743,7 @@ func (portal *Portal) handleMessage(source *User, evt *events.Message) {
 		var eventID id.EventID
 		var lastEventID id.EventID
 		if existingMsg != nil {
-			portal.MarkDisappearing(existingMsg.MXID, converted.ExpiresIn, false)
+			portal.MarkDisappearing(nil, existingMsg.MXID, converted.ExpiresIn, false)
 			converted.Content.SetEdit(existingMsg.MXID)
 		} else if converted.ReplyTo != nil {
 			portal.SetReply(converted.Content, converted.ReplyTo, false)
@@ -758,7 +758,7 @@ func (portal *Portal) handleMessage(source *User, evt *events.Message) {
 			portal.log.Errorfln("Failed to send %s to Matrix: %v", msgID, err)
 		} else {
 			if editTargetMsg == nil {
-				portal.MarkDisappearing(resp.EventID, converted.ExpiresIn, false)
+				portal.MarkDisappearing(nil, resp.EventID, converted.ExpiresIn, false)
 			}
 			eventID = resp.EventID
 			lastEventID = eventID
@@ -769,7 +769,7 @@ func (portal *Portal) handleMessage(source *User, evt *events.Message) {
 			if err != nil {
 				portal.log.Errorfln("Failed to send caption of %s to Matrix: %v", msgID, err)
 			} else {
-				portal.MarkDisappearing(resp.EventID, converted.ExpiresIn, false)
+				portal.MarkDisappearing(nil, resp.EventID, converted.ExpiresIn, false)
 				lastEventID = resp.EventID
 			}
 		}
@@ -779,7 +779,7 @@ func (portal *Portal) handleMessage(source *User, evt *events.Message) {
 				if err != nil {
 					portal.log.Errorfln("Failed to send sub-event %d of %s to Matrix: %v", index+1, msgID, err)
 				} else {
-					portal.MarkDisappearing(resp.EventID, converted.ExpiresIn, false)
+					portal.MarkDisappearing(nil, resp.EventID, converted.ExpiresIn, false)
 					lastEventID = resp.EventID
 				}
 			}
@@ -3502,7 +3502,7 @@ func (portal *Portal) HandleMatrixMessage(sender *User, evt *event.Event, timing
 	}
 	dbMsgType := database.MsgNormal
 	if msg.EditedMessage == nil {
-		portal.MarkDisappearing(origEvtID, portal.ExpirationTime, true)
+		portal.MarkDisappearing(nil, origEvtID, portal.ExpirationTime, true)
 	} else {
 		dbMsgType = database.MsgEdit
 	}

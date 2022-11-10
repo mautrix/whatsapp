@@ -788,10 +788,10 @@ func (portal *Portal) finishBatch(txn dbutil.Transaction, eventIDs []id.EventID,
 			if info.ExpirationStart > 0 {
 				remainingSeconds := time.Unix(int64(info.ExpirationStart), 0).Add(time.Duration(info.ExpiresIn) * time.Second).Sub(time.Now()).Seconds()
 				portal.log.Debugfln("Disappearing history sync message: expires in %d, started at %d, remaining %d", info.ExpiresIn, info.ExpirationStart, int(remainingSeconds))
-				portal.MarkDisappearing(eventID, uint32(remainingSeconds), true)
+				portal.MarkDisappearing(txn, eventID, uint32(remainingSeconds), true)
 			} else {
 				portal.log.Debugfln("Disappearing history sync message: expires in %d (not started)", info.ExpiresIn)
-				portal.MarkDisappearing(eventID, info.ExpiresIn, false)
+				portal.MarkDisappearing(txn, eventID, info.ExpiresIn, false)
 			}
 		}
 	}
