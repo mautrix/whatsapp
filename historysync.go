@@ -399,7 +399,7 @@ func (user *User) handleHistorySync(backfillQueue *BackfillQueue, evt *waProto.H
 			switch evt.GetSyncType() {
 			case waProto.HistorySync_INITIAL_BOOTSTRAP:
 				// Enqueue immediate backfills for the most recent messages first.
-				user.EnqueueImmedateBackfills(portals)
+				user.EnqueueImmediateBackfills(portals)
 			case waProto.HistorySync_FULL, waProto.HistorySync_RECENT:
 				user.EnqueueForwardBackfills(portals)
 				// Enqueue deferred backfills as configured.
@@ -420,7 +420,7 @@ func getConversationTimestamp(conv *waProto.Conversation) uint64 {
 	return convTs
 }
 
-func (user *User) EnqueueImmedateBackfills(portals []*Portal) {
+func (user *User) EnqueueImmediateBackfills(portals []*Portal) {
 	for priority, portal := range portals {
 		maxMessages := user.bridge.Config.Bridge.HistorySync.Immediate.MaxEvents
 		initialBackfill := user.bridge.DB.Backfill.NewWithValues(user.MXID, database.BackfillImmediate, priority, &portal.Key, nil, maxMessages, maxMessages, 0)
