@@ -22,7 +22,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"html"
 	"image"
 	"image/color"
 	_ "image/gif"
@@ -2172,7 +2171,7 @@ type InviteMeta struct {
 
 func (portal *Portal) convertGroupInviteMessage(intent *appservice.IntentAPI, info *types.MessageInfo, msg *waProto.GroupInviteMessage) *ConvertedMessage {
 	expiry := time.Unix(msg.GetInviteExpiration(), 0)
-	htmlMessage := fmt.Sprintf(inviteMsg, html.EscapeString(msg.GetCaption()), msg.GetGroupName(), expiry)
+	htmlMessage := fmt.Sprintf(inviteMsg, event.TextToHTML(msg.GetCaption()), msg.GetGroupName(), expiry)
 	content := &event.MessageEventContent{
 		MsgType:       event.MsgText,
 		Body:          format.HTMLToText(htmlMessage),
@@ -3136,11 +3135,7 @@ func (portal *Portal) addRelaybotFormat(sender *User, content *event.MessageEven
 	if member == nil {
 		member = &event.MemberEventContent{}
 	}
-
-	if content.Format != event.FormatHTML {
-		content.FormattedBody = strings.Replace(html.EscapeString(content.Body), "\n", "<br/>", -1)
-		content.Format = event.FormatHTML
-	}
+	content.EnsureHasHTML()
 	data, err := portal.bridge.Config.Bridge.Relay.FormatMessage(content, sender.MXID, *member)
 	if err != nil {
 		portal.log.Errorln("Failed to apply relaybot format:", err)

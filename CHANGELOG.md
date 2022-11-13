@@ -1,3 +1,11 @@
+# v0.7.2 (unreleased)
+
+* Added option to handle all transactions asynchronously.
+  * This may be useful for large instances, but using it means messages are
+    no longer guaranteed to be sent to WhatsApp in the same order as Matrix.
+* Fixed database error when backfilling disappearing messages on SQLite.
+* Fixed incoming events blocking handling of incoming encryption keys.
+
 # v0.7.1 (2022-10-16)
 
 * Added support for wa.me/qr links in `!wa resolve-link`.
