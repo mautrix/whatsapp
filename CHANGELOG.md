@@ -1,4 +1,4 @@
-# v0.7.2 (unreleased)
+# v0.7.2 (2022-11-16)
 
 * Added option to handle all transactions asynchronously.
   * This may be useful for large instances, but using it means messages are
