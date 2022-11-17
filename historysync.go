@@ -232,6 +232,7 @@ func (user *User) backfillInChunks(req *database.Backfill, conv *database.Histor
 		msg.Sent = true
 		msg.Type = database.MsgFake
 		msg.Insert(nil)
+		user.markSelfReadFull(portal)
 		return
 	}
 
