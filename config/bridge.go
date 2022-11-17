@@ -111,6 +111,7 @@ type BridgeConfig struct {
 	FederateRooms         bool   `yaml:"federate_rooms"`
 	URLPreviews           bool   `yaml:"url_previews"`
 	CaptionInMessage      bool   `yaml:"caption_in_message"`
+	ExtEvPolls            int    `yaml:"extev_polls"`
 	SendWhatsAppEdits     bool   `yaml:"send_whatsapp_edits"`
 
 	MessageHandlingTimeout struct {

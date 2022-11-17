@@ -298,6 +298,9 @@ bridge:
     # Send captions in the same message as images. This will send data compatible with both MSC2530 and MSC3552.
     # This is currently not supported in most clients.
     caption_in_message: false
+    # Should polls be sent using MSC3381 event types? This should either be 1 for original polls MSC,
+    # 2 for the updated MSC as of November 2022, or 0 to use legacy m.room.message (which doesn't support voting).
+    extev_polls: 0
     # Should Matrix edits be bridged to WhatsApp edits?
     # Official WhatsApp clients don't render edits yet, but once they do, the bridge should work with them right away.
     send_whatsapp_edits: false

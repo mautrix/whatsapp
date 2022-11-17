@@ -19,6 +19,8 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -533,6 +535,8 @@ func (portal *Portal) convertMessage(intent *appservice.IntentAPI, source *User,
 		return portal.convertListResponseMessage(intent, waMsg.GetListResponseMessage())
 	case waMsg.PollCreationMessage != nil:
 		return portal.convertPollCreationMessage(intent, waMsg.GetPollCreationMessage())
+	case waMsg.PollUpdateMessage != nil:
+		return portal.convertPollUpdateMessage(intent, source, info, waMsg.GetPollUpdateMessage())
 	case waMsg.ImageMessage != nil:
 		return portal.convertMediaMessage(intent, source, info, waMsg.GetImageMessage(), "photo", isBackfill)
 	case waMsg.StickerMessage != nil:
@@ -2095,20 +2099,88 @@ func (portal *Portal) convertListResponseMessage(intent *appservice.IntentAPI, m
 	}
 }
 
+func (portal *Portal) convertPollUpdateMessage(intent *appservice.IntentAPI, source *User, info *types.MessageInfo, msg *waProto.PollUpdateMessage) *ConvertedMessage {
+	if portal.bridge.Config.Bridge.ExtEvPolls == 0 {
+		return nil
+	}
+	pollMessage := portal.bridge.DB.Message.GetByJID(portal.Key, msg.GetPollCreationMessageKey().GetId())
+	if pollMessage == nil {
+		portal.log.Warnfln("Failed to convert vote message %s: poll message %s not found", info.ID, msg.GetPollCreationMessageKey().GetId())
+		return nil
+	}
+	vote, err := source.Client.DecryptPollVote(&events.Message{
+		Info:    *info,
+		Message: &waProto.Message{PollUpdateMessage: msg},
+	})
+	if err != nil {
+		portal.log.Errorfln("Failed to decrypt vote message %s: %v", info.ID, err)
+		return nil
+	}
+	selectedHashes := make([]string, len(vote.GetSelectedOptions()))
+	for i, opt := range vote.GetSelectedOptions() {
+		selectedHashes[i] = hex.EncodeToString(opt)
+	}
+
+	evtType := event.Type{Class: event.MessageEventType, Type: "org.matrix.msc3381.poll.response"}
+	if portal.bridge.Config.Bridge.ExtEvPolls == 2 {
+		evtType.Type = "org.matrix.msc3381.v2.poll.response"
+	}
+	return &ConvertedMessage{
+		Intent: intent,
+		Type:   evtType,
+		Content: &event.MessageEventContent{
+			RelatesTo: &event.RelatesTo{
+				Type:    event.RelReference,
+				EventID: pollMessage.MXID,
+			},
+		},
+		Extra: map[string]any{
+			"org.matrix.msc3381.poll.response": map[string]any{
+				"answers": selectedHashes,
+			},
+			"org.matrix.msc3381.v2.selections": selectedHashes,
+		},
+	}
+}
+
 func (portal *Portal) convertPollCreationMessage(intent *appservice.IntentAPI, msg *waProto.PollCreationMessage) *ConvertedMessage {
-	optionsListText := make([]string, len(msg.GetOptions()))
-	optionsListHTML := make([]string, len(msg.GetOptions()))
 	optionNames := make([]string, len(msg.GetOptions()))
+	optionsListText := make([]string, len(optionNames))
+	optionsListHTML := make([]string, len(optionNames))
+	msc3381Answers := make([]map[string]any, len(optionNames))
+	msc3381V2Answers := make([]map[string]any, len(optionNames))
 	for i, opt := range msg.GetOptions() {
 		optionNames[i] = opt.GetOptionName()
 		optionsListText[i] = fmt.Sprintf("%d. %s\n", i+1, optionNames[i])
 		optionsListHTML[i] = fmt.Sprintf("<li>%s</li>", event.TextToHTML(optionNames[i]))
+		optionHash := sha256.Sum256([]byte(opt.GetOptionName()))
+		optionHashStr := hex.EncodeToString(optionHash[:])
+		msc3381Answers[i] = map[string]any{
+			"id":                      optionHashStr,
+			"org.matrix.msc1767.text": opt.GetOptionName(),
+		}
+		msc3381V2Answers[i] = map[string]any{
+			"org.matrix.msc3381.v2.id": optionHashStr,
+			"org.matrix.msc1767.markup": []map[string]any{
+				{"mimetype": "text/plain", "body": opt.GetOptionName()},
+			},
+		}
 	}
 	body := fmt.Sprintf("%s\n\n%s", msg.GetName(), strings.Join(optionsListText, "\n"))
 	formattedBody := fmt.Sprintf("<p>%s</p><ol>%s</ol>", event.TextToHTML(msg.GetName()), strings.Join(optionsListHTML, ""))
+	maxChoices := int(msg.GetSelectableOptionsCount())
+	if maxChoices <= 0 {
+		maxChoices = len(optionNames)
+	}
+	evtType := event.EventMessage
+	if portal.bridge.Config.Bridge.ExtEvPolls == 1 {
+		evtType.Type = "org.matrix.msc3381.poll.start"
+	} else if portal.bridge.Config.Bridge.ExtEvPolls == 2 {
+		evtType.Type = "org.matrix.msc3381.v2.poll.start"
+	}
 	return &ConvertedMessage{
 		Intent: intent,
-		Type:   event.EventMessage,
+		Type:   evtType,
 		Content: &event.MessageEventContent{
 			Body:          body,
 			MsgType:       event.MsgText,
@@ -2116,9 +2188,40 @@ func (portal *Portal) convertPollCreationMessage(intent *appservice.IntentAPI, m
 			FormattedBody: formattedBody,
 		},
 		Extra: map[string]any{
+			// Custom metadata
 			"fi.mau.whatsapp.poll": map[string]any{
-				"options":     optionNames,
-				"max_choices": msg.GetSelectableOptionsCount(),
+				"option_names":             optionNames,
+				"selectable_options_count": msg.GetSelectableOptionsCount(),
+			},
+
+			// Current extensible events (as of November 2022)
+			"org.matrix.msc1767.markup": []map[string]any{
+				{"mimetype": "text/html", "body": formattedBody},
+				{"mimetype": "text/plain", "body": body},
+			},
+			"org.matrix.msc3381.v2.poll": map[string]any{
+				"kind":           "org.matrix.msc3381.v2.disclosed",
+				"max_selections": maxChoices,
+				"question": map[string]any{
+					"m.markup": []map[string]any{
+						{"mimetype": "text/plain", "body": msg.GetName()},
+					},
+				},
+				"answers": msc3381V2Answers,
+			},
+
+			// Legacy extensible events
+			"org.matrix.msc1767.message": []map[string]any{
+				{"mimetype": "text/html", "body": formattedBody},
+				{"mimetype": "text/plain", "body": body},
+			},
+			"org.matrix.msc3381.poll.start": map[string]any{
+				"kind":           "org.matrix.msc3381.poll.disclosed",
+				"max_selections": maxChoices,
+				"question": map[string]any{
+					"m.text": msg.GetName(),
+				},
+				"answers": msc3381Answers,
 			},
 		},
 		ReplyTo:   GetReply(msg.GetContextInfo()),
