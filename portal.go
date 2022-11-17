@@ -383,7 +383,7 @@ func containsSupportedMessage(waMsg *waProto.Message) bool {
 		waMsg.DocumentMessage != nil || waMsg.ContactMessage != nil || waMsg.LocationMessage != nil ||
 		waMsg.LiveLocationMessage != nil || waMsg.GroupInviteMessage != nil || waMsg.ContactsArrayMessage != nil ||
 		waMsg.HighlyStructuredMessage != nil || waMsg.TemplateMessage != nil || waMsg.TemplateButtonReplyMessage != nil ||
-		waMsg.ListMessage != nil || waMsg.ListResponseMessage != nil
+		waMsg.ListMessage != nil || waMsg.ListResponseMessage != nil || waMsg.PollCreationMessage != nil
 }
 
 func getMessageType(waMsg *waProto.Message) string {
@@ -414,6 +414,10 @@ func getMessageType(waMsg *waProto.Message) string {
 		return "group invite"
 	case waMsg.ReactionMessage != nil:
 		return "reaction"
+	case waMsg.PollCreationMessage != nil:
+		return "poll create"
+	case waMsg.PollUpdateMessage != nil:
+		return "poll update"
 	case waMsg.ProtocolMessage != nil:
 		switch waMsg.GetProtocolMessage().GetType() {
 		case waProto.ProtocolMessage_REVOKE:
@@ -527,6 +531,8 @@ func (portal *Portal) convertMessage(intent *appservice.IntentAPI, source *User,
 		return portal.convertListMessage(intent, source, waMsg.GetListMessage())
 	case waMsg.ListResponseMessage != nil:
 		return portal.convertListResponseMessage(intent, waMsg.GetListResponseMessage())
+	case waMsg.PollCreationMessage != nil:
+		return portal.convertPollCreationMessage(intent, waMsg.GetPollCreationMessage())
 	case waMsg.ImageMessage != nil:
 		return portal.convertMediaMessage(intent, source, info, waMsg.GetImageMessage(), "photo", isBackfill)
 	case waMsg.StickerMessage != nil:
@@ -2082,6 +2088,37 @@ func (portal *Portal) convertListResponseMessage(intent *appservice.IntentAPI, m
 		Extra: map[string]interface{}{
 			"fi.mau.whatsapp.list_reply": map[string]interface{}{
 				"row_id": msg.GetSingleSelectReply().GetSelectedRowId(),
+			},
+		},
+		ReplyTo:   GetReply(msg.GetContextInfo()),
+		ExpiresIn: msg.GetContextInfo().GetExpiration(),
+	}
+}
+
+func (portal *Portal) convertPollCreationMessage(intent *appservice.IntentAPI, msg *waProto.PollCreationMessage) *ConvertedMessage {
+	optionsListText := make([]string, len(msg.GetOptions()))
+	optionsListHTML := make([]string, len(msg.GetOptions()))
+	optionNames := make([]string, len(msg.GetOptions()))
+	for i, opt := range msg.GetOptions() {
+		optionNames[i] = opt.GetOptionName()
+		optionsListText[i] = fmt.Sprintf("%d. %s\n", i+1, optionNames[i])
+		optionsListHTML[i] = fmt.Sprintf("<li>%s</li>", event.TextToHTML(optionNames[i]))
+	}
+	body := fmt.Sprintf("%s\n\n%s", msg.GetName(), strings.Join(optionsListText, "\n"))
+	formattedBody := fmt.Sprintf("<p>%s</p><ol>%s</ol>", event.TextToHTML(msg.GetName()), strings.Join(optionsListHTML, ""))
+	return &ConvertedMessage{
+		Intent: intent,
+		Type:   event.EventMessage,
+		Content: &event.MessageEventContent{
+			Body:          body,
+			MsgType:       event.MsgText,
+			Format:        event.FormatHTML,
+			FormattedBody: formattedBody,
+		},
+		Extra: map[string]any{
+			"fi.mau.whatsapp.poll": map[string]any{
+				"options":     optionNames,
+				"max_choices": msg.GetSelectableOptionsCount(),
 			},
 		},
 		ReplyTo:   GetReply(msg.GetContextInfo()),
