@@ -2204,7 +2204,7 @@ func (portal *Portal) convertPollCreationMessage(intent *appservice.IntentAPI, m
 				"kind":           "org.matrix.msc3381.v2.disclosed",
 				"max_selections": maxChoices,
 				"question": map[string]any{
-					"m.markup": []map[string]any{
+					"org.matrix.msc1767.markup": []map[string]any{
 						{"mimetype": "text/plain", "body": msg.GetName()},
 					},
 				},
@@ -2220,7 +2220,7 @@ func (portal *Portal) convertPollCreationMessage(intent *appservice.IntentAPI, m
 				"kind":           "org.matrix.msc3381.poll.disclosed",
 				"max_selections": maxChoices,
 				"question": map[string]any{
-					"m.text": msg.GetName(),
+					"org.matrix.msc1767.text": msg.GetName(),
 				},
 				"answers": msc3381Answers,
 			},
