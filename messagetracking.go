@@ -185,6 +185,8 @@ func (portal *Portal) sendMessageMetrics(evt *event.Event, err error, part strin
 		msgType = "reaction"
 	case event.EventRedaction:
 		msgType = "redaction"
+	case TypeMSC3881PollResponse, TypeMSC3881V2PollResponse:
+		msgType = "poll response"
 	default:
 		msgType = "unknown event"
 	}
