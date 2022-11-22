@@ -29,10 +29,11 @@ appservice:
 
     # Database config.
     database:
-        # The database type. "sqlite3" and "postgres" are supported.
+        # The database type. "sqlite3-fk-wal" and "postgres" are supported.
         type: postgres
         # The database URI.
-        #   SQLite: File name is enough. https://github.com/mattn/go-sqlite3#connection-string
+        #   SQLite: A raw file path is supported, but `file:<path>?_txlock=immediate` is recommended.
+        #           https://github.com/mattn/go-sqlite3#connection-string
         #   Postgres: Connection string. For example, postgres://user:password@host/database?sslmode=disable
         #             To connect via Unix socket, use something like postgres:///dbname?host=/var/run/postgresql
         uri: postgres://user:password@host/database?sslmode=disable
