@@ -737,10 +737,12 @@ func (portal *Portal) wrapBatchReaction(source *User, reaction *waProto.Reaction
 	if rawTS := reaction.GetSenderTimestampMs(); rawTS >= mainEventTS.UnixMilli() && rawTS <= time.Now().UnixMilli() {
 		reactionInfo.Timestamp = time.UnixMilli(rawTS)
 	}
+	wrappedContent := event.Content{Parsed: &content}
+	intent.AddDoublePuppetValue(&wrappedContent)
 	reactionEvent = &event.Event{
 		ID:        portal.deterministicEventID(senderJID, reactionInfo.ID, ""),
 		Type:      event.EventReaction,
-		Content:   event.Content{Parsed: content},
+		Content:   wrappedContent,
 		Sender:    intent.UserID,
 		Timestamp: reactionInfo.Timestamp.UnixMilli(),
 	}
@@ -756,9 +758,7 @@ func (portal *Portal) wrapBatchEvent(info *types.MessageInfo, intent *appservice
 	if err != nil {
 		return nil, err
 	}
-	if newEventType != eventType {
-		intent.AddDoublePuppetValue(&wrappedContent)
-	}
+	intent.AddDoublePuppetValue(&wrappedContent)
 	var eventID id.EventID
 	if portal.bridge.Config.Homeserver.Software == bridgeconfig.SoftwareHungry {
 		eventID = portal.deterministicEventID(info.Sender, info.ID, partName)
