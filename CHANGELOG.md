@@ -1,3 +1,14 @@
+# unreleased
+
+* Added support for bridging polls from WhatsApp and votes in both directions.
+  * Votes are only bridged if MSC3381 polls are enabled
+    (`extev_polls` in the config).
+* Updated backfill logic to mark rooms as read if the only message is a notice
+  about the disappearing message timer.
+* Switched SQLite config from `sqlite3` to `sqlite3-fk-wal` to enforce foreign
+  keys and WAL mode. Additionally, adding `_txlock=immediate` to the DB path is
+  recommended, but not required.
+
 # v0.7.2 (2022-11-16)
 
 * Added option to handle all transactions asynchronously.
