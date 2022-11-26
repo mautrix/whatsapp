@@ -2101,7 +2101,7 @@ func (portal *Portal) convertListResponseMessage(intent *appservice.IntentAPI, m
 }
 
 func (portal *Portal) convertPollUpdateMessage(intent *appservice.IntentAPI, source *User, info *types.MessageInfo, msg *waProto.PollUpdateMessage) *ConvertedMessage {
-	if portal.bridge.Config.Bridge.ExtEvPolls == 0 {
+	if !portal.bridge.Config.Bridge.ExtEvPolls {
 		return nil
 	}
 	pollMessage := portal.bridge.DB.Message.GetByJID(portal.Key, msg.GetPollCreationMessageKey().GetId())
@@ -2123,9 +2123,9 @@ func (portal *Portal) convertPollUpdateMessage(intent *appservice.IntentAPI, sou
 	}
 
 	evtType := TypeMSC3881PollResponse
-	if portal.bridge.Config.Bridge.ExtEvPolls == 2 {
-		evtType = TypeMSC3881V2PollResponse
-	}
+	//if portal.bridge.Config.Bridge.ExtEvPolls == 2 {
+	//	evtType = TypeMSC3881V2PollResponse
+	//}
 	return &ConvertedMessage{
 		Intent: intent,
 		Type:   evtType,
@@ -2174,11 +2174,12 @@ func (portal *Portal) convertPollCreationMessage(intent *appservice.IntentAPI, m
 		maxChoices = len(optionNames)
 	}
 	evtType := event.EventMessage
-	if portal.bridge.Config.Bridge.ExtEvPolls == 1 {
+	if portal.bridge.Config.Bridge.ExtEvPolls {
 		evtType.Type = "org.matrix.msc3381.poll.start"
-	} else if portal.bridge.Config.Bridge.ExtEvPolls == 2 {
-		evtType.Type = "org.matrix.msc3381.v2.poll.start"
 	}
+	//else if portal.bridge.Config.Bridge.ExtEvPolls == 2 {
+	//	evtType.Type = "org.matrix.msc3381.v2.poll.start"
+	//}
 	return &ConvertedMessage{
 		Intent: intent,
 		Type:   evtType,
