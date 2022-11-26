@@ -417,6 +417,8 @@ func getMessageType(waMsg *waProto.Message) string {
 		return "group invite"
 	case waMsg.ReactionMessage != nil:
 		return "reaction"
+	case waMsg.EncReactionMessage != nil:
+		return "encrypted reaction"
 	case waMsg.PollCreationMessage != nil:
 		return "poll create"
 	case waMsg.PollUpdateMessage != nil:
@@ -806,8 +808,17 @@ func (portal *Portal) handleMessage(source *User, evt *events.Message) {
 		if len(eventID) != 0 {
 			portal.finishHandling(existingMsg, &evt.Info, eventID, dbMsgType, converted.Error)
 		}
-	} else if msgType == "reaction" {
-		portal.HandleMessageReaction(intent, source, &evt.Info, evt.Message.GetReactionMessage(), existingMsg)
+	} else if msgType == "reaction" || msgType == "encrypted reaction" {
+		if evt.Message.GetEncReactionMessage() != nil {
+			decryptedReaction, err := source.Client.DecryptReaction(evt)
+			if err != nil {
+				portal.log.Errorfln("Failed to decrypt reaction from %s to %s: %v", evt.Info.Sender, evt.Message.GetEncReactionMessage().GetTargetMessageKey().GetId(), err)
+			} else {
+				portal.HandleMessageReaction(intent, source, &evt.Info, decryptedReaction, existingMsg)
+			}
+		} else {
+			portal.HandleMessageReaction(intent, source, &evt.Info, evt.Message.GetReactionMessage(), existingMsg)
+		}
 	} else if msgType == "revoke" {
 		portal.HandleMessageRevoke(source, &evt.Info, evt.Message.GetProtocolMessage().GetKey())
 		if existingMsg != nil {
