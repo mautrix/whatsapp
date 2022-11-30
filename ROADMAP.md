@@ -6,6 +6,8 @@
     * [x] Location messages
     * [x] Media/files
     * [x] Replies
+    * [ ] Polls
+    * [x] Poll votes
   * [x] Message redactions
   * [x] Reactions
   * [x] Presence
@@ -29,6 +31,8 @@
     * [x] Location messages
     * [x] Contact messages
     * [x] Replies
+    * [x] Polls
+    * [x] Poll votes
   * [ ] Chat types
     * [x] Private chat
     * [x] Group chat
