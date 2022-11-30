@@ -317,7 +317,7 @@ func (user *User) shouldCreatePortalForHistorySync(conv *database.HistorySyncCon
 }
 
 func (user *User) handleHistorySync(backfillQueue *BackfillQueue, evt *waProto.HistorySync) {
-	if evt == nil || evt.SyncType == nil || evt.GetSyncType() == waProto.HistorySync_INITIAL_STATUS_V3 || evt.GetSyncType() == waProto.HistorySync_PUSH_NAME {
+	if evt == nil || evt.SyncType == nil || evt.GetSyncType() == waProto.HistorySync_INITIAL_STATUS_V3 || evt.GetSyncType() == waProto.HistorySync_PUSH_NAME || evt.GetSyncType() == waProto.HistorySync_NON_BLOCKING_DATA {
 		return
 	}
 	description := fmt.Sprintf("type %s, %d conversations, chunk order %d, progress: %d", evt.GetSyncType(), len(evt.GetConversations()), evt.GetChunkOrder(), evt.GetProgress())
@@ -380,13 +380,18 @@ func (user *User) handleHistorySync(backfillQueue *BackfillQueue, evt *waProto.H
 	// most recent portals. If it's the last history sync event, start
 	// backfilling the rest of the history of the portals.
 	if user.bridge.Config.Bridge.HistorySync.Backfill {
-		if evt.GetSyncType() != waProto.HistorySync_INITIAL_BOOTSTRAP && evt.GetProgress() < 98 {
+		expectedLastSyncType := waProto.HistorySync_FULL
+		if !user.bridge.Config.Bridge.HistorySync.RequestFullSync {
+			expectedLastSyncType = waProto.HistorySync_RECENT
+		}
+		if evt.GetProgress() < 99 || evt.GetSyncType() != expectedLastSyncType {
 			return
 		}
 
 		nMostRecent := user.bridge.DB.HistorySync.GetNMostRecentConversations(user.MXID, user.bridge.Config.Bridge.HistorySync.MaxInitialConversations)
 		if len(nMostRecent) > 0 {
-			// Find the portals for all of the conversations.
+			user.log.Infofln("Got last history sync blob, enqueuing backfills")
+			// Find the portals for all the conversations.
 			portals := []*Portal{}
 			for _, conv := range nMostRecent {
 				jid, err := types.ParseJID(conv.ConversationID)
@@ -397,15 +402,9 @@ func (user *User) handleHistorySync(backfillQueue *BackfillQueue, evt *waProto.H
 				portals = append(portals, user.GetPortalByJID(jid))
 			}
 
-			switch evt.GetSyncType() {
-			case waProto.HistorySync_INITIAL_BOOTSTRAP:
-				// Enqueue immediate backfills for the most recent messages first.
-				user.EnqueueImmediateBackfills(portals)
-			case waProto.HistorySync_FULL, waProto.HistorySync_RECENT:
-				user.EnqueueForwardBackfills(portals)
-				// Enqueue deferred backfills as configured.
-				user.EnqueueDeferredBackfills(portals)
-			}
+			user.EnqueueImmediateBackfills(portals)
+			user.EnqueueForwardBackfills(portals)
+			user.EnqueueDeferredBackfills(portals)
 
 			// Tell the queue to check for new backfill requests.
 			backfillQueue.ReCheck()
