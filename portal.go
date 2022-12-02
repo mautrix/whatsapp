@@ -1196,23 +1196,23 @@ func (portal *Portal) UpdateTopic(topic string, setBy types.JID, updateInfo bool
 	return false
 }
 
-func (portal *Portal) UpdateParentGroup(parent types.JID, updateInfo bool) bool {
+func (portal *Portal) UpdateParentGroup(source *User, parent types.JID, updateInfo bool) bool {
 	portal.parentGroupUpdateLock.Lock()
 	defer portal.parentGroupUpdateLock.Unlock()
 	if portal.ParentGroup != parent {
 		portal.log.Debugfln("Updating parent group %v -> %v", portal.ParentGroup, parent)
-		portal.updateCommunitySpace(false)
+		portal.updateCommunitySpace(source, false, false)
 		portal.ParentGroup = parent
 		portal.parentPortal = nil
 		portal.InSpace = false
-		portal.updateCommunitySpace(true)
+		portal.updateCommunitySpace(source, true, false)
 		if updateInfo {
 			portal.UpdateBridgeInfo()
 			portal.Update(nil)
 		}
 		return true
 	} else if !portal.ParentGroup.IsEmpty() && !portal.InSpace {
-		return portal.updateCommunitySpace(true)
+		return portal.updateCommunitySpace(source, true, updateInfo)
 	}
 	return false
 }
@@ -1253,7 +1253,7 @@ func (portal *Portal) UpdateMetadata(user *User, groupInfo *types.GroupInfo) boo
 	update := false
 	update = portal.UpdateName(groupInfo.Name, groupInfo.NameSetBy, false) || update
 	update = portal.UpdateTopic(groupInfo.Topic, groupInfo.TopicSetBy, false) || update
-	update = portal.UpdateParentGroup(groupInfo.LinkedParentJID, false) || update
+	update = portal.UpdateParentGroup(user, groupInfo.LinkedParentJID, false) || update
 	if portal.ExpirationTime != groupInfo.DisappearingTimer {
 		update = true
 		portal.ExpirationTime = groupInfo.DisappearingTimer
@@ -1610,9 +1610,10 @@ func (portal *Portal) CreateMatrixRoom(user *User, groupInfo *types.GroupInfo, i
 	}
 	if portal.IsParent {
 		creationContent["type"] = event.RoomTypeSpace
-	} else if parent := portal.GetParentPortal(); parent != nil {
+	} else if parent := portal.GetParentPortal(); parent != nil && parent.MXID != "" {
 		initialState = append(initialState, &event.Event{
-			Type: event.StateSpaceParent,
+			Type:     event.StateSpaceParent,
+			StateKey: proto.String(parent.MXID.String()),
 			Content: event.Content{
 				Parsed: &event.SpaceParentEventContent{
 					Via:       []string{portal.bridge.Config.Homeserver.Domain},
@@ -1659,7 +1660,6 @@ func (portal *Portal) CreateMatrixRoom(user *User, groupInfo *types.GroupInfo, i
 	portal.bridge.portalsLock.Lock()
 	portal.bridge.portalsByMXID[portal.MXID] = portal
 	portal.bridge.portalsLock.Unlock()
-	portal.updateCommunitySpace(true)
 	portal.Update(nil)
 
 	// We set the memberships beforehand to make sure the encryption key exchange in initial backfill knows the users are here.
@@ -1676,6 +1676,7 @@ func (portal *Portal) CreateMatrixRoom(user *User, groupInfo *types.GroupInfo, i
 	}
 	user.syncChatDoublePuppetDetails(portal, true)
 
+	go portal.updateCommunitySpace(user, true, true)
 	go portal.addToPersonalSpace(user)
 
 	if groupInfo != nil && !autoJoinInvites {
@@ -1730,13 +1731,23 @@ func (portal *Portal) addToPersonalSpace(user *User) {
 	}
 }
 
-func (portal *Portal) updateCommunitySpace(add bool) bool {
+func (portal *Portal) updateCommunitySpace(user *User, add, updateDB bool) bool {
 	if add == portal.InSpace {
 		return false
 	}
 	space := portal.GetParentPortal()
-	if space == nil || space.MXID == "" {
+	if space == nil {
 		return false
+	} else if space.MXID == "" {
+		if !add {
+			return false
+		}
+		portal.log.Debugfln("Creating portal for parent group %v", space.Key.JID)
+		err := space.CreateMatrixRoom(user, nil, false, false)
+		if err != nil {
+			portal.log.Debugfln("Failed to create portal for parent group: %v", err)
+			return false
+		}
 	}
 
 	var action string
@@ -1763,6 +1774,9 @@ func (portal *Portal) updateCommunitySpace(add bool) bool {
 		portal.log.Warnfln("Failed to send m.space.parent event to %s %s: %v", action, space.MXID, err)
 	}
 	portal.InSpace = add
+	if updateDB {
+		portal.Update(nil)
+	}
 	return true
 }
 
