@@ -1322,6 +1322,14 @@ func (user *User) handleGroupUpdate(evt *events.GroupInfo) {
 		portal.ChangeAdminStatus(evt.Demote, false)
 	case evt.Ephemeral != nil:
 		portal.UpdateGroupDisappearingMessages(evt.Sender, evt.Timestamp, evt.Ephemeral.DisappearingTimer)
+	case evt.Link != nil:
+		if evt.Link.Type == types.GroupLinkChangeTypeParent {
+			portal.UpdateParentGroup(evt.Link.Group.JID, true)
+		}
+	case evt.Unlink != nil:
+		if evt.Unlink.Type == types.GroupLinkChangeTypeParent && portal.ParentGroup == evt.Unlink.Group.JID {
+			portal.UpdateParentGroup(types.EmptyJID, true)
+		}
 	}
 }
 

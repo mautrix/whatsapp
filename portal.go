@@ -248,6 +248,7 @@ type Portal struct {
 	avatarLock     sync.Mutex
 
 	latestEventBackfillLock sync.Mutex
+	parentGroupUpdateLock   sync.Mutex
 
 	recentlyHandled      [recentlyHandledLength]recentlyHandledWrapper
 	recentlyHandledLock  sync.Mutex
@@ -262,7 +263,8 @@ type Portal struct {
 
 	mediaErrorCache map[types.MessageID]*FailedMediaMeta
 
-	relayUser *User
+	relayUser    *User
+	parentPortal *Portal
 }
 
 var (
@@ -1194,6 +1196,27 @@ func (portal *Portal) UpdateTopic(topic string, setBy types.JID, updateInfo bool
 	return false
 }
 
+func (portal *Portal) UpdateParentGroup(parent types.JID, updateInfo bool) bool {
+	portal.parentGroupUpdateLock.Lock()
+	defer portal.parentGroupUpdateLock.Unlock()
+	if portal.ParentGroup != parent {
+		portal.log.Debugfln("Updating parent group %v -> %v", portal.ParentGroup, parent)
+		portal.updateCommunitySpace(false)
+		portal.ParentGroup = parent
+		portal.parentPortal = nil
+		portal.InSpace = false
+		portal.updateCommunitySpace(true)
+		if updateInfo {
+			portal.UpdateBridgeInfo()
+			portal.Update(nil)
+		}
+		return true
+	} else if !portal.ParentGroup.IsEmpty() && !portal.InSpace {
+		return portal.updateCommunitySpace(true)
+	}
+	return false
+}
+
 func (portal *Portal) UpdateMetadata(user *User, groupInfo *types.GroupInfo) bool {
 	if portal.IsPrivateChat() {
 		return false
@@ -1230,9 +1253,17 @@ func (portal *Portal) UpdateMetadata(user *User, groupInfo *types.GroupInfo) boo
 	update := false
 	update = portal.UpdateName(groupInfo.Name, groupInfo.NameSetBy, false) || update
 	update = portal.UpdateTopic(groupInfo.Topic, groupInfo.TopicSetBy, false) || update
+	update = portal.UpdateParentGroup(groupInfo.LinkedParentJID, false) || update
 	if portal.ExpirationTime != groupInfo.DisappearingTimer {
 		update = true
 		portal.ExpirationTime = groupInfo.DisappearingTimer
+	}
+	if portal.IsParent != groupInfo.IsParent {
+		if portal.MXID != "" {
+			portal.log.Warnfln("Existing group changed is_parent from %t to %t", portal.IsParent, groupInfo.IsParent)
+		}
+		update = true
+		portal.IsParent = true
 	}
 
 	portal.RestrictMessageSending(groupInfo.IsAnnounce)
@@ -1252,7 +1283,7 @@ func (portal *Portal) UpdateMatrixRoom(user *User, groupInfo *types.GroupInfo) b
 	portal.log.Infoln("Syncing portal for", user.MXID)
 
 	portal.ensureUserInvited(user)
-	go portal.addToSpace(user)
+	go portal.addToPersonalSpace(user)
 
 	update := false
 	update = portal.UpdateMetadata(user, groupInfo) || update
@@ -1401,6 +1432,13 @@ func (portal *Portal) getBridgeInfo() (string, event.BridgeEventContent) {
 			AvatarURL:   portal.AvatarURL.CUString(),
 		},
 	}
+	if parent := portal.GetParentPortal(); parent != nil {
+		bridgeInfo.Network = &event.BridgeInfoSection{
+			ID:          parent.Key.JID.String(),
+			DisplayName: parent.Name,
+			AvatarURL:   parent.AvatarURL.CUString(),
+		}
+	}
 	return portal.getBridgeInfoStateKey(), bridgeInfo
 }
 
@@ -1502,6 +1540,8 @@ func (portal *Portal) CreateMatrixRoom(user *User, groupInfo *types.GroupInfo, i
 		if groupInfo != nil {
 			portal.Name = groupInfo.Name
 			portal.Topic = groupInfo.Topic
+			portal.IsParent = groupInfo.IsParent
+			portal.ParentGroup = groupInfo.LinkedParentJID
 		}
 		portal.UpdateAvatar(user, types.EmptyJID, false)
 	}
@@ -1552,6 +1592,19 @@ func (portal *Portal) CreateMatrixRoom(user *User, groupInfo *types.GroupInfo, i
 	if !portal.bridge.Config.Bridge.FederateRooms {
 		creationContent["m.federate"] = false
 	}
+	if portal.IsParent {
+		creationContent["type"] = event.RoomTypeSpace
+	} else if parent := portal.GetParentPortal(); parent != nil {
+		initialState = append(initialState, &event.Event{
+			Type: event.StateSpaceParent,
+			Content: event.Content{
+				Parsed: &event.SpaceParentEventContent{
+					Via:       []string{portal.bridge.Config.Homeserver.Domain},
+					Canonical: true,
+				},
+			},
+		})
+	}
 	autoJoinInvites := portal.bridge.Config.Homeserver.Software == bridgeconfig.SoftwareHungry
 	if autoJoinInvites {
 		portal.log.Debugfln("Hungryserv mode: adding all group members in create request")
@@ -1582,14 +1635,16 @@ func (portal *Portal) CreateMatrixRoom(user *User, groupInfo *types.GroupInfo, i
 	if err != nil {
 		return err
 	}
+	portal.log.Infoln("Matrix room created:", portal.MXID)
+	portal.InSpace = false
 	portal.NameSet = len(portal.Name) > 0
 	portal.TopicSet = len(portal.Topic) > 0
 	portal.MXID = resp.RoomID
 	portal.bridge.portalsLock.Lock()
 	portal.bridge.portalsByMXID[portal.MXID] = portal
 	portal.bridge.portalsLock.Unlock()
+	portal.updateCommunitySpace(true)
 	portal.Update(nil)
-	portal.log.Infoln("Matrix room created:", portal.MXID)
 
 	// We set the memberships beforehand to make sure the encryption key exchange in initial backfill knows the users are here.
 	inviteMembership := event.MembershipInvite
@@ -1605,7 +1660,7 @@ func (portal *Portal) CreateMatrixRoom(user *User, groupInfo *types.GroupInfo, i
 	}
 	user.syncChatDoublePuppetDetails(portal, true)
 
-	go portal.addToSpace(user)
+	go portal.addToPersonalSpace(user)
 
 	if groupInfo != nil {
 		if groupInfo.IsEphemeral {
@@ -1655,7 +1710,7 @@ func (portal *Portal) CreateMatrixRoom(user *User, groupInfo *types.GroupInfo, i
 	return nil
 }
 
-func (portal *Portal) addToSpace(user *User) {
+func (portal *Portal) addToPersonalSpace(user *User) {
 	spaceID := user.GetSpaceRoom()
 	if len(spaceID) == 0 || user.IsInSpace(portal.Key) {
 		return
@@ -1669,6 +1724,42 @@ func (portal *Portal) addToSpace(user *User) {
 		portal.log.Debugfln("Added room to %s's personal filtering space (%s)", user.MXID, spaceID)
 		user.MarkInSpace(portal.Key)
 	}
+}
+
+func (portal *Portal) updateCommunitySpace(add bool) bool {
+	if add == portal.InSpace {
+		return false
+	}
+	space := portal.GetParentPortal()
+	if space == nil || space.MXID == "" {
+		return false
+	}
+
+	var action string
+	var parentContent event.SpaceParentEventContent
+	var childContent event.SpaceChildEventContent
+	if add {
+		parentContent.Canonical = true
+		parentContent.Via = []string{portal.bridge.Config.Homeserver.Domain}
+		childContent.Via = []string{portal.bridge.Config.Homeserver.Domain}
+		action = "add portal to"
+		portal.log.Debugfln("Adding %s to space %s (%s)", portal.MXID, space.MXID, space.Key.JID)
+	} else {
+		action = "remove portal from"
+		portal.log.Debugfln("Removing %s from space %s (%s)", portal.MXID, space.MXID, space.Key.JID)
+	}
+
+	_, err := space.MainIntent().SendStateEvent(space.MXID, event.StateSpaceChild, portal.MXID.String(), &childContent)
+	if err != nil {
+		portal.log.Errorfln("Failed to send m.space.child event to %s %s: %v", action, space.MXID, err)
+		return false
+	}
+	_, err = portal.MainIntent().SendStateEvent(portal.MXID, event.StateSpaceParent, space.MXID.String(), &parentContent)
+	if err != nil {
+		portal.log.Warnfln("Failed to send m.space.parent event to %s %s: %v", action, space.MXID, err)
+	}
+	portal.InSpace = add
+	return true
 }
 
 func (portal *Portal) IsPrivateChat() bool {
@@ -1698,6 +1789,15 @@ func (portal *Portal) GetRelayUser() *User {
 		portal.relayUser = portal.bridge.GetUserByMXID(portal.RelayUserID)
 	}
 	return portal.relayUser
+}
+
+func (portal *Portal) GetParentPortal() *Portal {
+	if portal.ParentGroup.IsEmpty() {
+		return nil
+	} else if portal.parentPortal == nil {
+		portal.parentPortal = portal.bridge.GetPortalByJID(database.NewPortalKey(portal.ParentGroup, portal.ParentGroup))
+	}
+	return portal.parentPortal
 }
 
 func (portal *Portal) MainIntent() *appservice.IntentAPI {

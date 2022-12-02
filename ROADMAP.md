@@ -36,6 +36,7 @@
   * [ ] Chat types
     * [x] Private chat
     * [x] Group chat
+    * [x] Communities
     * [x] Status broadcast
     * [ ] Broadcast list (not currently supported on WhatsApp web)
   * [x] Message deletions

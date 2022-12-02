@@ -356,6 +356,13 @@ func fnCreate(ce *WrappedCommandEvent) {
 		return
 	}
 
+	var createEvent event.CreateEventContent
+	err = ce.Bot.StateEvent(ce.RoomID, event.StateCreate, "", &createEvent)
+	if err != nil && !errors.Is(err, mautrix.MNotFound) {
+		ce.Reply("Failed to get room create event")
+		return
+	}
+
 	var participants []types.JID
 	participantDedup := make(map[types.JID]bool)
 	participantDedup[ce.User.JID.ToNonAD()] = true
@@ -373,9 +380,16 @@ func fnCreate(ce *WrappedCommandEvent) {
 			participants = append(participants, jid)
 		}
 	}
+	// TODO check m.space.parent to create rooms directly in communities
 
 	ce.Log.Infofln("Creating group for %s with name %s and participants %+v", ce.RoomID, roomNameEvent.Name, participants)
-	resp, err := ce.User.Client.CreateGroup(roomNameEvent.Name, participants, "")
+	resp, err := ce.User.Client.CreateGroup(whatsmeow.ReqCreateGroup{
+		Name:         roomNameEvent.Name,
+		Participants: participants,
+		GroupParent: types.GroupParent{
+			IsParent: createEvent.Type == event.RoomTypeSpace,
+		},
+	})
 	if err != nil {
 		ce.Reply("Failed to create group: %v", err)
 		return
@@ -389,6 +403,7 @@ func fnCreate(ce *WrappedCommandEvent) {
 	}
 	portal.MXID = ce.RoomID
 	portal.Name = roomNameEvent.Name
+	portal.IsParent = resp.IsParent
 	portal.Encrypted = encryptionEvent.Algorithm == id.AlgorithmMegolmV1
 	if !portal.Encrypted && ce.Bridge.Config.Bridge.Encryption.Default {
 		_, err = portal.MainIntent().SendStateEvent(portal.MXID, event.StateEncryption, "", portal.GetEncryptionEventContent())
@@ -1127,7 +1142,7 @@ func fnSync(ce *WrappedCommandEvent) {
 		count := 0
 		for _, key := range keys {
 			portal := ce.Bridge.GetPortalByJID(key)
-			portal.addToSpace(ce.User)
+			portal.addToPersonalSpace(ce.User)
 			count++
 		}
 		plural := "s"

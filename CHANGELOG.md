@@ -3,6 +3,7 @@
 * Added support for bridging polls from WhatsApp and votes in both directions.
   * Votes are only bridged if MSC3381 polls are enabled
     (`extev_polls` in the config).
+* Added support for bridging WhatsApp communities as spaces.
 * Updated backfill logic to mark rooms as read if the only message is a notice
   about the disappearing message timer.
 * Switched SQLite config from `sqlite3` to `sqlite3-fk-wal` to enforce foreign
