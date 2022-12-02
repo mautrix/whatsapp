@@ -2615,6 +2615,9 @@ func (portal *Portal) HandleWhatsAppInvite(source *User, senderJID *types.JID, j
 }
 
 func (portal *Portal) HandleWhatsAppDeleteChat(user *User) {
+	if portal.MXID == "" {
+		return
+	}
 	matrixUsers, err := portal.GetMatrixUsers()
 	if err != nil {
 		portal.log.Errorln("Failed to get Matrix users to see if DeleteChat should be handled:", err)
