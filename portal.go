@@ -1542,8 +1542,24 @@ func (portal *Portal) CreateMatrixRoom(user *User, groupInfo *types.GroupInfo, i
 			portal.Topic = groupInfo.Topic
 			portal.IsParent = groupInfo.IsParent
 			portal.ParentGroup = groupInfo.LinkedParentJID
+			if groupInfo.IsEphemeral {
+				portal.ExpirationTime = groupInfo.DisappearingTimer
+			}
 		}
 		portal.UpdateAvatar(user, types.EmptyJID, false)
+	}
+
+	powerLevels := portal.GetBasePowerLevels()
+
+	if groupInfo != nil {
+		if groupInfo.IsAnnounce {
+			powerLevels.EventsDefault = 50
+		}
+		if groupInfo.IsLocked {
+			powerLevels.EnsureEventLevel(event.StateRoomName, 50)
+			powerLevels.EnsureEventLevel(event.StateRoomAvatar, 50)
+			powerLevels.EnsureEventLevel(event.StateTopic, 50)
+		}
 	}
 
 	bridgeInfoStateKey, bridgeInfo := portal.getBridgeInfo()
@@ -1551,7 +1567,7 @@ func (portal *Portal) CreateMatrixRoom(user *User, groupInfo *types.GroupInfo, i
 	initialState := []*event.Event{{
 		Type: event.StatePowerLevels,
 		Content: event.Content{
-			Parsed: portal.GetBasePowerLevels(),
+			Parsed: powerLevels,
 		},
 	}, {
 		Type:     event.StateBridge,
@@ -1662,20 +1678,8 @@ func (portal *Portal) CreateMatrixRoom(user *User, groupInfo *types.GroupInfo, i
 
 	go portal.addToPersonalSpace(user)
 
-	if groupInfo != nil {
-		if groupInfo.IsEphemeral {
-			portal.ExpirationTime = groupInfo.DisappearingTimer
-			portal.Update(nil)
-		}
-		if !autoJoinInvites {
-			portal.SyncParticipants(user, groupInfo)
-		}
-		if groupInfo.IsAnnounce {
-			portal.RestrictMessageSending(groupInfo.IsAnnounce)
-		}
-		if groupInfo.IsLocked {
-			portal.RestrictMetadataChanges(groupInfo.IsLocked)
-		}
+	if groupInfo != nil && !autoJoinInvites {
+		portal.SyncParticipants(user, groupInfo)
 	}
 	//if broadcastMetadata != nil {
 	//	portal.SyncBroadcastRecipients(user, broadcastMetadata)
