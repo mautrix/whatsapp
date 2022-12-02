@@ -1330,6 +1330,10 @@ func (user *User) handleGroupUpdate(evt *events.GroupInfo) {
 		if evt.Unlink.Type == types.GroupLinkChangeTypeParent && portal.ParentGroup == evt.Unlink.Group.JID {
 			portal.UpdateParentGroup(user, types.EmptyJID, true)
 		}
+	case evt.Delete != nil:
+		portal.log.Infoln("Got group delete event from WhatsApp, deleting portal")
+		portal.Delete()
+		portal.Cleanup(false)
 	}
 }
 
