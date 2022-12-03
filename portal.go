@@ -1262,8 +1262,8 @@ func (portal *Portal) UpdateMetadata(user *User, groupInfo *types.GroupInfo) boo
 		if portal.MXID != "" {
 			portal.log.Warnfln("Existing group changed is_parent from %t to %t", portal.IsParent, groupInfo.IsParent)
 		}
+		portal.IsParent = groupInfo.IsParent
 		update = true
-		portal.IsParent = true
 	}
 
 	portal.RestrictMessageSending(groupInfo.IsAnnounce)
@@ -1728,6 +1728,13 @@ func (portal *Portal) addToPersonalSpace(user *User) {
 	} else {
 		portal.log.Debugfln("Added room to %s's personal filtering space (%s)", user.MXID, spaceID)
 		user.MarkInSpace(portal.Key)
+	}
+}
+
+func (portal *Portal) removeSpaceParentEvent(space id.RoomID) {
+	_, err := portal.MainIntent().SendStateEvent(portal.MXID, event.StateSpaceParent, space.String(), &event.SpaceParentEventContent{})
+	if err != nil {
+		portal.log.Warnfln("Failed to send m.space.parent event to remove portal from %s: %v", space, err)
 	}
 }
 
@@ -4147,6 +4154,20 @@ func (portal *Portal) canBridgeFrom(sender *User, allowRelay bool) error {
 	return nil
 }
 
+func (portal *Portal) resetChildSpaceStatus() {
+	for _, childPortal := range portal.bridge.portalsByJID {
+		if childPortal.ParentGroup == portal.Key.JID {
+			if portal.MXID != "" && childPortal.InSpace {
+				go childPortal.removeSpaceParentEvent(portal.MXID)
+			}
+			childPortal.InSpace = false
+			if childPortal.parentPortal == portal {
+				childPortal.parentPortal = nil
+			}
+		}
+	}
+}
+
 func (portal *Portal) Delete() {
 	portal.Portal.Delete()
 	portal.bridge.portalsLock.Lock()
@@ -4154,6 +4175,7 @@ func (portal *Portal) Delete() {
 	if len(portal.MXID) > 0 {
 		delete(portal.bridge.portalsByMXID, portal.MXID)
 	}
+	portal.resetChildSpaceStatus()
 	portal.bridge.portalsLock.Unlock()
 }
 

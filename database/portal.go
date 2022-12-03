@@ -244,8 +244,28 @@ func (portal *Portal) Update(txn dbutil.Execable) {
 }
 
 func (portal *Portal) Delete() {
-	_, err := portal.db.Exec("DELETE FROM portal WHERE jid=$1 AND receiver=$2", portal.Key.JID, portal.Key.Receiver)
+	txn, err := portal.db.Begin()
 	if err != nil {
-		portal.log.Warnfln("Failed to delete %s: %v", portal.Key, err)
+		portal.log.Errorfln("Failed to begin transaction to delete portal %v: %v", portal.Key, err)
+		return
+	}
+	defer func() {
+		if err != nil {
+			err = txn.Rollback()
+			if err != nil {
+				portal.log.Warnfln("Failed to rollback failed portal delete transaction: %v", err)
+			}
+		} else if err = txn.Commit(); err != nil {
+			portal.log.Warnfln("Failed to commit portal delete transaction: %v", err)
+		}
+	}()
+	_, err = portal.db.Exec("UPDATE portal SET in_space=false WHERE parent_group=$1", portal.Key.JID)
+	if err != nil {
+		portal.log.Warnfln("Failed to mark child groups of %v as not in space: %v", portal.Key.JID, err)
+		return
+	}
+	_, err = portal.db.Exec("DELETE FROM portal WHERE jid=$1 AND receiver=$2", portal.Key.JID, portal.Key.Receiver)
+	if err != nil {
+		portal.log.Warnfln("Failed to delete %v: %v", portal.Key, err)
 	}
 }
