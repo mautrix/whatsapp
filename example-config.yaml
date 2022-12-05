@@ -1,8 +1,8 @@
 # Homeserver details.
 homeserver:
     # The address that this appservice can use to connect to the homeserver.
-    address: https://example.com
-    # The domain of the homeserver (for MXIDs, etc).
+    address: https://matrix.example.com
+    # The domain of the homeserver (also known as server_name, used for MXIDs, etc).
     domain: example.com
 
     # What software is the homeserver running?
