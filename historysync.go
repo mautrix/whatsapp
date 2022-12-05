@@ -84,8 +84,40 @@ func (user *User) handleHistorySyncsLoop() {
 
 	// Always save the history syncs for the user. If they want to enable
 	// backfilling in the future, we will have it in the database.
-	for evt := range user.historySyncs {
-		user.handleHistorySync(user.BackfillQueue, evt.Data)
+	for {
+		select {
+		case evt := <-user.historySyncs:
+			user.handleHistorySync(user.BackfillQueue, evt.Data)
+		case <-user.enqueueBackfillsTimer.C:
+			user.enqueueAllBackfills()
+		}
+	}
+}
+
+const EnqueueBackfillsDelay = 30 * time.Second
+
+func (user *User) enqueueAllBackfills() {
+	user.log.Infofln("%v has passed since the last history sync blob, enqueueing backfills", EnqueueBackfillsDelay)
+	nMostRecent := user.bridge.DB.HistorySync.GetNMostRecentConversations(user.MXID, user.bridge.Config.Bridge.HistorySync.MaxInitialConversations)
+	if len(nMostRecent) > 0 {
+		user.log.Infofln("Got last history sync blob, enqueuing backfills")
+		// Find the portals for all the conversations.
+		portals := []*Portal{}
+		for _, conv := range nMostRecent {
+			jid, err := types.ParseJID(conv.ConversationID)
+			if err != nil {
+				user.log.Warnfln("Failed to parse chat JID '%s' in history sync: %v", conv.ConversationID, err)
+				continue
+			}
+			portals = append(portals, user.GetPortalByJID(jid))
+		}
+
+		user.EnqueueImmediateBackfills(portals)
+		user.EnqueueForwardBackfills(portals)
+		user.EnqueueDeferredBackfills(portals)
+
+		// Tell the queue to check for new backfill requests.
+		user.BackfillQueue.ReCheck()
 	}
 }
 
@@ -380,35 +412,7 @@ func (user *User) handleHistorySync(backfillQueue *BackfillQueue, evt *waProto.H
 	// most recent portals. If it's the last history sync event, start
 	// backfilling the rest of the history of the portals.
 	if user.bridge.Config.Bridge.HistorySync.Backfill {
-		expectedLastSyncType := waProto.HistorySync_FULL
-		if !user.bridge.Config.Bridge.HistorySync.RequestFullSync {
-			expectedLastSyncType = waProto.HistorySync_RECENT
-		}
-		if evt.GetProgress() < 99 || evt.GetSyncType() != expectedLastSyncType {
-			return
-		}
-
-		nMostRecent := user.bridge.DB.HistorySync.GetNMostRecentConversations(user.MXID, user.bridge.Config.Bridge.HistorySync.MaxInitialConversations)
-		if len(nMostRecent) > 0 {
-			user.log.Infofln("Got last history sync blob, enqueuing backfills")
-			// Find the portals for all the conversations.
-			portals := []*Portal{}
-			for _, conv := range nMostRecent {
-				jid, err := types.ParseJID(conv.ConversationID)
-				if err != nil {
-					user.log.Warnfln("Failed to parse chat JID '%s' in history sync: %v", conv.ConversationID, err)
-					continue
-				}
-				portals = append(portals, user.GetPortalByJID(jid))
-			}
-
-			user.EnqueueImmediateBackfills(portals)
-			user.EnqueueForwardBackfills(portals)
-			user.EnqueueDeferredBackfills(portals)
-
-			// Tell the queue to check for new backfill requests.
-			backfillQueue.ReCheck()
-		}
+		user.enqueueBackfillsTimer.Reset(EnqueueBackfillsDelay)
 	}
 }
 
