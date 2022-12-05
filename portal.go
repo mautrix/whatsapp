@@ -1738,7 +1738,7 @@ func (portal *Portal) removeSpaceParentEvent(space id.RoomID) {
 	}
 }
 
-func (portal *Portal) updateCommunitySpace(user *User, add, updateDB bool) bool {
+func (portal *Portal) updateCommunitySpace(user *User, add, updateInfo bool) bool {
 	if add == portal.InSpace {
 		return false
 	}
@@ -1781,8 +1781,9 @@ func (portal *Portal) updateCommunitySpace(user *User, add, updateDB bool) bool 
 		portal.log.Warnfln("Failed to send m.space.parent event to %s %s: %v", action, space.MXID, err)
 	}
 	portal.InSpace = add
-	if updateDB {
+	if updateInfo {
 		portal.Update(nil)
+		portal.UpdateBridgeInfo()
 	}
 	return true
 }
