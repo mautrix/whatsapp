@@ -16,7 +16,7 @@ require (
 	golang.org/x/net v0.2.0
 	google.golang.org/protobuf v1.28.1
 	maunium.net/go/maulogger/v2 v2.3.2
-	maunium.net/go/mautrix v0.12.4-0.20221205110247-cb0a4ac56e0d
+	maunium.net/go/mautrix v0.12.4-0.20221209104839-94ae1f6470ec
 )
 
 require (
