@@ -186,7 +186,7 @@ func (user *User) backfillInChunks(req *database.Backfill, conv *database.Histor
 
 	var forwardPrevID id.EventID
 	var timeEnd *time.Time
-	var isLatestEvents bool
+	var isLatestEvents, shouldMarkAsRead, shouldAtomicallyMarkAsRead bool
 	portal.latestEventBackfillLock.Lock()
 	if req.BackfillType == database.BackfillForward {
 		// TODO this overrides the TimeStart set when enqueuing the backfill
@@ -215,6 +215,11 @@ func (user *User) backfillInChunks(req *database.Backfill, conv *database.Histor
 		// This might involve sending events at the end of the room as non-historical events,
 		// make sure we don't process messages until this is done.
 		defer portal.latestEventBackfillLock.Unlock()
+
+		isUnread := conv.MarkedAsUnread || conv.UnreadCount > 0
+		isTooOld := user.bridge.Config.Bridge.HistorySync.UnreadHoursThreshold > 0 && conv.LastMessageTimestamp.Before(time.Now().Add(time.Duration(-user.bridge.Config.Bridge.HistorySync.UnreadHoursThreshold)*time.Hour))
+		shouldMarkAsRead = !isUnread || isTooOld
+		shouldAtomicallyMarkAsRead = shouldMarkAsRead && user.bridge.Config.Homeserver.Software == bridgeconfig.SoftwareHungry
 	}
 	allMsgs := user.bridge.DB.HistorySync.GetMessagesBetween(user.MXID, conv.ConversationID, req.TimeStart, timeEnd, req.MaxTotalEvents)
 
@@ -286,7 +291,7 @@ func (user *User) backfillInChunks(req *database.Backfill, conv *database.Histor
 		if len(msgs) > 0 {
 			time.Sleep(time.Duration(req.BatchDelay) * time.Second)
 			user.log.Debugfln("Backfilling %d messages in %s (queue ID: %d)", len(msgs), portal.Key.JID, req.QueueID)
-			resp := portal.backfill(user, msgs, req.BackfillType == database.BackfillForward, isLatestEvents, forwardPrevID)
+			resp := portal.backfill(user, msgs, req.BackfillType == database.BackfillForward, isLatestEvents, shouldAtomicallyMarkAsRead, forwardPrevID)
 			if resp != nil && (resp.BaseInsertionEventID != "" || !isLatestEvents) {
 				insertionEventIds = append(insertionEventIds, resp.BaseInsertionEventID)
 			}
@@ -325,12 +330,12 @@ func (user *User) backfillInChunks(req *database.Backfill, conv *database.Histor
 		portal.updateBackfillStatus(backfillState)
 	}
 
-	if !conv.MarkedAsUnread && conv.UnreadCount == 0 {
-		user.markSelfReadFull(portal)
-	} else if user.bridge.Config.Bridge.HistorySync.UnreadHoursThreshold > 0 && conv.LastMessageTimestamp.Before(time.Now().Add(time.Duration(-user.bridge.Config.Bridge.HistorySync.UnreadHoursThreshold)*time.Hour)) {
-		user.markSelfReadFull(portal)
-	} else if user.bridge.Config.Bridge.SyncManualMarkedUnread {
-		user.markUnread(portal, true)
+	if isLatestEvents && !shouldAtomicallyMarkAsRead {
+		if shouldMarkAsRead {
+			user.markSelfReadFull(portal)
+		} else if conv.MarkedAsUnread && user.bridge.Config.Bridge.SyncManualMarkedUnread {
+			user.markUnread(portal, true)
+		}
 	}
 }
 
@@ -483,7 +488,7 @@ var (
 	BackfillStatusEvent = event.Type{Type: "com.beeper.backfill_status", Class: event.StateEventType}
 )
 
-func (portal *Portal) backfill(source *User, messages []*waProto.WebMessageInfo, isForward, isLatest bool, prevEventID id.EventID) *mautrix.RespBatchSend {
+func (portal *Portal) backfill(source *User, messages []*waProto.WebMessageInfo, isForward, isLatest, atomicMarkAsRead bool, prevEventID id.EventID) *mautrix.RespBatchSend {
 	var req mautrix.ReqBatchSend
 	var infos []*wrappedInfo
 
@@ -499,6 +504,9 @@ func (portal *Portal) backfill(source *User, messages []*waProto.WebMessageInfo,
 		req.PrevEventID = prevEventID
 	}
 	req.BeeperNewMessages = isLatest && req.BatchID == ""
+	if atomicMarkAsRead {
+		req.BeeperMarkReadBy = source.MXID
+	}
 
 	beforeFirstMessageTimestampMillis := (int64(messages[len(messages)-1].GetMessageTimestamp()) * 1000) - 1
 	req.StateEventsAtStart = make([]*event.Event, 0)
