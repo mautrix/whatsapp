@@ -6,6 +6,9 @@
 * Added support for bridging WhatsApp communities as spaces.
 * Updated backfill logic to mark rooms as read if the only message is a notice
   about the disappearing message timer.
+* Updated Docker image to Alpine 3.17.
+* Fixed backfills starting at the wrong time and sending smaller batches than
+  intended in some cases.
 * Switched SQLite config from `sqlite3` to `sqlite3-fk-wal` to enforce foreign
   keys and WAL mode. Additionally, adding `_txlock=immediate` to the DB path is
   recommended, but not required.
