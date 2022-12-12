@@ -1110,6 +1110,10 @@ func fnSync(ce *WrappedCommandEvent) {
 		ce.Reply("`--contact-avatars` can only be used with `sync contacts`")
 		return
 	}
+	if createPortals && !groups {
+		ce.Reply("`--create-portals` can only be used with `sync groups`")
+		return
+	}
 
 	if appState {
 		for _, name := range appstate.AllPatchNames {
