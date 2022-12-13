@@ -83,6 +83,10 @@ func (pq *PortalQuery) GetAllByJID(jid types.JID) []*Portal {
 	return pq.getAll(fmt.Sprintf("SELECT %s FROM portal WHERE jid=$1", portalColumns), jid.ToNonAD())
 }
 
+func (pq *PortalQuery) GetAllByParentGroup(jid types.JID) []*Portal {
+	return pq.getAll(fmt.Sprintf("SELECT %s FROM portal WHERE parent_group=$1", portalColumns), jid)
+}
+
 func (pq *PortalQuery) FindPrivateChats(receiver types.JID) []*Portal {
 	return pq.getAll(fmt.Sprintf("SELECT %s FROM portal WHERE receiver=$1 AND jid LIKE '%%@s.whatsapp.net'", portalColumns), receiver.ToNonAD())
 }

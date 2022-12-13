@@ -136,6 +136,10 @@ func (br *WABridge) GetAllPortalsByJID(jid types.JID) []*Portal {
 	return br.dbPortalsToPortals(br.DB.Portal.GetAllByJID(jid))
 }
 
+func (br *WABridge) GetAllByParentGroup(jid types.JID) []*Portal {
+	return br.dbPortalsToPortals(br.DB.Portal.GetAllByParentGroup(jid))
+}
+
 func (br *WABridge) dbPortalsToPortals(dbPortals []*database.Portal) []*Portal {
 	br.portalsLock.Lock()
 	defer br.portalsLock.Unlock()
@@ -1129,6 +1133,7 @@ func (portal *Portal) UpdateAvatar(user *User, setBy types.JID, updateInfo bool)
 	if updateInfo {
 		portal.UpdateBridgeInfo()
 		portal.Update(nil)
+		portal.updateChildRooms()
 	}
 	return true
 }
@@ -1158,6 +1163,7 @@ func (portal *Portal) UpdateName(name string, setBy types.JID, updateInfo bool) 
 				portal.NameSet = true
 				if updateInfo {
 					portal.UpdateBridgeInfo()
+					portal.updateChildRooms()
 				}
 				return true
 			} else {
@@ -1294,6 +1300,7 @@ func (portal *Portal) UpdateMatrixRoom(user *User, groupInfo *types.GroupInfo) b
 		portal.LastSync = time.Now()
 		portal.Update(nil)
 		portal.UpdateBridgeInfo()
+		portal.updateChildRooms()
 	}
 	return true
 }
@@ -1457,6 +1464,20 @@ func (portal *Portal) UpdateBridgeInfo() {
 	_, err = portal.MainIntent().SendStateEvent(portal.MXID, event.StateHalfShotBridge, stateKey, content)
 	if err != nil {
 		portal.log.Warnln("Failed to update uk.half-shot.bridge:", err)
+	}
+}
+
+func (portal *Portal) updateChildRooms() {
+	if !portal.IsParent {
+		return
+	}
+	children := portal.bridge.GetAllByParentGroup(portal.Key.JID)
+	for _, child := range children {
+		changed := child.updateCommunitySpace(nil, true, false)
+		child.UpdateBridgeInfo()
+		if changed {
+			portal.Update(nil)
+		}
 	}
 }
 
@@ -1652,7 +1673,7 @@ func (portal *Portal) CreateMatrixRoom(user *User, groupInfo *types.GroupInfo, i
 	if err != nil {
 		return err
 	}
-	portal.log.Infoln("Matrix room created:", portal.MXID)
+	portal.log.Infoln("Matrix room created:", resp.RoomID)
 	portal.InSpace = false
 	portal.NameSet = len(portal.Name) > 0
 	portal.TopicSet = len(portal.Topic) > 0
@@ -1696,6 +1717,8 @@ func (portal *Portal) CreateMatrixRoom(user *User, groupInfo *types.GroupInfo, i
 		}
 
 		user.UpdateDirectChats(map[id.UserID][]id.RoomID{puppet.MXID: {portal.MXID}})
+	} else if portal.IsParent {
+		portal.updateChildRooms()
 	}
 
 	firstEventResp, err := portal.MainIntent().SendMessageEvent(portal.MXID, PortalCreationDummyEvent, struct{}{})
@@ -1746,7 +1769,7 @@ func (portal *Portal) updateCommunitySpace(user *User, add, updateInfo bool) boo
 	if space == nil {
 		return false
 	} else if space.MXID == "" {
-		if !add {
+		if !add || user == nil {
 			return false
 		}
 		portal.log.Debugfln("Creating portal for parent group %v", space.Key.JID)
