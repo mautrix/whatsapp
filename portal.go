@@ -1056,12 +1056,16 @@ func reuploadAvatar(intent *appservice.IntentAPI, url string) (id.ContentURI, er
 	return resp.ContentURI, nil
 }
 
-func (user *User) updateAvatar(jid types.JID, avatarID *string, avatarURL *id.ContentURI, avatarSet *bool, log log.Logger, intent *appservice.IntentAPI) bool {
+func (user *User) updateAvatar(jid types.JID, isCommunity bool, avatarID *string, avatarURL *id.ContentURI, avatarSet *bool, log log.Logger, intent *appservice.IntentAPI) bool {
 	currentID := ""
 	if *avatarSet && *avatarID != "remove" && *avatarID != "unauthorized" {
 		currentID = *avatarID
 	}
-	avatar, err := user.Client.GetProfilePictureInfo(jid, false, currentID)
+	avatar, err := user.Client.GetProfilePictureInfo(jid, &whatsmeow.GetProfilePictureParams{
+		Preview:     false,
+		ExistingID:  currentID,
+		IsCommunity: isCommunity,
+	})
 	if errors.Is(err, whatsmeow.ErrProfilePictureUnauthorized) {
 		if *avatarID == "" {
 			*avatarID = "unauthorized"
@@ -1106,7 +1110,7 @@ func (user *User) updateAvatar(jid types.JID, avatarID *string, avatarURL *id.Co
 func (portal *Portal) UpdateAvatar(user *User, setBy types.JID, updateInfo bool) bool {
 	portal.avatarLock.Lock()
 	defer portal.avatarLock.Unlock()
-	changed := user.updateAvatar(portal.Key.JID, &portal.Avatar, &portal.AvatarURL, &portal.AvatarSet, portal.log, portal.MainIntent())
+	changed := user.updateAvatar(portal.Key.JID, portal.IsParent, &portal.Avatar, &portal.AvatarURL, &portal.AvatarSet, portal.log, portal.MainIntent())
 	if !changed || portal.Avatar == "unauthorized" {
 		if changed || updateInfo {
 			portal.Update(nil)

@@ -223,7 +223,7 @@ func (puppet *Puppet) DefaultIntent() *appservice.IntentAPI {
 }
 
 func (puppet *Puppet) UpdateAvatar(source *User, forcePortalSync bool) bool {
-	changed := source.updateAvatar(puppet.JID, &puppet.Avatar, &puppet.AvatarURL, &puppet.AvatarSet, puppet.log, puppet.DefaultIntent())
+	changed := source.updateAvatar(puppet.JID, false, &puppet.Avatar, &puppet.AvatarURL, &puppet.AvatarSet, puppet.log, puppet.DefaultIntent())
 	if !changed || puppet.Avatar == "unauthorized" {
 		if forcePortalSync {
 			go puppet.updatePortalAvatar()
