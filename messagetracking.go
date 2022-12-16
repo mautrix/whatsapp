@@ -169,7 +169,7 @@ func (portal *Portal) sendStatusEvent(evtID, lastRetry id.EventID, err error) {
 
 func (portal *Portal) sendDeliveryReceipt(eventID id.EventID) {
 	if portal.bridge.Config.Bridge.DeliveryReceipts {
-		err := portal.bridge.Bot.MarkRead(portal.MXID, eventID)
+		err := portal.bridge.Bot.SendReceipt(portal.MXID, eventID, event.ReceiptTypeRead, nil)
 		if err != nil {
 			portal.log.Debugfln("Failed to send delivery receipt for %s: %v", eventID, err)
 		}
