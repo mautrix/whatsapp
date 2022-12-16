@@ -1,4 +1,4 @@
-# unreleased
+# v0.8.0 (2022-12-16)
 
 * Added support for bridging polls from WhatsApp and votes in both directions.
   * Votes are only bridged if MSC3381 polls are enabled
