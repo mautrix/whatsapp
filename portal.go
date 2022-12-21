@@ -392,7 +392,7 @@ func containsSupportedMessage(waMsg *waProto.Message) bool {
 		waMsg.DocumentMessage != nil || waMsg.ContactMessage != nil || waMsg.LocationMessage != nil ||
 		waMsg.LiveLocationMessage != nil || waMsg.GroupInviteMessage != nil || waMsg.ContactsArrayMessage != nil ||
 		waMsg.HighlyStructuredMessage != nil || waMsg.TemplateMessage != nil || waMsg.TemplateButtonReplyMessage != nil ||
-		waMsg.ListMessage != nil || waMsg.ListResponseMessage != nil || waMsg.PollCreationMessage != nil
+		waMsg.ListMessage != nil || waMsg.ListResponseMessage != nil || waMsg.PollCreationMessage != nil || waMsg.PollCreationMessageV2 != nil
 }
 
 func getMessageType(waMsg *waProto.Message) string {
@@ -425,7 +425,7 @@ func getMessageType(waMsg *waProto.Message) string {
 		return "reaction"
 	case waMsg.EncReactionMessage != nil:
 		return "encrypted reaction"
-	case waMsg.PollCreationMessage != nil:
+	case waMsg.PollCreationMessage != nil || waMsg.PollCreationMessageV2 != nil:
 		return "poll create"
 	case waMsg.PollUpdateMessage != nil:
 		return "poll update"
@@ -544,6 +544,8 @@ func (portal *Portal) convertMessage(intent *appservice.IntentAPI, source *User,
 		return portal.convertListResponseMessage(intent, waMsg.GetListResponseMessage())
 	case waMsg.PollCreationMessage != nil:
 		return portal.convertPollCreationMessage(intent, waMsg.GetPollCreationMessage())
+	case waMsg.PollCreationMessageV2 != nil:
+		return portal.convertPollCreationMessage(intent, waMsg.GetPollCreationMessageV2())
 	case waMsg.PollUpdateMessage != nil:
 		return portal.convertPollUpdateMessage(intent, source, info, waMsg.GetPollUpdateMessage())
 	case waMsg.ImageMessage != nil:
