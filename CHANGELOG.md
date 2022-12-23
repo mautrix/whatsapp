@@ -1,3 +1,7 @@
+# unreleased
+
+* Added support for sending polls from Matrix to WhatsApp.
+
 # v0.8.0 (2022-12-16)
 
 * Added support for bridging polls from WhatsApp and votes in both directions.

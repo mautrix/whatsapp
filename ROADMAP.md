@@ -6,7 +6,7 @@
     * [x] Location messages
     * [x] Media/files
     * [x] Replies
-    * [ ] Polls
+    * [x] Polls
     * [x] Poll votes
   * [x] Message redactions
   * [x] Reactions

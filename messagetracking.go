@@ -52,6 +52,8 @@ var (
 	errTargetIsFake                = errors.New("target is a fake event")
 	errReactionSentBySomeoneElse   = errors.New("target reaction was sent by someone else")
 	errDMSentByOtherUser           = errors.New("target message was sent by the other user in a DM")
+	errPollMissingQuestion         = errors.New("poll message is missing question")
+	errPollDuplicateOption         = errors.New("poll options must be unique")
 
 	errBroadcastReactionNotSupported = errors.New("reacting to status messages is not currently supported")
 	errBroadcastSendDisabled         = errors.New("sending status messages is disabled")
@@ -76,7 +78,7 @@ func errorToStatusReason(err error) (reason event.MessageStatusReason, status ev
 		return event.MessageStatusUnsupported, event.MessageStatusFail, true, true, ""
 	case errors.Is(err, errMNoticeDisabled):
 		return event.MessageStatusUnsupported, event.MessageStatusFail, true, false, ""
-	case errors.Is(err, errMediaUnsupportedType):
+	case errors.Is(err, errMediaUnsupportedType), errors.Is(err, errPollMissingQuestion), errors.Is(err, errPollDuplicateOption):
 		return event.MessageStatusUnsupported, event.MessageStatusFail, true, true, err.Error()
 	case errors.Is(err, errTimeoutBeforeHandling):
 		return event.MessageStatusTooOld, event.MessageStatusRetriable, true, true, "the message was too old when it reached the bridge, so it was not handled"
@@ -185,8 +187,10 @@ func (portal *Portal) sendMessageMetrics(evt *event.Event, err error, part strin
 		msgType = "reaction"
 	case event.EventRedaction:
 		msgType = "redaction"
-	case TypeMSC3881PollResponse, TypeMSC3881V2PollResponse:
+	case TypeMSC3381PollResponse, TypeMSC3381V2PollResponse:
 		msgType = "poll response"
+	case TypeMSC3381PollStart:
+		msgType = "poll start"
 	default:
 		msgType = "unknown event"
 	}

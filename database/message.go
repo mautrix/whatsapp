@@ -134,11 +134,12 @@ const (
 type MessageType string
 
 const (
-	MsgUnknown  MessageType = ""
-	MsgFake     MessageType = "fake"
-	MsgNormal   MessageType = "message"
-	MsgReaction MessageType = "reaction"
-	MsgEdit     MessageType = "edit"
+	MsgUnknown    MessageType = ""
+	MsgFake       MessageType = "fake"
+	MsgNormal     MessageType = "message"
+	MsgReaction   MessageType = "reaction"
+	MsgEdit       MessageType = "edit"
+	MsgMatrixPoll MessageType = "matrix-poll"
 )
 
 type Message struct {
