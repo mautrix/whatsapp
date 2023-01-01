@@ -677,14 +677,14 @@ func (user *User) sendHackyPhonePing() {
 	} else {
 		user.log.Warnfln("Failed to get last app state key ID to send hacky phone ping: %v - sending empty request", err)
 	}
-	resp, err := user.Client.SendMessage(context.Background(), user.JID.ToNonAD(), msgID, &waProto.Message{
+	resp, err := user.Client.SendMessage(context.Background(), user.JID.ToNonAD(), &waProto.Message{
 		ProtocolMessage: &waProto.ProtocolMessage{
 			Type: waProto.ProtocolMessage_APP_STATE_SYNC_KEY_REQUEST.Enum(),
 			AppStateSyncKeyRequest: &waProto.AppStateSyncKeyRequest{
 				KeyIds: keyIDs,
 			},
 		},
-	})
+	}, whatsmeow.SendRequestExtra{Peer: true, ID: msgID})
 	if err != nil {
 		user.log.Warnfln("Failed to send hacky phone ping: %v", err)
 	} else {

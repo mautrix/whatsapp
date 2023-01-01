@@ -11,7 +11,7 @@ require (
 	github.com/prometheus/client_golang v1.14.0
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
 	github.com/tidwall/gjson v1.14.4
-	go.mau.fi/whatsmeow v0.0.0-20221221211611-6a0e825b4049
+	go.mau.fi/whatsmeow v0.0.0-20230101112920-9b93048f5e21
 	golang.org/x/image v0.2.0
 	golang.org/x/net v0.4.0
 	google.golang.org/protobuf v1.28.1
@@ -35,7 +35,7 @@ require (
 	github.com/tidwall/pretty v1.2.0 // indirect
 	github.com/tidwall/sjson v1.2.5 // indirect
 	github.com/yuin/goldmark v1.5.3 // indirect
-	go.mau.fi/libsignal v0.0.0-20221015105917-d970e7c3c9cf // indirect
+	go.mau.fi/libsignal v0.1.0 // indirect
 	golang.org/x/crypto v0.4.0 // indirect
 	golang.org/x/sys v0.3.0 // indirect
 	golang.org/x/text v0.5.0 // indirect
