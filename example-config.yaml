@@ -134,6 +134,16 @@ bridge:
         # Should the bridge request a full sync from the phone when logging in?
         # This bumps the size of history syncs from 3 months to 1 year.
         request_full_sync: false
+        # Configuration parameters that are sent to the phone along with the request full sync flag.
+        # By default (when the values are null or 0), the config isn't sent at all.
+        full_sync_config:
+            # Number of days of history to request.
+            # The limit seems to be around 3 years, but using higher values doesn't break.
+            days_limit: null
+            # This is presumably the maximum size of the transferred history sync blob, which may affect what the phone includes in the blob.
+            size_mb_limit: null
+            # This is presumably the local storage quota, which may affect what the phone includes in the history sync blob.
+            storage_quota_mb: null
         # Settings for media requests. If the media expired, then it will not
         # be on the WA servers.
         # Media can always be requested by reacting with the ♻️ (recycle) emoji.

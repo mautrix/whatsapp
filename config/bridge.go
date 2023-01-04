@@ -60,10 +60,15 @@ type BridgeConfig struct {
 		CreatePortals bool `yaml:"create_portals"`
 		Backfill      bool `yaml:"backfill"`
 
-		DoublePuppetBackfill    bool `yaml:"double_puppet_backfill"`
-		RequestFullSync         bool `yaml:"request_full_sync"`
-		MaxInitialConversations int  `yaml:"max_initial_conversations"`
-		UnreadHoursThreshold    int  `yaml:"unread_hours_threshold"`
+		DoublePuppetBackfill bool `yaml:"double_puppet_backfill"`
+		RequestFullSync      bool `yaml:"request_full_sync"`
+		FullSyncConfig       struct {
+			DaysLimit    uint32 `yaml:"days_limit"`
+			SizeLimit    uint32 `yaml:"size_mb_limit"`
+			StorageQuota uint32 `yaml:"storage_quota_mb"`
+		}
+		MaxInitialConversations int `yaml:"max_initial_conversations"`
+		UnreadHoursThreshold    int `yaml:"unread_hours_threshold"`
 
 		Immediate struct {
 			WorkerCount int `yaml:"worker_count"`
