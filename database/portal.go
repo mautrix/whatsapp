@@ -263,12 +263,12 @@ func (portal *Portal) Delete() {
 			portal.log.Warnfln("Failed to commit portal delete transaction: %v", err)
 		}
 	}()
-	_, err = portal.db.Exec("UPDATE portal SET in_space=false WHERE parent_group=$1", portal.Key.JID)
+	_, err = txn.Exec("UPDATE portal SET in_space=false WHERE parent_group=$1", portal.Key.JID)
 	if err != nil {
 		portal.log.Warnfln("Failed to mark child groups of %v as not in space: %v", portal.Key.JID, err)
 		return
 	}
-	_, err = portal.db.Exec("DELETE FROM portal WHERE jid=$1 AND receiver=$2", portal.Key.JID, portal.Key.Receiver)
+	_, err = txn.Exec("DELETE FROM portal WHERE jid=$1 AND receiver=$2", portal.Key.JID, portal.Key.Receiver)
 	if err != nil {
 		portal.log.Warnfln("Failed to delete %v: %v", portal.Key, err)
 	}
