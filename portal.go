@@ -4386,6 +4386,13 @@ func (portal *Portal) Cleanup(puppetsOnly bool) {
 		return
 	}
 	intent := portal.MainIntent()
+	if portal.bridge.SpecVersions.UnstableFeatures["com.beeper.room_yeeting"] {
+		err := intent.BeeperDeleteRoom(portal.MXID)
+		if err == nil || errors.Is(err, mautrix.MNotFound) {
+			return
+		}
+		portal.log.Warnfln("Failed to delete %s using hungryserv yeet endpoint, falling back to normal behavior: %v", portal.MXID, err)
+	}
 	members, err := intent.JoinedMembers(portal.MXID)
 	if err != nil {
 		portal.log.Errorln("Failed to get portal members for cleanup:", err)
