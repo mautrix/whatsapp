@@ -177,7 +177,7 @@ var cmdResolveLink = &commands.FullHandler{
 	Help: commands.HelpMeta{
 		Section:     HelpSectionInvites,
 		Description: "Resolve a WhatsApp group invite or business message link.",
-		Args:        "<_group or message link_>",
+		Args:        "<_group, contact, or message link_>",
 	},
 	RequiresLogin: true,
 }
@@ -209,6 +209,17 @@ func fnResolveLink(ce *WrappedCommandEvent) {
 			message = fmt.Sprintf(" The following prefilled message is attached:\n\n%s", strings.Join(parts, "\n"))
 		}
 		ce.Reply("That link points at %s (+%s).%s", target.PushName, target.JID.User, message)
+	} else if strings.HasPrefix(ce.Args[0], whatsmeow.ContactQRLinkPrefix) || strings.HasPrefix(ce.Args[0], whatsmeow.ContactQRLinkDirectPrefix) {
+		target, err := ce.User.Client.ResolveContactQRLink(ce.Args[0])
+		if err != nil {
+			ce.Reply("Failed to get contact info: %v", err)
+			return
+		}
+		if target.PushName != "" {
+			ce.Reply("That link points at %s (+%s)", target.PushName, target.JID.User)
+		} else {
+			ce.Reply("That link points at +%s", target.JID.User)
+		}
 	} else {
 		ce.Reply("That doesn't look like a group invite link nor a business message link.")
 	}
@@ -345,6 +356,13 @@ func fnCreate(ce *WrappedCommandEvent) {
 		return
 	}
 
+	var createEvent event.CreateEventContent
+	err = ce.Bot.StateEvent(ce.RoomID, event.StateCreate, "", &createEvent)
+	if err != nil && !errors.Is(err, mautrix.MNotFound) {
+		ce.Reply("Failed to get room create event")
+		return
+	}
+
 	var participants []types.JID
 	participantDedup := make(map[types.JID]bool)
 	participantDedup[ce.User.JID.ToNonAD()] = true
@@ -362,9 +380,16 @@ func fnCreate(ce *WrappedCommandEvent) {
 			participants = append(participants, jid)
 		}
 	}
+	// TODO check m.space.parent to create rooms directly in communities
 
 	ce.Log.Infofln("Creating group for %s with name %s and participants %+v", ce.RoomID, roomNameEvent.Name, participants)
-	resp, err := ce.User.Client.CreateGroup(roomNameEvent.Name, participants, "")
+	resp, err := ce.User.Client.CreateGroup(whatsmeow.ReqCreateGroup{
+		Name:         roomNameEvent.Name,
+		Participants: participants,
+		GroupParent: types.GroupParent{
+			IsParent: createEvent.Type == event.RoomTypeSpace,
+		},
+	})
 	if err != nil {
 		ce.Reply("Failed to create group: %v", err)
 		return
@@ -378,6 +403,7 @@ func fnCreate(ce *WrappedCommandEvent) {
 	}
 	portal.MXID = ce.RoomID
 	portal.Name = roomNameEvent.Name
+	portal.IsParent = resp.IsParent
 	portal.Encrypted = encryptionEvent.Algorithm == id.AlgorithmMegolmV1
 	if !portal.Encrypted && ce.Bridge.Config.Bridge.Encryption.Default {
 		_, err = portal.MainIntent().SendStateEvent(portal.MXID, event.StateEncryption, "", portal.GetEncryptionEventContent())
@@ -1063,25 +1089,29 @@ var cmdSync = &commands.FullHandler{
 	Help: commands.HelpMeta{
 		Section:     HelpSectionMiscellaneous,
 		Description: "Synchronize data from WhatsApp.",
-		Args:        "<appstate/contacts/groups/space> [--create-portals]",
+		Args:        "<appstate/contacts/groups/space> [--contact-avatars] [--create-portals]",
 	},
 	RequiresLogin: true,
 }
 
 func fnSync(ce *WrappedCommandEvent) {
-	if len(ce.Args) == 0 {
-		ce.Reply("**Usage:** `sync <appstate/contacts/avatars/groups/space> [--contact-avatars] [--create-portals]`")
-		return
-	}
 	args := strings.ToLower(strings.Join(ce.Args, " "))
 	contacts := strings.Contains(args, "contacts")
 	appState := strings.Contains(args, "appstate")
 	space := strings.Contains(args, "space")
 	groups := strings.Contains(args, "groups") || space
+	if !contacts && !appState && !space && !groups {
+		ce.Reply("**Usage:** `sync <appstate/contacts/groups/space> [--contact-avatars] [--create-portals]`")
+		return
+	}
 	createPortals := strings.Contains(args, "--create-portals")
 	contactAvatars := strings.Contains(args, "--contact-avatars")
 	if contactAvatars && (!contacts || appState) {
 		ce.Reply("`--contact-avatars` can only be used with `sync contacts`")
+		return
+	}
+	if createPortals && !groups {
+		ce.Reply("`--create-portals` can only be used with `sync groups`")
 		return
 	}
 
@@ -1116,7 +1146,7 @@ func fnSync(ce *WrappedCommandEvent) {
 		count := 0
 		for _, key := range keys {
 			portal := ce.Bridge.GetPortalByJID(key)
-			portal.addToSpace(ce.User)
+			portal.addToPersonalSpace(ce.User)
 			count++
 		}
 		plural := "s"

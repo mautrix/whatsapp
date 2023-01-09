@@ -1,4 +1,4 @@
--- v0 -> v52: Latest revision
+-- v0 -> v55: Latest revision
 
 CREATE TABLE "user" (
     mxid     TEXT PRIMARY KEY,
@@ -29,6 +29,10 @@ CREATE TABLE portal (
     encrypted  BOOLEAN NOT NULL DEFAULT false,
     last_sync  BIGINT NOT NULL DEFAULT 0,
 
+    is_parent    BOOLEAN NOT NULL DEFAULT false,
+    parent_group TEXT,
+    in_space     BOOLEAN NOT NULL DEFAULT false,
+
     first_event_id  TEXT,
     next_batch_id   TEXT,
     relay_user_id   TEXT,
@@ -36,6 +40,7 @@ CREATE TABLE portal (
 
     PRIMARY KEY (jid, receiver)
 );
+CREATE INDEX portal_parent_group_idx ON portal(parent_group);
 
 CREATE TABLE puppet (
     username     TEXT PRIMARY KEY,
@@ -76,6 +81,16 @@ CREATE TABLE message (
 
     PRIMARY KEY (chat_jid, chat_receiver, jid),
     FOREIGN KEY (chat_jid, chat_receiver) REFERENCES portal(jid, receiver) ON DELETE CASCADE
+);
+
+CREATE TABLE poll_option_id (
+    msg_mxid TEXT,
+    opt_id   TEXT,
+    opt_hash bytea CHECK ( length(opt_hash) = 32 ),
+
+    PRIMARY KEY (msg_mxid, opt_id),
+    CONSTRAINT poll_option_unique_hash UNIQUE (msg_mxid, opt_hash),
+    CONSTRAINT message_mxid_fkey FOREIGN KEY (msg_mxid) REFERENCES message(mxid) ON DELETE CASCADE ON UPDATE CASCADE
 );
 
 CREATE TABLE reaction (

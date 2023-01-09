@@ -1,3 +1,45 @@
+# unreleased
+
+* Added support for sending polls from Matrix to WhatsApp.
+
+# v0.8.0 (2022-12-16)
+
+* Added support for bridging polls from WhatsApp and votes in both directions.
+  * Votes are only bridged if MSC3381 polls are enabled
+    (`extev_polls` in the config).
+* Added support for bridging WhatsApp communities as spaces.
+* Updated backfill logic to mark rooms as read if the only message is a notice
+  about the disappearing message timer.
+* Updated Docker image to Alpine 3.17.
+* Fixed backfills starting at the wrong time and sending smaller batches than
+  intended in some cases.
+* Switched SQLite config from `sqlite3` to `sqlite3-fk-wal` to enforce foreign
+  keys and WAL mode. Additionally, adding `_txlock=immediate` to the DB path is
+  recommended, but not required.
+
+# v0.7.2 (2022-11-16)
+
+* Added option to handle all transactions asynchronously.
+  * This may be useful for large instances, but using it means messages are
+    no longer guaranteed to be sent to WhatsApp in the same order as Matrix.
+* Fixed database error when backfilling disappearing messages on SQLite.
+* Fixed incoming events blocking handling of incoming encryption keys.
+
+# v0.7.1 (2022-10-16)
+
+* Added support for wa.me/qr links in `!wa resolve-link`.
+* Added option to sync group members in parallel to speed up syncing large
+  groups.
+* Added initial support for WhatsApp message editing.
+  * Sending edits will be disabled by default until official WhatsApp clients
+    start rendering edits.
+* Changed `private_chat_portal_meta` config option to be implicitly enabled in
+  encrypted rooms, matching the behavior of other mautrix bridges.
+* Updated media bridging to check homeserver media size limit before
+  downloading media to avoid running out of memory.
+  * The bridge may still run out of ram when bridging files if your homeserver
+    has a large media size limit and a low bridge memory limit.
+
 # v0.7.0 (2022-09-16)
 
 * Bumped minimum Go version to 1.18.

@@ -35,7 +35,8 @@ var strikethroughRegex = regexp.MustCompile("([\\s>_*]|^)~(.+?)~([^a-zA-Z\\d]|$)
 var codeBlockRegex = regexp.MustCompile("```(?:.|\n)+?```")
 var inlineURLRegex = regexp.MustCompile(`\[(.+?)]\((.+?)\)`)
 
-const mentionedJIDsContextKey = "net.maunium.whatsapp.mentioned_jids"
+const mentionedJIDsContextKey = "fi.mau.whatsapp.mentioned_jids"
+const disableMentionsContextKey = "fi.mau.whatsapp.no_mentions"
 
 type Formatter struct {
 	bridge *WABridge
@@ -55,7 +56,8 @@ func NewFormatter(bridge *WABridge) *Formatter {
 			Newline:      "\n",
 
 			PillConverter: func(displayname, mxid, eventID string, ctx format.Context) string {
-				if mxid[0] == '@' {
+				_, disableMentions := ctx[disableMentionsContextKey]
+				if mxid[0] == '@' && !disableMentions {
 					puppet := bridge.GetPuppetByMXID(id.UserID(mxid))
 					if puppet != nil {
 						jids, ok := ctx[mentionedJIDsContextKey].([]string)
@@ -67,7 +69,7 @@ func NewFormatter(bridge *WABridge) *Formatter {
 						return "@" + puppet.JID.User
 					}
 				}
-				return mxid
+				return displayname
 			},
 			BoldConverter:           func(text string, _ format.Context) string { return fmt.Sprintf("*%s*", text) },
 			ItalicConverter:         func(text string, _ format.Context) string { return fmt.Sprintf("_%s_", text) },
@@ -150,4 +152,10 @@ func (formatter *Formatter) ParseMatrix(html string) (string, []string) {
 	result := formatter.matrixHTMLParser.Parse(html, ctx)
 	mentionedJIDs, _ := ctx[mentionedJIDsContextKey].([]string)
 	return result, mentionedJIDs
+}
+
+func (formatter *Formatter) ParseMatrixWithoutMentions(html string) string {
+	ctx := make(format.Context)
+	ctx[disableMentionsContextKey] = true
+	return formatter.matrixHTMLParser.Parse(html, ctx)
 }

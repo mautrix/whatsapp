@@ -65,7 +65,7 @@ func (pq *PortalQuery) New() *Portal {
 	}
 }
 
-const portalColumns = "jid, receiver, mxid, name, name_set, topic, topic_set, avatar, avatar_url, avatar_set, encrypted, last_sync, first_event_id, next_batch_id, relay_user_id, expiration_time"
+const portalColumns = "jid, receiver, mxid, name, name_set, topic, topic_set, avatar, avatar_url, avatar_set, encrypted, last_sync, is_parent, parent_group, in_space, first_event_id, next_batch_id, relay_user_id, expiration_time"
 
 func (pq *PortalQuery) GetAll() []*Portal {
 	return pq.getAll(fmt.Sprintf("SELECT %s FROM portal", portalColumns))
@@ -81,6 +81,10 @@ func (pq *PortalQuery) GetByMXID(mxid id.RoomID) *Portal {
 
 func (pq *PortalQuery) GetAllByJID(jid types.JID) []*Portal {
 	return pq.getAll(fmt.Sprintf("SELECT %s FROM portal WHERE jid=$1", portalColumns), jid.ToNonAD())
+}
+
+func (pq *PortalQuery) GetAllByParentGroup(jid types.JID) []*Portal {
+	return pq.getAll(fmt.Sprintf("SELECT %s FROM portal WHERE parent_group=$1", portalColumns), jid)
 }
 
 func (pq *PortalQuery) FindPrivateChats(receiver types.JID) []*Portal {
@@ -145,18 +149,20 @@ type Portal struct {
 	Encrypted bool
 	LastSync  time.Time
 
-	FirstEventID id.EventID
-	NextBatchID  id.BatchID
+	IsParent    bool
+	ParentGroup types.JID
+	InSpace     bool
 
-	RelayUserID id.UserID
-
+	FirstEventID   id.EventID
+	NextBatchID    id.BatchID
+	RelayUserID    id.UserID
 	ExpirationTime uint32
 }
 
 func (portal *Portal) Scan(row dbutil.Scannable) *Portal {
-	var mxid, avatarURL, firstEventID, nextBatchID, relayUserID sql.NullString
+	var mxid, avatarURL, firstEventID, nextBatchID, relayUserID, parentGroupJID sql.NullString
 	var lastSyncTs int64
-	err := row.Scan(&portal.Key.JID, &portal.Key.Receiver, &mxid, &portal.Name, &portal.NameSet, &portal.Topic, &portal.TopicSet, &portal.Avatar, &avatarURL, &portal.AvatarSet, &portal.Encrypted, &lastSyncTs, &firstEventID, &nextBatchID, &relayUserID, &portal.ExpirationTime)
+	err := row.Scan(&portal.Key.JID, &portal.Key.Receiver, &mxid, &portal.Name, &portal.NameSet, &portal.Topic, &portal.TopicSet, &portal.Avatar, &avatarURL, &portal.AvatarSet, &portal.Encrypted, &lastSyncTs, &portal.IsParent, &parentGroupJID, &portal.InSpace, &firstEventID, &nextBatchID, &relayUserID, &portal.ExpirationTime)
 	if err != nil {
 		if err != sql.ErrNoRows {
 			portal.log.Errorln("Database scan failed:", err)
@@ -168,6 +174,9 @@ func (portal *Portal) Scan(row dbutil.Scannable) *Portal {
 	}
 	portal.MXID = id.RoomID(mxid.String)
 	portal.AvatarURL, _ = id.ParseContentURI(avatarURL.String)
+	if parentGroupJID.Valid {
+		portal.ParentGroup, _ = types.ParseJID(parentGroupJID.String)
+	}
 	portal.FirstEventID = id.EventID(firstEventID.String)
 	portal.NextBatchID = id.BatchID(nextBatchID.String)
 	portal.RelayUserID = id.UserID(relayUserID.String)
@@ -188,6 +197,14 @@ func (portal *Portal) relayUserPtr() *id.UserID {
 	return nil
 }
 
+func (portal *Portal) parentGroupPtr() *string {
+	if !portal.ParentGroup.IsEmpty() {
+		val := portal.ParentGroup.String()
+		return &val
+	}
+	return nil
+}
+
 func (portal *Portal) lastSyncTs() int64 {
 	if portal.LastSync.IsZero() {
 		return 0
@@ -198,43 +215,61 @@ func (portal *Portal) lastSyncTs() int64 {
 func (portal *Portal) Insert() {
 	_, err := portal.db.Exec(`
 		INSERT INTO portal (jid, receiver, mxid, name, name_set, topic, topic_set, avatar, avatar_url, avatar_set,
-		                    encrypted, last_sync, first_event_id, next_batch_id, relay_user_id, expiration_time)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+		                    encrypted, last_sync, is_parent, parent_group, in_space, first_event_id, next_batch_id,
+		                    relay_user_id, expiration_time)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
 	`,
 		portal.Key.JID, portal.Key.Receiver, portal.mxidPtr(), portal.Name, portal.NameSet, portal.Topic, portal.TopicSet,
 		portal.Avatar, portal.AvatarURL.String(), portal.AvatarSet, portal.Encrypted, portal.lastSyncTs(),
-		portal.FirstEventID.String(), portal.NextBatchID.String(), portal.relayUserPtr(), portal.ExpirationTime)
+		portal.IsParent, portal.parentGroupPtr(), portal.InSpace, portal.FirstEventID.String(), portal.NextBatchID.String(),
+		portal.relayUserPtr(), portal.ExpirationTime)
 	if err != nil {
 		portal.log.Warnfln("Failed to insert %s: %v", portal.Key, err)
 	}
 }
 
-func (portal *Portal) Update(txn dbutil.Transaction) {
-	query := `
+func (portal *Portal) Update(txn dbutil.Execable) {
+	if txn == nil {
+		txn = portal.db
+	}
+	_, err := txn.Exec(`
 		UPDATE portal
 		SET mxid=$1, name=$2, name_set=$3, topic=$4, topic_set=$5, avatar=$6, avatar_url=$7, avatar_set=$8,
-		    encrypted=$9, last_sync=$10, first_event_id=$11, next_batch_id=$12, relay_user_id=$13, expiration_time=$14
-		WHERE jid=$15 AND receiver=$16
-	`
-	args := []interface{}{
-		portal.mxidPtr(), portal.Name, portal.NameSet, portal.Topic, portal.TopicSet, portal.Avatar, portal.AvatarURL.String(),
-		portal.AvatarSet, portal.Encrypted, portal.lastSyncTs(), portal.FirstEventID.String(), portal.NextBatchID.String(),
-		portal.relayUserPtr(), portal.ExpirationTime, portal.Key.JID, portal.Key.Receiver,
-	}
-	var err error
-	if txn != nil {
-		_, err = txn.Exec(query, args...)
-	} else {
-		_, err = portal.db.Exec(query, args...)
-	}
+		    encrypted=$9, last_sync=$10, is_parent=$11, parent_group=$12, in_space=$13,
+		    first_event_id=$14, next_batch_id=$15, relay_user_id=$16, expiration_time=$17
+		WHERE jid=$18 AND receiver=$19
+	`, portal.mxidPtr(), portal.Name, portal.NameSet, portal.Topic, portal.TopicSet, portal.Avatar, portal.AvatarURL.String(),
+		portal.AvatarSet, portal.Encrypted, portal.lastSyncTs(), portal.IsParent, portal.parentGroupPtr(), portal.InSpace,
+		portal.FirstEventID.String(), portal.NextBatchID.String(), portal.relayUserPtr(), portal.ExpirationTime,
+		portal.Key.JID, portal.Key.Receiver)
 	if err != nil {
 		portal.log.Warnfln("Failed to update %s: %v", portal.Key, err)
 	}
 }
 
 func (portal *Portal) Delete() {
-	_, err := portal.db.Exec("DELETE FROM portal WHERE jid=$1 AND receiver=$2", portal.Key.JID, portal.Key.Receiver)
+	txn, err := portal.db.Begin()
 	if err != nil {
-		portal.log.Warnfln("Failed to delete %s: %v", portal.Key, err)
+		portal.log.Errorfln("Failed to begin transaction to delete portal %v: %v", portal.Key, err)
+		return
+	}
+	defer func() {
+		if err != nil {
+			err = txn.Rollback()
+			if err != nil {
+				portal.log.Warnfln("Failed to rollback failed portal delete transaction: %v", err)
+			}
+		} else if err = txn.Commit(); err != nil {
+			portal.log.Warnfln("Failed to commit portal delete transaction: %v", err)
+		}
+	}()
+	_, err = txn.Exec("UPDATE portal SET in_space=false WHERE parent_group=$1", portal.Key.JID)
+	if err != nil {
+		portal.log.Warnfln("Failed to mark child groups of %v as not in space: %v", portal.Key.JID, err)
+		return
+	}
+	_, err = txn.Exec("DELETE FROM portal WHERE jid=$1 AND receiver=$2", portal.Key.JID, portal.Key.Receiver)
+	if err != nil {
+		portal.log.Warnfln("Failed to delete %v: %v", portal.Key, err)
 	}
 }

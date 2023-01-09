@@ -76,6 +76,7 @@ type User struct {
 	lastPresence types.Presence
 
 	historySyncLoopsStarted bool
+	enqueueBackfillsTimer   *time.Timer
 	spaceMembershipChecked  bool
 	lastPhoneOfflineWarning time.Time
 
@@ -236,6 +237,8 @@ func (br *WABridge) NewUser(dbUser *database.User) *User {
 	user.Whitelisted = user.PermissionLevel >= bridgeconfig.PermissionLevelUser
 	user.Admin = user.PermissionLevel >= bridgeconfig.PermissionLevelAdmin
 	user.BridgeState = br.NewBridgeStateQueue(user, user.log)
+	user.enqueueBackfillsTimer = time.NewTimer(5 * time.Second)
+	user.enqueueBackfillsTimer.Stop()
 	go user.puppetResyncLoop()
 	return user
 }
@@ -674,14 +677,14 @@ func (user *User) sendHackyPhonePing() {
 	} else {
 		user.log.Warnfln("Failed to get last app state key ID to send hacky phone ping: %v - sending empty request", err)
 	}
-	resp, err := user.Client.SendMessage(context.Background(), user.JID.ToNonAD(), msgID, &waProto.Message{
+	resp, err := user.Client.SendMessage(context.Background(), user.JID.ToNonAD(), &waProto.Message{
 		ProtocolMessage: &waProto.ProtocolMessage{
 			Type: waProto.ProtocolMessage_APP_STATE_SYNC_KEY_REQUEST.Enum(),
 			AppStateSyncKeyRequest: &waProto.AppStateSyncKeyRequest{
 				KeyIds: keyIDs,
 			},
 		},
-	})
+	}, whatsmeow.SendRequestExtra{Peer: true, ID: msgID})
 	if err != nil {
 		user.log.Warnfln("Failed to send hacky phone ping: %v", err)
 	} else {
@@ -1322,6 +1325,18 @@ func (user *User) handleGroupUpdate(evt *events.GroupInfo) {
 		portal.ChangeAdminStatus(evt.Demote, false)
 	case evt.Ephemeral != nil:
 		portal.UpdateGroupDisappearingMessages(evt.Sender, evt.Timestamp, evt.Ephemeral.DisappearingTimer)
+	case evt.Link != nil:
+		if evt.Link.Type == types.GroupLinkChangeTypeParent {
+			portal.UpdateParentGroup(user, evt.Link.Group.JID, true)
+		}
+	case evt.Unlink != nil:
+		if evt.Unlink.Type == types.GroupLinkChangeTypeParent && portal.ParentGroup == evt.Unlink.Group.JID {
+			portal.UpdateParentGroup(user, types.EmptyJID, true)
+		}
+	case evt.Delete != nil:
+		portal.log.Infoln("Got group delete event from WhatsApp, deleting portal")
+		portal.Delete()
+		portal.Cleanup(false)
 	}
 }
 

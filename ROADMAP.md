@@ -6,6 +6,8 @@
     * [x] Location messages
     * [x] Media/files
     * [x] Replies
+    * [x] Polls
+    * [x] Poll votes
   * [x] Message redactions
   * [x] Reactions
   * [x] Presence
@@ -29,9 +31,12 @@
     * [x] Location messages
     * [x] Contact messages
     * [x] Replies
+    * [x] Polls
+    * [x] Poll votes
   * [ ] Chat types
     * [x] Private chat
     * [x] Group chat
+    * [x] Communities
     * [x] Status broadcast
     * [ ] Broadcast list (not currently supported on WhatsApp web)
   * [x] Message deletions

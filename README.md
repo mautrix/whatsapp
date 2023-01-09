@@ -13,7 +13,7 @@ E.g. The third modification release to 1.0 of the upstream bridge would be `v1.0
 # mautrix-whatsapp
 A Matrix-WhatsApp puppeting bridge based on [whatsmeow](https://github.com/tulir/whatsmeow).
 
-### Documentation
+## Documentation
 All setup and usage instructions are located on [docs.mau.fi]. Some quick links:
 
 [docs.mau.fi]: https://docs.mau.fi/bridges/go/whatsapp/index.html

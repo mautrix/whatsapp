@@ -18,8 +18,6 @@ package main
 
 import (
 	"fmt"
-	"io"
-	"net/http"
 	"regexp"
 	"sync"
 	"time"
@@ -45,9 +43,7 @@ var userIDRegex *regexp.Regexp
 
 func (br *WABridge) ParsePuppetMXID(mxid id.UserID) (jid types.JID, ok bool) {
 	if userIDRegex == nil {
-		userIDRegex = regexp.MustCompile(fmt.Sprintf("^@%s:%s$",
-			br.Config.Bridge.FormatUsername("([0-9]+)"),
-			br.Config.Homeserver.Domain))
+		userIDRegex = br.Config.MakeUserIDRegex("([0-9]+)")
 	}
 	match := userIDRegex.FindStringSubmatch(string(mxid))
 	if len(match) == 2 {
@@ -231,27 +227,8 @@ func (puppet *Puppet) DefaultIntent() *appservice.IntentAPI {
 	return puppet.bridge.AS.Intent(puppet.MXID)
 }
 
-func reuploadAvatar(intent *appservice.IntentAPI, url string) (id.ContentURI, error) {
-	getResp, err := http.DefaultClient.Get(url)
-	if err != nil {
-		return id.ContentURI{}, fmt.Errorf("failed to download avatar: %w", err)
-	}
-	data, err := io.ReadAll(getResp.Body)
-	_ = getResp.Body.Close()
-	if err != nil {
-		return id.ContentURI{}, fmt.Errorf("failed to read avatar bytes: %w", err)
-	}
-
-	mime := http.DetectContentType(data)
-	resp, err := intent.UploadBytes(data, mime)
-	if err != nil {
-		return id.ContentURI{}, fmt.Errorf("failed to upload avatar to Matrix: %w", err)
-	}
-	return resp.ContentURI, nil
-}
-
 func (puppet *Puppet) UpdateAvatar(source *User, forcePortalSync bool) bool {
-	changed := source.updateAvatar(puppet.JID, &puppet.Avatar, &puppet.AvatarURL, &puppet.AvatarSet, puppet.log, puppet.DefaultIntent())
+	changed := source.updateAvatar(puppet.JID, false, &puppet.Avatar, &puppet.AvatarURL, &puppet.AvatarSet, puppet.log, puppet.DefaultIntent())
 	if !changed || puppet.Avatar == "unauthorized" {
 		if forcePortalSync {
 			go puppet.updatePortalAvatar()
@@ -271,12 +248,13 @@ func (puppet *Puppet) UpdateAvatar(source *User, forcePortalSync bool) bool {
 func (puppet *Puppet) UpdateName(contact types.ContactInfo, forcePortalSync bool) bool {
 	newName, quality := puppet.bridge.Config.Bridge.FormatDisplayname(puppet.JID, contact)
 	if (puppet.Displayname != newName || !puppet.NameSet) && quality >= puppet.NameQuality {
+		oldName := puppet.Displayname
 		puppet.Displayname = newName
 		puppet.NameQuality = quality
 		puppet.NameSet = false
 		err := puppet.DefaultIntent().SetDisplayName(newName)
 		if err == nil {
-			puppet.log.Debugln("Updated name", puppet.Displayname, "->", newName)
+			puppet.log.Debugln("Updated name", oldName, "->", newName)
 			puppet.NameSet = true
 			go puppet.updatePortalName()
 		} else {
@@ -290,8 +268,11 @@ func (puppet *Puppet) UpdateName(contact types.ContactInfo, forcePortalSync bool
 }
 
 func (puppet *Puppet) updatePortalMeta(meta func(portal *Portal)) {
-	if puppet.bridge.Config.Bridge.PrivateChatPortalMeta {
+	if puppet.bridge.Config.Bridge.PrivateChatPortalMeta || puppet.bridge.Config.Bridge.Encryption.Allow {
 		for _, portal := range puppet.bridge.GetAllPortalsByJID(puppet.JID) {
+			if !puppet.bridge.Config.Bridge.PrivateChatPortalMeta && !portal.Encrypted {
+				continue
+			}
 			// Get room create lock to prevent races between receiving contact info and room creation.
 			portal.roomCreateLock.Lock()
 			meta(portal)

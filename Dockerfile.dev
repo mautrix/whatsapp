@@ -1,4 +1,4 @@
-FROM golang:1-alpine3.16
+FROM golang:1-alpine3.17
 
 RUN apk add --no-cache git ca-certificates build-base su-exec olm-dev bash jq yq curl
 

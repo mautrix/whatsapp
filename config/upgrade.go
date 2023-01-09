@@ -48,10 +48,14 @@ func DoUpgrade(helper *up.Helper) {
 	helper.Copy(up.Bool, "bridge", "history_sync", "backfill")
 	helper.Copy(up.Bool, "bridge", "history_sync", "double_puppet_backfill")
 	helper.Copy(up.Bool, "bridge", "history_sync", "request_full_sync")
+	helper.Copy(up.Int|up.Null, "bridge", "history_sync", "full_sync_config", "days_limit")
+	helper.Copy(up.Int|up.Null, "bridge", "history_sync", "full_sync_config", "size_mb_limit")
+	helper.Copy(up.Int|up.Null, "bridge", "history_sync", "full_sync_config", "storage_quota_mb")
 	helper.Copy(up.Bool, "bridge", "history_sync", "media_requests", "auto_request_media")
 	helper.Copy(up.Str, "bridge", "history_sync", "media_requests", "request_method")
 	helper.Copy(up.Int, "bridge", "history_sync", "media_requests", "request_local_time")
 	helper.Copy(up.Int, "bridge", "history_sync", "max_initial_conversations")
+	helper.Copy(up.Int, "bridge", "history_sync", "unread_hours_threshold")
 	helper.Copy(up.Int, "bridge", "history_sync", "immediate", "worker_count")
 	helper.Copy(up.Int, "bridge", "history_sync", "immediate", "max_events")
 	helper.Copy(up.List, "bridge", "history_sync", "deferred")
@@ -73,6 +77,7 @@ func DoUpgrade(helper *up.Helper) {
 		helper.Copy(up.Map, "bridge", "login_shared_secret_map")
 	}
 	helper.Copy(up.Bool, "bridge", "private_chat_portal_meta")
+	helper.Copy(up.Bool, "bridge", "parallel_member_sync")
 	helper.Copy(up.Bool, "bridge", "bridge_notices")
 	helper.Copy(up.Bool, "bridge", "resend_bridge_info")
 	helper.Copy(up.Bool, "bridge", "mute_bridging")
@@ -92,6 +97,16 @@ func DoUpgrade(helper *up.Helper) {
 	helper.Copy(up.Bool, "bridge", "crash_on_stream_replaced")
 	helper.Copy(up.Bool, "bridge", "url_previews")
 	helper.Copy(up.Bool, "bridge", "caption_in_message")
+	if intPolls, ok := helper.Get(up.Int, "bridge", "extev_polls"); ok {
+		val := "false"
+		if intPolls != "0" {
+			val = "true"
+		}
+		helper.Set(up.Bool, val, "bridge", "extev_polls")
+	} else {
+		helper.Copy(up.Bool, "bridge", "extev_polls")
+	}
+	helper.Copy(up.Bool, "bridge", "send_whatsapp_edits")
 	helper.Copy(up.Str|up.Null, "bridge", "message_handling_timeout", "error_after")
 	helper.Copy(up.Str|up.Null, "bridge", "message_handling_timeout", "deadline")
 

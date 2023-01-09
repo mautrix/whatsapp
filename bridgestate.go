@@ -52,7 +52,7 @@ func (user *User) GetRemoteID() string {
 	if user == nil || user.JID.IsEmpty() {
 		return ""
 	}
-	return fmt.Sprintf("%s_a%d_d%d", user.JID.User, user.JID.Agent, user.JID.Device)
+	return user.JID.User
 }
 
 func (user *User) GetRemoteName() string {

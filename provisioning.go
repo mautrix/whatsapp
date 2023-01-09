@@ -543,7 +543,7 @@ func jsonResponse(w http.ResponseWriter, status int, response interface{}) {
 func (prov *ProvisioningAPI) Logout(w http.ResponseWriter, r *http.Request) {
 	user := r.Context().Value("user").(*User)
 	if user.Session == nil {
-		jsonResponse(w, http.StatusNotFound, Error{
+		jsonResponse(w, http.StatusOK, Error{
 			Error:   "You're not logged in",
 			ErrCode: "not logged in",
 		})
