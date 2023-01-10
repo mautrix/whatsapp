@@ -651,11 +651,8 @@ func (portal *Portal) handleUndecryptableMessage(source *User, evt *events.Undec
 		"messageID":         evt.Info.ID,
 		"undecryptableType": metricType,
 	})
-	intent := portal.getMessageIntent(source, &evt.Info)
+	intent := portal.getMessageIntent(source, &evt.Info, "undecryptable")
 	if intent == nil {
-		return
-	} else if !intent.IsCustomPuppet && portal.IsPrivateChat() && evt.Info.Sender.User == portal.Key.Receiver.User {
-		portal.log.Debugfln("Not handling %s (undecryptable): user doesn't have double puppeting enabled", evt.Info.ID)
 		return
 	}
 	content := undecryptableMessageContent
@@ -676,7 +673,7 @@ func (portal *Portal) handleFakeMessage(msg fakeMessage) {
 		return
 	}
 	intent := portal.bridge.GetPuppetByJID(msg.Sender).IntentFor(portal)
-	if !intent.IsCustomPuppet && portal.IsPrivateChat() && msg.Sender.User == portal.Key.Receiver.User {
+	if !intent.IsCustomPuppet && portal.IsPrivateChat() && msg.Sender.User == portal.Key.Receiver.User && portal.Key.Receiver != portal.Key.JID {
 		portal.log.Debugfln("Not handling %s (fake): user doesn't have double puppeting enabled", msg.ID)
 		return
 	}
@@ -743,11 +740,8 @@ func (portal *Portal) handleMessage(source *User, evt *events.Message) {
 		evt.Message = evt.Message.GetProtocolMessage().GetEditedMessage()
 	}
 
-	intent := portal.getMessageIntent(source, &evt.Info)
+	intent := portal.getMessageIntent(source, &evt.Info, msgType)
 	if intent == nil {
-		return
-	} else if !intent.IsCustomPuppet && portal.IsPrivateChat() && evt.Info.Sender.User == portal.Key.Receiver.User {
-		portal.log.Debugfln("Not handling %s (%s): user doesn't have double puppeting enabled", msgID, msgType)
 		return
 	}
 	converted := portal.convertMessage(intent, source, &evt.Info, evt.Message, false)
@@ -906,12 +900,17 @@ func (portal *Portal) getMessagePuppet(user *User, info *types.MessageInfo) (pup
 	return puppet
 }
 
-func (portal *Portal) getMessageIntent(user *User, info *types.MessageInfo) *appservice.IntentAPI {
+func (portal *Portal) getMessageIntent(user *User, info *types.MessageInfo, msgType string) *appservice.IntentAPI {
 	puppet := portal.getMessagePuppet(user, info)
 	if puppet == nil {
 		return nil
 	}
-	return puppet.IntentFor(portal)
+	intent := puppet.IntentFor(portal)
+	if !intent.IsCustomPuppet && portal.IsPrivateChat() && info.Sender.User == portal.Key.Receiver.User && portal.Key.Receiver != portal.Key.JID {
+		portal.log.Debugfln("Not handling %s (%s): user doesn't have double puppeting enabled", info.ID, msgType)
+		return nil
+	}
+	return intent
 }
 
 func (portal *Portal) finishHandling(existing *database.Message, message *types.MessageInfo, mxid id.EventID, msgType database.MessageType, errType database.MessageErrorType) {
