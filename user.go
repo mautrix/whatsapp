@@ -841,7 +841,7 @@ func (user *User) HandleEvent(event interface{}) {
 		// Don't send the normal transient disconnect state if we're already in a different transient disconnect state.
 		// TODO remove this if/when the phone offline state is moved to a sub-state of CONNECTED
 		if user.BridgeState.GetPrev().Error != WAPhoneOffline && user.PhoneRecentlySeen(false) {
-			go user.BridgeState.Send(status.BridgeState{StateEvent: status.StateTransientDisconnect, Message: "Disconnected from WhatsApp. Trying to reconnect."})
+			go user.BridgeState.Send(status.BridgeState{StateEvent: status.StateTransientDisconnect, Error: WADisconnected})
 		}
 		user.bridge.Metrics.TrackConnectionState(user.JID, false)
 	case *events.Contact:
