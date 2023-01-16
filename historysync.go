@@ -49,8 +49,8 @@ type wrappedInfo struct {
 
 	MediaKey []byte
 
-	ExpirationStart uint64
-	ExpiresIn       uint32
+	ExpirationStart time.Time
+	ExpiresIn       time.Duration
 }
 
 func (user *User) handleHistorySyncsLoop() {
@@ -666,7 +666,10 @@ func (portal *Portal) appendBatchEvents(source *User, converted *ConvertedMessag
 	if err != nil {
 		return err
 	}
-	expirationStart := raw.GetEphemeralStartTimestamp()
+	expirationStart := info.Timestamp
+	if raw.GetEphemeralStartTimestamp() > 0 {
+		expirationStart = time.Unix(int64(raw.GetEphemeralStartTimestamp()), 0)
+	}
 	mainInfo := &wrappedInfo{
 		MessageInfo:     info,
 		Type:            database.MsgNormal,
@@ -799,14 +802,7 @@ func (portal *Portal) finishBatch(txn dbutil.Transaction, eventIDs []id.EventID,
 		}
 
 		if info.ExpiresIn > 0 {
-			if info.ExpirationStart > 0 {
-				remainingSeconds := time.Unix(int64(info.ExpirationStart), 0).Add(time.Duration(info.ExpiresIn) * time.Second).Sub(time.Now()).Seconds()
-				portal.log.Debugfln("Disappearing history sync message: expires in %d, started at %d, remaining %d", info.ExpiresIn, info.ExpirationStart, int(remainingSeconds))
-				portal.MarkDisappearing(txn, eventID, uint32(remainingSeconds), true)
-			} else {
-				portal.log.Debugfln("Disappearing history sync message: expires in %d (not started)", info.ExpiresIn)
-				portal.MarkDisappearing(txn, eventID, info.ExpiresIn, false)
-			}
+			portal.MarkDisappearing(txn, eventID, info.ExpiresIn, info.ExpirationStart)
 		}
 	}
 	portal.log.Infofln("Successfully sent %d events", len(eventIDs))

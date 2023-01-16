@@ -39,16 +39,14 @@ func (dmq *DisappearingMessageQuery) New() *DisappearingMessage {
 	}
 }
 
-func (dmq *DisappearingMessageQuery) NewWithValues(roomID id.RoomID, eventID id.EventID, expireIn time.Duration, startNow bool) *DisappearingMessage {
+func (dmq *DisappearingMessageQuery) NewWithValues(roomID id.RoomID, eventID id.EventID, expireIn time.Duration, expireAt time.Time) *DisappearingMessage {
 	dm := &DisappearingMessage{
 		db:       dmq.db,
 		log:      dmq.log,
 		RoomID:   roomID,
 		EventID:  eventID,
 		ExpireIn: expireIn,
-	}
-	if startNow {
-		dm.ExpireAt = time.Now().Add(dm.ExpireIn)
+		ExpireAt: expireAt,
 	}
 	return dm
 }
