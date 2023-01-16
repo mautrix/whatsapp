@@ -1325,11 +1325,12 @@ func (portal *Portal) GetBasePowerLevels() *event.PowerLevelsEventContent {
 			portal.MainIntent().UserID: 100,
 		},
 		Events: map[string]int{
-			event.StateRoomName.Type:   anyone,
-			event.StateRoomAvatar.Type: anyone,
-			event.StateTopic.Type:      anyone,
-			event.EventReaction.Type:   anyone,
-			event.EventRedaction.Type:  anyone,
+			event.StateRoomName.Type:     anyone,
+			event.StateRoomAvatar.Type:   anyone,
+			event.StateTopic.Type:        anyone,
+			event.EventReaction.Type:     anyone,
+			event.EventRedaction.Type:    anyone,
+			TypeMSC3381PollResponse.Type: anyone,
 		},
 	}
 }
@@ -1338,6 +1339,7 @@ func (portal *Portal) applyPowerLevelFixes(levels *event.PowerLevelsEventContent
 	changed := false
 	changed = levels.EnsureEventLevel(event.EventReaction, 0) || changed
 	changed = levels.EnsureEventLevel(event.EventRedaction, 0) || changed
+	changed = levels.EnsureEventLevel(TypeMSC3381PollResponse, 0) || changed
 	return changed
 }
 
