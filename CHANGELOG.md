@@ -1,4 +1,4 @@
-# unreleased
+# v0.8.1 (2023-01-16)
 
 * Added support for sending polls from Matrix to WhatsApp.
 * Added config option for requesting more history from phone during login.
