@@ -280,7 +280,6 @@ var (
 	_ bridge.MembershipHandlingPortal  = (*Portal)(nil)
 	_ bridge.MetaHandlingPortal        = (*Portal)(nil)
 	_ bridge.TypingPortal              = (*Portal)(nil)
-	_ bridge.DisappearingPortal        = (*Portal)(nil)
 )
 
 func (portal *Portal) handleMessageLoopItem(msg PortalMessage) {
@@ -4254,9 +4253,6 @@ func (portal *Portal) handleMatrixReadReceipt(sender *User, eventID id.EventID, 
 		if err != nil {
 			portal.log.Warnfln("Failed to mark %v as read by %s: %v", ids, sender.JID, err)
 		}
-	}
-	if isExplicit {
-		portal.ScheduleDisappearing()
 	}
 }
 

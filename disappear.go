@@ -40,15 +40,6 @@ func (portal *Portal) MarkDisappearing(txn dbutil.Execable, eventID id.EventID, 
 	}
 }
 
-func (portal *Portal) ScheduleDisappearing() {
-	nowPlusHour := time.Now().Add(1 * time.Hour)
-	for _, msg := range portal.bridge.DB.DisappearingMessage.StartAllUnscheduledInRoom(portal.MXID) {
-		if msg.ExpireAt.Before(nowPlusHour) {
-			go portal.sleepAndDelete(msg)
-		}
-	}
-}
-
 func (br *WABridge) SleepAndDeleteUpcoming() {
 	for _, msg := range br.DB.DisappearingMessage.GetUpcomingScheduled(1 * time.Hour) {
 		portal := br.GetPortalByMXID(msg.RoomID)
