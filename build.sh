@@ -11,8 +11,7 @@ if [ -n "${CGO_EXTRA_CPPFLAGS}" ] ; then
     if [ -z "${CGO_CPPFLAGS}" ] ; then
         export CGO_CPPFLAGS="${CGO_EXTRA_CPPFLAGS}"
     else
-        CGO_CPPFLAGS_OLD="${CGO_CPPFLAGS}"
-        export CGO_CPPFLAGS="${CGO_CPPFLAGS_OLD} ${CGO_EXTRA_CPPFLAGS}"
+        export CGO_CPPFLAGS="${CGO_CPPFLAGS} ${CGO_EXTRA_CPPFLAGS}"
     fi
 fi
 
@@ -20,8 +19,7 @@ if [ -n "${CGO_EXTRA_LDFLAGS}" ] ; then
     if [ -z "${CGO_LDFLAGS}" ] ; then
         export CGO_LDFLAGS="${CGO_EXTRA_LDFLAGS}"
     else
-        CGO_LDFLAGS_OLD="${CGO_LDFLAGS}"
-        export CGO_LDFLAGS="${CGO_LDFLAGS_OLD} ${CGO_EXTRA_LDFLAGS}"
+        export CGO_LDFLAGS="${CGO_LDFLAGS} ${CGO_EXTRA_LDFLAGS}"
     fi
 fi
 
