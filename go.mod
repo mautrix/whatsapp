@@ -11,7 +11,7 @@ require (
 	github.com/prometheus/client_golang v1.14.0
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
 	github.com/tidwall/gjson v1.14.4
-	go.mau.fi/whatsmeow v0.0.0-20230113234340-b4790c38ebfa
+	go.mau.fi/whatsmeow v0.0.0-20230128195103-dcbc8dd31a22
 	golang.org/x/image v0.3.0
 	golang.org/x/net v0.5.0
 	google.golang.org/protobuf v1.28.1
