@@ -2963,6 +2963,14 @@ func (portal *Portal) uploadMedia(intent *appservice.IntentAPI, data []byte, con
 	if file != nil {
 		file.URL = mxc.CUString()
 		content.File = file
+		// Temporarily fix a bug with displaying images without thumbnails in element-ios https://github.com/vector-im/element-ios/issues/4004
+		if strings.HasPrefix(content.Info.MimeType, "image/") {
+			if content.Info.ThumbnailFile != nil {
+				content.Info.ThumbnailFile = file
+			} else if content.URL.ParseOrIgnore().IsEmpty() {
+				content.Info.ThumbnailURL = content.URL
+			}
+		}
 	} else {
 		content.URL = mxc.CUString()
 	}
