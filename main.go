@@ -93,7 +93,7 @@ func (br *WABridge) Init() {
 
 	Segment.log = br.Log.Sub("Segment")
 	Segment.key = br.Config.SegmentKey
-	Segment.userID = br.Config.SegmentUserId
+	Segment.userID = br.Config.SegmentUserID
 	if Segment.IsEnabled() {
 		Segment.log.Infoln("Segment metrics are enabled")
 		if Segment.userID != "" {

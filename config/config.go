@@ -25,7 +25,7 @@ type Config struct {
 	*bridgeconfig.BaseConfig `yaml:",inline"`
 
 	SegmentKey    string `yaml:"segment_key"`
-	SegmentUserId string `yaml:"segment_user_id"`
+	SegmentUserID string `yaml:"segment_user_id"`
 
 	Metrics struct {
 		Enabled bool   `yaml:"enabled"`
