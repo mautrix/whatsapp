@@ -93,8 +93,12 @@ func (br *WABridge) Init() {
 
 	Segment.log = br.Log.Sub("Segment")
 	Segment.key = br.Config.SegmentKey
+	Segment.userID = br.Config.SegmentUserId
 	if Segment.IsEnabled() {
 		Segment.log.Infoln("Segment metrics are enabled")
+		if Segment.userID != "" {
+			Segment.log.Infoln("Overriding Segment user_id with %v", Segment.userID)
+		}
 	}
 
 	br.DB = database.New(br.Bridge.DB, br.Log.Sub("Database"))
