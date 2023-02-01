@@ -72,6 +72,8 @@ appservice:
 
 # Segment API key to track some events, like provisioning API login and encryption errors.
 segment_key: null
+# Optional user_id to use when sending Segment events. If null, defaults to using mxID.
+segment_user_id: null
 
 # Prometheus config.
 metrics:

@@ -30,6 +30,7 @@ const SegmentURL = "https://api.segment.io/v1/track"
 
 type SegmentClient struct {
 	key    string
+	userID string
 	log    log.Logger
 	client http.Client
 }
@@ -38,8 +39,14 @@ var Segment SegmentClient
 
 func (sc *SegmentClient) trackSync(userID id.UserID, event string, properties map[string]interface{}) error {
 	var buf bytes.Buffer
+	var segmentUserID string
+	if Segment.userID != "" {
+		segmentUserID = Segment.userID
+	} else {
+		segmentUserID = userID.String()
+	}
 	err := json.NewEncoder(&buf).Encode(map[string]interface{}{
-		"userId":     userID,
+		"userId":     segmentUserID,
 		"event":      event,
 		"properties": properties,
 	})
