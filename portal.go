@@ -2972,6 +2972,17 @@ func (portal *Portal) uploadMedia(intent *appservice.IntentAPI, data []byte, con
 		cfg, _, _ := image.DecodeConfig(bytes.NewReader(data))
 		content.Info.Width, content.Info.Height = cfg.Width, cfg.Height
 	}
+
+	// This is a hack for bad clients like Element iOS that require a thumbnail (https://github.com/vector-im/element-ios/issues/4004)
+	if strings.HasPrefix(content.Info.MimeType, "image/") && content.Info.ThumbnailInfo == nil {
+		infoCopy := *content.Info
+		content.Info.ThumbnailInfo = &infoCopy
+		if content.File != nil {
+			content.Info.ThumbnailFile = file
+		} else {
+			content.Info.ThumbnailURL = content.URL
+		}
+	}
 	return nil
 }
 
