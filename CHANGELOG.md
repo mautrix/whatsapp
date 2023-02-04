@@ -1,3 +1,9 @@
+# unreleased
+
+* Updated portal room power levels to always allow poll votes.
+* Fixed disappearing message timing being implemented incorrectly.
+* Fixed server rejecting messages not being handled as an error.
+
 # v0.8.1 (2023-01-16)
 
 * Added support for sending polls from Matrix to WhatsApp.

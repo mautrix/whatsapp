@@ -56,15 +56,15 @@ func NewFormatter(bridge *WABridge) *Formatter {
 			Newline:      "\n",
 
 			PillConverter: func(displayname, mxid, eventID string, ctx format.Context) string {
-				_, disableMentions := ctx[disableMentionsContextKey]
+				_, disableMentions := ctx.ReturnData[disableMentionsContextKey]
 				if mxid[0] == '@' && !disableMentions {
 					puppet := bridge.GetPuppetByMXID(id.UserID(mxid))
 					if puppet != nil {
-						jids, ok := ctx[mentionedJIDsContextKey].([]string)
+						jids, ok := ctx.ReturnData[mentionedJIDsContextKey].([]string)
 						if !ok {
-							ctx[mentionedJIDsContextKey] = []string{puppet.JID.String()}
+							ctx.ReturnData[mentionedJIDsContextKey] = []string{puppet.JID.String()}
 						} else {
-							ctx[mentionedJIDsContextKey] = append(jids, puppet.JID.String())
+							ctx.ReturnData[mentionedJIDsContextKey] = append(jids, puppet.JID.String())
 						}
 						return "@" + puppet.JID.User
 					}
@@ -148,14 +148,14 @@ func (formatter *Formatter) ParseWhatsApp(roomID id.RoomID, content *event.Messa
 }
 
 func (formatter *Formatter) ParseMatrix(html string) (string, []string) {
-	ctx := make(format.Context)
+	ctx := format.NewContext()
 	result := formatter.matrixHTMLParser.Parse(html, ctx)
-	mentionedJIDs, _ := ctx[mentionedJIDsContextKey].([]string)
+	mentionedJIDs, _ := ctx.ReturnData[mentionedJIDsContextKey].([]string)
 	return result, mentionedJIDs
 }
 
 func (formatter *Formatter) ParseMatrixWithoutMentions(html string) string {
-	ctx := make(format.Context)
-	ctx[disableMentionsContextKey] = true
+	ctx := format.NewContext()
+	ctx.ReturnData[disableMentionsContextKey] = true
 	return formatter.matrixHTMLParser.Parse(html, ctx)
 }

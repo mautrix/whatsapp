@@ -11,12 +11,12 @@ require (
 	github.com/prometheus/client_golang v1.14.0
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
 	github.com/tidwall/gjson v1.14.4
-	go.mau.fi/whatsmeow v0.0.0-20230128195103-dcbc8dd31a22
+	go.mau.fi/whatsmeow v0.0.0-20230204181151-b1f00ea99464
 	golang.org/x/image v0.3.0
 	golang.org/x/net v0.5.0
 	google.golang.org/protobuf v1.28.1
 	maunium.net/go/maulogger/v2 v2.3.2
-	maunium.net/go/mautrix v0.13.0
+	maunium.net/go/mautrix v0.13.1-0.20230204140716-485b4f376dc6
 )
 
 require (
@@ -30,11 +30,11 @@ require (
 	github.com/prometheus/client_model v0.3.0 // indirect
 	github.com/prometheus/common v0.37.0 // indirect
 	github.com/prometheus/procfs v0.8.0 // indirect
-	github.com/rs/zerolog v1.28.0 // indirect
+	github.com/rs/zerolog v1.29.0 // indirect
 	github.com/tidwall/match v1.1.1 // indirect
 	github.com/tidwall/pretty v1.2.0 // indirect
 	github.com/tidwall/sjson v1.2.5 // indirect
-	github.com/yuin/goldmark v1.5.3 // indirect
+	github.com/yuin/goldmark v1.5.4 // indirect
 	go.mau.fi/libsignal v0.1.0 // indirect
 	golang.org/x/crypto v0.5.0 // indirect
 	golang.org/x/sys v0.4.0 // indirect
