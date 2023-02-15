@@ -96,9 +96,12 @@ func (pq *PortalQuery) FindPrivateChatsNotInSpace(receiver types.JID) (keys []Po
 	rows, err := pq.db.Query(`
 		SELECT jid FROM portal
 		    LEFT JOIN user_portal ON portal.jid=user_portal.portal_jid AND portal.receiver=user_portal.portal_receiver
-		WHERE mxid<>'' AND receiver=$1 AND (in_space=false OR in_space IS NULL)
+		WHERE mxid<>'' AND receiver=$1 AND (user_portal.in_space=false OR user_portal.in_space IS NULL)
 	`, receiver)
-	if err != nil || rows == nil {
+	if err != nil {
+		pq.log.Errorfln("Failed to find private chats not in space for %s: %v", receiver, err)
+		return
+	} else if rows == nil {
 		return
 	}
 	for rows.Next() {
