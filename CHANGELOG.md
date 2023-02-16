@@ -1,3 +1,7 @@
+# unreleased
+
+* Bumped minimum Go version to 1.19.
+
 # v0.8.2 (2023-02-16)
 
 * Updated portal room power levels to always allow poll votes.
