@@ -1,8 +1,12 @@
-# unreleased
+# v0.8.2 (2023-02-16)
 
 * Updated portal room power levels to always allow poll votes.
 * Fixed disappearing message timing being implemented incorrectly.
 * Fixed server rejecting messages not being handled as an error.
+* Fixed sent files not being downloadable on latest WhatsApp beta versions.
+* Fixed `sync space` command not syncing DMs into the space properly.
+* Added workaround for broken clients like Element iOS that can't render normal
+  image messages correctly.
 
 # v0.8.1 (2023-01-16)
 
