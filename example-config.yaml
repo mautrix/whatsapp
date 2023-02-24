@@ -429,19 +429,15 @@ bridge:
             m.video: "<b>{{ .Sender.Displayname }}</b> sent a video"
             m.location: "<b>{{ .Sender.Displayname }}</b> sent a location"
 
-# Logging config.
+# Logging config. See https://github.com/tulir/zeroconfig for details.
 logging:
-    # The directory for log files. Will be created if not found.
-    directory: ./logs
-    # Available variables: .Date for the file date and .Index for different log files on the same day.
-    # Set this to null to disable logging to file.
-    file_name_format: "{{.Date}}-{{.Index}}.log"
-    # Date format for file names in the Go time format: https://golang.org/pkg/time/#pkg-constants
-    file_date_format: "2006-01-02"
-    # Log file permissions.
-    file_mode: 0o600
-    # Timestamp format for log entries in the Go time format.
-    timestamp_format: "Jan _2, 2006 15:04:05"
-    # Minimum severity for log messages printed to stdout/stderr. This doesn't affect the log file.
-    # Options: debug, info, warn, error, fatal
-    print_level: debug
+    min_level: debug
+    writers:
+    - type: stdout
+      format: pretty-colored
+    - type: file
+      format: json
+      filename: ./logs/mautrix-whatsapp.log
+      max_size: 100
+      max_backups: 10
+      compress: true

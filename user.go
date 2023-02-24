@@ -236,7 +236,7 @@ func (br *WABridge) NewUser(dbUser *database.User) *User {
 	user.RelayWhitelisted = user.PermissionLevel >= bridgeconfig.PermissionLevelRelay
 	user.Whitelisted = user.PermissionLevel >= bridgeconfig.PermissionLevelUser
 	user.Admin = user.PermissionLevel >= bridgeconfig.PermissionLevelAdmin
-	user.BridgeState = br.NewBridgeStateQueue(user, user.log)
+	user.BridgeState = br.NewBridgeStateQueue(user)
 	user.enqueueBackfillsTimer = time.NewTimer(5 * time.Second)
 	user.enqueueBackfillsTimer.Stop()
 	go user.puppetResyncLoop()
