@@ -1,6 +1,9 @@
 # unreleased
 
 * Bumped minimum Go version to 1.19.
+* Switched to zerolog for logging.
+  * The basic log config will be migrated automatically, but you may want to
+    tweak it as the options are different.
 
 # v0.8.2 (2023-02-16)
 
