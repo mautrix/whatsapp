@@ -116,6 +116,7 @@ func (br *WABridge) newDoublePuppetClient(mxid id.UserID, accessToken string) (*
 		return nil, err
 	}
 	client.Log = br.AS.Log.With().Str("as_user_id", mxid.String()).Logger()
+	client.StateStore = br.AS.StateStore
 	client.Client = br.AS.HTTPClient
 	client.DefaultHTTPRetries = br.AS.DefaultHTTPRetries
 	return client, nil
