@@ -24,7 +24,8 @@ import (
 type Config struct {
 	*bridgeconfig.BaseConfig `yaml:",inline"`
 
-	SegmentKey string `yaml:"segment_key"`
+	SegmentKey    string `yaml:"segment_key"`
+	SegmentUserID string `yaml:"segment_user_id"`
 
 	Limits struct {
 		MaxPuppetLimit       uint `yaml:"max_puppet_limit"`

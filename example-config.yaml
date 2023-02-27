@@ -72,6 +72,8 @@ appservice:
 
 # Segment API key to track some events, like provisioning API login and encryption errors.
 segment_key: null
+# Optional user_id to use when sending Segment events. If null, defaults to using mxID.
+segment_user_id: null
 
 # Limit usage of the bridge
 limits:
@@ -303,10 +305,6 @@ bridge:
     # Whether or not created rooms should have federation enabled.
     # If false, created portal rooms will never be federated.
     federate_rooms: true
-    # Whether to enable disappearing messages in groups. If enabled, then the expiration time of
-    # the messages will be determined by the first user to read the message, rather than individually.
-    # If the bridge only has a single user, this can be turned on safely.
-    disappearing_messages_in_groups: false
     # Should the bridge never send alerts to the bridge management room?
     # These are mostly things like the user being logged out.
     disable_bridge_alerts: false

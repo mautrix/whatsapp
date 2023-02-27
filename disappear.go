@@ -27,27 +27,16 @@ import (
 	"maunium.net/go/mautrix-whatsapp/database"
 )
 
-func (portal *Portal) MarkDisappearing(txn dbutil.Execable, eventID id.EventID, expiresIn uint32, startNow bool) {
-	if expiresIn == 0 || (!portal.bridge.Config.Bridge.DisappearingMessagesInGroups && portal.IsGroupChat()) {
+func (portal *Portal) MarkDisappearing(txn dbutil.Execable, eventID id.EventID, expiresIn time.Duration, startsAt time.Time) {
+	if expiresIn == 0 {
 		return
 	}
+	expiresAt := startsAt.Add(expiresIn)
 
-	msg := portal.bridge.DB.DisappearingMessage.NewWithValues(portal.MXID, eventID, time.Duration(expiresIn)*time.Second, startNow)
+	msg := portal.bridge.DB.DisappearingMessage.NewWithValues(portal.MXID, eventID, expiresIn, expiresAt)
 	msg.Insert(txn)
-	if startNow {
+	if expiresAt.Before(time.Now().Add(1 * time.Hour)) {
 		go portal.sleepAndDelete(msg)
-	}
-}
-
-func (portal *Portal) ScheduleDisappearing() {
-	if !portal.bridge.Config.Bridge.DisappearingMessagesInGroups && portal.IsGroupChat() {
-		return
-	}
-	nowPlusHour := time.Now().Add(1 * time.Hour)
-	for _, msg := range portal.bridge.DB.DisappearingMessage.StartAllUnscheduledInRoom(portal.MXID) {
-		if msg.ExpireAt.Before(nowPlusHour) {
-			go portal.sleepAndDelete(msg)
-		}
 	}
 }
 
@@ -63,6 +52,11 @@ func (br *WABridge) SleepAndDeleteUpcoming() {
 }
 
 func (portal *Portal) sleepAndDelete(msg *database.DisappearingMessage) {
+	if _, alreadySleeping := portal.currentlySleepingToDelete.LoadOrStore(msg.EventID, true); alreadySleeping {
+		return
+	}
+	defer portal.currentlySleepingToDelete.Delete(msg.EventID)
+
 	sleepTime := msg.ExpireAt.Sub(time.Now())
 	portal.log.Debugfln("Sleeping for %s to make %s disappear", sleepTime, msg.EventID)
 	time.Sleep(sleepTime)

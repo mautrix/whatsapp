@@ -39,16 +39,14 @@ func (dmq *DisappearingMessageQuery) New() *DisappearingMessage {
 	}
 }
 
-func (dmq *DisappearingMessageQuery) NewWithValues(roomID id.RoomID, eventID id.EventID, expireIn time.Duration, startNow bool) *DisappearingMessage {
+func (dmq *DisappearingMessageQuery) NewWithValues(roomID id.RoomID, eventID id.EventID, expireIn time.Duration, expireAt time.Time) *DisappearingMessage {
 	dm := &DisappearingMessage{
 		db:       dmq.db,
 		log:      dmq.log,
 		RoomID:   roomID,
 		EventID:  eventID,
 		ExpireIn: expireIn,
-	}
-	if startNow {
-		dm.ExpireAt = time.Now().Add(dm.ExpireIn)
+		ExpireAt: expireAt,
 	}
 	return dm
 }
@@ -57,25 +55,10 @@ const (
 	getAllScheduledDisappearingMessagesQuery = `
 		SELECT room_id, event_id, expire_in, expire_at FROM disappearing_message WHERE expire_at IS NOT NULL AND expire_at <= $1
 	`
-	startUnscheduledDisappearingMessagesInRoomQuery = `
-		UPDATE disappearing_message SET expire_at=$1+expire_in WHERE room_id=$2 AND expire_at IS NULL
-		RETURNING room_id, event_id, expire_in, expire_at
-	`
 )
 
 func (dmq *DisappearingMessageQuery) GetUpcomingScheduled(duration time.Duration) (messages []*DisappearingMessage) {
 	rows, err := dmq.db.Query(getAllScheduledDisappearingMessagesQuery, time.Now().Add(duration).UnixMilli())
-	if err != nil || rows == nil {
-		return nil
-	}
-	for rows.Next() {
-		messages = append(messages, dmq.New().Scan(rows))
-	}
-	return
-}
-
-func (dmq *DisappearingMessageQuery) StartAllUnscheduledInRoom(roomID id.RoomID) (messages []*DisappearingMessage) {
-	rows, err := dmq.db.Query(startUnscheduledDisappearingMessagesInRoomQuery, time.Now().UnixMilli(), roomID)
 	if err != nil || rows == nil {
 		return nil
 	}

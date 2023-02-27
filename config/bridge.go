@@ -127,8 +127,7 @@ type BridgeConfig struct {
 		Deadline   time.Duration `yaml:"-"`
 	} `yaml:"message_handling_timeout"`
 
-	DisableStatusBroadcastSend   bool `yaml:"disable_status_broadcast_send"`
-	DisappearingMessagesInGroups bool `yaml:"disappearing_messages_in_groups"`
+	DisableStatusBroadcastSend bool `yaml:"disable_status_broadcast_send"`
 
 	DisableBridgeAlerts   bool `yaml:"disable_bridge_alerts"`
 	CrashOnStreamReplaced bool `yaml:"crash_on_stream_replaced"`

@@ -622,8 +622,11 @@ func (prov *ProvisioningAPI) Login(w http.ResponseWriter, r *http.Request) {
 	})
 
 	if userTimezone := r.URL.Query().Get("tz"); userTimezone != "" {
+		user.log.Debug("Setting timezone to %s", userTimezone)
 		user.Timezone = userTimezone
 		user.Update()
+	} else {
+		user.log.Debug("No timezone provided in request")
 	}
 
 	qrChan, err := user.Login(ctx)
