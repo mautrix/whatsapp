@@ -28,6 +28,7 @@ func DoUpgrade(helper *up.Helper) {
 	bridgeconfig.Upgrader.DoUpgrade(helper)
 
 	helper.Copy(up.Str|up.Null, "segment_key")
+	helper.Copy(up.Str|up.Null, "segment_user_id")
 
 	helper.Copy(up.Bool, "metrics", "enabled")
 	helper.Copy(up.Str, "metrics", "listen")
@@ -92,7 +93,6 @@ func DoUpgrade(helper *up.Helper) {
 	helper.Copy(up.Bool, "bridge", "allow_user_invite")
 	helper.Copy(up.Str, "bridge", "command_prefix")
 	helper.Copy(up.Bool, "bridge", "federate_rooms")
-	helper.Copy(up.Bool, "bridge", "disappearing_messages_in_groups")
 	helper.Copy(up.Bool, "bridge", "disable_bridge_alerts")
 	helper.Copy(up.Bool, "bridge", "crash_on_stream_replaced")
 	helper.Copy(up.Bool, "bridge", "url_previews")

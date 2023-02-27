@@ -97,8 +97,12 @@ func (br *WABridge) Init() {
 
 	Segment.log = br.Log.Sub("Segment")
 	Segment.key = br.Config.SegmentKey
+	Segment.userID = br.Config.SegmentUserID
 	if Segment.IsEnabled() {
 		Segment.log.Infoln("Segment metrics are enabled")
+		if Segment.userID != "" {
+			Segment.log.Infoln("Overriding Segment user_id with %v", Segment.userID)
+		}
 	}
 
 	br.DB = database.New(br.Bridge.DB, br.Log.Sub("Database"))
@@ -279,9 +283,9 @@ func main() {
 	}
 	br.Bridge = bridge.Bridge{
 		Name:         "mautrix-whatsapp",
-		URL:          "https://github.com/vector-im/mautrix-whatsapp",
-		Description:  "A Matrix-WhatsApp puppeting bridge (Element fork).",
-		Version:      "0.8.0-mod-1",
+		URL:          "https://github.com/mautrix/whatsapp",
+		Description:  "A Matrix-WhatsApp puppeting bridge.",
+		Version:      "0.8.2-mod-1",
 		ProtocolName: "WhatsApp",
 
 		CryptoPickleKey: "maunium.net/go/mautrix-whatsapp",
