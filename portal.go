@@ -313,6 +313,8 @@ func (portal *Portal) handleMessageLoopItem(msg PortalMessage) {
 }
 
 func (portal *Portal) handleMatrixMessageLoopItem(msg PortalMatrixMessage) {
+	portal.latestEventBackfillLock.Lock()
+	defer portal.latestEventBackfillLock.Unlock()
 	evtTS := time.UnixMilli(msg.evt.Timestamp)
 	timings := messageTimings{
 		initReceive:  msg.evt.Mautrix.ReceivedAt.Sub(evtTS),
