@@ -354,6 +354,8 @@ bridge:
         # Enable key sharing? If enabled, key requests for rooms where users are in will be fulfilled.
         # You must use a client that supports requesting keys from other users to use this feature.
         allow_key_sharing: false
+        # Should users mentions be in the event wire content to enable the server to send push notifications?
+        plaintext_mentions: false
         # What level of device verification should be required from users?
         #
         # Valid levels:

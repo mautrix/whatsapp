@@ -1,5 +1,5 @@
 // mautrix-whatsapp - A Matrix-WhatsApp puppeting bridge.
-// Copyright (C) 2021 Tulir Asokan
+// Copyright (C) 2023 Tulir Asokan
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as published by
@@ -125,6 +125,8 @@ func (formatter *Formatter) ParseWhatsApp(roomID id.RoomID, content *event.Messa
 			return fmt.Sprintf(`<a href="%s">%s</a>`, groups[2], groups[1])
 		})
 	}
+	alreadyMentioned := make(map[id.UserID]struct{})
+	content.Mentions = &event.Mentions{}
 	for _, rawJID := range mentionedJIDs {
 		jid, err := types.ParseJID(rawJID)
 		if err != nil {
@@ -136,7 +138,12 @@ func (formatter *Formatter) ParseWhatsApp(roomID id.RoomID, content *event.Messa
 		number := "@" + jid.User
 		output = strings.ReplaceAll(output, number, fmt.Sprintf(`<a href="https://matrix.to/#/%s">%s</a>`, mxid, displayname))
 		content.Body = strings.ReplaceAll(content.Body, number, displayname)
+		if _, ok := alreadyMentioned[mxid]; !ok {
+			alreadyMentioned[mxid] = struct{}{}
+			content.Mentions.UserIDs = append(content.Mentions.UserIDs, mxid)
+		}
 	}
+	content.UnstableMentions = content.Mentions
 	if output != content.Body || forceHTML {
 		output = strings.ReplaceAll(output, "\n", "<br/>")
 		content.FormattedBody = output
