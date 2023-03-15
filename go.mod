@@ -16,7 +16,7 @@ require (
 	golang.org/x/net v0.6.0
 	google.golang.org/protobuf v1.28.1
 	maunium.net/go/maulogger/v2 v2.4.1
-	maunium.net/go/mautrix v0.15.0-beta.2.0.20230308151314-83fcdcf30f00
+	maunium.net/go/mautrix v0.15.0-beta.2.0.20230315141952-7b3389a2c155
 )
 
 require (
@@ -37,7 +37,7 @@ require (
 	github.com/tidwall/sjson v1.2.5 // indirect
 	github.com/yuin/goldmark v1.5.4 // indirect
 	go.mau.fi/libsignal v0.1.0 // indirect
-	go.mau.fi/zeroconfig v0.1.1 // indirect
+	go.mau.fi/zeroconfig v0.1.2 // indirect
 	golang.org/x/crypto v0.6.0 // indirect
 	golang.org/x/sys v0.5.0 // indirect
 	golang.org/x/text v0.7.0 // indirect
