@@ -11,12 +11,12 @@ require (
 	github.com/prometheus/client_golang v1.14.0
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
 	github.com/tidwall/gjson v1.14.4
-	go.mau.fi/whatsmeow v0.0.0-20230306190159-5caded34a872
-	golang.org/x/image v0.4.0
-	golang.org/x/net v0.6.0
+	go.mau.fi/whatsmeow v0.0.0-20230316102651-f0c131192076
+	golang.org/x/image v0.6.0
+	golang.org/x/net v0.8.0
 	google.golang.org/protobuf v1.28.1
 	maunium.net/go/maulogger/v2 v2.4.1
-	maunium.net/go/mautrix v0.15.0-beta.2.0.20230315141952-7b3389a2c155
+	maunium.net/go/mautrix v0.15.0
 )
 
 require (
@@ -39,8 +39,8 @@ require (
 	go.mau.fi/libsignal v0.1.0 // indirect
 	go.mau.fi/zeroconfig v0.1.2 // indirect
 	golang.org/x/crypto v0.6.0 // indirect
-	golang.org/x/sys v0.5.0 // indirect
-	golang.org/x/text v0.7.0 // indirect
+	golang.org/x/sys v0.6.0 // indirect
+	golang.org/x/text v0.8.0 // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	maunium.net/go/mauflag v1.0.0 // indirect
