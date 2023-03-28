@@ -2864,6 +2864,7 @@ func (portal *Portal) convertMediaMessageContent(intent *appservice.IntentAPI, m
 			"fi.mau.autoplay":      true,
 			"fi.mau.hide_controls": true,
 			"fi.mau.no_audio":      true,
+			"fi.mau.gif":           true,
 		}
 	}
 
