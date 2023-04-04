@@ -28,6 +28,7 @@ import (
 
 	"maunium.net/go/mautrix/appservice"
 	"maunium.net/go/mautrix/bridge"
+	"maunium.net/go/mautrix/bridge/bridgeconfig"
 	"maunium.net/go/mautrix/id"
 
 	"maunium.net/go/mautrix-whatsapp/config"
@@ -262,6 +263,31 @@ func (puppet *Puppet) UpdateName(contact types.ContactInfo, forcePortalSync bool
 	return false
 }
 
+func (puppet *Puppet) UpdateContactInfo() bool {
+	if !puppet.ContactInfoSet {
+		contactInfo := map[string]any{
+			"com.beeper.bridge.identifiers": []string{
+				fmt.Sprintf("tel:+%s", puppet.JID.User),
+				fmt.Sprintf("whatsapp:%s", puppet.JID.String()),
+			},
+			"com.beeper.bridge.remoteId":    puppet.JID.String(),
+			"com.beeper.bridge.service":     "whatsapp",
+			"com.beeper.bridge.network":     "whatsapp",
+			"com.beeper.bridge.isBridgeBot": false,
+			"com.beeper.bridge.isBot":       false,
+		}
+		err := puppet.DefaultIntent().BeeperUpdateProfile(contactInfo)
+		if err != nil {
+			puppet.log.Warnln("Failed to store custom contact info in profile:", err)
+			return false
+		} else {
+			puppet.ContactInfoSet = true
+			return true
+		}
+	}
+	return false
+}
+
 func (puppet *Puppet) updatePortalMeta(meta func(portal *Portal)) {
 	if puppet.bridge.Config.Bridge.PrivateChatPortalMeta || puppet.bridge.Config.Bridge.Encryption.Allow {
 		for _, portal := range puppet.bridge.GetAllPortalsByJID(puppet.JID) {
@@ -337,6 +363,9 @@ func (puppet *Puppet) Sync(source *User, contact *types.ContactInfo, forceAvatar
 	}
 	if len(puppet.Avatar) == 0 || forceAvatarSync || puppet.bridge.Config.Bridge.UserAvatarSync {
 		update = puppet.UpdateAvatar(source, forcePortalSync) || update
+	}
+	if puppet.bridge.Config.Homeserver.Software == bridgeconfig.SoftwareHungry {
+		update = puppet.UpdateContactInfo() || update
 	}
 	if update || puppet.LastSync.Add(24*time.Hour).Before(time.Now()) {
 		puppet.LastSync = time.Now()
