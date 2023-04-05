@@ -270,11 +270,11 @@ func (puppet *Puppet) UpdateContactInfo() bool {
 				fmt.Sprintf("tel:+%s", puppet.JID.User),
 				fmt.Sprintf("whatsapp:%s", puppet.JID.String()),
 			},
-			"com.beeper.bridge.remoteId":    puppet.JID.String(),
-			"com.beeper.bridge.service":     "whatsapp",
-			"com.beeper.bridge.network":     "whatsapp",
-			"com.beeper.bridge.isBridgeBot": false,
-			"com.beeper.bridge.isBot":       false,
+			"com.beeper.bridge.remote_id":     puppet.JID.String(),
+			"com.beeper.bridge.service":       "whatsapp",
+			"com.beeper.bridge.network":       "whatsapp",
+			"com.beeper.bridge.is_bridge_bot": false,
+			"com.beeper.bridge.is_bot":        false,
 		}
 		err := puppet.DefaultIntent().BeeperUpdateProfile(contactInfo)
 		if err != nil {
