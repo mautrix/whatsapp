@@ -55,6 +55,11 @@ var (
 	errPollMissingQuestion         = errors.New("poll message is missing question")
 	errPollDuplicateOption         = errors.New("poll options must be unique")
 
+	errEditUnknownTarget     = errors.New("unknown edit target message")
+	errEditUnknownTargetType = errors.New("unsupported edited message type")
+	errEditDifferentSender   = errors.New("can't edit message sent by another user")
+	errEditTooOld            = errors.New("message is too old to be edited")
+
 	errBroadcastReactionNotSupported = errors.New("reacting to status messages is not currently supported")
 	errBroadcastSendDisabled         = errors.New("sending status messages is disabled")
 
@@ -78,7 +83,13 @@ func errorToStatusReason(err error) (reason event.MessageStatusReason, status ev
 		return event.MessageStatusUnsupported, event.MessageStatusFail, true, true, ""
 	case errors.Is(err, errMNoticeDisabled):
 		return event.MessageStatusUnsupported, event.MessageStatusFail, true, false, ""
-	case errors.Is(err, errMediaUnsupportedType), errors.Is(err, errPollMissingQuestion), errors.Is(err, errPollDuplicateOption):
+	case errors.Is(err, errMediaUnsupportedType),
+		errors.Is(err, errPollMissingQuestion),
+		errors.Is(err, errPollDuplicateOption),
+		errors.Is(err, errEditDifferentSender),
+		errors.Is(err, errEditTooOld),
+		errors.Is(err, errEditUnknownTarget),
+		errors.Is(err, errEditUnknownTargetType):
 		return event.MessageStatusUnsupported, event.MessageStatusFail, true, true, err.Error()
 	case errors.Is(err, errTimeoutBeforeHandling):
 		return event.MessageStatusTooOld, event.MessageStatusRetriable, true, true, "the message was too old when it reached the bridge, so it was not handled"

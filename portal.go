@@ -3774,6 +3774,21 @@ type extraConvertMeta struct {
 	EditRootMsg *database.Message
 }
 
+func getEditError(rootMsg *database.Message, editer *User) error {
+	switch {
+	case rootMsg == nil:
+		return errEditUnknownTarget
+	case rootMsg.Type != database.MsgNormal || rootMsg.IsFakeJID():
+		return errEditUnknownTargetType
+	case rootMsg.Sender.User != editer.JID.User:
+		return errEditDifferentSender
+	case time.Since(rootMsg.Timestamp) > whatsmeow.EditWindow:
+		return errEditTooOld
+	default:
+		return nil
+	}
+}
+
 func (portal *Portal) convertMatrixMessage(ctx context.Context, sender *User, evt *event.Event) (*waProto.Message, *User, *extraConvertMeta, error) {
 	if evt.Type == TypeMSC3381PollResponse || evt.Type == TypeMSC3381V2PollResponse {
 		return portal.convertMatrixPollVote(ctx, sender, evt)
@@ -3788,8 +3803,8 @@ func (portal *Portal) convertMatrixMessage(ctx context.Context, sender *User, ev
 	var editRootMsg *database.Message
 	if editEventID := content.RelatesTo.GetReplaceID(); editEventID != "" && portal.bridge.Config.Bridge.SendWhatsAppEdits {
 		editRootMsg = portal.bridge.DB.Message.GetByMXID(editEventID)
-		if editRootMsg == nil || editRootMsg.Type != database.MsgNormal || editRootMsg.IsFakeJID() || editRootMsg.Sender.User != sender.JID.User {
-			return nil, sender, extraMeta, fmt.Errorf("edit rejected") // TODO more specific error message
+		if editErr := getEditError(editRootMsg, sender); editErr != nil {
+			return nil, sender, extraMeta, editErr
 		}
 		extraMeta.EditRootMsg = editRootMsg
 		if content.NewContent != nil {
