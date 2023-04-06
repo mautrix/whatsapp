@@ -3984,15 +3984,19 @@ func (portal *Portal) convertMatrixMessage(ctx context.Context, sender *User, ev
 
 	if editRootMsg != nil {
 		msg = &waProto.Message{
-			ProtocolMessage: &waProto.ProtocolMessage{
-				Key: &waProto.MessageKey{
-					FromMe:    proto.Bool(true),
-					Id:        proto.String(editRootMsg.JID),
-					RemoteJid: proto.String(portal.Key.JID.String()),
+			EditedMessage: &waProto.FutureProofMessage{
+				Message: &waProto.Message{
+					ProtocolMessage: &waProto.ProtocolMessage{
+						Key: &waProto.MessageKey{
+							FromMe:    proto.Bool(true),
+							Id:        proto.String(editRootMsg.JID),
+							RemoteJid: proto.String(portal.Key.JID.String()),
+						},
+						Type:          waProto.ProtocolMessage_MESSAGE_EDIT.Enum(),
+						EditedMessage: msg,
+						TimestampMs:   proto.Int64(evt.Timestamp),
+					},
 				},
-				Type:          waProto.ProtocolMessage_MESSAGE_EDIT.Enum(),
-				EditedMessage: msg,
-				TimestampMs:   proto.Int64(evt.Timestamp),
 			},
 		}
 	}
@@ -4086,7 +4090,7 @@ func (portal *Portal) HandleMatrixMessage(sender *User, evt *event.Event, timing
 	dbMsgType := database.MsgNormal
 	if msg.PollCreationMessage != nil || msg.PollCreationMessageV2 != nil {
 		dbMsgType = database.MsgMatrixPoll
-	} else if msg.GetProtocolMessage().GetType() != waProto.ProtocolMessage_MESSAGE_EDIT {
+	} else if msg.EditedMessage == nil {
 		portal.MarkDisappearing(nil, origEvtID, time.Duration(portal.ExpirationTime)*time.Second, time.Now())
 	} else {
 		dbMsgType = database.MsgEdit
