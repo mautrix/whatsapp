@@ -35,7 +35,6 @@ import (
 
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/bridge"
-	"maunium.net/go/mautrix/bridge/bridgeconfig"
 	"maunium.net/go/mautrix/bridge/commands"
 	"maunium.net/go/mautrix/bridge/status"
 	"maunium.net/go/mautrix/event"
@@ -152,9 +151,7 @@ func (br *WABridge) Start() {
 		br.Provisioning.Init()
 	}
 	go br.CheckWhatsAppUpdate()
-	if br.Config.Homeserver.Software == bridgeconfig.SoftwareHungry {
-		go br.UpdatePuppetContactInfo()
-	}
+	go br.UpdatePuppetContactInfo()
 	go br.StartUsers()
 	if br.Config.Metrics.Enabled {
 		go br.Metrics.Start()

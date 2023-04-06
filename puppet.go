@@ -264,6 +264,9 @@ func (puppet *Puppet) UpdateName(contact types.ContactInfo, forcePortalSync bool
 }
 
 func (puppet *Puppet) UpdateContactInfo() bool {
+	if puppet.bridge.Config.Homeserver.Software != bridgeconfig.SoftwareHungry {
+		return false
+	}
 	if !puppet.ContactInfoSet {
 		contactInfo := map[string]any{
 			"com.beeper.bridge.identifiers": []string{
@@ -364,9 +367,7 @@ func (puppet *Puppet) Sync(source *User, contact *types.ContactInfo, forceAvatar
 	if len(puppet.Avatar) == 0 || forceAvatarSync || puppet.bridge.Config.Bridge.UserAvatarSync {
 		update = puppet.UpdateAvatar(source, forcePortalSync) || update
 	}
-	if puppet.bridge.Config.Homeserver.Software == bridgeconfig.SoftwareHungry {
-		update = puppet.UpdateContactInfo() || update
-	}
+	update = puppet.UpdateContactInfo() || update
 	if update || puppet.LastSync.Add(24*time.Hour).Before(time.Now()) {
 		puppet.LastSync = time.Now()
 		puppet.Update()
