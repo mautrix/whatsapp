@@ -282,11 +282,13 @@ func main() {
 		puppetsByCustomMXID: make(map[id.UserID]*Puppet),
 	}
 	br.Bridge = bridge.Bridge{
-		Name:         "mautrix-whatsapp",
-		URL:          "https://github.com/mautrix/whatsapp",
-		Description:  "A Matrix-WhatsApp puppeting bridge.",
-		Version:      "0.8.3",
-		ProtocolName: "WhatsApp",
+		Name:              "mautrix-whatsapp",
+		URL:               "https://github.com/mautrix/whatsapp",
+		Description:       "A Matrix-WhatsApp puppeting bridge.",
+		Version:           "0.8.3",
+		ProtocolName:      "WhatsApp",
+		BeeperServiceName: "whatsapp",
+		BeeperNetworkName: "whatsapp",
 
 		CryptoPickleKey: "maunium.net/go/mautrix-whatsapp",
 
