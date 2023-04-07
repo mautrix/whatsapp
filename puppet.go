@@ -267,28 +267,30 @@ func (puppet *Puppet) UpdateContactInfo() bool {
 	if puppet.bridge.Config.Homeserver.Software != bridgeconfig.SoftwareHungry {
 		return false
 	}
-	if !puppet.ContactInfoSet {
-		contactInfo := map[string]any{
-			"com.beeper.bridge.identifiers": []string{
-				fmt.Sprintf("tel:+%s", puppet.JID.User),
-				fmt.Sprintf("whatsapp:%s", puppet.JID.String()),
-			},
-			"com.beeper.bridge.remote_id":     puppet.JID.String(),
-			"com.beeper.bridge.service":       "whatsapp",
-			"com.beeper.bridge.network":       "whatsapp",
-			"com.beeper.bridge.is_bridge_bot": false,
-			"com.beeper.bridge.is_bot":        false,
-		}
-		err := puppet.DefaultIntent().BeeperUpdateProfile(contactInfo)
-		if err != nil {
-			puppet.log.Warnln("Failed to store custom contact info in profile:", err)
-			return false
-		} else {
-			puppet.ContactInfoSet = true
-			return true
-		}
+
+	if puppet.ContactInfoSet {
+		return false
 	}
-	return false
+
+	contactInfo := map[string]any{
+		"com.beeper.bridge.identifiers": []string{
+			fmt.Sprintf("tel:+%s", puppet.JID.User),
+			fmt.Sprintf("whatsapp:%s", puppet.JID.String()),
+		},
+		"com.beeper.bridge.remote_id":     puppet.JID.String(),
+		"com.beeper.bridge.service":       "whatsapp",
+		"com.beeper.bridge.network":       "whatsapp",
+		"com.beeper.bridge.is_bridge_bot": false,
+		"com.beeper.bridge.is_bot":        false,
+	}
+	err := puppet.DefaultIntent().BeeperUpdateProfile(contactInfo)
+	if err != nil {
+		puppet.log.Warnln("Failed to store custom contact info in profile:", err)
+		return false
+	} else {
+		puppet.ContactInfoSet = true
+		return true
+	}
 }
 
 func (puppet *Puppet) updatePortalMeta(meta func(portal *Portal)) {
