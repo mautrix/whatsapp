@@ -106,7 +106,6 @@ func DoUpgrade(helper *up.Helper) {
 	} else {
 		helper.Copy(up.Bool, "bridge", "extev_polls")
 	}
-	helper.Copy(up.Bool, "bridge", "send_whatsapp_edits")
 	helper.Copy(up.Bool, "bridge", "cross_room_replies")
 	helper.Copy(up.Str|up.Null, "bridge", "message_handling_timeout", "error_after")
 	helper.Copy(up.Str|up.Null, "bridge", "message_handling_timeout", "deadline")

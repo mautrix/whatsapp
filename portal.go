@@ -3801,7 +3801,7 @@ func (portal *Portal) convertMatrixMessage(ctx context.Context, sender *User, ev
 	}
 	extraMeta := &extraConvertMeta{}
 	var editRootMsg *database.Message
-	if editEventID := content.RelatesTo.GetReplaceID(); editEventID != "" && portal.bridge.Config.Bridge.SendWhatsAppEdits {
+	if editEventID := content.RelatesTo.GetReplaceID(); editEventID != "" {
 		editRootMsg = portal.bridge.DB.Message.GetByMXID(editEventID)
 		if editErr := getEditError(editRootMsg, sender); editErr != nil {
 			return nil, sender, extraMeta, editErr
