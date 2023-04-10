@@ -2742,7 +2742,7 @@ func shallowCopyMap(data map[string]interface{}) map[string]interface{} {
 }
 
 func (portal *Portal) makeMediaBridgeFailureMessage(info *types.MessageInfo, bridgeErr error, converted *ConvertedMessage, keys *FailedMediaKeys, userFriendlyError string) *ConvertedMessage {
-	if errors.Is(bridgeErr, whatsmeow.ErrMediaDownloadFailedWith404) || errors.Is(bridgeErr, whatsmeow.ErrMediaDownloadFailedWith410) {
+	if errors.Is(bridgeErr, whatsmeow.ErrMediaDownloadFailedWith403) || errors.Is(bridgeErr, whatsmeow.ErrMediaDownloadFailedWith404) || errors.Is(bridgeErr, whatsmeow.ErrMediaDownloadFailedWith410) {
 		portal.log.Debugfln("Failed to bridge media for %s: %v", info.ID, bridgeErr)
 	} else {
 		portal.log.Errorfln("Failed to bridge media for %s: %v", info.ID, bridgeErr)
@@ -3029,7 +3029,7 @@ func (portal *Portal) convertMediaMessage(intent *appservice.IntentAPI, source *
 		return portal.makeMediaBridgeFailureMessage(info, errors.New("file is too large"), converted, nil, fmt.Sprintf("Large %s not bridged - please use WhatsApp app to view", typeName))
 	}
 	data, err := source.Client.Download(msg)
-	if errors.Is(err, whatsmeow.ErrMediaDownloadFailedWith404) || errors.Is(err, whatsmeow.ErrMediaDownloadFailedWith410) {
+	if errors.Is(err, whatsmeow.ErrMediaDownloadFailedWith403) || errors.Is(err, whatsmeow.ErrMediaDownloadFailedWith404) || errors.Is(err, whatsmeow.ErrMediaDownloadFailedWith410) {
 		converted.Error = database.MsgErrMediaNotFound
 		converted.MediaKey = msg.GetMediaKey()
 
@@ -3774,6 +3774,21 @@ type extraConvertMeta struct {
 	EditRootMsg *database.Message
 }
 
+func getEditError(rootMsg *database.Message, editer *User) error {
+	switch {
+	case rootMsg == nil:
+		return errEditUnknownTarget
+	case rootMsg.Type != database.MsgNormal || rootMsg.IsFakeJID():
+		return errEditUnknownTargetType
+	case rootMsg.Sender.User != editer.JID.User:
+		return errEditDifferentSender
+	case time.Since(rootMsg.Timestamp) > whatsmeow.EditWindow:
+		return errEditTooOld
+	default:
+		return nil
+	}
+}
+
 func (portal *Portal) convertMatrixMessage(ctx context.Context, sender *User, evt *event.Event) (*waProto.Message, *User, *extraConvertMeta, error) {
 	if evt.Type == TypeMSC3381PollResponse || evt.Type == TypeMSC3381V2PollResponse {
 		return portal.convertMatrixPollVote(ctx, sender, evt)
@@ -3786,10 +3801,10 @@ func (portal *Portal) convertMatrixMessage(ctx context.Context, sender *User, ev
 	}
 	extraMeta := &extraConvertMeta{}
 	var editRootMsg *database.Message
-	if editEventID := content.RelatesTo.GetReplaceID(); editEventID != "" && portal.bridge.Config.Bridge.SendWhatsAppEdits {
+	if editEventID := content.RelatesTo.GetReplaceID(); editEventID != "" {
 		editRootMsg = portal.bridge.DB.Message.GetByMXID(editEventID)
-		if editRootMsg == nil || editRootMsg.Type != database.MsgNormal || editRootMsg.IsFakeJID() || editRootMsg.Sender.User != sender.JID.User {
-			return nil, sender, extraMeta, fmt.Errorf("edit rejected") // TODO more specific error message
+		if editErr := getEditError(editRootMsg, sender); editErr != nil {
+			return nil, sender, extraMeta, editErr
 		}
 		extraMeta.EditRootMsg = editRootMsg
 		if content.NewContent != nil {
