@@ -2742,7 +2742,7 @@ func shallowCopyMap(data map[string]interface{}) map[string]interface{} {
 }
 
 func (portal *Portal) makeMediaBridgeFailureMessage(info *types.MessageInfo, bridgeErr error, converted *ConvertedMessage, keys *FailedMediaKeys, userFriendlyError string) *ConvertedMessage {
-	if errors.Is(bridgeErr, whatsmeow.ErrMediaDownloadFailedWith404) || errors.Is(bridgeErr, whatsmeow.ErrMediaDownloadFailedWith410) {
+	if errors.Is(bridgeErr, whatsmeow.ErrMediaDownloadFailedWith403) || errors.Is(bridgeErr, whatsmeow.ErrMediaDownloadFailedWith404) || errors.Is(bridgeErr, whatsmeow.ErrMediaDownloadFailedWith410) {
 		portal.log.Debugfln("Failed to bridge media for %s: %v", info.ID, bridgeErr)
 	} else {
 		portal.log.Errorfln("Failed to bridge media for %s: %v", info.ID, bridgeErr)
@@ -3029,7 +3029,7 @@ func (portal *Portal) convertMediaMessage(intent *appservice.IntentAPI, source *
 		return portal.makeMediaBridgeFailureMessage(info, errors.New("file is too large"), converted, nil, fmt.Sprintf("Large %s not bridged - please use WhatsApp app to view", typeName))
 	}
 	data, err := source.Client.Download(msg)
-	if errors.Is(err, whatsmeow.ErrMediaDownloadFailedWith404) || errors.Is(err, whatsmeow.ErrMediaDownloadFailedWith410) {
+	if errors.Is(err, whatsmeow.ErrMediaDownloadFailedWith403) || errors.Is(err, whatsmeow.ErrMediaDownloadFailedWith404) || errors.Is(err, whatsmeow.ErrMediaDownloadFailedWith410) {
 		converted.Error = database.MsgErrMediaNotFound
 		converted.MediaKey = msg.GetMediaKey()
 
