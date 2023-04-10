@@ -151,6 +151,7 @@ func (br *WABridge) Start() {
 		br.Provisioning.Init()
 	}
 	go br.CheckWhatsAppUpdate()
+	go br.UpdatePuppetContactInfo()
 	go br.StartUsers()
 	if br.Config.Metrics.Enabled {
 		go br.Metrics.Start()
@@ -178,6 +179,14 @@ func (br *WABridge) CheckWhatsAppUpdate() {
 		}
 	} else {
 		br.Log.Debugfln("Bridge is using newer than latest WhatsApp web protocol")
+	}
+}
+
+func (br *WABridge) UpdatePuppetContactInfo() {
+	for _, puppet := range br.GetAllPuppets() {
+		if puppet.UpdateContactInfo() {
+			puppet.Update()
+		}
 	}
 }
 
@@ -273,11 +282,13 @@ func main() {
 		puppetsByCustomMXID: make(map[id.UserID]*Puppet),
 	}
 	br.Bridge = bridge.Bridge{
-		Name:         "mautrix-whatsapp",
-		URL:          "https://github.com/mautrix/whatsapp",
-		Description:  "A Matrix-WhatsApp puppeting bridge.",
-		Version:      "0.8.3",
-		ProtocolName: "WhatsApp",
+		Name:              "mautrix-whatsapp",
+		URL:               "https://github.com/mautrix/whatsapp",
+		Description:       "A Matrix-WhatsApp puppeting bridge.",
+		Version:           "0.8.3",
+		ProtocolName:      "WhatsApp",
+		BeeperServiceName: "whatsapp",
+		BeeperNetworkName: "whatsapp",
 
 		CryptoPickleKey: "maunium.net/go/mautrix-whatsapp",
 
