@@ -1156,7 +1156,7 @@ func (portal *Portal) UpdateName(name string, setBy types.JID, updateInfo bool) 
 	if name == "" && portal.IsBroadcastList() {
 		name = UnnamedBroadcastName
 	}
-	if portal.Name != name || (!portal.NameSet && len(portal.MXID) > 0) {
+	if portal.Name != name || (!portal.NameSet && len(portal.MXID) > 0 && portal.shouldSetDMRoomMetadata()) {
 		portal.log.Debugfln("Updating name %q -> %q", portal.Name, name)
 		portal.Name = name
 		portal.NameSet = false
@@ -1164,7 +1164,9 @@ func (portal *Portal) UpdateName(name string, setBy types.JID, updateInfo bool) 
 			defer portal.Update(nil)
 		}
 
-		if len(portal.MXID) > 0 {
+		if len(portal.MXID) > 0 && !portal.shouldSetDMRoomMetadata() {
+			portal.UpdateBridgeInfo()
+		} else if len(portal.MXID) > 0 {
 			intent := portal.MainIntent()
 			if !setBy.IsEmpty() {
 				intent = portal.bridge.GetPuppetByJID(setBy).IntentFor(portal)
@@ -1497,6 +1499,12 @@ func (portal *Portal) updateChildRooms() {
 	}
 }
 
+func (portal *Portal) shouldSetDMRoomMetadata() bool {
+	return !portal.IsPrivateChat() ||
+		portal.bridge.Config.Bridge.PrivateChatPortalMeta == "always" ||
+		(portal.IsEncrypted() && portal.bridge.Config.Bridge.PrivateChatPortalMeta != "never")
+}
+
 func (portal *Portal) GetEncryptionEventContent() (evt *event.EncryptionEventContent) {
 	evt = &event.EncryptionEventContent{Algorithm: id.AlgorithmMegolmV1}
 	if rot := portal.bridge.Config.Bridge.Encryption.Rotation; rot.EnableCustom {
@@ -1524,13 +1532,9 @@ func (portal *Portal) CreateMatrixRoom(user *User, groupInfo *types.GroupInfo, i
 	if portal.IsPrivateChat() {
 		puppet := portal.bridge.GetPuppetByJID(portal.Key.JID)
 		puppet.SyncContact(user, true, false, "creating private chat portal")
-		if portal.bridge.Config.Bridge.PrivateChatPortalMeta || portal.bridge.Config.Bridge.Encryption.Default {
-			portal.Name = puppet.Displayname
-			portal.AvatarURL = puppet.AvatarURL
-			portal.Avatar = puppet.Avatar
-		} else {
-			portal.Name = ""
-		}
+		portal.Name = puppet.Displayname
+		portal.AvatarURL = puppet.AvatarURL
+		portal.Avatar = puppet.Avatar
 		portal.Topic = PrivateChatTopic
 	} else if portal.IsStatusBroadcastList() {
 		if !portal.bridge.Config.Bridge.EnableStatusBroadcast {
@@ -1616,18 +1620,7 @@ func (portal *Portal) CreateMatrixRoom(user *User, groupInfo *types.GroupInfo, i
 		Content:  event.Content{Parsed: bridgeInfo},
 		StateKey: &bridgeInfoStateKey,
 	}}
-	if !portal.AvatarURL.IsEmpty() {
-		initialState = append(initialState, &event.Event{
-			Type: event.StateRoomAvatar,
-			Content: event.Content{
-				Parsed: event.RoomAvatarEventContent{URL: portal.AvatarURL},
-			},
-		})
-		portal.AvatarSet = true
-	}
-
 	var invite []id.UserID
-
 	if portal.bridge.Config.Bridge.Encryption.Default {
 		initialState = append(initialState, &event.Event{
 			Type: event.StateEncryption,
@@ -1639,6 +1632,17 @@ func (portal *Portal) CreateMatrixRoom(user *User, groupInfo *types.GroupInfo, i
 		if portal.IsPrivateChat() {
 			invite = append(invite, portal.bridge.Bot.UserID)
 		}
+	}
+	if !portal.AvatarURL.IsEmpty() && portal.shouldSetDMRoomMetadata() {
+		initialState = append(initialState, &event.Event{
+			Type: event.StateRoomAvatar,
+			Content: event.Content{
+				Parsed: event.RoomAvatarEventContent{URL: portal.AvatarURL},
+			},
+		})
+		portal.AvatarSet = true
+	} else {
+		portal.AvatarSet = false
 	}
 
 	creationContent := make(map[string]interface{})
@@ -1674,7 +1678,7 @@ func (portal *Portal) CreateMatrixRoom(user *User, groupInfo *types.GroupInfo, i
 			invite = append(invite, user.MXID)
 		}
 	}
-	resp, err := intent.CreateRoom(&mautrix.ReqCreateRoom{
+	req := &mautrix.ReqCreateRoom{
 		Visibility:      "private",
 		Name:            portal.Name,
 		Topic:           portal.Topic,
@@ -1685,14 +1689,18 @@ func (portal *Portal) CreateMatrixRoom(user *User, groupInfo *types.GroupInfo, i
 		CreationContent: creationContent,
 
 		BeeperAutoJoinInvites: autoJoinInvites,
-	})
+	}
+	if !portal.shouldSetDMRoomMetadata() {
+		req.Name = ""
+	}
+	resp, err := intent.CreateRoom(req)
 	if err != nil {
 		return err
 	}
 	portal.log.Infoln("Matrix room created:", resp.RoomID)
 	portal.InSpace = false
-	portal.NameSet = len(portal.Name) > 0
-	portal.TopicSet = len(portal.Topic) > 0
+	portal.NameSet = len(req.Name) > 0
+	portal.TopicSet = len(req.Topic) > 0
 	portal.MXID = resp.RoomID
 	portal.bridge.portalsLock.Lock()
 	portal.bridge.portalsByMXID[portal.MXID] = portal

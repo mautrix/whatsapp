@@ -294,29 +294,26 @@ func (puppet *Puppet) UpdateContactInfo() bool {
 }
 
 func (puppet *Puppet) updatePortalMeta(meta func(portal *Portal)) {
-	if puppet.bridge.Config.Bridge.PrivateChatPortalMeta || puppet.bridge.Config.Bridge.Encryption.Allow {
-		for _, portal := range puppet.bridge.GetAllPortalsByJID(puppet.JID) {
-			if !puppet.bridge.Config.Bridge.PrivateChatPortalMeta && !portal.Encrypted {
-				continue
-			}
-			// Get room create lock to prevent races between receiving contact info and room creation.
-			portal.roomCreateLock.Lock()
-			meta(portal)
-			portal.roomCreateLock.Unlock()
-		}
+	for _, portal := range puppet.bridge.GetAllPortalsByJID(puppet.JID) {
+		// Get room create lock to prevent races between receiving contact info and room creation.
+		portal.roomCreateLock.Lock()
+		meta(portal)
+		portal.roomCreateLock.Unlock()
 	}
 }
 
 func (puppet *Puppet) updatePortalAvatar() {
 	puppet.updatePortalMeta(func(portal *Portal) {
-		if portal.Avatar == puppet.Avatar && portal.AvatarURL == puppet.AvatarURL && portal.AvatarSet {
+		if portal.Avatar == puppet.Avatar && portal.AvatarURL == puppet.AvatarURL && (portal.AvatarSet || !portal.shouldSetDMRoomMetadata()) {
 			return
 		}
 		portal.AvatarURL = puppet.AvatarURL
 		portal.Avatar = puppet.Avatar
 		portal.AvatarSet = false
 		defer portal.Update(nil)
-		if len(portal.MXID) > 0 {
+		if len(portal.MXID) > 0 && !portal.shouldSetDMRoomMetadata() {
+			portal.UpdateBridgeInfo()
+		} else if len(portal.MXID) > 0 {
 			_, err := portal.MainIntent().SetRoomAvatar(portal.MXID, puppet.AvatarURL)
 			if err != nil {
 				portal.log.Warnln("Failed to set avatar:", err)

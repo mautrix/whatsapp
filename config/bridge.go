@@ -1,5 +1,5 @@
 // mautrix-whatsapp - A Matrix-WhatsApp puppeting bridge.
-// Copyright (C) 2021 Tulir Asokan
+// Copyright (C) 2023 Tulir Asokan
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as published by
@@ -99,7 +99,7 @@ type BridgeConfig struct {
 	DoublePuppetAllowDiscovery bool              `yaml:"double_puppet_allow_discovery"`
 	LoginSharedSecretMap       map[string]string `yaml:"login_shared_secret_map"`
 
-	PrivateChatPortalMeta bool   `yaml:"private_chat_portal_meta"`
+	PrivateChatPortalMeta string `yaml:"private_chat_portal_meta"`
 	ParallelMemberSync    bool   `yaml:"parallel_member_sync"`
 	BridgeNotices         bool   `yaml:"bridge_notices"`
 	ResendBridgeInfo      bool   `yaml:"resend_bridge_info"`
