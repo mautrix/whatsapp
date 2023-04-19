@@ -5,17 +5,13 @@ on: [push, pull_request]
 jobs:
   lint:
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        go-version: ["1.20"]
     steps:
       - uses: actions/checkout@v3
 
-      - name: Set up Go ${{ matrix.go-version }}
+      - name: Set up Go
         uses: actions/setup-go@v3
         with:
-          go-version: ${{ matrix.go-version }}
+          go-version: "1.20"
 
       - name: Install libolm
         run: sudo apt-get install libolm-dev libolm3
