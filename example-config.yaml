@@ -313,6 +313,9 @@ bridge:
     extev_polls: false
     # Should cross-chat replies from WhatsApp be bridged? Most servers and clients don't support this.
     cross_room_replies: false
+    # Disable generating reply fallbacks? Some extremely bad clients still rely on them,
+    # but they're being phased out and will be completely removed in the future.
+    disable_reply_fallbacks: false
     # Maximum time for handling Matrix events. Duration strings formatted for https://pkg.go.dev/time#ParseDuration
     # Null means there's no enforced timeout.
     message_handling_timeout:

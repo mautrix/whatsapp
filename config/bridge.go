@@ -118,6 +118,7 @@ type BridgeConfig struct {
 	CaptionInMessage      bool   `yaml:"caption_in_message"`
 	ExtEvPolls            bool   `yaml:"extev_polls"`
 	CrossRoomReplies      bool   `yaml:"cross_room_replies"`
+	DisableReplyFallbacks bool   `yaml:"disable_reply_fallbacks"`
 
 	MessageHandlingTimeout struct {
 		ErrorAfterStr string `yaml:"error_after"`

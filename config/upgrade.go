@@ -115,6 +115,7 @@ func DoUpgrade(helper *up.Helper) {
 		helper.Copy(up.Bool, "bridge", "extev_polls")
 	}
 	helper.Copy(up.Bool, "bridge", "cross_room_replies")
+	helper.Copy(up.Bool, "bridge", "disable_reply_fallbacks")
 	helper.Copy(up.Str|up.Null, "bridge", "message_handling_timeout", "error_after")
 	helper.Copy(up.Str|up.Null, "bridge", "message_handling_timeout", "deadline")
 

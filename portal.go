@@ -1912,10 +1912,13 @@ func (portal *Portal) SetReply(content *event.MessageEventContent, replyTo *Repl
 		}
 		return false
 	}
+	content.RelatesTo = (&event.RelatesTo{}).SetReplyTo(message.MXID)
+	if portal.bridge.Config.Bridge.DisableReplyFallbacks {
+		return true
+	}
 	evt, err := targetPortal.MainIntent().GetEvent(targetPortal.MXID, message.MXID)
 	if err != nil {
 		portal.log.Warnln("Failed to get reply target:", err)
-		content.RelatesTo = (&event.RelatesTo{}).SetReplyTo(message.MXID)
 		return true
 	}
 	_ = evt.Content.ParseRaw(evt.Type)
