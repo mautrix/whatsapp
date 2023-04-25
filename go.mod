@@ -11,12 +11,12 @@ require (
 	github.com/prometheus/client_golang v1.15.0
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
 	github.com/tidwall/gjson v1.14.4
-	go.mau.fi/whatsmeow v0.0.0-20230416122908-c21751ee590a
+	go.mau.fi/whatsmeow v0.0.0-20230424211606-8ef68cdfb9b1
 	golang.org/x/image v0.7.0
 	golang.org/x/net v0.9.0
 	google.golang.org/protobuf v1.30.0
 	maunium.net/go/maulogger/v2 v2.4.1
-	maunium.net/go/mautrix v0.15.2-0.20230419141951-735033cd9e87
+	maunium.net/go/mautrix v0.15.2-0.20230425124429-33e696f02c15
 )
 
 require (
