@@ -1894,7 +1894,7 @@ func (portal *Portal) SetReply(content *event.MessageEventContent, replyTo *Repl
 	if portal.bridge.Config.Bridge.CrossRoomReplies && !replyTo.Chat.IsEmpty() && replyTo.Chat != key.JID {
 		if replyTo.Chat.Server == types.GroupServer {
 			key = database.NewPortalKey(replyTo.Chat, types.EmptyJID)
-		} else if replyTo.Chat == types.BroadcastServerJID {
+		} else if replyTo.Chat == types.StatusBroadcastJID {
 			key = database.NewPortalKey(replyTo.Chat, key.Receiver)
 		}
 		if key != portal.Key {
