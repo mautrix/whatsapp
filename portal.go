@@ -3811,6 +3811,14 @@ func (portal *Portal) convertMatrixMessage(ctx context.Context, sender *User, ev
 		return nil, sender, nil, fmt.Errorf("%w %T", errUnexpectedParsedContentType, evt.Content.Parsed)
 	}
 	extraMeta := &extraConvertMeta{}
+	isRelay := false
+	if !sender.IsLoggedIn() || (portal.IsPrivateChat() && sender.JID.User != portal.Key.Receiver.User) {
+		if !portal.HasRelaybot() {
+			return nil, sender, extraMeta, errUserNotLoggedIn
+		}
+		sender = portal.GetRelayUser()
+		isRelay = true
+	}
 	var editRootMsg *database.Message
 	if editEventID := content.RelatesTo.GetReplaceID(); editEventID != "" {
 		editRootMsg = portal.bridge.DB.Message.GetByMXID(editEventID)
@@ -3825,14 +3833,7 @@ func (portal *Portal) convertMatrixMessage(ctx context.Context, sender *User, ev
 
 	msg := &waProto.Message{}
 	ctxInfo := portal.generateContextInfo(content.RelatesTo)
-	relaybotFormatted := false
-	if !sender.IsLoggedIn() || (portal.IsPrivateChat() && sender.JID.User != portal.Key.Receiver.User) {
-		if !portal.HasRelaybot() {
-			return nil, sender, extraMeta, errUserNotLoggedIn
-		}
-		relaybotFormatted = portal.addRelaybotFormat(sender, content)
-		sender = portal.GetRelayUser()
-	}
+	relaybotFormatted := isRelay && portal.addRelaybotFormat(sender, content)
 	if evt.Type == event.EventSticker {
 		if relaybotFormatted {
 			// Stickers can't have captions, so force relaybot stickers to be images
