@@ -3510,13 +3510,13 @@ type MediaUpload struct {
 	FileLength    int
 }
 
-func (portal *Portal) addRelaybotFormat(sender *User, content *event.MessageEventContent) bool {
-	member := portal.MainIntent().Member(portal.MXID, sender.MXID)
+func (portal *Portal) addRelaybotFormat(userID id.UserID, content *event.MessageEventContent) bool {
+	member := portal.MainIntent().Member(portal.MXID, userID)
 	if member == nil {
 		member = &event.MemberEventContent{}
 	}
 	content.EnsureHasHTML()
-	data, err := portal.bridge.Config.Bridge.Relay.FormatMessage(content, sender.MXID, *member)
+	data, err := portal.bridge.Config.Bridge.Relay.FormatMessage(content, userID, *member)
 	if err != nil {
 		portal.log.Errorln("Failed to apply relaybot format:", err)
 	}
@@ -3811,6 +3811,7 @@ func (portal *Portal) convertMatrixMessage(ctx context.Context, sender *User, ev
 		return nil, sender, nil, fmt.Errorf("%w %T", errUnexpectedParsedContentType, evt.Content.Parsed)
 	}
 	extraMeta := &extraConvertMeta{}
+	realSenderMXID := sender.MXID
 	isRelay := false
 	if !sender.IsLoggedIn() || (portal.IsPrivateChat() && sender.JID.User != portal.Key.Receiver.User) {
 		if !portal.HasRelaybot() {
@@ -3833,7 +3834,7 @@ func (portal *Portal) convertMatrixMessage(ctx context.Context, sender *User, ev
 
 	msg := &waProto.Message{}
 	ctxInfo := portal.generateContextInfo(content.RelatesTo)
-	relaybotFormatted := isRelay && portal.addRelaybotFormat(sender, content)
+	relaybotFormatted := isRelay && portal.addRelaybotFormat(realSenderMXID, content)
 	if evt.Type == event.EventSticker {
 		if relaybotFormatted {
 			// Stickers can't have captions, so force relaybot stickers to be images
