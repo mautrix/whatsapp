@@ -94,6 +94,8 @@ type User struct {
 	resyncQueue     map[types.JID]resyncQueueItem
 	resyncQueueLock sync.Mutex
 	nextResync      time.Time
+
+	createKeyDedup string
 }
 
 type resyncQueueItem struct {
@@ -1299,6 +1301,10 @@ func (user *User) markUnread(portal *Portal, unread bool) {
 func (user *User) handleGroupCreate(evt *events.JoinedGroup) {
 	portal := user.GetPortalByJID(evt.JID)
 	if len(portal.MXID) == 0 {
+		if evt.CreateKey == user.createKeyDedup {
+			user.log.Debugfln("Ignoring group create event with key %s", evt.CreateKey)
+			return
+		}
 		err := portal.CreateMatrixRoom(user, &evt.GroupInfo, true, true)
 		if err != nil {
 			user.log.Errorln("Failed to create Matrix room after join notification: %v", err)
