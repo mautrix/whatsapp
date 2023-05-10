@@ -120,14 +120,15 @@ bridge:
     portal_message_buffer: 128
     # Settings for handling history sync payloads.
     history_sync:
-        # Should the bridge create portals for chats in the history sync payload?
-        create_portals: true
         # Enable backfilling history sync payloads from WhatsApp using batch sending?
         # This requires a server with MSC2716 support, which is currently an experimental feature in synapse.
         # It can be enabled by setting experimental_features -> msc2716_enabled to true in homeserver.yaml.
         # Note that prior to Synapse 1.49, there were some bugs with the implementation, especially if using event persistence workers.
         # There are also still some issues in Synapse's federation implementation.
         backfill: false
+        # Should the bridge create portals for chats in the history sync payload?
+        # This has no effect unless backfill is enabled.
+        create_portals: true
         # Use double puppets for backfilling?
         # In order to use this, the double puppets must be in the appservice's user ID namespace
         # (because the bridge can't use the double puppet access token with batch sending).
