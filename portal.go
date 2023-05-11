@@ -3846,6 +3846,10 @@ func (portal *Portal) convertMatrixMessage(ctx context.Context, sender *User, ev
 	if content.MsgType == event.MsgImage && content.GetInfo().MimeType == "image/gif" {
 		content.MsgType = event.MsgVideo
 	}
+	if content.MsgType == event.MsgAudio && content.FileName != "" && content.Body != content.FileName {
+		// Send audio messages with captions as files since WhatsApp doesn't support captions on audio messages
+		content.MsgType = event.MsgFile
+	}
 
 	switch content.MsgType {
 	case event.MsgText, event.MsgEmote, event.MsgNotice:
