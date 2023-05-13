@@ -1,3 +1,12 @@
+# v0.8.5 (unreleased)
+
+* Added option to disable reply fallbacks entirely.
+* Added provisioning API for joining groups with invite links.
+* Added error reply to encrypted messages if the bridge isn't configured to do
+  encryption.
+* Changed audio messages with captions to be sent as documents to WhatsApp
+  (otherwise the caption would be lost).
+
 # v0.8.4 (2023-04-16)
 
 * Enabled sending edits to WhatsApp by default.
