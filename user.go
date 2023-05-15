@@ -1191,6 +1191,10 @@ func (user *User) ResyncGroups(createPortals bool) error {
 	if err != nil {
 		return fmt.Errorf("failed to get group list from server: %w", err)
 	}
+	user.groupListCacheLock.Lock()
+	user.groupListCache = groups
+	user.groupListCacheTime = time.Now()
+	user.groupListCacheLock.Unlock()
 	for _, group := range groups {
 		portal := user.GetPortalByJID(group.JID)
 		if len(portal.MXID) == 0 {

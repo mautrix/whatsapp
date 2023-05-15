@@ -63,7 +63,7 @@ func (prov *ProvisioningAPI) Init() {
 	r.HandleFunc("/v1/debug/appstate/{name}", prov.SyncAppState).Methods(http.MethodPost)
 	r.HandleFunc("/v1/debug/retry", prov.SendRetryReceipt).Methods(http.MethodPost)
 	r.HandleFunc("/v1/contacts", prov.ListContacts).Methods(http.MethodGet)
-	r.HandleFunc("/v1/groups", prov.ListGroups).Methods(http.MethodGet)
+	r.HandleFunc("/v1/groups", prov.ListGroups).Methods(http.MethodGet, http.MethodPost)
 	r.HandleFunc("/v1/resolve_identifier/{number}", prov.ResolveIdentifier).Methods(http.MethodGet)
 	r.HandleFunc("/v1/bulk_resolve_identifier", prov.BulkResolveIdentifier).Methods(http.MethodPost)
 	r.HandleFunc("/v1/pm/{number}", prov.StartPM).Methods(http.MethodPost)
@@ -315,12 +315,26 @@ func (prov *ProvisioningAPI) ListContacts(w http.ResponseWriter, r *http.Request
 }
 
 func (prov *ProvisioningAPI) ListGroups(w http.ResponseWriter, r *http.Request) {
-	if user := r.Context().Value("user").(*User); user.Session == nil {
+	user := r.Context().Value("user").(*User)
+	if user.Session == nil {
 		jsonResponse(w, http.StatusBadRequest, Error{
 			Error:   "User is not logged into WhatsApp",
 			ErrCode: "no session",
 		})
-	} else if groups, err := user.getCachedGroupList(); err != nil {
+		return
+	}
+	if r.Method == http.MethodPost {
+		err := user.ResyncGroups(r.URL.Query().Get("create_portals") == "true")
+		if err != nil {
+			prov.log.Errorfln("Failed to resync %s's groups: %v", user.MXID, err)
+			jsonResponse(w, http.StatusInternalServerError, Error{
+				Error:   "Internal server error while resyncing groups",
+				ErrCode: "failed to sync groups",
+			})
+			return
+		}
+	}
+	if groups, err := user.getCachedGroupList(); err != nil {
 		prov.log.Errorfln("Failed to fetch %s's groups: %v", user.MXID, err)
 		jsonResponse(w, http.StatusInternalServerError, Error{
 			Error:   "Internal server error while fetching group list",
