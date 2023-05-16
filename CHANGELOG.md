@@ -1,4 +1,4 @@
-# v0.8.5 (unreleased)
+# v0.8.5 (2023-05-16)
 
 * Added option to disable reply fallbacks entirely.
 * Added provisioning API for joining groups with invite links.
