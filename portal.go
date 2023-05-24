@@ -43,6 +43,7 @@ import (
 
 	"github.com/chai2010/webp"
 	"github.com/tidwall/gjson"
+	"golang.org/x/exp/slices"
 	"golang.org/x/image/draw"
 	"google.golang.org/protobuf/proto"
 
@@ -1880,6 +1881,22 @@ func (portal *Portal) MainIntent() *appservice.IntentAPI {
 	return portal.bridge.Bot
 }
 
+func (portal *Portal) addReplyMention(content *event.MessageEventContent, sender types.JID) {
+	if content.Mentions == nil {
+		return
+	}
+	var mxid id.UserID
+	if user := portal.bridge.GetUserByJID(sender); user != nil {
+		mxid = user.MXID
+	} else {
+		puppet := portal.bridge.GetPuppetByJID(sender)
+		mxid = puppet.MXID
+	}
+	if slices.Contains(content.Mentions.UserIDs, mxid) {
+		content.Mentions.UserIDs = append(content.Mentions.UserIDs, mxid)
+	}
+}
+
 func (portal *Portal) SetReply(content *event.MessageEventContent, replyTo *ReplyInfo, isBackfill bool) bool {
 	if replyTo == nil {
 		return false
@@ -1908,10 +1925,13 @@ func (portal *Portal) SetReply(content *event.MessageEventContent, replyTo *Repl
 	if message == nil || message.IsFakeMXID() {
 		if isBackfill && portal.bridge.Config.Homeserver.Software == bridgeconfig.SoftwareHungry {
 			content.RelatesTo = (&event.RelatesTo{}).SetReplyTo(targetPortal.deterministicEventID(replyTo.Sender, replyTo.MessageID, ""))
+			portal.addReplyMention(content, replyTo.Sender)
 			return true
 		}
 		return false
 	}
+	// TODO store sender mxid in db message
+	portal.addReplyMention(content, message.Sender)
 	content.RelatesTo = (&event.RelatesTo{}).SetReplyTo(message.MXID)
 	if portal.bridge.Config.Bridge.DisableReplyFallbacks {
 		return true
@@ -3395,7 +3415,7 @@ func (portal *Portal) preprocessMatrixMedia(ctx context.Context, sender *User, r
 		hasHTMLCaption = content.Format == event.FormatHTML
 	}
 	if relaybotFormatted || hasHTMLCaption {
-		caption, mentionedJIDs = portal.bridge.Formatter.ParseMatrix(content.FormattedBody)
+		caption, mentionedJIDs = portal.bridge.Formatter.ParseMatrix(content.FormattedBody, content.Mentions)
 	}
 
 	var file *event.EncryptedFileInfo
@@ -3621,7 +3641,7 @@ func (portal *Portal) msc1767ToWhatsApp(msg MSC1767Message, mentions bool) (stri
 	}
 	if msg.HTML != "" {
 		if mentions {
-			return portal.bridge.Formatter.ParseMatrix(msg.HTML)
+			return portal.bridge.Formatter.ParseMatrix(msg.HTML, nil)
 		} else {
 			return portal.bridge.Formatter.ParseMatrixWithoutMentions(msg.HTML), nil
 		}
@@ -3858,7 +3878,7 @@ func (portal *Portal) convertMatrixMessage(ctx context.Context, sender *User, ev
 			return nil, sender, extraMeta, errMNoticeDisabled
 		}
 		if content.Format == event.FormatHTML {
-			text, ctxInfo.MentionedJid = portal.bridge.Formatter.ParseMatrix(content.FormattedBody)
+			text, ctxInfo.MentionedJid = portal.bridge.Formatter.ParseMatrix(content.FormattedBody, content.Mentions)
 		}
 		if content.MsgType == event.MsgEmote && !relaybotFormatted {
 			text = "/me " + text
