@@ -1,4 +1,4 @@
--- v0 -> v55: Latest revision
+-- v0 -> v56 (compatible with v45+): Latest revision
 
 CREATE TABLE "user" (
     mxid     TEXT PRIMARY KEY,
@@ -70,6 +70,7 @@ CREATE TABLE message (
     jid           TEXT,
     mxid          TEXT UNIQUE,
     sender        TEXT,
+    sender_mxid   TEXT NOT NULL DEFAULT '',
     timestamp     BIGINT,
     sent          BOOLEAN,
     error         error_type,
