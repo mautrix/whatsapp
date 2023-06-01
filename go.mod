@@ -12,7 +12,7 @@ require (
 	github.com/rs/zerolog v1.29.1
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
 	github.com/tidwall/gjson v1.14.4
-	go.mau.fi/whatsmeow v0.0.0-20230516145702-d5485ef06d61
+	go.mau.fi/whatsmeow v0.0.0-20230601124015-46f2ff088640
 	golang.org/x/exp v0.0.0-20230510235704-dd950f8aeaea
 	golang.org/x/image v0.7.0
 	golang.org/x/net v0.10.0
