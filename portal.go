@@ -440,7 +440,7 @@ func getMessageType(waMsg *waProto.Message) string {
 		return "reaction"
 	case waMsg.EncReactionMessage != nil:
 		return "encrypted reaction"
-	case waMsg.PollCreationMessage != nil || waMsg.PollCreationMessageV2 != nil:
+	case waMsg.PollCreationMessage != nil || waMsg.PollCreationMessageV2 != nil || waMsg.PollCreationMessageV3 != nil:
 		return "poll create"
 	case waMsg.PollUpdateMessage != nil:
 		return "poll update"
@@ -561,6 +561,8 @@ func (portal *Portal) convertMessage(intent *appservice.IntentAPI, source *User,
 		return portal.convertPollCreationMessage(intent, waMsg.GetPollCreationMessage())
 	case waMsg.PollCreationMessageV2 != nil:
 		return portal.convertPollCreationMessage(intent, waMsg.GetPollCreationMessageV2())
+	case waMsg.PollCreationMessageV3 != nil:
+		return portal.convertPollCreationMessage(intent, waMsg.GetPollCreationMessageV3())
 	case waMsg.PollUpdateMessage != nil:
 		return portal.convertPollUpdateMessage(intent, source, info, waMsg.GetPollUpdateMessage())
 	case waMsg.ImageMessage != nil:
@@ -4126,7 +4128,7 @@ func (portal *Portal) HandleMatrixMessage(sender *User, evt *event.Event, timing
 		return
 	}
 	dbMsgType := database.MsgNormal
-	if msg.PollCreationMessage != nil || msg.PollCreationMessageV2 != nil {
+	if msg.PollCreationMessage != nil || msg.PollCreationMessageV2 != nil || msg.PollCreationMessageV3 != nil {
 		dbMsgType = database.MsgMatrixPoll
 	} else if msg.EditedMessage == nil {
 		portal.MarkDisappearing(nil, origEvtID, time.Duration(portal.ExpirationTime)*time.Second, time.Now())
