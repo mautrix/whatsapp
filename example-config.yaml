@@ -413,6 +413,10 @@ bridge:
             # default.
             messages: 100
 
+            # Disable rotating keys when a user's devices change?
+            # You should not enable this option unless you understand all the implications.
+            disable_device_change_key_rotation: false
+
     # Settings for provisioning API
     provisioning:
         # Prefix for the provisioning API paths.
