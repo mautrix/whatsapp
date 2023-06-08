@@ -382,8 +382,11 @@ func fnCreate(ce *WrappedCommandEvent) {
 	}
 	// TODO check m.space.parent to create rooms directly in communities
 
-	ce.Log.Infofln("Creating group for %s with name %s and participants %+v", ce.RoomID, roomNameEvent.Name, participants)
+	messageID := whatsmeow.GenerateMessageID()
+	ce.Log.Infofln("Creating group for %s with name %s and participants %+v (create key: %s)", ce.RoomID, roomNameEvent.Name, participants, messageID)
+	ce.User.createKeyDedup = messageID
 	resp, err := ce.User.Client.CreateGroup(whatsmeow.ReqCreateGroup{
+		CreateKey:    messageID,
 		Name:         roomNameEvent.Name,
 		Participants: participants,
 		GroupParent: types.GroupParent{
@@ -420,6 +423,7 @@ func fnCreate(ce *WrappedCommandEvent) {
 
 	portal.Update(nil)
 	portal.UpdateBridgeInfo()
+	ce.User.createKeyDedup = ""
 
 	ce.Reply("Successfully created WhatsApp group %s", portal.Key.JID)
 }

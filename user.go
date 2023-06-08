@@ -32,7 +32,9 @@ import (
 	"sync"
 	"time"
 
-	log "maunium.net/go/maulogger/v2"
+	"github.com/rs/zerolog"
+	"maunium.net/go/maulogger/v2"
+	"maunium.net/go/maulogger/v2/maulogadapt"
 
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/appservice"
@@ -61,7 +63,9 @@ type User struct {
 	Session *store.Device
 
 	bridge *WABridge
-	log    log.Logger
+	zlog   zerolog.Logger
+	// Deprecated
+	log maulogger.Logger
 
 	Admin            bool
 	Whitelisted      bool
@@ -90,6 +94,8 @@ type User struct {
 	resyncQueue     map[types.JID]resyncQueueItem
 	resyncQueueLock sync.Mutex
 	nextResync      time.Time
+
+	createKeyDedup string
 }
 
 type resyncQueueItem struct {
@@ -224,13 +230,14 @@ func (br *WABridge) NewUser(dbUser *database.User) *User {
 	user := &User{
 		User:   dbUser,
 		bridge: br,
-		log:    br.Log.Sub("User").Sub(string(dbUser.MXID)),
+		zlog:   br.ZLog.With().Str("user_id", dbUser.MXID.String()).Logger(),
 
 		historySyncs: make(chan *events.HistorySync, 32),
 		lastPresence: types.PresenceUnavailable,
 
 		resyncQueue: make(map[types.JID]resyncQueueItem),
 	}
+	user.log = maulogadapt.ZeroAsMau(&user.zlog)
 
 	user.PermissionLevel = user.bridge.Config.Bridge.Permissions.Get(user.MXID)
 	user.RelayWhitelisted = user.PermissionLevel >= bridgeconfig.PermissionLevelRelay
@@ -467,7 +474,7 @@ func (user *User) SetManagementRoom(roomID id.RoomID) {
 	user.Update()
 }
 
-type waLogger struct{ l log.Logger }
+type waLogger struct{ l maulogger.Logger }
 
 func (w *waLogger) Debugf(msg string, args ...interface{}) { w.l.Debugfln(msg, args...) }
 func (w *waLogger) Infof(msg string, args ...interface{})  { w.l.Infofln(msg, args...) }
@@ -1184,6 +1191,10 @@ func (user *User) ResyncGroups(createPortals bool) error {
 	if err != nil {
 		return fmt.Errorf("failed to get group list from server: %w", err)
 	}
+	user.groupListCacheLock.Lock()
+	user.groupListCache = groups
+	user.groupListCacheTime = time.Now()
+	user.groupListCacheLock.Unlock()
 	for _, group := range groups {
 		portal := user.GetPortalByJID(group.JID)
 		if len(portal.MXID) == 0 {
@@ -1294,6 +1305,10 @@ func (user *User) markUnread(portal *Portal, unread bool) {
 func (user *User) handleGroupCreate(evt *events.JoinedGroup) {
 	portal := user.GetPortalByJID(evt.JID)
 	if len(portal.MXID) == 0 {
+		if evt.CreateKey == user.createKeyDedup {
+			user.log.Debugfln("Ignoring group create event with key %s", evt.CreateKey)
+			return
+		}
 		err := portal.CreateMatrixRoom(user, &evt.GroupInfo, true, true)
 		if err != nil {
 			user.log.Errorln("Failed to create Matrix room after join notification: %v", err)
@@ -1305,43 +1320,63 @@ func (user *User) handleGroupCreate(evt *events.JoinedGroup) {
 
 func (user *User) handleGroupUpdate(evt *events.GroupInfo) {
 	portal := user.GetPortalByJID(evt.JID)
+	with := user.zlog.With().
+		Str("chat_jid", evt.JID.String()).
+		Interface("group_event", evt)
+	if portal != nil {
+		with = with.Str("portal_mxid", portal.MXID.String())
+	}
+	log := with.Logger()
 	if portal == nil || len(portal.MXID) == 0 {
-		user.log.Debugfln("Ignoring group info update in chat with no portal: %+v", evt)
+		log.Debug().Msg("Ignoring group info update in chat with no portal")
 		return
 	}
 	switch {
 	case evt.Announce != nil:
+		log.Debug().Msg("Group announcement mode (message send permission) changed")
 		portal.RestrictMessageSending(evt.Announce.IsAnnounce)
 	case evt.Locked != nil:
+		log.Debug().Msg("Group locked mode (metadata change permission) changed")
 		portal.RestrictMetadataChanges(evt.Locked.IsLocked)
 	case evt.Name != nil:
+		log.Debug().Msg("Group name changed")
 		portal.UpdateName(evt.Name.Name, evt.Name.NameSetBy, true)
 	case evt.Topic != nil:
+		log.Debug().Msg("Group topic changed")
 		portal.UpdateTopic(evt.Topic.Topic, evt.Topic.TopicSetBy, true)
 	case evt.Leave != nil:
+		log.Debug().Msg("Someone left the group")
 		if evt.Sender != nil && !evt.Sender.IsEmpty() {
 			portal.HandleWhatsAppKick(user, *evt.Sender, evt.Leave)
 		}
 	case evt.Join != nil:
+		log.Debug().Msg("Someone joined the group")
 		portal.HandleWhatsAppInvite(user, evt.Sender, evt.Join)
 	case evt.Promote != nil:
+		log.Debug().Msg("Someone was promoted to admin")
 		portal.ChangeAdminStatus(evt.Promote, true)
 	case evt.Demote != nil:
+		log.Debug().Msg("Someone was demoted from admin")
 		portal.ChangeAdminStatus(evt.Demote, false)
 	case evt.Ephemeral != nil:
+		log.Debug().Msg("Group ephemeral mode (disappearing message timer) changed")
 		portal.UpdateGroupDisappearingMessages(evt.Sender, evt.Timestamp, evt.Ephemeral.DisappearingTimer)
 	case evt.Link != nil:
+		log.Debug().Msg("Group parent changed")
 		if evt.Link.Type == types.GroupLinkChangeTypeParent {
 			portal.UpdateParentGroup(user, evt.Link.Group.JID, true)
 		}
 	case evt.Unlink != nil:
+		log.Debug().Msg("Group parent removed")
 		if evt.Unlink.Type == types.GroupLinkChangeTypeParent && portal.ParentGroup == evt.Unlink.Group.JID {
 			portal.UpdateParentGroup(user, types.EmptyJID, true)
 		}
 	case evt.Delete != nil:
-		portal.log.Infoln("Got group delete event from WhatsApp, deleting portal")
+		log.Debug().Msg("Group deleted")
 		portal.Delete()
 		portal.Cleanup(false)
+	default:
+		log.Warn().Msg("Unhandled group info update")
 	}
 }
 

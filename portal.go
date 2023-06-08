@@ -1919,7 +1919,7 @@ func (portal *Portal) SetReply(content *event.MessageEventContent, replyTo *Repl
 	if portal.bridge.Config.Bridge.CrossRoomReplies && !replyTo.Chat.IsEmpty() && replyTo.Chat != key.JID {
 		if replyTo.Chat.Server == types.GroupServer {
 			key = database.NewPortalKey(replyTo.Chat, types.EmptyJID)
-		} else if replyTo.Chat == types.BroadcastServerJID {
+		} else if replyTo.Chat == types.StatusBroadcastJID {
 			key = database.NewPortalKey(replyTo.Chat, key.Receiver)
 		}
 		if key != portal.Key {
@@ -1937,10 +1937,13 @@ func (portal *Portal) SetReply(content *event.MessageEventContent, replyTo *Repl
 		}
 		return false
 	}
+	content.RelatesTo = (&event.RelatesTo{}).SetReplyTo(message.MXID)
+	if portal.bridge.Config.Bridge.DisableReplyFallbacks {
+		return true
+	}
 	evt, err := targetPortal.MainIntent().GetEvent(targetPortal.MXID, message.MXID)
 	if err != nil {
 		portal.log.Warnln("Failed to get reply target:", err)
-		content.RelatesTo = (&event.RelatesTo{}).SetReplyTo(message.MXID)
 		return true
 	}
 	_ = evt.Content.ParseRaw(evt.Type)
@@ -3532,13 +3535,13 @@ type MediaUpload struct {
 	FileLength    int
 }
 
-func (portal *Portal) addRelaybotFormat(sender *User, content *event.MessageEventContent) bool {
-	member := portal.MainIntent().Member(portal.MXID, sender.MXID)
+func (portal *Portal) addRelaybotFormat(userID id.UserID, content *event.MessageEventContent) bool {
+	member := portal.MainIntent().Member(portal.MXID, userID)
 	if member == nil {
 		member = &event.MemberEventContent{}
 	}
 	content.EnsureHasHTML()
-	data, err := portal.bridge.Config.Bridge.Relay.FormatMessage(content, sender.MXID, *member)
+	data, err := portal.bridge.Config.Bridge.Relay.FormatMessage(content, userID, *member)
 	if err != nil {
 		portal.log.Errorln("Failed to apply relaybot format:", err)
 	}
@@ -3833,6 +3836,15 @@ func (portal *Portal) convertMatrixMessage(ctx context.Context, sender *User, ev
 		return nil, sender, nil, fmt.Errorf("%w %T", errUnexpectedParsedContentType, evt.Content.Parsed)
 	}
 	extraMeta := &extraConvertMeta{}
+	realSenderMXID := sender.MXID
+	isRelay := false
+	if !sender.IsLoggedIn() || (portal.IsPrivateChat() && sender.JID.User != portal.Key.Receiver.User) {
+		if !portal.HasRelaybot() {
+			return nil, sender, extraMeta, errUserNotLoggedIn
+		}
+		sender = portal.GetRelayUser()
+		isRelay = true
+	}
 	var editRootMsg *database.Message
 	if editEventID := content.RelatesTo.GetReplaceID(); editEventID != "" {
 		editRootMsg = portal.bridge.DB.Message.GetByMXID(editEventID)
@@ -3847,14 +3859,7 @@ func (portal *Portal) convertMatrixMessage(ctx context.Context, sender *User, ev
 
 	msg := &waProto.Message{}
 	ctxInfo := portal.generateContextInfo(content.RelatesTo)
-	relaybotFormatted := false
-	if !sender.IsLoggedIn() || (portal.IsPrivateChat() && sender.JID.User != portal.Key.Receiver.User) {
-		if !portal.HasRelaybot() {
-			return nil, sender, extraMeta, errUserNotLoggedIn
-		}
-		relaybotFormatted = portal.addRelaybotFormat(sender, content)
-		sender = portal.GetRelayUser()
-	}
+	relaybotFormatted := isRelay && portal.addRelaybotFormat(realSenderMXID, content)
 	if evt.Type == event.EventSticker {
 		if relaybotFormatted {
 			// Stickers can't have captions, so force relaybot stickers to be images
@@ -3865,6 +3870,10 @@ func (portal *Portal) convertMatrixMessage(ctx context.Context, sender *User, ev
 	}
 	if content.MsgType == event.MsgImage && content.GetInfo().MimeType == "image/gif" {
 		content.MsgType = event.MsgVideo
+	}
+	if content.MsgType == event.MsgAudio && content.FileName != "" && content.Body != content.FileName {
+		// Send audio messages with captions as files since WhatsApp doesn't support captions on audio messages
+		content.MsgType = event.MsgFile
 	}
 
 	switch content.MsgType {

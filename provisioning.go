@@ -63,11 +63,14 @@ func (prov *ProvisioningAPI) Init() {
 	r.HandleFunc("/v1/debug/appstate/{name}", prov.SyncAppState).Methods(http.MethodPost)
 	r.HandleFunc("/v1/debug/retry", prov.SendRetryReceipt).Methods(http.MethodPost)
 	r.HandleFunc("/v1/contacts", prov.ListContacts).Methods(http.MethodGet)
-	r.HandleFunc("/v1/groups", prov.ListGroups).Methods(http.MethodGet)
+	r.HandleFunc("/v1/groups", prov.ListGroups).Methods(http.MethodGet, http.MethodPost)
 	r.HandleFunc("/v1/resolve_identifier/{number}", prov.ResolveIdentifier).Methods(http.MethodGet)
 	r.HandleFunc("/v1/bulk_resolve_identifier", prov.BulkResolveIdentifier).Methods(http.MethodPost)
 	r.HandleFunc("/v1/pm/{number}", prov.StartPM).Methods(http.MethodPost)
 	r.HandleFunc("/v1/open/{groupID}", prov.OpenGroup).Methods(http.MethodPost)
+	r.HandleFunc("/v1/group/open/{groupID}", prov.OpenGroup).Methods(http.MethodPost)
+	r.HandleFunc("/v1/group/resolve/{inviteCode}", prov.ResolveGroupInvite).Methods(http.MethodPost)
+	r.HandleFunc("/v1/group/join/{inviteCode}", prov.JoinGroup).Methods(http.MethodPost)
 	prov.bridge.AS.Router.HandleFunc("/_matrix/app/com.beeper.asmux/ping", prov.BridgeStatePing).Methods(http.MethodPost)
 	prov.bridge.AS.Router.HandleFunc("/_matrix/app/com.beeper.bridge_state", prov.BridgeStatePing).Methods(http.MethodPost)
 
@@ -312,12 +315,26 @@ func (prov *ProvisioningAPI) ListContacts(w http.ResponseWriter, r *http.Request
 }
 
 func (prov *ProvisioningAPI) ListGroups(w http.ResponseWriter, r *http.Request) {
-	if user := r.Context().Value("user").(*User); user.Session == nil {
+	user := r.Context().Value("user").(*User)
+	if user.Session == nil {
 		jsonResponse(w, http.StatusBadRequest, Error{
 			Error:   "User is not logged into WhatsApp",
 			ErrCode: "no session",
 		})
-	} else if groups, err := user.getCachedGroupList(); err != nil {
+		return
+	}
+	if r.Method == http.MethodPost {
+		err := user.ResyncGroups(r.URL.Query().Get("create_portals") == "true")
+		if err != nil {
+			prov.log.Errorfln("Failed to resync %s's groups: %v", user.MXID, err)
+			jsonResponse(w, http.StatusInternalServerError, Error{
+				Error:   "Internal server error while resyncing groups",
+				ErrCode: "failed to sync groups",
+			})
+			return
+		}
+	}
+	if groups, err := user.getCachedGroupList(); err != nil {
 		prov.log.Errorfln("Failed to fetch %s's groups: %v", user.MXID, err)
 		jsonResponse(w, http.StatusInternalServerError, Error{
 			Error:   "Internal server error while fetching group list",
@@ -486,6 +503,81 @@ func (prov *ProvisioningAPI) OpenGroup(w http.ResponseWriter, r *http.Request) {
 		portal := user.GetPortalByJID(info.JID)
 		status := http.StatusOK
 		if len(portal.MXID) == 0 {
+			err = portal.CreateMatrixRoom(user, info, true, true)
+			if err != nil {
+				jsonResponse(w, http.StatusInternalServerError, Error{
+					Error: fmt.Sprintf("Failed to create portal: %v", err),
+				})
+				return
+			}
+			status = http.StatusCreated
+		}
+		jsonResponse(w, status, PortalInfo{
+			RoomID:      portal.MXID,
+			GroupInfo:   info,
+			JustCreated: status == http.StatusCreated,
+		})
+	}
+}
+
+func (prov *ProvisioningAPI) resolveGroupInvite(w http.ResponseWriter, r *http.Request) (*types.GroupInfo, *User) {
+	inviteCode, _ := mux.Vars(r)["inviteCode"]
+	if user := r.Context().Value("user").(*User); !user.IsLoggedIn() {
+		jsonResponse(w, http.StatusBadRequest, Error{
+			Error:   "User is not logged into WhatsApp",
+			ErrCode: "no session",
+		})
+	} else if info, err := user.Client.GetGroupInfoFromLink(inviteCode); err != nil {
+		if errors.Is(err, whatsmeow.ErrInviteLinkRevoked) {
+			jsonResponse(w, http.StatusBadRequest, Error{
+				Error:   whatsmeow.ErrInviteLinkRevoked.Error(),
+				ErrCode: "invite link revoked",
+			})
+		} else if errors.Is(err, whatsmeow.ErrInviteLinkInvalid) {
+			jsonResponse(w, http.StatusBadRequest, Error{
+				Error:   whatsmeow.ErrInviteLinkInvalid.Error(),
+				ErrCode: "invalid invite link",
+			})
+		} else {
+			jsonResponse(w, http.StatusInternalServerError, Error{
+				Error:   fmt.Sprintf("Failed to fetch group info with link: %v", err),
+				ErrCode: "error getting group info",
+			})
+		}
+	} else {
+		return info, user
+	}
+	return nil, nil
+}
+
+func (prov *ProvisioningAPI) ResolveGroupInvite(w http.ResponseWriter, r *http.Request) {
+	info, user := prov.resolveGroupInvite(w, r)
+	if info == nil {
+		return
+	}
+	jsonResponse(w, http.StatusOK, PortalInfo{
+		RoomID:    user.GetPortalByJID(info.JID).MXID,
+		GroupInfo: info,
+	})
+}
+
+func (prov *ProvisioningAPI) JoinGroup(w http.ResponseWriter, r *http.Request) {
+	info, user := prov.resolveGroupInvite(w, r)
+	if info == nil {
+		return
+	}
+	inviteCode, _ := mux.Vars(r)["inviteCode"]
+	if jid, err := user.Client.JoinGroupWithLink(inviteCode); err != nil {
+		jsonResponse(w, http.StatusInternalServerError, Error{
+			Error:   fmt.Sprintf("Failed to join group: %v", err),
+			ErrCode: "error joining group",
+		})
+	} else {
+		prov.log.Debugln(user.MXID, "successfully joined group", jid)
+		portal := user.GetPortalByJID(jid)
+		status := http.StatusOK
+		if len(portal.MXID) == 0 {
+			time.Sleep(500 * time.Millisecond) // Wait for incoming group info to create the portal automatically
 			err = portal.CreateMatrixRoom(user, info, true, true)
 			if err != nil {
 				jsonResponse(w, http.StatusInternalServerError, Error{
