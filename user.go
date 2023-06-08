@@ -1304,8 +1304,12 @@ func (user *User) markUnread(portal *Portal, unread bool) {
 
 func (user *User) handleGroupCreate(evt *events.JoinedGroup) {
 	portal := user.GetPortalByJID(evt.JID)
+	if evt.CreateKey == "" && len(portal.MXID) == 0 {
+		user.log.Debugfln("Delaying handling group create with empty key to avoid race conditions")
+		time.Sleep(5 * time.Second)
+	}
 	if len(portal.MXID) == 0 {
-		if evt.CreateKey == user.createKeyDedup {
+		if user.createKeyDedup != "" && evt.CreateKey == user.createKeyDedup {
 			user.log.Debugfln("Ignoring group create event with key %s", evt.CreateKey)
 			return
 		}

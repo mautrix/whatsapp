@@ -20,10 +20,11 @@ import (
 	"fmt"
 	"html"
 	"regexp"
+	"sort"
 	"strings"
 
 	"go.mau.fi/whatsmeow/types"
-
+	"golang.org/x/exp/slices"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/format"
 	"maunium.net/go/mautrix/id"
@@ -36,7 +37,7 @@ var codeBlockRegex = regexp.MustCompile("```(?:.|\n)+?```")
 var inlineURLRegex = regexp.MustCompile(`\[(.+?)]\((.+?)\)`)
 
 const mentionedJIDsContextKey = "fi.mau.whatsapp.mentioned_jids"
-const disableMentionsContextKey = "fi.mau.whatsapp.no_mentions"
+const allowedMentionsContextKey = "fi.mau.whatsapp.allowed_mentions"
 
 type Formatter struct {
 	bridge *WABridge
@@ -56,17 +57,24 @@ func NewFormatter(bridge *WABridge) *Formatter {
 			Newline:      "\n",
 
 			PillConverter: func(displayname, mxid, eventID string, ctx format.Context) string {
-				_, disableMentions := ctx.ReturnData[disableMentionsContextKey]
-				if mxid[0] == '@' && !disableMentions {
-					puppet := bridge.GetPuppetByMXID(id.UserID(mxid))
-					if puppet != nil {
-						jids, ok := ctx.ReturnData[mentionedJIDsContextKey].([]string)
-						if !ok {
-							ctx.ReturnData[mentionedJIDsContextKey] = []string{puppet.JID.String()}
-						} else {
-							ctx.ReturnData[mentionedJIDsContextKey] = append(jids, puppet.JID.String())
+				allowedMentions, _ := ctx.ReturnData[allowedMentionsContextKey].(map[types.JID]bool)
+				if mxid[0] == '@' {
+					var jid types.JID
+					if puppet := bridge.GetPuppetByMXID(id.UserID(mxid)); puppet != nil {
+						jid = puppet.JID
+					} else if user := bridge.GetUserByMXIDIfExists(id.UserID(mxid)); user != nil {
+						jid = user.JID.ToNonAD()
+					}
+					if !jid.IsEmpty() && (allowedMentions == nil || allowedMentions[jid]) {
+						if allowedMentions == nil {
+							jids, ok := ctx.ReturnData[mentionedJIDsContextKey].([]string)
+							if !ok {
+								ctx.ReturnData[mentionedJIDsContextKey] = []string{jid.String()}
+							} else {
+								ctx.ReturnData[mentionedJIDsContextKey] = append(jids, jid.String())
+							}
 						}
-						return "@" + puppet.JID.User
+						return "@" + jid.User
 					}
 				}
 				return displayname
@@ -143,7 +151,6 @@ func (formatter *Formatter) ParseWhatsApp(roomID id.RoomID, content *event.Messa
 			content.Mentions.UserIDs = append(content.Mentions.UserIDs, mxid)
 		}
 	}
-	content.UnstableMentions = content.Mentions
 	if output != content.Body || forceHTML {
 		output = strings.ReplaceAll(output, "\n", "<br/>")
 		content.FormattedBody = output
@@ -154,15 +161,38 @@ func (formatter *Formatter) ParseWhatsApp(roomID id.RoomID, content *event.Messa
 	}
 }
 
-func (formatter *Formatter) ParseMatrix(html string) (string, []string) {
+func (formatter *Formatter) ParseMatrix(html string, mentions *event.Mentions) (string, []string) {
 	ctx := format.NewContext()
+	var mentionedJIDs []string
+	if mentions != nil {
+		var allowedMentions = make(map[types.JID]bool)
+		mentionedJIDs = make([]string, 0, len(mentions.UserIDs))
+		for _, userID := range mentions.UserIDs {
+			var jid types.JID
+			if puppet := formatter.bridge.GetPuppetByMXID(userID); puppet != nil {
+				jid = puppet.JID
+				mentionedJIDs = append(mentionedJIDs, puppet.JID.String())
+			} else if user := formatter.bridge.GetUserByMXIDIfExists(userID); user != nil {
+				jid = user.JID.ToNonAD()
+			}
+			if !jid.IsEmpty() && !allowedMentions[jid] {
+				allowedMentions[jid] = true
+				mentionedJIDs = append(mentionedJIDs, jid.String())
+			}
+		}
+		ctx.ReturnData[allowedMentionsContextKey] = allowedMentions
+	}
 	result := formatter.matrixHTMLParser.Parse(html, ctx)
-	mentionedJIDs, _ := ctx.ReturnData[mentionedJIDsContextKey].([]string)
+	if mentions == nil {
+		mentionedJIDs, _ = ctx.ReturnData[mentionedJIDsContextKey].([]string)
+		sort.Strings(mentionedJIDs)
+		mentionedJIDs = slices.Compact(mentionedJIDs)
+	}
 	return result, mentionedJIDs
 }
 
 func (formatter *Formatter) ParseMatrixWithoutMentions(html string) string {
 	ctx := format.NewContext()
-	ctx.ReturnData[disableMentionsContextKey] = true
+	ctx.ReturnData[allowedMentionsContextKey] = map[types.JID]struct{}{}
 	return formatter.matrixHTMLParser.Parse(html, ctx)
 }

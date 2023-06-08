@@ -1,3 +1,7 @@
+# v0.8.6 (unreleased)
+
+* Implemented intentional mentions for outgoing messages.
+
 # v0.8.5 (2023-05-16)
 
 * Added option to disable reply fallbacks entirely.

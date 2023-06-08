@@ -45,6 +45,8 @@ type wrappedInfo struct {
 	Type  database.MessageType
 	Error database.MessageErrorType
 
+	SenderMXID id.UserID
+
 	ReactionTarget types.MessageID
 
 	MediaKey []byte
@@ -268,6 +270,7 @@ func (user *User) backfillInChunks(req *database.Backfill, conv *database.Histor
 		msg.MXID = resp.EventID
 		msg.JID = types.MessageID(resp.EventID)
 		msg.Timestamp = conv.LastMessageTimestamp
+		msg.SenderMXID = portal.MainIntent().UserID
 		msg.Sent = true
 		msg.Type = database.MsgFake
 		msg.Insert(nil)
@@ -749,6 +752,7 @@ func (portal *Portal) appendBatchEvents(source *User, converted *ConvertedMessag
 	mainInfo := &wrappedInfo{
 		MessageInfo:     info,
 		Type:            database.MsgNormal,
+		SenderMXID:      mainEvt.Sender,
 		Error:           converted.Error,
 		MediaKey:        converted.MediaKey,
 		ExpirationStart: expirationStart,
@@ -783,6 +787,7 @@ func (portal *Portal) appendBatchEvents(source *User, converted *ConvertedMessag
 				*eventsArray = append(*eventsArray, reactionEvent)
 				*infoArray = append(*infoArray, &wrappedInfo{
 					MessageInfo:    reactionInfo,
+					SenderMXID:     reactionEvent.Sender,
 					ReactionTarget: info.ID,
 					Type:           database.MsgReaction,
 				})
@@ -872,7 +877,7 @@ func (portal *Portal) finishBatch(txn dbutil.Transaction, eventIDs []id.EventID,
 		}
 
 		eventID := eventIDs[i]
-		portal.markHandled(txn, nil, info.MessageInfo, eventID, true, false, info.Type, info.Error)
+		portal.markHandled(txn, nil, info.MessageInfo, eventID, info.SenderMXID, true, false, info.Type, info.Error)
 		if info.Type == database.MsgReaction {
 			portal.upsertReaction(txn, nil, info.ReactionTarget, info.Sender, eventID, info.ID)
 		}
@@ -896,6 +901,7 @@ func (portal *Portal) sendPostBackfillDummy(lastTimestamp time.Time, insertionEv
 	msg := portal.bridge.DB.Message.New()
 	msg.Chat = portal.Key
 	msg.MXID = resp.EventID
+	msg.SenderMXID = portal.MainIntent().UserID
 	msg.JID = types.MessageID(resp.EventID)
 	msg.Timestamp = lastTimestamp.Add(1 * time.Second)
 	msg.Sent = true

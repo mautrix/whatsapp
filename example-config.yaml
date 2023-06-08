@@ -114,7 +114,7 @@ bridge:
     # The following variables are also available, but will cause problems on multi-user instances:
     # {{.FullName}}  - full name from contact list
     # {{.FirstName}} - first name from contact list
-    displayname_template: "{{if .BusinessName}}{{.BusinessName}}{{else if .PushName}}{{.PushName}}{{else}}{{.JID}}{{end}} (WA)"
+    displayname_template: "{{or .BusinessName .PushName .JID}} (WA)"
     # Should the bridge create a space for each logged-in user and add bridged rooms to it?
     # Users who logged in before turning this on should run `!wa sync space` to create and fill the space for the first time.
     personal_filtering_spaces: false
@@ -423,6 +423,10 @@ bridge:
             # session before changing it. The Matrix spec recommends 100 as the
             # default.
             messages: 100
+
+            # Disable rotating keys when a user's devices change?
+            # You should not enable this option unless you understand all the implications.
+            disable_device_change_key_rotation: false
 
     # Settings for provisioning API
     provisioning:
