@@ -67,16 +67,9 @@ func (br *WABridge) createPrivatePortalFromInvite(roomID id.RoomID, inviter *Use
 	}
 	portal.MXID = roomID
 	portal.Topic = PrivateChatTopic
-	_, _ = portal.MainIntent().SetRoomTopic(portal.MXID, portal.Topic)
-	if portal.bridge.Config.Bridge.PrivateChatPortalMeta || br.Config.Bridge.Encryption.Default || encryptionEnabled {
-		portal.Name = puppet.Displayname
-		portal.AvatarURL = puppet.AvatarURL
-		portal.Avatar = puppet.Avatar
-		_, _ = portal.MainIntent().SetRoomName(portal.MXID, portal.Name)
-		_, _ = portal.MainIntent().SetRoomAvatar(portal.MXID, portal.AvatarURL)
-	} else {
-		portal.Name = ""
-	}
+	portal.Name = puppet.Displayname
+	portal.AvatarURL = puppet.AvatarURL
+	portal.Avatar = puppet.Avatar
 	portal.log.Infofln("Created private chat portal in %s after invite from %s", roomID, inviter.MXID)
 	intent := puppet.DefaultIntent()
 
@@ -99,6 +92,13 @@ func (br *WABridge) createPrivatePortalFromInvite(roomID id.RoomID, inviter *Use
 		br.AS.StateStore.SetMembership(roomID, puppet.MXID, event.MembershipJoin)
 		br.AS.StateStore.SetMembership(roomID, br.Bot.UserID, event.MembershipJoin)
 		portal.Encrypted = true
+	}
+	_, _ = portal.MainIntent().SetRoomTopic(portal.MXID, portal.Topic)
+	if portal.shouldSetDMRoomMetadata() {
+		_, err = portal.MainIntent().SetRoomName(portal.MXID, portal.Name)
+		portal.NameSet = err == nil
+		_, err = portal.MainIntent().SetRoomAvatar(portal.MXID, portal.AvatarURL)
+		portal.AvatarSet = err == nil
 	}
 	portal.Update(nil)
 	portal.UpdateBridgeInfo()

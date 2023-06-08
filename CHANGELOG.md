@@ -1,3 +1,11 @@
+# v0.8.4 (2023-04-16)
+
+* Enabled sending edits to WhatsApp by default.
+* Added options to automatically ratchet/delete megolm sessions to minimize
+  access to old messages.
+* Added automatic media re-requesting when download fails with 403 error.
+* Added option to not set room name/avatar even in encrypted rooms.
+
 # v0.8.3 (2023-03-16)
 
 * Bumped minimum Go version to 1.19.

@@ -801,6 +801,11 @@ func (user *User) HandleEvent(event interface{}) {
 		if err != nil {
 			user.log.Warnln("Failed to send presence after push name update:", err)
 		}
+		_, _, err = user.Client.Store.Contacts.PutPushName(user.JID.ToNonAD(), v.Action.GetName())
+		if err != nil {
+			user.log.Warnln("Failed to update push name in store:", err)
+		}
+		go user.syncPuppet(user.JID.ToNonAD(), "push name setting")
 	case *events.PairSuccess:
 		user.PhoneLastSeen = time.Now()
 		user.Session = user.Client.Store

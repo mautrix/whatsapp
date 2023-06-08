@@ -77,7 +77,15 @@ func DoUpgrade(helper *up.Helper) {
 	} else {
 		helper.Copy(up.Map, "bridge", "login_shared_secret_map")
 	}
-	helper.Copy(up.Bool, "bridge", "private_chat_portal_meta")
+	if legacyPrivateChatPortalMeta, ok := helper.Get(up.Bool, "bridge", "private_chat_portal_meta"); ok {
+		updatedPrivateChatPortalMeta := "default"
+		if legacyPrivateChatPortalMeta == "true" {
+			updatedPrivateChatPortalMeta = "always"
+		}
+		helper.Set(up.Str, updatedPrivateChatPortalMeta, "bridge", "private_chat_portal_meta")
+	} else {
+		helper.Copy(up.Str, "bridge", "private_chat_portal_meta")
+	}
 	helper.Copy(up.Bool, "bridge", "parallel_member_sync")
 	helper.Copy(up.Bool, "bridge", "bridge_notices")
 	helper.Copy(up.Bool, "bridge", "resend_bridge_info")
@@ -106,7 +114,6 @@ func DoUpgrade(helper *up.Helper) {
 	} else {
 		helper.Copy(up.Bool, "bridge", "extev_polls")
 	}
-	helper.Copy(up.Bool, "bridge", "send_whatsapp_edits")
 	helper.Copy(up.Bool, "bridge", "cross_room_replies")
 	helper.Copy(up.Str|up.Null, "bridge", "message_handling_timeout", "error_after")
 	helper.Copy(up.Str|up.Null, "bridge", "message_handling_timeout", "deadline")
@@ -120,6 +127,13 @@ func DoUpgrade(helper *up.Helper) {
 	helper.Copy(up.Bool, "bridge", "encryption", "require")
 	helper.Copy(up.Bool, "bridge", "encryption", "appservice")
 	helper.Copy(up.Bool, "bridge", "encryption", "plaintext_mentions")
+	helper.Copy(up.Bool, "bridge", "encryption", "delete_keys", "delete_outbound_on_ack")
+	helper.Copy(up.Bool, "bridge", "encryption", "delete_keys", "dont_store_outbound")
+	helper.Copy(up.Bool, "bridge", "encryption", "delete_keys", "ratchet_on_decrypt")
+	helper.Copy(up.Bool, "bridge", "encryption", "delete_keys", "delete_fully_used_on_decrypt")
+	helper.Copy(up.Bool, "bridge", "encryption", "delete_keys", "delete_prev_on_new_session")
+	helper.Copy(up.Bool, "bridge", "encryption", "delete_keys", "delete_on_device_delete")
+	helper.Copy(up.Bool, "bridge", "encryption", "delete_keys", "periodically_delete_expired")
 	helper.Copy(up.Str, "bridge", "encryption", "verification_levels", "receive")
 	helper.Copy(up.Str, "bridge", "encryption", "verification_levels", "send")
 	helper.Copy(up.Str, "bridge", "encryption", "verification_levels", "share")
