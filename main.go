@@ -294,7 +294,7 @@ func main() {
 		Name:              "mautrix-whatsapp",
 		URL:               "https://github.com/mautrix/whatsapp",
 		Description:       "A Matrix-WhatsApp puppeting bridge.",
-		Version:           "0.8.5-mod-1",
+		Version:           "0.8.5-41326773fcbe0255222da58cd32c36d813ed065d",
 		ProtocolName:      "WhatsApp",
 		BeeperServiceName: "whatsapp",
 		BeeperNetworkName: "whatsapp",
