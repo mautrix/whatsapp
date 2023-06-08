@@ -118,6 +118,7 @@ type BridgeConfig struct {
 	CaptionInMessage      bool   `yaml:"caption_in_message"`
 	ExtEvPolls            bool   `yaml:"extev_polls"`
 	SendWhatsAppEdits     bool   `yaml:"send_whatsapp_edits"`
+	CrossRoomReplies      bool   `yaml:"cross_room_replies"`
 
 	MessageHandlingTimeout struct {
 		ErrorAfterStr string `yaml:"error_after"`

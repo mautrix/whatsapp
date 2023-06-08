@@ -323,6 +323,8 @@ bridge:
     # Should Matrix edits be bridged to WhatsApp edits?
     # Official WhatsApp clients don't render edits yet, but once they do, the bridge should work with them right away.
     send_whatsapp_edits: false
+    # Should cross-chat replies from WhatsApp be bridged? Most servers and clients don't support this.
+    cross_room_replies: false
     # Maximum time for handling Matrix events. Duration strings formatted for https://pkg.go.dev/time#ParseDuration
     # Null means there's no enforced timeout.
     message_handling_timeout:
@@ -365,6 +367,8 @@ bridge:
         # Enable key sharing? If enabled, key requests for rooms where users are in will be fulfilled.
         # You must use a client that supports requesting keys from other users to use this feature.
         allow_key_sharing: false
+        # Should users mentions be in the event wire content to enable the server to send push notifications?
+        plaintext_mentions: false
         # What level of device verification should be required from users?
         #
         # Valid levels:
@@ -440,19 +444,15 @@ bridge:
             m.video: "<b>{{ .Sender.Displayname }}</b> sent a video"
             m.location: "<b>{{ .Sender.Displayname }}</b> sent a location"
 
-# Logging config.
+# Logging config. See https://github.com/tulir/zeroconfig for details.
 logging:
-    # The directory for log files. Will be created if not found.
-    directory: ./logs
-    # Available variables: .Date for the file date and .Index for different log files on the same day.
-    # Set this to null to disable logging to file.
-    file_name_format: "{{.Date}}-{{.Index}}.log"
-    # Date format for file names in the Go time format: https://golang.org/pkg/time/#pkg-constants
-    file_date_format: "2006-01-02"
-    # Log file permissions.
-    file_mode: 0o600
-    # Timestamp format for log entries in the Go time format.
-    timestamp_format: "Jan _2, 2006 15:04:05"
-    # Minimum severity for log messages printed to stdout/stderr. This doesn't affect the log file.
-    # Options: debug, info, warn, error, fatal
-    print_level: debug
+    min_level: debug
+    writers:
+    - type: stdout
+      format: pretty-colored
+    - type: file
+      format: json
+      filename: ./logs/mautrix-whatsapp.log
+      max_size: 100
+      max_backups: 10
+      compress: true

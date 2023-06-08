@@ -107,6 +107,7 @@ func DoUpgrade(helper *up.Helper) {
 		helper.Copy(up.Bool, "bridge", "extev_polls")
 	}
 	helper.Copy(up.Bool, "bridge", "send_whatsapp_edits")
+	helper.Copy(up.Bool, "bridge", "cross_room_replies")
 	helper.Copy(up.Str|up.Null, "bridge", "message_handling_timeout", "error_after")
 	helper.Copy(up.Str|up.Null, "bridge", "message_handling_timeout", "deadline")
 
@@ -118,6 +119,7 @@ func DoUpgrade(helper *up.Helper) {
 	helper.Copy(up.Bool, "bridge", "encryption", "default")
 	helper.Copy(up.Bool, "bridge", "encryption", "require")
 	helper.Copy(up.Bool, "bridge", "encryption", "appservice")
+	helper.Copy(up.Bool, "bridge", "encryption", "plaintext_mentions")
 	helper.Copy(up.Str, "bridge", "encryption", "verification_levels", "receive")
 	helper.Copy(up.Str, "bridge", "encryption", "verification_levels", "send")
 	helper.Copy(up.Str, "bridge", "encryption", "verification_levels", "share")

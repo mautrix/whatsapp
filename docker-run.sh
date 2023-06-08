@@ -9,8 +9,8 @@ function fixperms {
 	chown -R $UID:$GID /data
 
 	# /opt/mautrix-whatsapp is read-only, so disable file logging if it's pointing there.
-	if [[ "$(yq e '.logging.directory' /data/config.yaml)" == "./logs" ]]; then
-		yq -I4 e -i '.logging.file_name_format = ""' /data/config.yaml
+	if [[ "$(yq e '.logging.writers[1].filename' /data/config.yaml)" == "./logs/mautrix-whatsapp.log" ]]; then
+		yq -I4 e -i 'del(.logging.writers[1])' /data/config.yaml
 	fi
 }
 

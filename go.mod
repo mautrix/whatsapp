@@ -1,6 +1,6 @@
 module maunium.net/go/mautrix-whatsapp
 
-go 1.18
+go 1.19
 
 require (
 	github.com/chai2010/webp v1.1.1
@@ -11,18 +11,19 @@ require (
 	github.com/prometheus/client_golang v1.14.0
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
 	github.com/tidwall/gjson v1.14.4
-	go.mau.fi/whatsmeow v0.0.0-20230215140331-067248436db3
-	golang.org/x/image v0.4.0
-	golang.org/x/net v0.6.0
+	go.mau.fi/whatsmeow v0.0.0-20230316102651-f0c131192076
+	golang.org/x/image v0.6.0
+	golang.org/x/net v0.8.0
 	google.golang.org/protobuf v1.28.1
-	maunium.net/go/maulogger/v2 v2.3.2
-	maunium.net/go/mautrix v0.14.0
+	maunium.net/go/maulogger/v2 v2.4.1
+	maunium.net/go/mautrix v0.15.0
 )
 
 require (
 	filippo.io/edwards25519 v1.0.0 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cespare/xxhash/v2 v2.1.2 // indirect
+	github.com/coreos/go-systemd/v22 v22.3.3-0.20220203105225-a9a7ef127534 // indirect
 	github.com/golang/protobuf v1.5.2 // indirect
 	github.com/mattn/go-colorable v0.1.12 // indirect
 	github.com/mattn/go-isatty v0.0.14 // indirect
@@ -36,9 +37,11 @@ require (
 	github.com/tidwall/sjson v1.2.5 // indirect
 	github.com/yuin/goldmark v1.5.4 // indirect
 	go.mau.fi/libsignal v0.1.0 // indirect
+	go.mau.fi/zeroconfig v0.1.2 // indirect
 	golang.org/x/crypto v0.6.0 // indirect
-	golang.org/x/sys v0.5.0 // indirect
-	golang.org/x/text v0.7.0 // indirect
+	golang.org/x/sys v0.6.0 // indirect
+	golang.org/x/text v0.8.0 // indirect
+	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	maunium.net/go/mauflag v1.0.0 // indirect
 )

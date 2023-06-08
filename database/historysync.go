@@ -243,15 +243,13 @@ func (hsq *HistorySyncQuery) NewMessageWithValues(userID id.UserID, conversation
 	}, nil
 }
 
-func (hsm *HistorySyncMessage) Insert() {
+func (hsm *HistorySyncMessage) Insert() error {
 	_, err := hsm.db.Exec(`
 		INSERT INTO history_sync_message (user_mxid, conversation_id, message_id, timestamp, data, inserted_time)
 		VALUES ($1, $2, $3, $4, $5, $6)
 		ON CONFLICT (user_mxid, conversation_id, message_id) DO NOTHING
 	`, hsm.UserID, hsm.ConversationID, hsm.MessageID, hsm.Timestamp, hsm.Data, time.Now())
-	if err != nil {
-		hsm.log.Warnfln("Failed to insert history sync message %s/%s: %v", hsm.ConversationID, hsm.Timestamp, err)
-	}
+	return err
 }
 
 func (hsq *HistorySyncQuery) GetMessagesBetween(userID id.UserID, conversationID string, startTime, endTime *time.Time, limit int) (messages []*waProto.WebMessageInfo) {
