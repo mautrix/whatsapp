@@ -151,6 +151,7 @@ func (br *WABridge) Start() {
 		br.Provisioning.Init()
 	}
 	go br.CheckWhatsAppUpdate()
+	br.WaitWebsocketConnected()
 	go br.StartUsers()
 	if br.Config.Metrics.Enabled {
 		go br.Metrics.Start()
