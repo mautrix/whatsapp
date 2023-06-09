@@ -151,7 +151,6 @@ func (br *WABridge) Start() {
 		br.Provisioning.Init()
 	}
 	go br.CheckWhatsAppUpdate()
-	go br.UpdatePuppetContactInfo()
 	go br.StartUsers()
 	if br.Config.Metrics.Enabled {
 		go br.Metrics.Start()
@@ -179,14 +178,6 @@ func (br *WABridge) CheckWhatsAppUpdate() {
 		}
 	} else {
 		br.Log.Debugfln("Bridge is using newer than latest WhatsApp web protocol")
-	}
-}
-
-func (br *WABridge) UpdatePuppetContactInfo() {
-	for _, puppet := range br.GetAllPuppets() {
-		if puppet.UpdateContactInfo() {
-			puppet.Update()
-		}
 	}
 }
 
