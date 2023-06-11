@@ -1747,6 +1747,11 @@ func (portal *Portal) CreateMatrixRoom(user *User, groupInfo *types.GroupInfo, i
 				portal.log.Errorln("Failed to join created portal with bridge bot for e2be:", err)
 			}
 		}
+		rec := portal.bridge.GetPuppetByJID(portal.Key.Receiver)
+		err = rec.CustomIntent().EnsureJoined(portal.MXID)
+		if err != nil {
+			portal.log.Errorln("Failed to join created portal with puppet:", err)
+		}
 
 		user.UpdateDirectChats(map[id.UserID][]id.RoomID{puppet.MXID: {portal.MXID}})
 	} else if portal.IsParent {
