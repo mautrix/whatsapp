@@ -1637,6 +1637,10 @@ func (portal *Portal) CreateMatrixRoom(user *User, groupInfo *types.GroupInfo, i
 			invite = append(invite, portal.bridge.Bot.UserID)
 		}
 	}
+	if portal.IsPrivateChat() {
+		rec := portal.bridge.GetPuppetByJID(portal.Key.Receiver)
+		invite = append(invite, rec.MXID)
+	}
 	if !portal.AvatarURL.IsEmpty() && portal.shouldSetDMRoomMetadata() {
 		initialState = append(initialState, &event.Event{
 			Type: event.StateRoomAvatar,
