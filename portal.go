@@ -1748,7 +1748,7 @@ func (portal *Portal) CreateMatrixRoom(user *User, groupInfo *types.GroupInfo, i
 			}
 		}
 		rec := portal.bridge.GetPuppetByJID(portal.Key.Receiver)
-		err = rec.CustomIntent().EnsureJoined(portal.MXID)
+		err = rec.DefaultIntent().EnsureJoined(portal.MXID)
 		if err != nil {
 			portal.log.Errorln("Failed to join created portal with puppet:", err)
 		}
