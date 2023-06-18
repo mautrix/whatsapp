@@ -1697,6 +1697,16 @@ func (portal *Portal) CreateMatrixRoom(user *User, groupInfo *types.GroupInfo, i
 	if !portal.shouldSetDMRoomMetadata() {
 		req.Name = ""
 	}
+	legacyBackfill := user.bridge.Config.Bridge.HistorySync.Backfill && backfill && !user.bridge.SpecVersions.Supports(mautrix.BeeperFeatureBatchSending)
+	var backfillStarted bool
+	if legacyBackfill {
+		portal.latestEventBackfillLock.Lock()
+		defer func() {
+			if !backfillStarted {
+				portal.latestEventBackfillLock.Unlock()
+			}
+		}()
+	}
 	resp, err := intent.CreateRoom(req)
 	if err != nil {
 		return err
@@ -1758,10 +1768,15 @@ func (portal *Portal) CreateMatrixRoom(user *User, groupInfo *types.GroupInfo, i
 	}
 
 	if user.bridge.Config.Bridge.HistorySync.Backfill && backfill {
-		portals := []*Portal{portal}
-		user.EnqueueImmediateBackfills(portals)
-		user.EnqueueDeferredBackfills(portals)
-		user.BackfillQueue.ReCheck()
+		if legacyBackfill {
+			backfillStarted = true
+			go portal.legacyBackfill(user)
+		} else {
+			portals := []*Portal{portal}
+			user.EnqueueImmediateBackfills(portals)
+			user.EnqueueDeferredBackfills(portals)
+			user.BackfillQueue.ReCheck()
+		}
 	}
 	return nil
 }
@@ -4491,7 +4506,7 @@ func (portal *Portal) Cleanup(puppetsOnly bool) {
 		return
 	}
 	intent := portal.MainIntent()
-	if portal.bridge.SpecVersions.UnstableFeatures["com.beeper.room_yeeting"] {
+	if portal.bridge.SpecVersions.Supports(mautrix.BeeperFeatureRoomYeeting) {
 		err := intent.BeeperDeleteRoom(portal.MXID)
 		if err == nil || errors.Is(err, mautrix.MNotFound) {
 			return

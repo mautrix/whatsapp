@@ -1,3 +1,8 @@
+# v0.9.0 (unreleased)
+
+* Removed MSC2716 support.
+* Added legacy backfill support.
+
 # v0.8.6 (2023-06-16)
 
 * Implemented intentional mentions for outgoing messages.

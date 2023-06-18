@@ -60,24 +60,27 @@ func (user *User) handleHistorySyncsLoop() {
 		return
 	}
 
-	// Start the backfill queue.
-	user.BackfillQueue = &BackfillQueue{
-		BackfillQuery:   user.bridge.DB.Backfill,
-		reCheckChannels: []chan bool{},
-		log:             user.log.Sub("BackfillQueue"),
+	batchSend := user.bridge.SpecVersions.Supports(mautrix.BeeperFeatureBatchSending)
+	if batchSend {
+		// Start the backfill queue.
+		user.BackfillQueue = &BackfillQueue{
+			BackfillQuery:   user.bridge.DB.Backfill,
+			reCheckChannels: []chan bool{},
+			log:             user.log.Sub("BackfillQueue"),
+		}
+
+		forwardAndImmediate := []database.BackfillType{database.BackfillImmediate, database.BackfillForward}
+
+		// Immediate backfills can be done in parallel
+		for i := 0; i < user.bridge.Config.Bridge.HistorySync.Immediate.WorkerCount; i++ {
+			go user.HandleBackfillRequestsLoop(forwardAndImmediate, []database.BackfillType{})
+		}
+
+		// Deferred backfills should be handled synchronously so as not to
+		// overload the homeserver. Users can configure their backfill stages
+		// to be more or less aggressive with backfilling at this stage.
+		go user.HandleBackfillRequestsLoop([]database.BackfillType{database.BackfillDeferred}, forwardAndImmediate)
 	}
-
-	forwardAndImmediate := []database.BackfillType{database.BackfillImmediate, database.BackfillForward}
-
-	// Immediate backfills can be done in parallel
-	for i := 0; i < user.bridge.Config.Bridge.HistorySync.Immediate.WorkerCount; i++ {
-		go user.HandleBackfillRequestsLoop(forwardAndImmediate, []database.BackfillType{})
-	}
-
-	// Deferred backfills should be handled synchronously so as not to
-	// overload the homeserver. Users can configure their backfill stages
-	// to be more or less aggressive with backfilling at this stage.
-	go user.HandleBackfillRequestsLoop([]database.BackfillType{database.BackfillDeferred}, forwardAndImmediate)
 
 	if user.bridge.Config.Bridge.HistorySync.MediaRequests.AutoRequestMedia &&
 		user.bridge.Config.Bridge.HistorySync.MediaRequests.RequestMethod == config.MediaRequestMethodLocalTime {
@@ -92,9 +95,13 @@ func (user *User) handleHistorySyncsLoop() {
 			if evt == nil {
 				return
 			}
-			user.handleHistorySync(user.BackfillQueue, evt.Data)
+			user.storeHistorySync(evt.Data)
 		case <-user.enqueueBackfillsTimer.C:
-			user.enqueueAllBackfills()
+			if batchSend {
+				user.enqueueAllBackfills()
+			} else {
+				user.backfillAll()
+			}
 		}
 	}
 }
@@ -123,6 +130,66 @@ func (user *User) enqueueAllBackfills() {
 		// Tell the queue to check for new backfill requests.
 		user.BackfillQueue.ReCheck()
 	}
+}
+
+func (user *User) backfillAll() {
+	conversations := user.bridge.DB.HistorySync.GetNMostRecentConversations(user.MXID, -1)
+	if len(conversations) > 0 {
+		user.zlog.Info().
+			Int("conversation_count", len(conversations)).
+			Msg("Probably received all history sync blobs, now backfilling conversations")
+		// Find the portals for all the conversations.
+		for i, conv := range conversations {
+			jid, err := types.ParseJID(conv.ConversationID)
+			if err != nil {
+				user.zlog.Warn().Err(err).
+					Str("conversation_id", conv.ConversationID).
+					Msg("Failed to parse chat JID in history sync")
+				continue
+			}
+			portal := user.GetPortalByJID(jid)
+			if portal.MXID != "" {
+				user.zlog.Debug().
+					Str("portal_jid", portal.Key.JID.String()).
+					Msg("Chat already has a room, deleting messages from database")
+				user.bridge.DB.HistorySync.DeleteAllMessagesForPortal(user.MXID, portal.Key)
+			} else if i < user.bridge.Config.Bridge.HistorySync.MaxInitialConversations {
+				err = portal.CreateMatrixRoom(user, nil, true, true)
+				if err != nil {
+					user.zlog.Err(err).Msg("Failed to create Matrix room for backfill")
+				}
+			}
+		}
+	}
+}
+
+func (portal *Portal) legacyBackfill(user *User) {
+	defer portal.latestEventBackfillLock.Unlock()
+	// This should only be called from CreateMatrixRoom which locks latestEventBackfillLock before creating the room.
+	if portal.latestEventBackfillLock.TryLock() {
+		panic("legacyBackfill() called without locking latestEventBackfillLock")
+	}
+	// TODO use portal.zlog instead of user.zlog
+	log := user.zlog.With().
+		Str("portal_jid", portal.Key.JID.String()).
+		Str("action", "legacy backfill").
+		Logger()
+	messages := user.bridge.DB.HistorySync.GetMessagesBetween(user.MXID, portal.Key.JID.String(), nil, nil, portal.bridge.Config.Bridge.HistorySync.MessageCount)
+	log.Debug().Int("message_count", len(messages)).Msg("Got messages to backfill from database")
+	for i := len(messages) - 1; i >= 0; i-- {
+		msgEvt, err := user.Client.ParseWebMessage(portal.Key.JID, messages[i])
+		if err != nil {
+			log.Warn().Err(err).
+				Int("msg_index", i).
+				Str("msg_id", messages[i].GetKey().GetId()).
+				Uint64("msg_time_seconds", messages[i].GetMessageTimestamp()).
+				Msg("Dropping historical message due to parse error")
+			continue
+		}
+		portal.handleMessage(user, msgEvt)
+	}
+	log.Debug().Msg("Backfill complete, deleting leftover messages from database")
+	user.bridge.DB.HistorySync.DeleteAllMessagesForPortal(user.MXID, portal.Key)
 }
 
 func (user *User) dailyMediaRequestLoop() {
@@ -358,12 +425,12 @@ func (user *User) shouldCreatePortalForHistorySync(conv *database.HistorySyncCon
 	}
 }
 
-func (user *User) handleHistorySync(backfillQueue *BackfillQueue, evt *waProto.HistorySync) {
+func (user *User) storeHistorySync(evt *waProto.HistorySync) {
 	if evt == nil || evt.SyncType == nil {
 		return
 	}
 	log := user.bridge.ZLog.With().
-		Str("method", "User.handleHistorySync").
+		Str("method", "User.storeHistorySync").
 		Str("user_id", user.MXID.String()).
 		Str("sync_type", evt.GetSyncType().String()).
 		Uint32("chunk_order", evt.GetChunkOrder()).

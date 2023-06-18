@@ -33,7 +33,6 @@ import (
 	"go.mau.fi/whatsmeow/store/sqlstore"
 	"go.mau.fi/whatsmeow/types"
 
-	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/bridge"
 	"maunium.net/go/mautrix/bridge/commands"
 	"maunium.net/go/mautrix/bridge/status"
@@ -246,20 +245,6 @@ func (br *WABridge) GetConfigPtr() interface{} {
 	}
 	br.Config.BaseConfig.Bridge = &br.Config.Bridge
 	return br.Config
-}
-
-const unstableFeatureBatchSending = "org.matrix.msc2716"
-
-func (br *WABridge) CheckFeatures(versions *mautrix.RespVersions) (string, bool) {
-	if br.Config.Bridge.HistorySync.Backfill {
-		supported, known := versions.UnstableFeatures[unstableFeatureBatchSending]
-		if !known {
-			return "Backfilling is enabled in bridge config, but homeserver does not support MSC2716 batch sending", false
-		} else if !supported {
-			return "Backfilling is enabled in bridge config, but MSC2716 batch sending is not enabled on homeserver", false
-		}
-	}
-	return "", true
 }
 
 func main() {

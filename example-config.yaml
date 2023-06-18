@@ -127,12 +127,8 @@ bridge:
     portal_message_buffer: 128
     # Settings for handling history sync payloads.
     history_sync:
-        # Enable backfilling history sync payloads from WhatsApp using batch sending?
-        # This requires a server with MSC2716 support, which is currently an experimental feature in synapse.
-        # It can be enabled by setting experimental_features -> msc2716_enabled to true in homeserver.yaml.
-        # Note that prior to Synapse 1.49, there were some bugs with the implementation, especially if using event persistence workers.
-        # There are also still some issues in Synapse's federation implementation.
-        backfill: false
+        # Enable backfilling history sync payloads from WhatsApp?
+        backfill: true
         # Should the bridge create portals for chats in the history sync payload?
         # This has no effect unless backfill is enabled.
         create_portals: true
@@ -171,16 +167,22 @@ bridge:
             # be sent (in minutes after midnight)?
             request_local_time: 120
         # The maximum number of initial conversations that should be synced.
-        # Other conversations will be backfilled on demand when the start PM
-        # provisioning endpoint is used or when a message comes in from that
-        # chat.
+        # Other conversations will be backfilled on demand when receiving a message or when initiating a direct chat.
         max_initial_conversations: -1
+        # Number of messages to backfill in each conversation
+        message_count: 50
         # If this value is greater than 0, then if the conversation's last
         # message was more than this number of hours ago, then the conversation
         # will automatically be marked it as read.
         # Conversations that have a last message that is less than this number
         # of hours ago will have their unread status synced from WhatsApp.
         unread_hours_threshold: 0
+
+        ###############################################################################
+        # The settings below are only applicable for backfilling using batch sending, #
+        # which is no longer supported in Synapse.                                    #
+        ###############################################################################
+
         # Settings for immediate backfills. These backfills should generally be
         # small and their main purpose is to populate each of the initial chats
         # (as configured by max_initial_conversations) with a few messages so
@@ -220,6 +222,7 @@ bridge:
             - start_days_ago: -1
               max_batch_events: 500
               batch_delay: 10
+
     # Should puppet avatars be fetched from the server even if an avatar is already set?
     user_avatar_sync: true
     # Should Matrix users leaving groups be bridged to WhatsApp?

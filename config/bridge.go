@@ -68,6 +68,7 @@ type BridgeConfig struct {
 			StorageQuota uint32 `yaml:"storage_quota_mb"`
 		}
 		MaxInitialConversations int `yaml:"max_initial_conversations"`
+		MessageCount            int `yaml:"message_count"`
 		UnreadHoursThreshold    int `yaml:"unread_hours_threshold"`
 
 		Immediate struct {
