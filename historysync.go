@@ -151,7 +151,7 @@ func (user *User) backfillAll() {
 				user.zlog.Debug().
 					Str("portal_jid", portal.Key.JID.String()).
 					Msg("Chat already has a room, deleting messages from database")
-				user.bridge.DB.HistorySync.DeleteAllMessagesForPortal(user.MXID, portal.Key)
+				user.bridge.DB.HistorySync.DeleteConversation(user.MXID, portal.Key.JID.String())
 			} else if i < user.bridge.Config.Bridge.HistorySync.MaxInitialConversations {
 				err = portal.CreateMatrixRoom(user, nil, true, true)
 				if err != nil {
@@ -173,6 +173,7 @@ func (portal *Portal) legacyBackfill(user *User) {
 		Str("portal_jid", portal.Key.JID.String()).
 		Str("action", "legacy backfill").
 		Logger()
+	conv := user.bridge.DB.HistorySync.GetConversation(user.MXID, portal.Key)
 	messages := user.bridge.DB.HistorySync.GetMessagesBetween(user.MXID, portal.Key.JID.String(), nil, nil, portal.bridge.Config.Bridge.HistorySync.MessageCount)
 	log.Debug().Int("message_count", len(messages)).Msg("Got messages to backfill from database")
 	for i := len(messages) - 1; i >= 0; i-- {
@@ -187,8 +188,16 @@ func (portal *Portal) legacyBackfill(user *User) {
 		}
 		portal.handleMessage(user, msgEvt)
 	}
+	if conv != nil {
+		isUnread := conv.MarkedAsUnread || conv.UnreadCount > 0
+		isTooOld := user.bridge.Config.Bridge.HistorySync.UnreadHoursThreshold > 0 && conv.LastMessageTimestamp.Before(time.Now().Add(time.Duration(-user.bridge.Config.Bridge.HistorySync.UnreadHoursThreshold)*time.Hour))
+		shouldMarkAsRead := !isUnread || isTooOld
+		if shouldMarkAsRead {
+			user.markSelfReadFull(portal)
+		}
+	}
 	log.Debug().Msg("Backfill complete, deleting leftover messages from database")
-	user.bridge.DB.HistorySync.DeleteAllMessagesForPortal(user.MXID, portal.Key)
+	user.bridge.DB.HistorySync.DeleteConversation(user.MXID, portal.Key.JID.String())
 }
 
 func (user *User) dailyMediaRequestLoop() {

@@ -183,7 +183,7 @@ func (hsq *HistorySyncQuery) GetNMostRecentConversations(userID id.UserID, n int
 	return
 }
 
-func (hsq *HistorySyncQuery) GetConversation(userID id.UserID, portalKey *PortalKey) (conversation *HistorySyncConversation) {
+func (hsq *HistorySyncQuery) GetConversation(userID id.UserID, portalKey PortalKey) (conversation *HistorySyncConversation) {
 	rows, err := hsq.db.Query(getConversationByPortal, userID, portalKey.JID, portalKey.Receiver)
 	defer rows.Close()
 	if err != nil || rows == nil {
@@ -321,5 +321,16 @@ func (hsq *HistorySyncQuery) DeleteAllMessagesForPortal(userID id.UserID, portal
 	`, userID, portalKey.JID)
 	if err != nil {
 		hsq.log.Warnfln("Failed to delete historical messages for %s/%s: %v", userID, portalKey.JID, err)
+	}
+}
+
+func (hsq *HistorySyncQuery) DeleteConversation(userID id.UserID, jid string) {
+	// This will also clear history_sync_message as there's a foreign key constraint
+	_, err := hsq.db.Exec(`
+		DELETE FROM history_sync_conversation
+		WHERE user_mxid=$1 AND conversation_id=$2
+	`, userID, jid)
+	if err != nil {
+		hsq.log.Warnfln("Failed to delete historical messages for %s/%s: %v", userID, jid, err)
 	}
 }

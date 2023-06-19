@@ -65,7 +65,7 @@ func (user *User) HandleBackfillRequestsLoop(backfillTypes []database.BackfillTy
 		req := user.BackfillQueue.GetNextBackfill(user.MXID, backfillTypes, waitForBackfillTypes, reCheckChannel)
 		user.log.Infofln("Handling backfill request %s", req)
 
-		conv := user.bridge.DB.HistorySync.GetConversation(user.MXID, req.Portal)
+		conv := user.bridge.DB.HistorySync.GetConversation(user.MXID, *req.Portal)
 		if conv == nil {
 			user.log.Debugfln("Could not find history sync conversation data for %s", req.Portal.String())
 			req.MarkDone()
