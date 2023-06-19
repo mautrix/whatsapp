@@ -148,27 +148,10 @@ bridge:
             size_mb_limit: null
             # This is presumably the local storage quota, which may affect what the phone includes in the history sync blob.
             storage_quota_mb: null
-        # Settings for media requests. If the media expired, then it will not
-        # be on the WA servers.
-        # Media can always be requested by reacting with the ♻️ (recycle) emoji.
-        # These settings determine if the media requests should be done
-        # automatically during or after backfill.
-        media_requests:
-            # Should expired media be automatically requested from the server as
-            # part of the backfill process?
-            auto_request_media: true
-            # Whether to request the media immediately after the media message
-            # is backfilled ("immediate") or at a specific time of the day
-            # ("local_time").
-            request_method: immediate
-            # If request_method is "local_time", what time should the requests
-            # be sent (in minutes after midnight)?
-            request_local_time: 120
-        # If this value is greater than 0, then if the conversation's last
-        # message was more than this number of hours ago, then the conversation
-        # will automatically be marked it as read.
-        # Conversations that have a last message that is less than this number
-        # of hours ago will have their unread status synced from WhatsApp.
+        # If this value is greater than 0, then if the conversation's last message was more than
+        # this number of hours ago, then the conversation will automatically be marked it as read.
+        # Conversations that have a last message that is less than this number of hours ago will
+        # have their unread status synced from WhatsApp.
         unread_hours_threshold: 0
 
         ###############################################################################
@@ -176,24 +159,32 @@ bridge:
         # which is no longer supported in Synapse.                                    #
         ###############################################################################
 
-        # Settings for immediate backfills. These backfills should generally be
-        # small and their main purpose is to populate each of the initial chats
-        # (as configured by max_initial_conversations) with a few messages so
-        # that you can continue conversations without loosing context.
+        # Settings for media requests. If the media expired, then it will not be on the WA servers.
+        # Media can always be requested by reacting with the ♻️ (recycle) emoji.
+        # These settings determine if the media requests should be done automatically during or after backfill.
+        media_requests:
+            # Should expired media be automatically requested from the server as part of the backfill process?
+            auto_request_media: true
+            # Whether to request the media immediately after the media message is backfilled ("immediate")
+            # or at a specific time of the day ("local_time").
+            request_method: immediate
+            # If request_method is "local_time", what time should the requests be sent (in minutes after midnight)?
+            request_local_time: 120
+        # Settings for immediate backfills. These backfills should generally be small and their main purpose is
+        # to populate each of the initial chats (as configured by max_initial_conversations) with a few messages
+        # so that you can continue conversations without losing context.
         immediate:
-            # The number of concurrent backfill workers to create for immediate
-            # backfills. Note that using more than one worker could cause the
-            # room list to jump around since there are no guarantees about the
-            # order in which the backfills will complete.
+            # The number of concurrent backfill workers to create for immediate backfills.
+            # Note that using more than one worker could cause the room list to jump around
+            # since there are no guarantees about the order in which the backfills will complete.
             worker_count: 1
             # The maximum number of events to backfill initially.
             max_events: 10
-        # Settings for deferred backfills. The purpose of these backfills are
-        # to fill in the rest of the chat history that was not covered by the
-        # immediate backfills. These backfills generally should happen at a
-        # slower pace so as not to overload the homeserver.
-        # Each deferred backfill config should define a "stage" of backfill
-        # (i.e. the last week of messages). The fields are as follows:
+        # Settings for deferred backfills. The purpose of these backfills are to fill in the rest of
+        # the chat history that was not covered by the immediate backfills.
+        # These backfills generally should happen at a slower pace so as not to overload the homeserver.
+        # Each deferred backfill config should define a "stage" of backfill (i.e. the last week of messages).
+        # The fields are as follows:
         # - start_days_ago: the number of days ago to start backfilling from.
         #     To indicate the start of time, use -1. For example, for a week ago, use 7.
         # - max_batch_events: the number of events to send per batch.
