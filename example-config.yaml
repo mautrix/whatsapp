@@ -95,7 +95,7 @@ whatsapp:
     os_name: Mautrix-WhatsApp bridge
     # Browser name that determines the logo shown in the mobile app.
     # Must be "unknown" for a generic icon or a valid browser name if you want a specific icon.
-    # List of valid browser names: https://github.com/tulir/whatsmeow/blob/8b34d886d543b72e5f4699cf5b2797f68d598f78/binary/proto/def.proto#L38-L51
+    # List of valid browser names: https://github.com/tulir/whatsmeow/blob/efc632c008604016ddde63bfcfca8de4e5304da9/binary/proto/def.proto#L43-L64
     browser_name: unknown
 
 # Bridge config
@@ -129,14 +129,12 @@ bridge:
     history_sync:
         # Enable backfilling history sync payloads from WhatsApp?
         backfill: true
-        # Should the bridge create portals for chats in the history sync payload?
-        # This has no effect unless backfill is enabled.
-        create_portals: true
-        # Use double puppets for backfilling?
-        # In order to use this, the double puppets must be in the appservice's user ID namespace
-        # (because the bridge can't use the double puppet access token with batch sending).
-        # This only affects double puppets on the local server, double puppets on other servers will never be used.
-        double_puppet_backfill: false
+        # The maximum number of initial conversations that should be synced.
+        # Other conversations will be backfilled on demand when receiving a message or when initiating a direct chat.
+        max_initial_conversations: -1
+        # Maximum number of messages to backfill in each conversation.
+        # Set to -1 to disable limit.
+        message_count: 50
         # Should the bridge request a full sync from the phone when logging in?
         # This bumps the size of history syncs from 3 months to 1 year.
         request_full_sync: false
@@ -166,11 +164,6 @@ bridge:
             # If request_method is "local_time", what time should the requests
             # be sent (in minutes after midnight)?
             request_local_time: 120
-        # The maximum number of initial conversations that should be synced.
-        # Other conversations will be backfilled on demand when receiving a message or when initiating a direct chat.
-        max_initial_conversations: -1
-        # Number of messages to backfill in each conversation
-        message_count: 50
         # If this value is greater than 0, then if the conversation's last
         # message was more than this number of hours ago, then the conversation
         # will automatically be marked it as read.

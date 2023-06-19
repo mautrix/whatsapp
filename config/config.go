@@ -45,15 +45,3 @@ func (config *Config) CanAutoDoublePuppet(userID id.UserID) bool {
 	_, hasSecret := config.Bridge.LoginSharedSecretMap[homeserver]
 	return hasSecret
 }
-
-func (config *Config) CanDoublePuppetBackfill(userID id.UserID) bool {
-	if !config.Bridge.HistorySync.DoublePuppetBackfill {
-		return false
-	}
-	_, homeserver, _ := userID.Parse()
-	// Batch sending can only use local users, so don't allow double puppets on other servers.
-	if homeserver != config.Homeserver.Domain && config.Homeserver.Software != bridgeconfig.SoftwareHungry {
-		return false
-	}
-	return true
-}

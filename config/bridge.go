@@ -57,12 +57,10 @@ type BridgeConfig struct {
 	IdentityChangeNotices bool `yaml:"identity_change_notices"`
 
 	HistorySync struct {
-		CreatePortals bool `yaml:"create_portals"`
-		Backfill      bool `yaml:"backfill"`
+		Backfill bool `yaml:"backfill"`
 
-		DoublePuppetBackfill bool `yaml:"double_puppet_backfill"`
-		RequestFullSync      bool `yaml:"request_full_sync"`
-		FullSyncConfig       struct {
+		RequestFullSync bool `yaml:"request_full_sync"`
+		FullSyncConfig  struct {
 			DaysLimit    uint32 `yaml:"days_limit"`
 			SizeLimit    uint32 `yaml:"size_mb_limit"`
 			StorageQuota uint32 `yaml:"storage_quota_mb"`
