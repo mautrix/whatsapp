@@ -430,6 +430,9 @@ func (user *User) storeHistorySync(evt *waProto.HistorySync) {
 		} else if jid.Server == types.BroadcastServer {
 			log.Debug().Str("chat_jid", jid.String()).Msg("Skipping broadcast list in history sync")
 			continue
+		} else if jid.Server == types.HiddenUserServer {
+			log.Debug().Str("chat_jid", jid.String()).Msg("Skipping hidden user JID chat in history sync")
+			continue
 		}
 		totalMessageCount += len(conv.GetMessages())
 		portal := user.GetPortalByJID(jid)
