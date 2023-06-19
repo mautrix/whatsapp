@@ -1667,7 +1667,7 @@ func (portal *Portal) CreateMatrixRoom(user *User, groupInfo *types.GroupInfo, i
 			},
 		})
 	}
-	autoJoinInvites := portal.bridge.Config.Homeserver.Software == bridgeconfig.SoftwareHungry
+	autoJoinInvites := portal.bridge.SpecVersions.Supports(mautrix.BeeperFeatureAutojoinInvites)
 	if autoJoinInvites {
 		portal.log.Debugfln("Hungryserv mode: adding all group members in create request")
 		if groupInfo != nil {
@@ -1916,7 +1916,7 @@ func (portal *Portal) addReplyMention(content *event.MessageEventContent, sender
 	}
 }
 
-func (portal *Portal) SetReply(content *event.MessageEventContent, replyTo *ReplyInfo, isBackfill bool) bool {
+func (portal *Portal) SetReply(content *event.MessageEventContent, replyTo *ReplyInfo, isHungryBackfill bool) bool {
 	if replyTo == nil {
 		return false
 	}
@@ -1942,7 +1942,7 @@ func (portal *Portal) SetReply(content *event.MessageEventContent, replyTo *Repl
 	}
 	message := portal.bridge.DB.Message.GetByJID(key, replyTo.MessageID)
 	if message == nil || message.IsFakeMXID() {
-		if isBackfill && portal.bridge.Config.Homeserver.Software == bridgeconfig.SoftwareHungry {
+		if isHungryBackfill {
 			content.RelatesTo = (&event.RelatesTo{}).SetReplyTo(targetPortal.deterministicEventID(replyTo.Sender, replyTo.MessageID, ""))
 			portal.addReplyMention(content, replyTo.Sender, "")
 			return true

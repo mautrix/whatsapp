@@ -26,9 +26,9 @@ import (
 
 	log "maunium.net/go/maulogger/v2"
 
+	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/appservice"
 	"maunium.net/go/mautrix/bridge"
-	"maunium.net/go/mautrix/bridge/bridgeconfig"
 	"maunium.net/go/mautrix/id"
 
 	"maunium.net/go/mautrix-whatsapp/config"
@@ -264,7 +264,7 @@ func (puppet *Puppet) UpdateName(contact types.ContactInfo, forcePortalSync bool
 }
 
 func (puppet *Puppet) UpdateContactInfo() bool {
-	if puppet.bridge.Config.Homeserver.Software != bridgeconfig.SoftwareHungry {
+	if !puppet.bridge.SpecVersions.Supports(mautrix.BeeperFeatureArbitraryProfileMeta) {
 		return false
 	}
 
