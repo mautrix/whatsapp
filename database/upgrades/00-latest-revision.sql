@@ -1,4 +1,4 @@
--- v0 -> v56 (compatible with v45+): Latest revision
+-- v0 -> v57 (compatible with v46+): Latest revision
 
 CREATE TABLE "user" (
     mxid     TEXT PRIMARY KEY,
