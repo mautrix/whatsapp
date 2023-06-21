@@ -284,7 +284,7 @@ func main() {
 	}
 	br.Bridge = bridge.Bridge{
 		Name:              "mautrix-whatsapp",
-		URL:               "https://github.com/mautrix/whatsapp",
+		URL:               "https://github.com/vector-im/mautrix-whatsapp",
 		Description:       "A Matrix-WhatsApp puppeting bridge.",
 		Version:           "0.8.6-mod-1",
 		ProtocolName:      "WhatsApp",
