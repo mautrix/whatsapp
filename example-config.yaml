@@ -17,6 +17,13 @@ homeserver:
     # Does the homeserver support https://github.com/matrix-org/matrix-spec-proposals/pull/2246?
     async_media: false
 
+    # Should the bridge use a websocket for connecting to the homeserver?
+    # The server side is currently not documented anywhere and is only implemented by mautrix-wsproxy,
+    # mautrix-asmux (deprecated), and hungryserv (proprietary).
+    websocket: false
+    # How often should the websocket be pinged? Pinging will be disabled if this is zero.
+    ping_interval_seconds: 0
+
 # Application service host/registration related details.
 # Changing these values requires regeneration of the registration.
 appservice:

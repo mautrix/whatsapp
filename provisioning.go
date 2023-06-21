@@ -566,6 +566,12 @@ func (prov *ProvisioningAPI) JoinGroup(w http.ResponseWriter, r *http.Request) {
 	if info == nil {
 		return
 	}
+	user.groupJoinLock.Lock()
+	user.skipGroupCreateDelay = info.JID
+	defer func() {
+		user.skipGroupCreateDelay = types.EmptyJID
+		user.groupJoinLock.Unlock()
+	}()
 	inviteCode, _ := mux.Vars(r)["inviteCode"]
 	if jid, err := user.Client.JoinGroupWithLink(inviteCode); err != nil {
 		jsonResponse(w, http.StatusInternalServerError, Error{

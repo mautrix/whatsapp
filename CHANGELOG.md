@@ -1,6 +1,11 @@
-# v0.8.6 (unreleased)
+# v0.8.6 (2023-06-16)
 
 * Implemented intentional mentions for outgoing messages.
+* Added support for appservice websockets.
+* Added additional index on message table to make bridging outgoing read
+  receipts and messages faster in chats with lots of messages.
+* Fixed handling WhatsApp poll messages that only allow one choice.
+* Fixed bridging new groups immediately when they're created.
 
 # v0.8.5 (2023-05-16)
 

@@ -1,4 +1,4 @@
--- v0 -> v57 (compatible with v46+): Latest revision
+-- v0 -> v58 (compatible with v46+): Latest revision
 
 CREATE TABLE "user" (
     mxid     TEXT PRIMARY KEY,
@@ -84,6 +84,8 @@ CREATE TABLE message (
     PRIMARY KEY (chat_jid, chat_receiver, jid),
     FOREIGN KEY (chat_jid, chat_receiver) REFERENCES portal(jid, receiver) ON DELETE CASCADE
 );
+
+CREATE INDEX message_timestamp_idx ON message (chat_jid, chat_receiver, timestamp);
 
 CREATE TABLE poll_option_id (
     msg_mxid TEXT,
