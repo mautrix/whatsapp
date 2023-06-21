@@ -45,7 +45,6 @@ func (pq *PuppetQuery) New() *Puppet {
 
 func (pq *PuppetQuery) GetAll() (puppets []*Puppet) {
 	rows, err := pq.db.Query("SELECT username, avatar, avatar_url, displayname, name_quality, name_set, avatar_set, contact_info_set, last_sync, custom_mxid, access_token, next_batch, enable_presence, enable_receipts, first_activity_ts, last_activity_ts FROM puppet")
-
 	if err != nil || rows == nil {
 		return nil
 	}
