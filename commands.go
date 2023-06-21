@@ -41,8 +41,6 @@ import (
 	"maunium.net/go/mautrix/bridge/status"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
-
-	"maunium.net/go/mautrix-whatsapp/database"
 )
 
 type WrappedCommandEvent struct {
@@ -71,7 +69,6 @@ func (br *WABridge) RegisterCommands() {
 		cmdPing,
 		cmdDeletePortal,
 		cmdDeleteAllPortals,
-		cmdBackfill,
 		cmdList,
 		cmdSearch,
 		cmdOpen,
@@ -785,46 +782,6 @@ func fnDeleteAllPortals(ce *WrappedCommandEvent) {
 		}
 		ce.Reply("Finished background cleanup of deleted portal rooms.")
 	}()
-}
-
-var cmdBackfill = &commands.FullHandler{
-	Func: wrapCommand(fnBackfill),
-	Name: "backfill",
-	Help: commands.HelpMeta{
-		Section:     HelpSectionPortalManagement,
-		Description: "Backfill all messages the portal.",
-		Args:        "[_batch size_] [_batch delay_]",
-	},
-	RequiresPortal: true,
-}
-
-func fnBackfill(ce *WrappedCommandEvent) {
-	if !ce.Bridge.Config.Bridge.HistorySync.Backfill {
-		ce.Reply("Backfill is not enabled for this bridge.")
-		return
-	}
-	batchSize := 100
-	batchDelay := 5
-	if len(ce.Args) >= 1 {
-		var err error
-		batchSize, err = strconv.Atoi(ce.Args[0])
-		if err != nil || batchSize < 1 {
-			ce.Reply("\"%s\" isn't a valid batch size", ce.Args[0])
-			return
-		}
-	}
-	if len(ce.Args) >= 2 {
-		var err error
-		batchDelay, err = strconv.Atoi(ce.Args[0])
-		if err != nil || batchSize < 0 {
-			ce.Reply("\"%s\" isn't a valid batch delay", ce.Args[1])
-			return
-		}
-	}
-	backfillMessages := ce.Portal.bridge.DB.Backfill.NewWithValues(ce.User.MXID, database.BackfillImmediate, 0, &ce.Portal.Key, nil, batchSize, -1, batchDelay)
-	backfillMessages.Insert()
-
-	ce.User.BackfillQueue.ReCheck()
 }
 
 func matchesQuery(str string, query string) bool {
