@@ -137,6 +137,7 @@ func (user *User) backfillAll() {
 		user.zlog.Info().
 			Int("conversation_count", len(conversations)).
 			Msg("Probably received all history sync blobs, now backfilling conversations")
+		limit := user.bridge.Config.Bridge.HistorySync.MaxInitialConversations
 		// Find the portals for all the conversations.
 		for i, conv := range conversations {
 			jid, err := types.ParseJID(conv.ConversationID)
@@ -152,7 +153,7 @@ func (user *User) backfillAll() {
 					Str("portal_jid", portal.Key.JID.String()).
 					Msg("Chat already has a room, deleting messages from database")
 				user.bridge.DB.HistorySync.DeleteConversation(user.MXID, portal.Key.JID.String())
-			} else if i < user.bridge.Config.Bridge.HistorySync.MaxInitialConversations {
+			} else if limit < 0 || i < limit {
 				err = portal.CreateMatrixRoom(user, nil, true, true)
 				if err != nil {
 					user.zlog.Err(err).Msg("Failed to create Matrix room for backfill")
