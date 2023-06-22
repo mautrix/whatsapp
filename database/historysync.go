@@ -166,7 +166,7 @@ func (hsc *HistorySyncConversation) Scan(row dbutil.Scannable) *HistorySyncConve
 	return hsc
 }
 
-func (hsq *HistorySyncQuery) GetNMostRecentConversations(userID id.UserID, n int) (conversations []*HistorySyncConversation) {
+func (hsq *HistorySyncQuery) GetRecentConversations(userID id.UserID, n int) (conversations []*HistorySyncConversation) {
 	nPtr := &n
 	// Negative limit on SQLite means unlimited, but Postgres prefers a NULL limit.
 	if n < 0 && hsq.db.Dialect == dbutil.Postgres {

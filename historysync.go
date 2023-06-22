@@ -108,7 +108,7 @@ func (user *User) handleHistorySyncsLoop() {
 const EnqueueBackfillsDelay = 30 * time.Second
 
 func (user *User) enqueueAllBackfills() {
-	nMostRecent := user.bridge.DB.HistorySync.GetNMostRecentConversations(user.MXID, user.bridge.Config.Bridge.HistorySync.MaxInitialConversations)
+	nMostRecent := user.bridge.DB.HistorySync.GetRecentConversations(user.MXID, user.bridge.Config.Bridge.HistorySync.MaxInitialConversations)
 	if len(nMostRecent) > 0 {
 		user.log.Infofln("%v has passed since the last history sync blob, enqueueing backfills for %d chats", EnqueueBackfillsDelay, len(nMostRecent))
 		// Find the portals for all the conversations.
@@ -132,7 +132,7 @@ func (user *User) enqueueAllBackfills() {
 }
 
 func (user *User) backfillAll() {
-	conversations := user.bridge.DB.HistorySync.GetNMostRecentConversations(user.MXID, -1)
+	conversations := user.bridge.DB.HistorySync.GetRecentConversations(user.MXID, -1)
 	if len(conversations) > 0 {
 		user.zlog.Info().
 			Int("conversation_count", len(conversations)).
