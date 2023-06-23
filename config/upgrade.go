@@ -134,6 +134,7 @@ func DoUpgrade(helper *up.Helper) {
 	helper.Copy(up.Bool, "bridge", "encryption", "delete_keys", "delete_prev_on_new_session")
 	helper.Copy(up.Bool, "bridge", "encryption", "delete_keys", "delete_on_device_delete")
 	helper.Copy(up.Bool, "bridge", "encryption", "delete_keys", "periodically_delete_expired")
+	helper.Copy(up.Bool, "bridge", "encryption", "delete_keys", "delete_outdated_inbound")
 	helper.Copy(up.Str, "bridge", "encryption", "verification_levels", "receive")
 	helper.Copy(up.Str, "bridge", "encryption", "verification_levels", "send")
 	helper.Copy(up.Str, "bridge", "encryption", "verification_levels", "share")

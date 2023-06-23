@@ -372,6 +372,10 @@ bridge:
             delete_on_device_delete: false
             # Periodically delete megolm sessions when 2x max_age has passed since receiving the session.
             periodically_delete_expired: false
+            # Delete inbound megolm sessions that don't have the received_at field used for
+            # automatic ratcheting and expired session deletion. This is meant as a migration
+            # to delete old keys prior to the bridge update.
+            delete_outdated_inbound: false
         # What level of device verification should be required from users?
         #
         # Valid levels:
