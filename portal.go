@@ -42,6 +42,7 @@ import (
 	"time"
 
 	"github.com/chai2010/webp"
+	"github.com/rs/zerolog"
 	"github.com/tidwall/gjson"
 	"golang.org/x/exp/slices"
 	"golang.org/x/image/draw"
@@ -194,6 +195,7 @@ func (br *WABridge) newBlankPortal(key database.PortalKey) *Portal {
 	portal := &Portal{
 		bridge: br,
 		log:    br.Log.Sub(fmt.Sprintf("Portal/%s", key)),
+		zlog:   br.ZLog.With().Str("portal_key", key.String()).Logger(),
 
 		messages:       make(chan PortalMessage, br.Config.Bridge.PortalMessageBuffer),
 		matrixMessages: make(chan PortalMatrixMessage, br.Config.Bridge.PortalMessageBuffer),
@@ -256,7 +258,9 @@ type Portal struct {
 	*database.Portal
 
 	bridge *WABridge
-	log    log.Logger
+	// Deprecated: use zerolog
+	log  log.Logger
+	zlog zerolog.Logger
 
 	roomCreateLock sync.Mutex
 	encryptLock    sync.Mutex
@@ -772,7 +776,7 @@ func (portal *Portal) handleMessage(source *User, evt *events.Message) {
 			portal.MarkDisappearing(nil, existingMsg.MXID, converted.ExpiresIn, evt.Info.Timestamp)
 			converted.Content.SetEdit(existingMsg.MXID)
 		} else if converted.ReplyTo != nil {
-			portal.SetReply(converted.Content, converted.ReplyTo, false)
+			portal.SetReply(evt.Info.ID, converted.Content, converted.ReplyTo, false)
 		}
 		dbMsgType := database.MsgNormal
 		if editTargetMsg != nil {
@@ -1916,10 +1920,15 @@ func (portal *Portal) addReplyMention(content *event.MessageEventContent, sender
 	}
 }
 
-func (portal *Portal) SetReply(content *event.MessageEventContent, replyTo *ReplyInfo, isHungryBackfill bool) bool {
+func (portal *Portal) SetReply(msgID string, content *event.MessageEventContent, replyTo *ReplyInfo, isHungryBackfill bool) bool {
 	if replyTo == nil {
 		return false
 	}
+	log := portal.zlog.With().
+		Str("message_id", msgID).
+		Object("reply_to", replyTo).
+		Str("action", "SetReply").
+		Logger()
 	key := portal.Key
 	targetPortal := portal
 	defer func() {
@@ -1946,6 +1955,8 @@ func (portal *Portal) SetReply(content *event.MessageEventContent, replyTo *Repl
 			content.RelatesTo = (&event.RelatesTo{}).SetReplyTo(targetPortal.deterministicEventID(replyTo.Sender, replyTo.MessageID, ""))
 			portal.addReplyMention(content, replyTo.Sender, "")
 			return true
+		} else {
+			log.Warn().Msg("Failed to find reply target")
 		}
 		return false
 	}
@@ -1956,14 +1967,14 @@ func (portal *Portal) SetReply(content *event.MessageEventContent, replyTo *Repl
 	}
 	evt, err := targetPortal.MainIntent().GetEvent(targetPortal.MXID, message.MXID)
 	if err != nil {
-		portal.log.Warnln("Failed to get reply target:", err)
+		log.Warn().Err(err).Msg("Failed to get reply target event")
 		return true
 	}
 	_ = evt.Content.ParseRaw(evt.Type)
 	if evt.Type == event.EventEncrypted {
 		decryptedEvt, err := portal.bridge.Crypto.Decrypt(evt)
 		if err != nil {
-			portal.log.Warnln("Failed to decrypt reply target:", err)
+			log.Warn().Err(err).Msg("Failed to decrypt reply target event")
 		} else {
 			evt = decryptedEvt
 		}
@@ -2098,6 +2109,12 @@ type ReplyInfo struct {
 	MessageID types.MessageID
 	Chat      types.JID
 	Sender    types.JID
+}
+
+func (r ReplyInfo) MarshalZerologObject(e *zerolog.Event) {
+	e.Str("message_id", r.MessageID)
+	e.Str("chat_jid", r.Chat.String())
+	e.Str("sender_jid", r.Sender.String())
 }
 
 type Replyable interface {

@@ -653,7 +653,7 @@ func (portal *Portal) backfill(source *User, messages []*waProto.WebMessageInfo,
 			continue
 		}
 		if converted.ReplyTo != nil {
-			portal.SetReply(converted.Content, converted.ReplyTo, true)
+			portal.SetReply(msgEvt.Info.ID, converted.Content, converted.ReplyTo, true)
 		}
 		err = portal.appendBatchEvents(source, converted, &msgEvt.Info, webMsg, &req.Events, &infos)
 		if err != nil {
