@@ -12,13 +12,13 @@ require (
 	github.com/rs/zerolog v1.29.1
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
 	github.com/tidwall/gjson v1.14.4
-	go.mau.fi/whatsmeow v0.0.0-20230616194828-be0edabb0bf3
-	golang.org/x/exp v0.0.0-20230522175609-2e198f4a06a1
+	go.mau.fi/whatsmeow v0.0.0-20230628202737-27f697dce47a
+	golang.org/x/exp v0.0.0-20230626212559-97b1e661b5df
 	golang.org/x/image v0.8.0
 	golang.org/x/net v0.11.0
-	google.golang.org/protobuf v1.30.0
+	google.golang.org/protobuf v1.31.0
 	maunium.net/go/maulogger/v2 v2.4.1
-	maunium.net/go/mautrix v0.15.4-0.20230627151820-13edf5920c4d
+	maunium.net/go/mautrix v0.15.4-0.20230628151140-e99578a15474
 )
 
 require (
