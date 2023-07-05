@@ -3014,7 +3014,7 @@ func (portal *Portal) convertMediaMessageContent(intent *appservice.IntentAPI, m
 			"duration": int(audioMessage.GetSeconds()) * 1000,
 			"waveform": waveform,
 		}
-		if audioMessage.GetPtt() {
+		if audioMessage.GetPtt() || audioMessage.GetMimetype() == "audio/ogg; codecs/opus" {
 			extraContent["org.matrix.msc3245.voice"] = map[string]interface{}{}
 		}
 	}
