@@ -2,6 +2,10 @@
 
 * Removed MSC2716 support.
 * Added legacy backfill support.
+* Updated Docker image to Alpine 3.18.
+* Changed all ogg audio messages from WhatsApp to be bridged as voice messages
+  to Matrix, as WhatsApp removes the voice message flag when forwarding for
+  some reason.
 
 # v0.8.6 (2023-06-16)
 
