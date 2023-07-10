@@ -4094,7 +4094,7 @@ func (portal *Portal) HandleMatrixMessage(sender *User, evt *event.Event, timing
 	ms := metricSender{portal: portal, timings: &timings}
 
 	allowRelay := evt.Type != TypeMSC3381PollResponse && evt.Type != TypeMSC3381V2PollResponse && evt.Type != TypeMSC3381PollStart
-	if err := portal.canBridgeFrom(sender, allowRelay); err != nil {
+	if err := portal.canBridgeFrom(sender, allowRelay, true); err != nil {
 		go ms.sendMessageMetrics(evt, err, "Ignoring", true)
 		return
 	} else if portal.Key.JID == types.StatusBroadcastJID && portal.bridge.Config.Bridge.DisableStatusBroadcastSend {
@@ -4188,7 +4188,7 @@ func (portal *Portal) HandleMatrixMessage(sender *User, evt *event.Event, timing
 }
 
 func (portal *Portal) HandleMatrixReaction(sender *User, evt *event.Event) {
-	if err := portal.canBridgeFrom(sender, false); err != nil {
+	if err := portal.canBridgeFrom(sender, false, true); err != nil {
 		go portal.sendMessageMetrics(evt, err, "Ignoring", nil)
 		return
 	} else if portal.Key.JID.Server == types.BroadcastServer {
@@ -4280,7 +4280,7 @@ func (portal *Portal) upsertReaction(txn dbutil.Transaction, intent *appservice.
 }
 
 func (portal *Portal) HandleMatrixRedaction(sender *User, evt *event.Event) {
-	if err := portal.canBridgeFrom(sender, true); err != nil {
+	if err := portal.canBridgeFrom(sender, true, true); err != nil {
 		go portal.sendMessageMetrics(evt, err, "Ignoring", nil)
 		return
 	}
@@ -4449,12 +4449,16 @@ func (portal *Portal) HandleMatrixTyping(newTyping []id.UserID) {
 	portal.setTyping(stoppedTyping, types.ChatPresencePaused)
 }
 
-func (portal *Portal) canBridgeFrom(sender *User, allowRelay bool) error {
+func (portal *Portal) canBridgeFrom(sender *User, allowRelay, reconnectWait bool) error {
 	if !sender.IsLoggedIn() {
 		if allowRelay && portal.HasRelaybot() {
 			return nil
 		} else if sender.Session != nil {
 			return errUserNotConnected
+		} else if reconnectWait {
+			// If a message was received exactly during a disconnection, wait a second for the socket to reconnect
+			time.Sleep(1 * time.Second)
+			return portal.canBridgeFrom(sender, allowRelay, false)
 		} else {
 			return errUserNotLoggedIn
 		}
