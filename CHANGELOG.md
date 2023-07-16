@@ -1,4 +1,4 @@
-# v0.9.0 (unreleased)
+# v0.9.0 (2023-07-16)
 
 * Removed MSC2716 support.
 * Added legacy backfill support.
@@ -6,6 +6,10 @@
 * Changed all ogg audio messages from WhatsApp to be bridged as voice messages
   to Matrix, as WhatsApp removes the voice message flag when forwarding for
   some reason.
+* Added Prometheus metric for WhatsApp connection failures
+  (thanks to [@Half-Shot] in [#620]).
+
+[#620]: https://github.com/mautrix/whatsapp/pull/620
 
 # v0.8.6 (2023-06-16)
 
