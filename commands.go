@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"html"
 	"math"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -431,8 +432,11 @@ var cmdLogin = &commands.FullHandler{
 	Help: commands.HelpMeta{
 		Section:     commands.HelpSectionAuth,
 		Description: "Link the bridge to your WhatsApp account as a web client.",
+		Args:        "[_phone number_]",
 	},
 }
+
+var looksLikeAPhoneRegex = regexp.MustCompile(`^\+[0-9]+$`)
 
 func fnLogin(ce *WrappedCommandEvent) {
 	if ce.User.Session != nil {
@@ -444,11 +448,31 @@ func fnLogin(ce *WrappedCommandEvent) {
 		return
 	}
 
+	var phoneNumber string
+	if len(ce.Args) > 0 {
+		phoneNumber = strings.TrimSpace(strings.Join(ce.Args, " "))
+		if !looksLikeAPhoneRegex.MatchString(phoneNumber) {
+			ce.Reply("When specifying a phone number, it must be provided in international format without spaces or other extra characters")
+			return
+		}
+	}
+
 	qrChan, err := ce.User.Login(context.Background())
 	if err != nil {
-		ce.User.log.Errorf("Failed to log in:", err)
+		ce.ZLog.Err(err).Msg("Failed to start login")
 		ce.Reply("Failed to log in: %v", err)
 		return
+	}
+
+	if phoneNumber != "" {
+		pairingCode, err := ce.User.Client.PairPhone(phoneNumber, true)
+		if err != nil {
+			ce.ZLog.Err(err).Msg("Failed to start phone code login")
+			ce.Reply("Failed to start phone code login: %v", err)
+			go ce.User.DeleteConnection()
+			return
+		}
+		ce.Reply("Scan the code below or enter the following code on your phone to log in: **%s**", pairingCode)
 	}
 
 	var qrEventID id.EventID
@@ -458,7 +482,7 @@ func fnLogin(ce *WrappedCommandEvent) {
 			jid := ce.User.Client.Store.ID
 			ce.Reply("Successfully logged in as +%s (device #%d)", jid.User, jid.Device)
 		case whatsmeow.QRChannelTimeout.Event:
-			ce.Reply("QR code timed out. Please restart the login.")
+			ce.Reply("Login timed out. Please restart the login.")
 		case whatsmeow.QRChannelErrUnexpectedEvent.Event:
 			ce.Reply("Failed to log in: unexpected connection event from server")
 		case whatsmeow.QRChannelClientOutdated.Event:
@@ -471,7 +495,9 @@ func fnLogin(ce *WrappedCommandEvent) {
 			qrEventID = ce.User.sendQR(ce, item.Code, qrEventID)
 		}
 	}
-	_, _ = ce.Bot.RedactEvent(ce.RoomID, qrEventID)
+	if qrEventID != "" {
+		_, _ = ce.Bot.RedactEvent(ce.RoomID, qrEventID)
+	}
 }
 
 func (user *User) sendQR(ce *WrappedCommandEvent, code string, prevEvent id.EventID) id.EventID {
