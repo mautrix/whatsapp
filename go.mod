@@ -18,7 +18,7 @@ require (
 	golang.org/x/net v0.12.0
 	google.golang.org/protobuf v1.31.0
 	maunium.net/go/maulogger/v2 v2.4.1
-	maunium.net/go/mautrix v0.15.4
+	maunium.net/go/mautrix v0.15.5-0.20230722173405-ab9d6e5eb5b9
 )
 
 require (
@@ -47,11 +47,4 @@ require (
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	maunium.net/go/mauflag v1.0.0 // indirect
-)
-
-// Exclude some things that cause go.sum to explode
-exclude (
-	cloud.google.com/go v0.65.0
-	github.com/prometheus/client_golang v1.12.1
-	google.golang.org/appengine v1.6.6
 )

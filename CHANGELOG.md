@@ -1,3 +1,8 @@
+# unreleased
+
+* Added support for logging in by entering a 8-letter code on the phone instead
+  of scanning a QR code.
+
 # v0.9.0 (2023-07-16)
 
 * Removed MSC2716 support.
