@@ -833,7 +833,7 @@ func formatContacts(bridge *WABridge, input map[types.JID]types.ContactInfo, que
 			result = append(result, fmt.Sprintf("* %s / [%s](https://matrix.to/#/%s) - `+%s`", contact.FullName, pushName, puppet.MXID, jid.User))
 		}
 	}
-	sort.Sort(sort.StringSlice(result))
+	sort.Strings(result)
 	return
 }
 
@@ -844,7 +844,7 @@ func formatGroups(input []*types.GroupInfo, query string) (result []string) {
 			result = append(result, fmt.Sprintf("* %s - `%s`", group.GroupName.Name, group.JID.User))
 		}
 	}
-	sort.Sort(sort.StringSlice(result))
+	sort.Strings(result)
 	return
 }
 
