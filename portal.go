@@ -42,6 +42,7 @@ import (
 	"time"
 
 	"github.com/chai2010/webp"
+	"github.com/jdeng/goheif"
 	"github.com/rs/zerolog"
 	"github.com/tidwall/gjson"
 	"golang.org/x/exp/slices"
@@ -3377,6 +3378,23 @@ func (portal *Portal) downloadThumbnail(ctx context.Context, original []byte, th
 	return createThumbnail(original, png)
 }
 
+func (portal *Portal) convertHEICtoJPEG(heicImage []byte) ([]byte, error) {
+
+
+	heicEncoded, err := goheif.Decode(bytes.NewReader(heicImage))
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode heic image: %w", err)
+	}
+
+	var jpgBuffer bytes.Buffer
+
+	if err = jpeg.Encode(&jpgBuffer, heicEncoded, nil); err != nil {
+		return nil, fmt.Errorf("failed to encode jpeg image: %w", err)
+	}
+
+	return jpgBuffer.Bytes(), nil
+}
+
 func (portal *Portal) convertWebPtoPNG(webpImage []byte) ([]byte, error) {
 	webpDecoded, err := webp.Decode(bytes.NewReader(webpImage))
 	if err != nil {
@@ -3507,6 +3525,9 @@ func (portal *Portal) preprocessMatrixMedia(ctx context.Context, sender *User, r
 		case "image/webp":
 			data, convertErr = portal.convertWebPtoPNG(data)
 			content.Info.MimeType = "image/png"
+		case "image/heic":
+			data, convertErr = portal.convertHEICtoJPEG(data)
+			content.Info.MimeType = "image/jpeg"
 		default:
 			return nil, fmt.Errorf("%w %q in image message", errMediaUnsupportedType, mimeType)
 		}
