@@ -3379,8 +3379,6 @@ func (portal *Portal) downloadThumbnail(ctx context.Context, original []byte, th
 }
 
 func (portal *Portal) convertHEICtoJPEG(heicImage []byte) ([]byte, error) {
-
-
 	heicEncoded, err := goheif.Decode(bytes.NewReader(heicImage))
 	if err != nil {
 		return nil, fmt.Errorf("failed to decode heic image: %w", err)
