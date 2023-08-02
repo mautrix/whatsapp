@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/util/variationselector"
 
 	waProto "go.mau.fi/whatsmeow/binary/proto"
@@ -529,6 +530,14 @@ func (user *User) storeHistorySync(evt *waProto.HistorySync) {
 			Int("lowest_time_index", minTimeIndex).
 			Time("highest_time", maxTime).
 			Int("highest_time_index", maxTimeIndex).
+			Dict("metadata", zerolog.Dict().
+				Uint32("ephemeral_expiration", conv.GetEphemeralExpiration()).
+				Bool("marked_unread", conv.GetMarkedAsUnread()).
+				Bool("archived", conv.GetArchived()).
+				Uint32("pinned", conv.GetPinned()).
+				Uint64("mute_end", conv.GetMuteEndTime()).
+				Uint32("unread_count", conv.GetUnreadCount()),
+			).
 			Msg("Saved messages from history sync conversation")
 	}
 	log.Info().
