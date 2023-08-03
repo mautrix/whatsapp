@@ -746,10 +746,15 @@ func (portal *Portal) handleMessage(source *User, evt *events.Message, historica
 	existingMsg := portal.bridge.DB.Message.GetByJID(portal.Key, msgID)
 	if existingMsg != nil {
 		if existingMsg.Error == database.MsgErrDecryptionFailed {
+			resolveType := "sender"
+			if evt.UnavailableRequestID != "" {
+				resolveType = "phone"
+			}
 			Segment.Track(source.MXID, "WhatsApp undecryptable message resolved", map[string]interface{}{
-				"messageID": evt.Info.ID,
+				"messageID":   evt.Info.ID,
+				"resolveType": resolveType,
 			})
-			portal.log.Debugfln("Got decryptable version of previously undecryptable message %s (%s)", msgID, msgType)
+			portal.log.Debugfln("Got decryptable version of previously undecryptable message %s (%s) via %s", msgID, msgType, resolveType)
 		} else {
 			portal.log.Debugfln("Not handling %s (%s): message is duplicate", msgID, msgType)
 			return
