@@ -24,7 +24,6 @@ import (
 	"fmt"
 	"net"
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
 
@@ -32,7 +31,6 @@ import (
 	"github.com/gorilla/websocket"
 
 	"go.mau.fi/whatsmeow/appstate"
-	waBinary "go.mau.fi/whatsmeow/binary"
 	"go.mau.fi/whatsmeow/types"
 
 	"go.mau.fi/whatsmeow"
@@ -61,7 +59,6 @@ func (prov *ProvisioningAPI) Init() {
 	r.HandleFunc("/v1/disconnect", prov.Disconnect).Methods(http.MethodPost)
 	r.HandleFunc("/v1/reconnect", prov.Reconnect).Methods(http.MethodPost)
 	r.HandleFunc("/v1/debug/appstate/{name}", prov.SyncAppState).Methods(http.MethodPost)
-	r.HandleFunc("/v1/debug/retry", prov.SendRetryReceipt).Methods(http.MethodPost)
 	r.HandleFunc("/v1/contacts", prov.ListContacts).Methods(http.MethodGet)
 	r.HandleFunc("/v1/groups", prov.ListGroups).Methods(http.MethodGet, http.MethodPost)
 	r.HandleFunc("/v1/resolve_identifier/{number}", prov.ResolveIdentifier).Methods(http.MethodGet)
@@ -188,55 +185,6 @@ func (prov *ProvisioningAPI) Reconnect(w http.ResponseWriter, r *http.Request) {
 		user.BridgeState.Send(status.BridgeState{StateEvent: status.StateTransientDisconnect, Error: WANotConnected})
 		user.Connect()
 		jsonResponse(w, http.StatusAccepted, Response{true, "Restarted connection to WhatsApp"})
-	}
-}
-
-type debugRetryReceiptContent struct {
-	ID          types.MessageID `json:"id"`
-	From        types.JID       `json:"from"`
-	Recipient   types.JID       `json:"recipient"`
-	Participant types.JID       `json:"participant"`
-	Timestamp   int64           `json:"timestamp"`
-	Count       int             `json:"count"`
-
-	ForceIncludeIdentity bool `json:"force_include_identity"`
-}
-
-func (prov *ProvisioningAPI) SendRetryReceipt(w http.ResponseWriter, r *http.Request) {
-	var req debugRetryReceiptContent
-	user := r.Context().Value("user").(*User)
-	if user == nil || user.Client == nil {
-		jsonResponse(w, http.StatusNotFound, Error{
-			Error:   "User is not connected to WhatsApp",
-			ErrCode: "no session",
-		})
-		return
-	} else if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		jsonResponse(w, http.StatusBadRequest, Error{
-			Error:   "Failed to parse request JSON",
-			ErrCode: "bad json",
-		})
-	} else {
-		node := &waBinary.Node{
-			Attrs: waBinary.Attrs{
-				"id":   string(req.ID),
-				"from": req.From,
-				"t":    strconv.FormatInt(req.Timestamp, 10),
-			},
-		}
-		if !req.Recipient.IsEmpty() {
-			node.Attrs["recipient"] = req.Recipient
-		}
-		if !req.Participant.IsEmpty() {
-			node.Attrs["participant"] = req.Participant
-		}
-		if req.Count > 0 {
-			node.Content = []waBinary.Node{{
-				Tag:   "enc",
-				Attrs: waBinary.Attrs{"count": strconv.Itoa(req.Count)},
-			}}
-		}
-		user.Client.DangerousInternals().SendRetryReceipt(node, req.ForceIncludeIdentity)
 	}
 }
 
