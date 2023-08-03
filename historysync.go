@@ -188,7 +188,7 @@ func (portal *Portal) legacyBackfill(user *User) {
 				Msg("Dropping historical message due to parse error")
 			continue
 		}
-		portal.handleMessage(user, msgEvt)
+		portal.handleMessage(user, msgEvt, true)
 	}
 	if conv != nil {
 		isUnread := conv.MarkedAsUnread || conv.UnreadCount > 0

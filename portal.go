@@ -314,7 +314,7 @@ func (portal *Portal) handleMessageLoopItem(msg PortalMessage) {
 	defer portal.latestEventBackfillLock.Unlock()
 	switch {
 	case msg.evt != nil:
-		portal.handleMessage(msg.source, msg.evt)
+		portal.handleMessage(msg.source, msg.evt, false)
 	case msg.receipt != nil:
 		portal.handleReceipt(msg.receipt, msg.source)
 	case msg.undecryptable != nil:
@@ -609,6 +609,23 @@ func (portal *Portal) convertMessage(intent *appservice.IntentAPI, source *User,
 	}
 }
 
+func (portal *Portal) implicitlyEnableDisappearingMessages(timer time.Duration) {
+	portal.ExpirationTime = uint32(timer.Seconds())
+	portal.Update(nil)
+	intent := portal.MainIntent()
+	if portal.Encrypted {
+		intent = portal.bridge.Bot
+	}
+	duration := formatDuration(time.Duration(portal.ExpirationTime) * time.Second)
+	_, err := portal.sendMessage(intent, event.EventMessage, &event.MessageEventContent{
+		MsgType: event.MsgNotice,
+		Body:    fmt.Sprintf("Automatically enabled disappearing message timer (%s) because incoming message is disappearing", duration),
+	}, nil, 0)
+	if err != nil {
+		portal.zlog.Warn().Err(err).Msg("Failed to send notice about implicit disappearing timer")
+	}
+}
+
 func (portal *Portal) UpdateGroupDisappearingMessages(sender *types.JID, timestamp time.Time, timer uint32) {
 	if portal.ExpirationTime == timer {
 		return
@@ -713,7 +730,7 @@ func (portal *Portal) handleFakeMessage(msg fakeMessage) {
 	}
 }
 
-func (portal *Portal) handleMessage(source *User, evt *events.Message) {
+func (portal *Portal) handleMessage(source *User, evt *events.Message, historical bool) {
 	if len(portal.MXID) == 0 {
 		portal.log.Warnln("handleMessage called even though portal.MXID is empty")
 		return
@@ -761,6 +778,14 @@ func (portal *Portal) handleMessage(source *User, evt *events.Message) {
 	}
 	converted := portal.convertMessage(intent, source, &evt.Info, evt.Message, false)
 	if converted != nil {
+		if !historical && portal.IsPrivateChat() && evt.Info.Sender.Device == 0 && converted.ExpiresIn > 0 && portal.ExpirationTime == 0 {
+			portal.zlog.Info().
+				Str("timer", converted.ExpiresIn.String()).
+				Str("sender_jid", evt.Info.Sender.String()).
+				Str("message_id", evt.Info.ID).
+				Msg("Implicitly enabling disappearing messages as incoming message is disappearing")
+			portal.implicitlyEnableDisappearingMessages(converted.ExpiresIn)
+		}
 		if evt.Info.IsIncomingBroadcast() {
 			if converted.Extra == nil {
 				converted.Extra = map[string]interface{}{}
