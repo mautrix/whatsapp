@@ -380,7 +380,7 @@ func fnCreate(ce *WrappedCommandEvent) {
 	}
 	// TODO check m.space.parent to create rooms directly in communities
 
-	messageID := whatsmeow.GenerateMessageID()
+	messageID := ce.User.Client.GenerateMessageID()
 	ce.Log.Infofln("Creating group for %s with name %s and participants %+v (create key: %s)", ce.RoomID, roomNameEvent.Name, participants, messageID)
 	ce.User.createKeyDedup = messageID
 	resp, err := ce.User.Client.CreateGroup(whatsmeow.ReqCreateGroup{

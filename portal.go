@@ -4108,7 +4108,7 @@ func (portal *Portal) convertMatrixMessage(ctx context.Context, sender *User, ev
 
 func (portal *Portal) generateMessageInfo(sender *User) *types.MessageInfo {
 	return &types.MessageInfo{
-		ID:        whatsmeow.GenerateMessageID(),
+		ID:        sender.Client.GenerateMessageID(),
 		Timestamp: time.Now(),
 		MessageSource: types.MessageSource{
 			Sender:   sender.JID,

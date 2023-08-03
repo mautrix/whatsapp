@@ -677,7 +677,7 @@ const PhoneMinPingInterval = 24 * time.Hour
 
 func (user *User) sendHackyPhonePing() {
 	user.PhoneLastPinged = time.Now()
-	msgID := whatsmeow.GenerateMessageID()
+	msgID := user.Client.GenerateMessageID()
 	keyIDs := make([]*waProto.AppStateSyncKeyId, 0, 1)
 	lastKeyID, err := user.GetLastAppStateKeyID()
 	if lastKeyID != nil {
