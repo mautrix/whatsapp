@@ -4121,6 +4121,10 @@ func (portal *Portal) generateMessageInfo(sender *User) *types.MessageInfo {
 func (portal *Portal) HandleMatrixMessage(sender *User, evt *event.Event, timings messageTimings) {
 	start := time.Now()
 	ms := metricSender{portal: portal, timings: &timings}
+	log := portal.zlog.With().
+		Str("event_id", evt.ID.String()).
+		Str("action", "handle matrix message").
+		Logger()
 
 	allowRelay := evt.Type != TypeMSC3381PollResponse && evt.Type != TypeMSC3381V2PollResponse && evt.Type != TypeMSC3381PollStart
 	if err := portal.canBridgeFrom(sender, allowRelay, true); err != nil {
@@ -4179,6 +4183,7 @@ func (portal *Portal) HandleMatrixMessage(sender *User, evt *event.Event, timing
 		ctx, cancel = context.WithTimeout(ctx, deadline)
 		defer cancel()
 	}
+	ctx = log.WithContext(ctx)
 
 	timings.preproc = time.Since(start)
 	start = time.Now()
