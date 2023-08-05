@@ -23,8 +23,8 @@ import (
 	"time"
 
 	"github.com/rs/zerolog"
-	"maunium.net/go/mautrix/util/variationselector"
-
+	"go.mau.fi/util/dbutil"
+	"go.mau.fi/util/variationselector"
 	waProto "go.mau.fi/whatsmeow/binary/proto"
 	"go.mau.fi/whatsmeow/types"
 
@@ -32,7 +32,6 @@ import (
 	"maunium.net/go/mautrix/appservice"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
-	"maunium.net/go/mautrix/util/dbutil"
 
 	"maunium.net/go/mautrix-whatsapp/config"
 	"maunium.net/go/mautrix-whatsapp/database"

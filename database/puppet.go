@@ -20,12 +20,11 @@ import (
 	"database/sql"
 	"time"
 
+	"go.mau.fi/util/dbutil"
+	"go.mau.fi/whatsmeow/types"
 	log "maunium.net/go/maulogger/v2"
 
 	"maunium.net/go/mautrix/id"
-	"maunium.net/go/mautrix/util/dbutil"
-
-	"go.mau.fi/whatsmeow/types"
 )
 
 type PuppetQuery struct {

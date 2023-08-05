@@ -22,15 +22,13 @@ import (
 	"fmt"
 	"time"
 
-	"google.golang.org/protobuf/proto"
-
-	waProto "go.mau.fi/whatsmeow/binary/proto"
-
 	_ "github.com/mattn/go-sqlite3"
+	"go.mau.fi/util/dbutil"
+	waProto "go.mau.fi/whatsmeow/binary/proto"
+	"google.golang.org/protobuf/proto"
 	log "maunium.net/go/maulogger/v2"
 
 	"maunium.net/go/mautrix/id"
-	"maunium.net/go/mautrix/util/dbutil"
 )
 
 type HistorySyncQuery struct {

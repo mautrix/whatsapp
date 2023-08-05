@@ -44,12 +44,20 @@ import (
 	"github.com/chai2010/webp"
 	"github.com/rs/zerolog"
 	"github.com/tidwall/gjson"
+	"go.mau.fi/util/dbutil"
+	"go.mau.fi/util/exerrors"
+	"go.mau.fi/util/exmime"
+	"go.mau.fi/util/ffmpeg"
+	"go.mau.fi/util/random"
+	"go.mau.fi/util/variationselector"
+	"go.mau.fi/whatsmeow"
+	waProto "go.mau.fi/whatsmeow/binary/proto"
+	"go.mau.fi/whatsmeow/types"
+	"go.mau.fi/whatsmeow/types/events"
 	"golang.org/x/exp/slices"
 	"golang.org/x/image/draw"
 	"google.golang.org/protobuf/proto"
-
 	log "maunium.net/go/maulogger/v2"
-
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/appservice"
 	"maunium.net/go/mautrix/bridge"
@@ -58,15 +66,6 @@ import (
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/format"
 	"maunium.net/go/mautrix/id"
-	"maunium.net/go/mautrix/util"
-	"maunium.net/go/mautrix/util/dbutil"
-	"maunium.net/go/mautrix/util/ffmpeg"
-	"maunium.net/go/mautrix/util/variationselector"
-
-	"go.mau.fi/whatsmeow"
-	waProto "go.mau.fi/whatsmeow/binary/proto"
-	"go.mau.fi/whatsmeow/types"
-	"go.mau.fi/whatsmeow/types/events"
 
 	"maunium.net/go/mautrix-whatsapp/database"
 )
@@ -2335,7 +2334,7 @@ func (portal *Portal) convertListMessage(intent *appservice.IntentAPI, source *U
 			body = fmt.Sprintf("%s\n\n%s", msg.GetTitle(), body)
 		}
 	}
-	randomID := util.RandomString(64)
+	randomID := random.String(64)
 	body = fmt.Sprintf("%s\n%s", body, randomID)
 	if msg.GetFooterText() != "" {
 		body = fmt.Sprintf("%s\n\n%s", body, msg.GetFooterText())
@@ -2943,7 +2942,7 @@ func (portal *Portal) convertMediaMessageContent(intent *appservice.IntentAPI, m
 			content.Body = mimeClass
 		}
 
-		content.Body += util.ExtensionFromMimetype(msg.GetMimetype())
+		content.Body += exmime.ExtensionFromMimetype(msg.GetMimetype())
 	}
 
 	msgWithDuration, ok := msg.(MediaMessageWithDuration)
@@ -3495,12 +3494,12 @@ func (portal *Portal) preprocessMatrixMedia(ctx context.Context, sender *User, r
 	}
 	data, err := portal.MainIntent().DownloadBytesContext(ctx, mxc)
 	if err != nil {
-		return nil, util.NewDualError(errMediaDownloadFailed, err)
+		return nil, exerrors.NewDualError(errMediaDownloadFailed, err)
 	}
 	if file != nil {
 		err = file.DecryptInPlace(data)
 		if err != nil {
-			return nil, util.NewDualError(errMediaDecryptFailed, err)
+			return nil, exerrors.NewDualError(errMediaDecryptFailed, err)
 		}
 	}
 	mimeType := content.GetInfo().MimeType
@@ -3555,7 +3554,7 @@ func (portal *Portal) preprocessMatrixMedia(ctx context.Context, sender *User, r
 	}
 	if convertErr != nil {
 		if content.Info.MimeType != mimeType || data == nil {
-			return nil, util.NewDualError(fmt.Errorf("%w (%s to %s)", errMediaConvertFailed, mimeType, content.Info.MimeType), convertErr)
+			return nil, exerrors.NewDualError(fmt.Errorf("%w (%s to %s)", errMediaConvertFailed, mimeType, content.Info.MimeType), convertErr)
 		} else {
 			// If the mime type didn't change and the errored conversion function returned the original data, just log a warning and continue
 			portal.log.Warnfln("Failed to re-encode %s media: %v, continuing with original file", mimeType, convertErr)
@@ -3563,7 +3562,7 @@ func (portal *Portal) preprocessMatrixMedia(ctx context.Context, sender *User, r
 	}
 	uploadResp, err := sender.Client.Upload(ctx, data, mediaType)
 	if err != nil {
-		return nil, util.NewDualError(errMediaWhatsAppUploadFailed, err)
+		return nil, exerrors.NewDualError(errMediaWhatsAppUploadFailed, err)
 	}
 
 	// Audio doesn't have thumbnails
