@@ -896,6 +896,9 @@ func (user *User) HandleEvent(event interface{}) {
 		user.handleCallStart(v.CallCreator, v.CallID, v.Type, v.Timestamp)
 	case *events.IdentityChange:
 		puppet := user.bridge.GetPuppetByJID(v.JID)
+		if puppet == nil {
+			return
+		}
 		portal := user.GetPortalByJID(v.JID)
 		if len(portal.MXID) > 0 && user.bridge.Config.Bridge.IdentityChangeNotices {
 			text := fmt.Sprintf("Your security code with %s changed.", puppet.Displayname)
@@ -1221,6 +1224,9 @@ const WATypingTimeout = 15 * time.Second
 
 func (user *User) handleChatPresence(presence *events.ChatPresence) {
 	puppet := user.bridge.GetPuppetByJID(presence.Sender)
+	if puppet == nil {
+		return
+	}
 	portal := user.GetPortalByJID(presence.Chat)
 	if puppet == nil || portal == nil || len(portal.MXID) == 0 {
 		return
@@ -1339,6 +1345,10 @@ func (user *User) handleGroupUpdate(evt *events.GroupInfo) {
 	log := with.Logger()
 	if portal == nil || len(portal.MXID) == 0 {
 		log.Debug().Msg("Ignoring group info update in chat with no portal")
+		return
+	}
+	if evt.Sender != nil && evt.Sender.Server == types.HiddenUserServer {
+		log.Debug().Str("sender", evt.Sender.String()).Msg("Ignoring group info update from @lid user")
 		return
 	}
 	switch {

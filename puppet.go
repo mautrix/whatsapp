@@ -330,6 +330,9 @@ func (puppet *Puppet) updatePortalName() {
 }
 
 func (puppet *Puppet) SyncContact(source *User, onlyIfNoName, shouldHavePushName bool, reason string) {
+	if puppet == nil {
+		return
+	}
 	if onlyIfNoName && len(puppet.Displayname) > 0 && (!shouldHavePushName || puppet.NameQuality > config.NameQualityPhone) {
 		source.EnqueuePuppetResync(puppet)
 		return

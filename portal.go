@@ -352,6 +352,10 @@ func (portal *Portal) handleMatrixMessageLoopItem(msg PortalMatrixMessage) {
 }
 
 func (portal *Portal) handleReceipt(receipt *events.Receipt, source *User) {
+	if receipt.Sender.Server != types.DefaultUserServer {
+		// TODO handle lids
+		return
+	}
 	// The order of the message ID array depends on the sender's platform, so we just have to find
 	// the last message based on timestamp. Also, timestamps only have second precision, so if
 	// there are many messages at the same second just mark them all as read, because we don't
@@ -703,6 +707,11 @@ func (portal *Portal) handleFakeMessage(msg fakeMessage) {
 		portal.log.Debugfln("Not handling %s (fake): message is duplicate", msg.ID)
 		return
 	}
+	if msg.Sender.Server != types.DefaultUserServer {
+		portal.log.Debugfln("Not handling %s (fake): message is from a lid user (%s)", msg.ID, msg.Sender)
+		// TODO handle lids
+		return
+	}
 	intent := portal.bridge.GetPuppetByJID(msg.Sender).IntentFor(portal)
 	if !intent.IsCustomPuppet && portal.IsPrivateChat() && msg.Sender.User == portal.Key.Receiver.User && portal.Key.Receiver != portal.Key.JID {
 		portal.log.Debugfln("Not handling %s (fake): user doesn't have double puppeting enabled", msg.ID)
@@ -1046,6 +1055,10 @@ func (portal *Portal) SyncParticipants(source *User, metadata *types.GroupInfo) 
 	participantMap := make(map[types.JID]bool)
 	userIDs := make([]id.UserID, 0, len(metadata.Participants))
 	for _, participant := range metadata.Participants {
+		if participant.JID.IsEmpty() || participant.JID.Server != types.DefaultUserServer {
+			// TODO handle lids
+			continue
+		}
 		portal.log.Debugfln("Syncing participant %s (admin: %t)", participant.JID, participant.IsAdmin)
 		participantMap[participant.JID] = true
 		puppet := portal.bridge.GetPuppetByJID(participant.JID)
@@ -1167,7 +1180,7 @@ func (portal *Portal) UpdateAvatar(user *User, setBy types.JID, updateInfo bool)
 
 	if len(portal.MXID) > 0 {
 		intent := portal.MainIntent()
-		if !setBy.IsEmpty() {
+		if !setBy.IsEmpty() && setBy.Server == types.DefaultUserServer {
 			intent = portal.bridge.GetPuppetByJID(setBy).IntentFor(portal)
 		}
 		_, err := intent.SetRoomAvatar(portal.MXID, portal.AvatarURL)
@@ -1205,7 +1218,7 @@ func (portal *Portal) UpdateName(name string, setBy types.JID, updateInfo bool) 
 			portal.UpdateBridgeInfo()
 		} else if len(portal.MXID) > 0 {
 			intent := portal.MainIntent()
-			if !setBy.IsEmpty() {
+			if !setBy.IsEmpty() && setBy.Server == types.DefaultUserServer {
 				intent = portal.bridge.GetPuppetByJID(setBy).IntentFor(portal)
 			}
 			_, err := intent.SetRoomName(portal.MXID, name)
@@ -1234,7 +1247,7 @@ func (portal *Portal) UpdateTopic(topic string, setBy types.JID, updateInfo bool
 		portal.TopicSet = false
 
 		intent := portal.MainIntent()
-		if !setBy.IsEmpty() {
+		if !setBy.IsEmpty() && setBy.Server == types.DefaultUserServer {
 			intent = portal.bridge.GetPuppetByJID(setBy).IntentFor(portal)
 		}
 		_, err := intent.SetRoomTopic(portal.MXID, topic)
@@ -1405,6 +1418,10 @@ func (portal *Portal) ChangeAdminStatus(jids []types.JID, setAdmin bool) id.Even
 	}
 	changed := portal.applyPowerLevelFixes(levels)
 	for _, jid := range jids {
+		if jid.Server != types.DefaultUserServer {
+			// TODO handle lids
+			continue
+		}
 		puppet := portal.bridge.GetPuppetByJID(jid)
 		changed = levels.EnsureUserLevel(puppet.MXID, newLevel) || changed
 
@@ -1936,7 +1953,8 @@ func (portal *Portal) addReplyMention(content *event.MessageEventContent, sender
 	if content.Mentions == nil || (sender.IsEmpty() && senderMXID == "") {
 		return
 	}
-	if senderMXID == "" {
+	// TODO handle lids
+	if senderMXID == "" && sender.Server == types.DefaultUserServer {
 		if user := portal.bridge.GetUserByJID(sender); user != nil {
 			senderMXID = user.MXID
 		} else {
@@ -3243,6 +3261,10 @@ func (portal *Portal) handleMediaRetry(retry *events.MediaRetry, source *User) {
 		puppet = portal.bridge.GetPuppetByJID(retry.ChatID)
 	} else {
 		puppet = portal.bridge.GetPuppetByJID(retry.SenderID)
+	}
+	if puppet == nil {
+		// TODO handle lids?
+		return
 	}
 	intent := puppet.IntentFor(portal)
 

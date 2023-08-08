@@ -122,14 +122,16 @@ func (user *User) usernamePtr() *string {
 
 func (user *User) agentPtr() *uint8 {
 	if !user.JID.IsEmpty() {
-		return &user.JID.Agent
+		zero := uint8(0)
+		return &zero
 	}
 	return nil
 }
 
 func (user *User) devicePtr() *uint8 {
 	if !user.JID.IsEmpty() {
-		return &user.JID.Device
+		device := uint8(user.JID.Device)
+		return &device
 	}
 	return nil
 }
