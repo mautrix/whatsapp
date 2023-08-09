@@ -410,7 +410,7 @@ func containsSupportedMessage(waMsg *waProto.Message) bool {
 		return false
 	}
 	return waMsg.Conversation != nil || waMsg.ExtendedTextMessage != nil || waMsg.ImageMessage != nil ||
-		waMsg.StickerMessage != nil || waMsg.AudioMessage != nil || waMsg.VideoMessage != nil ||
+		waMsg.StickerMessage != nil || waMsg.AudioMessage != nil || waMsg.VideoMessage != nil || waMsg.PtvMessage != nil ||
 		waMsg.DocumentMessage != nil || waMsg.ContactMessage != nil || waMsg.LocationMessage != nil ||
 		waMsg.LiveLocationMessage != nil || waMsg.GroupInviteMessage != nil || waMsg.ContactsArrayMessage != nil ||
 		waMsg.HighlyStructuredMessage != nil || waMsg.TemplateMessage != nil || waMsg.TemplateButtonReplyMessage != nil ||
@@ -429,6 +429,8 @@ func getMessageType(waMsg *waProto.Message) string {
 		return fmt.Sprintf("sticker %s", waMsg.GetStickerMessage().GetMimetype())
 	case waMsg.VideoMessage != nil:
 		return fmt.Sprintf("video %s", waMsg.GetVideoMessage().GetMimetype())
+	case waMsg.PtvMessage != nil:
+		return fmt.Sprintf("round video %s", waMsg.GetPtvMessage().GetMimetype())
 	case waMsg.AudioMessage != nil:
 		return fmt.Sprintf("audio %s", waMsg.GetAudioMessage().GetMimetype())
 	case waMsg.DocumentMessage != nil:
@@ -578,6 +580,8 @@ func (portal *Portal) convertMessage(intent *appservice.IntentAPI, source *User,
 		return portal.convertMediaMessage(intent, source, info, waMsg.GetStickerMessage(), "sticker", isBackfill)
 	case waMsg.VideoMessage != nil:
 		return portal.convertMediaMessage(intent, source, info, waMsg.GetVideoMessage(), "video attachment", isBackfill)
+	case waMsg.PtvMessage != nil:
+		return portal.convertMediaMessage(intent, source, info, waMsg.GetPtvMessage(), "video message", isBackfill)
 	case waMsg.AudioMessage != nil:
 		typeName := "audio attachment"
 		if waMsg.GetAudioMessage().GetPtt() {
