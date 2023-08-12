@@ -640,7 +640,7 @@ func (portal *Portal) UpdateGroupDisappearingMessages(sender *types.JID, timesta
 	portal.ExpirationTime = timer
 	portal.Update(nil)
 	intent := portal.MainIntent()
-	if sender != nil {
+	if sender != nil && sender.Server == types.DefaultUserServer {
 		intent = portal.bridge.GetPuppetByJID(sender.ToNonAD()).IntentFor(portal)
 	} else {
 		sender = &types.EmptyJID
@@ -2766,6 +2766,10 @@ func (portal *Portal) HandleWhatsAppKick(source *User, senderJID types.JID, jids
 	sender := portal.bridge.GetPuppetByJID(senderJID)
 	senderIntent := sender.IntentFor(portal)
 	for _, jid := range jids {
+		if jid.Server != types.DefaultUserServer {
+			// TODO handle lids
+			continue
+		}
 		//if source != nil && source.JID.User == jid.User {
 		//	portal.log.Debugln("Ignoring self-kick by", source.MXID)
 		//	continue
@@ -2793,6 +2797,10 @@ func (portal *Portal) HandleWhatsAppInvite(source *User, senderJID *types.JID, j
 		intent = sender.IntentFor(portal)
 	}
 	for _, jid := range jids {
+		if jid.Server != types.DefaultUserServer {
+			// TODO handle lids
+			continue
+		}
 		puppet := portal.bridge.GetPuppetByJID(jid)
 		puppet.SyncContact(source, true, false, "handling whatsapp invite")
 		resp, err := intent.SendStateEvent(portal.MXID, event.StateMember, puppet.MXID.String(), &event.MemberEventContent{
