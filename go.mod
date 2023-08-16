@@ -13,13 +13,13 @@ require (
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
 	github.com/tidwall/gjson v1.16.0
 	go.mau.fi/util v0.0.0-20230805171708-199bf3eec776
-	go.mau.fi/whatsmeow v0.0.0-20230809185103-1bdbbb5766d3
+	go.mau.fi/whatsmeow v0.0.0-20230816173759-58beaf3b5bd0
 	golang.org/x/exp v0.0.0-20230811145659-89c5cff77bcb
 	golang.org/x/image v0.11.0
 	golang.org/x/net v0.14.0
 	google.golang.org/protobuf v1.31.0
 	maunium.net/go/maulogger/v2 v2.4.1
-	maunium.net/go/mautrix v0.15.5-0.20230811131248-82eaf14f46cb
+	maunium.net/go/mautrix v0.16.0
 )
 
 require (

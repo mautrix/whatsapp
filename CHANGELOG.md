@@ -1,7 +1,14 @@
-# unreleased
+# v0.10.0 (2023-08-16)
 
+* Bumped minimum Go version to 1.20.
+* Added automatic re-requesting of undecryptable WhatsApp messages from primary
+  device.
+* Added support for round video messages.
 * Added support for logging in by entering a 8-letter code on the phone instead
   of scanning a QR code.
+  * Note: due to a server-side change, code login may only work when `os_name`
+    and `browser_name` in the config are set in a specific way. A future release
+    will automatically change the values to always work with code login.
 
 # v0.9.0 (2023-07-16)
 
