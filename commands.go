@@ -465,7 +465,7 @@ func fnLogin(ce *WrappedCommandEvent) {
 	}
 
 	if phoneNumber != "" {
-		pairingCode, err := ce.User.Client.PairPhone(phoneNumber, true)
+		pairingCode, err := ce.User.Client.PairPhone(phoneNumber, true, whatsmeow.PairClientChrome, "Chrome (Linux)")
 		if err != nil {
 			ce.ZLog.Err(err).Msg("Failed to start phone code login")
 			ce.Reply("Failed to start phone code login: %v", err)
