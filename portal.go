@@ -2084,18 +2084,7 @@ func (portal *Portal) HandleMessageRevoke(user *User, info *types.MessageInfo, k
 	if msg == nil || msg.IsFakeMXID() {
 		return false
 	}
-	intent := portal.bridge.GetPuppetByJID(info.Sender).IntentFor(portal)
-	_, err := intent.RedactEvent(portal.MXID, msg.MXID)
-	if err != nil {
-		if errors.Is(err, mautrix.MForbidden) {
-			_, err = portal.MainIntent().RedactEvent(portal.MXID, msg.MXID)
-			if err != nil {
-				portal.log.Errorln("Failed to redact %s: %v", msg.JID, err)
-			}
-		}
-	} else {
-		msg.Delete()
-	}
+	portal.log.Debugln("Intentionally skipped redact event %s", msg.JID)
 	return true
 }
 
