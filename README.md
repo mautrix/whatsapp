@@ -16,3 +16,9 @@ contains a general overview of what is supported by the bridge.
 
 ## Discussion
 Matrix room: [#whatsapp:maunium.net](https://matrix.to/#/#whatsapp:maunium.net)
+
+## Workflow
+
+	doas docker build -t whatsapp:$TAG .
+	docker tag whatsapp:$TAG noahvogt/mautrix-whatsapp:$TAG
+	docker push noahvogt/mautrix-whatsapp:$TAG
