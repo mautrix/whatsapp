@@ -85,18 +85,14 @@ type BridgeConfig struct {
 	UserAvatarSync    bool `yaml:"user_avatar_sync"`
 	BridgeMatrixLeave bool `yaml:"bridge_matrix_leave"`
 
-	SyncWithCustomPuppets  bool `yaml:"sync_with_custom_puppets"`
 	SyncDirectChatList     bool `yaml:"sync_direct_chat_list"`
 	SyncManualMarkedUnread bool `yaml:"sync_manual_marked_unread"`
-	DefaultBridgeReceipts  bool `yaml:"default_bridge_receipts"`
 	DefaultBridgePresence  bool `yaml:"default_bridge_presence"`
 	SendPresenceOnTyping   bool `yaml:"send_presence_on_typing"`
 
 	ForceActiveDeliveryReceipts bool `yaml:"force_active_delivery_receipts"`
 
-	DoublePuppetServerMap      map[string]string `yaml:"double_puppet_server_map"`
-	DoublePuppetAllowDiscovery bool              `yaml:"double_puppet_allow_discovery"`
-	LoginSharedSecretMap       map[string]string `yaml:"login_shared_secret_map"`
+	DoublePuppetConfig bridgeconfig.DoublePuppetConfig `yaml:",inline"`
 
 	PrivateChatPortalMeta string `yaml:"private_chat_portal_meta"`
 	ParallelMemberSync    bool   `yaml:"parallel_member_sync"`
@@ -149,6 +145,10 @@ type BridgeConfig struct {
 
 	ParsedUsernameTemplate *template.Template `yaml:"-"`
 	displaynameTemplate    *template.Template `yaml:"-"`
+}
+
+func (bc BridgeConfig) GetDoublePuppetConfig() bridgeconfig.DoublePuppetConfig {
+	return bc.DoublePuppetConfig
 }
 
 func (bc BridgeConfig) GetEncryptionConfig() bridgeconfig.EncryptionConfig {

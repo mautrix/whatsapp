@@ -559,12 +559,7 @@ func fnLogout(ce *WrappedCommandEvent) {
 		return
 	}
 	puppet := ce.Bridge.GetPuppetByJID(ce.User.JID)
-	if puppet.CustomMXID != "" {
-		err := puppet.SwitchCustomMXID("", "")
-		if err != nil {
-			ce.User.log.Warnln("Failed to logout-matrix while logging out of WhatsApp:", err)
-		}
-	}
+	puppet.ClearCustomMXID()
 	err := ce.User.Client.Logout()
 	if err != nil {
 		ce.User.log.Warnln("Error while logging out:", err)
