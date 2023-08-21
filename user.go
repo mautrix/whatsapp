@@ -655,9 +655,9 @@ func (user *User) handleCallStart(sender types.JID, id, callType string, ts time
 		return
 	}
 	portal := user.GetPortalByJID(sender)
-	text := "Incoming call"
+	text := "Incoming call. Use the WhatsApp app to answer."
 	if callType != "" {
-		text = fmt.Sprintf("Incoming %s call", callType)
+		text = fmt.Sprintf("Incoming %s call. Use the WhatsApp app to answer.", callType)
 	}
 	portal.messages <- PortalMessage{
 		fake: &fakeMessage{
