@@ -35,6 +35,11 @@ func (puppet *Puppet) SwitchCustomMXID(accessToken string, mxid id.UserID) error
 
 func (puppet *Puppet) ClearCustomMXID() {
 	save := puppet.CustomMXID != "" || puppet.AccessToken != ""
+	puppet.bridge.puppetsLock.Lock()
+	if puppet.CustomMXID != "" && puppet.bridge.puppetsByCustomMXID[puppet.CustomMXID] == puppet {
+		delete(puppet.bridge.puppetsByCustomMXID, puppet.CustomMXID)
+	}
+	puppet.bridge.puppetsLock.Unlock()
 	puppet.CustomMXID = ""
 	puppet.AccessToken = ""
 	puppet.customIntent = nil
@@ -50,6 +55,9 @@ func (puppet *Puppet) StartCustomMXID(reloginOnFail bool) error {
 		puppet.ClearCustomMXID()
 		return err
 	}
+	puppet.bridge.puppetsLock.Lock()
+	puppet.bridge.puppetsByCustomMXID[puppet.CustomMXID] = puppet
+	puppet.bridge.puppetsLock.Unlock()
 	if puppet.AccessToken != newAccessToken {
 		puppet.AccessToken = newAccessToken
 		puppet.Update()
