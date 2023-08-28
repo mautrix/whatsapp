@@ -1,3 +1,12 @@
+# unreleased
+
+* Added support for double puppeting with arbitrary `as_token`s.
+  See [docs](https://docs.mau.fi/bridges/general/double-puppeting.html#appservice-method-new) for more info.
+* Fixed logging in with 8-letter code.
+* Fixed syncing community announcement groups.
+* Changed "Incoming call" message to explicitly say you have to open WhatsApp
+  on your phone to answer.
+
 # v0.10.0 (2023-08-16)
 
 * Bumped minimum Go version to 1.20.

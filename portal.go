@@ -1060,6 +1060,7 @@ func (portal *Portal) SyncParticipants(source *User, metadata *types.GroupInfo) 
 	userIDs := make([]id.UserID, 0, len(metadata.Participants))
 	for _, participant := range metadata.Participants {
 		if participant.JID.IsEmpty() || participant.JID.Server != types.DefaultUserServer {
+			wg.Done()
 			// TODO handle lids
 			continue
 		}
