@@ -1224,7 +1224,7 @@ func (user *User) handleChatPresence(presence *events.ChatPresence) {
 }
 
 func (user *User) handleReceipt(receipt *events.Receipt) {
-	if receipt.Type != events.ReceiptTypeRead && receipt.Type != events.ReceiptTypeReadSelf {
+	if receipt.Type != events.ReceiptTypeRead && receipt.Type != events.ReceiptTypeReadSelf && receipt.Type != events.ReceiptTypeDelivered {
 		return
 	}
 	portal := user.GetPortalByMessageSource(receipt.MessageSource)

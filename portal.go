@@ -48,6 +48,7 @@ import (
 	"go.mau.fi/util/exerrors"
 	"go.mau.fi/util/exmime"
 	"go.mau.fi/util/ffmpeg"
+	"go.mau.fi/util/jsontime"
 	"go.mau.fi/util/random"
 	"go.mau.fi/util/variationselector"
 	"go.mau.fi/whatsmeow"
@@ -62,6 +63,7 @@ import (
 	"maunium.net/go/mautrix/appservice"
 	"maunium.net/go/mautrix/bridge"
 	"maunium.net/go/mautrix/bridge/bridgeconfig"
+	"maunium.net/go/mautrix/bridge/status"
 	"maunium.net/go/mautrix/crypto/attachment"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/format"
@@ -351,9 +353,36 @@ func (portal *Portal) handleMatrixMessageLoopItem(msg PortalMatrixMessage) {
 	}
 }
 
+func (portal *Portal) handleDeliveryReceipt(receipt *events.Receipt, source *User) {
+	if !portal.IsPrivateChat() {
+		return
+	}
+	for _, msgID := range receipt.MessageIDs {
+		msg := portal.bridge.DB.Message.GetByJID(portal.Key, msgID)
+		if msg == nil || msg.IsFakeMXID() {
+			continue
+		}
+		if msg.Sender == source.JID {
+			portal.bridge.SendRawMessageCheckpoint(&status.MessageCheckpoint{
+				EventID:    msg.MXID,
+				RoomID:     portal.MXID,
+				Step:       status.MsgStepRemote,
+				Timestamp:  jsontime.UM(receipt.Timestamp),
+				Status:     status.MsgStatusDelivered,
+				ReportedBy: status.MsgReportedByBridge,
+			})
+			portal.sendStatusEvent(msg.MXID, "", nil, &[]id.UserID{portal.MainIntent().UserID})
+		}
+	}
+}
+
 func (portal *Portal) handleReceipt(receipt *events.Receipt, source *User) {
 	if receipt.Sender.Server != types.DefaultUserServer {
 		// TODO handle lids
+		return
+	}
+	if receipt.Type == events.ReceiptTypeDelivered {
+		portal.handleDeliveryReceipt(receipt, source)
 		return
 	}
 	// The order of the message ID array depends on the sender's platform, so we just have to find
