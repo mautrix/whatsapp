@@ -298,7 +298,7 @@ var (
 	_ bridge.TypingPortal              = (*Portal)(nil)
 )
 
-func (portal *Portal) handleMessageLoopItem(msg PortalMessage) {
+func (portal *Portal) handleWhatsAppMessageLoopItem(msg PortalMessage) {
 	if len(portal.MXID) == 0 {
 		if msg.fake == nil && msg.undecryptable == nil && (msg.evt == nil || !containsSupportedMessage(msg.evt.Message)) {
 			portal.log.Debugln("Not creating portal room for incoming message: message is not a chat message")
@@ -423,14 +423,31 @@ func (portal *Portal) handleReceipt(receipt *events.Receipt, source *User) {
 
 func (portal *Portal) handleMessageLoop() {
 	for {
-		select {
-		case msg := <-portal.messages:
-			portal.handleMessageLoopItem(msg)
-		case msg := <-portal.matrixMessages:
-			portal.handleMatrixMessageLoopItem(msg)
-		case retry := <-portal.mediaRetries:
-			portal.handleMediaRetry(retry.evt, retry.source)
+		portal.handleOneMessageLoopItem()
+	}
+}
+
+func (portal *Portal) handleOneMessageLoopItem() {
+	defer func() {
+		if err := recover(); err != nil {
+			logEvt := portal.zlog.WithLevel(zerolog.FatalLevel).
+				Str(zerolog.ErrorStackFieldName, string(debug.Stack()))
+			actualErr, ok := err.(error)
+			if ok {
+				logEvt = logEvt.Err(actualErr)
+			} else {
+				logEvt = logEvt.Any(zerolog.ErrorFieldName, err)
+			}
+			logEvt.Msg("Portal message handler panicked")
 		}
+	}()
+	select {
+	case msg := <-portal.messages:
+		portal.handleWhatsAppMessageLoopItem(msg)
+	case msg := <-portal.matrixMessages:
+		portal.handleMatrixMessageLoopItem(msg)
+	case retry := <-portal.mediaRetries:
+		portal.handleMediaRetry(retry.evt, retry.source)
 	}
 }
 
