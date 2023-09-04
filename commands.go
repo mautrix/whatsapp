@@ -430,9 +430,11 @@ var cmdLogin = &commands.FullHandler{
 	Func: wrapCommand(fnLogin),
 	Name: "login",
 	Help: commands.HelpMeta{
-		Section:     commands.HelpSectionAuth,
-		Description: "Link the bridge to your WhatsApp account as a web client.",
-		Args:        "[_phone number_]",
+		Section: commands.HelpSectionAuth,
+		Description: "Link the bridge to your WhatsApp account as a web client. " +
+			"The phone number parameter is optional: if provided, the bridge will create a 8-character login code " +
+			"that can be used instead of the QR code.",
+		Args: "[_phone number_]",
 	},
 }
 
