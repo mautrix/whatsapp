@@ -111,6 +111,7 @@ type BridgeConfig struct {
 	FederateRooms         bool   `yaml:"federate_rooms"`
 	URLPreviews           bool   `yaml:"url_previews"`
 	CaptionInMessage      bool   `yaml:"caption_in_message"`
+	BeeperGalleries       bool   `yaml:"beeper_galleries"`
 	ExtEvPolls            bool   `yaml:"extev_polls"`
 	CrossRoomReplies      bool   `yaml:"cross_room_replies"`
 	DisableReplyFallbacks bool   `yaml:"disable_reply_fallbacks"`

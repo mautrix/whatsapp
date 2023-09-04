@@ -300,6 +300,8 @@ bridge:
     # Send captions in the same message as images. This will send data compatible with both MSC2530 and MSC3552.
     # This is currently not supported in most clients.
     caption_in_message: false
+    # Send galleries as a single event? This is not an MSC (yet).
+    beeper_galleries: false
     # Should polls be sent using MSC3381 event types?
     extev_polls: false
     # Should cross-chat replies from WhatsApp be bridged? Most servers and clients don't support this.
