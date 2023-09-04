@@ -3887,7 +3887,6 @@ func (portal *Portal) convertMatrixPollStart(_ context.Context, sender *User, ev
 	if maxAnswers >= len(content.PollStart.Answers) || maxAnswers < 0 {
 		maxAnswers = 0
 	}
-	fmt.Printf("%+v\n", content.PollStart)
 	ctxInfo := portal.generateContextInfo(content.RelatesTo)
 	var question string
 	question, ctxInfo.MentionedJid = portal.msc1767ToWhatsApp(content.PollStart.Question, true)
