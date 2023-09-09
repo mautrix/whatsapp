@@ -2,6 +2,8 @@
 
 * Added support for double puppeting with arbitrary `as_token`s.
   See [docs](https://docs.mau.fi/bridges/general/double-puppeting.html#appservice-method-new) for more info.
+* Added retrying for media downloads when WhatsApp servers break and start
+  returning 429s and 503s.
 * Fixed logging in with 8-letter code.
 * Fixed syncing community announcement groups.
 * Changed "Incoming call" message to explicitly say you have to open WhatsApp
