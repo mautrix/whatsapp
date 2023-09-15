@@ -4028,6 +4028,8 @@ func (portal *Portal) generateContextInfo(relatesTo *event.RelatesTo) *waProto.C
 type extraConvertMeta struct {
 	PollOptions map[[32]byte]string
 	EditRootMsg *database.Message
+
+	GalleryExtraParts []*waProto.Message
 }
 
 func getEditError(rootMsg *database.Message, editer *User) error {
@@ -4138,6 +4140,37 @@ func (portal *Portal) convertMatrixMessage(ctx context.Context, sender *User, ev
 			FileEncSha256: media.FileEncSHA256,
 			FileSha256:    media.FileSHA256,
 			FileLength:    proto.Uint64(uint64(media.FileLength)),
+		}
+	case event.MsgBeeperGallery:
+		if isRelay {
+			return nil, sender, extraMeta, errGalleryRelay
+		} else if content.BeeperGalleryCaption != "" {
+			return nil, sender, extraMeta, errGalleryCaption
+		}
+		for i, part := range content.BeeperGalleryImages {
+			// TODO support videos
+			media, err := portal.preprocessMatrixMedia(ctx, sender, false, part, evt.ID, whatsmeow.MediaImage)
+			if media == nil {
+				return nil, sender, extraMeta, fmt.Errorf("failed to handle image #%d: %w", i+1, err)
+			}
+			imageMsg := &waProto.ImageMessage{
+				ContextInfo:   ctxInfo,
+				JpegThumbnail: media.Thumbnail,
+				Url:           &media.URL,
+				DirectPath:    &media.DirectPath,
+				MediaKey:      media.MediaKey,
+				Mimetype:      &part.GetInfo().MimeType,
+				FileEncSha256: media.FileEncSHA256,
+				FileSha256:    media.FileSHA256,
+				FileLength:    proto.Uint64(uint64(media.FileLength)),
+			}
+			if i == 0 {
+				msg.ImageMessage = imageMsg
+			} else {
+				extraMeta.GalleryExtraParts = append(extraMeta.GalleryExtraParts, &waProto.Message{
+					ImageMessage: imageMsg,
+				})
+			}
 		}
 	case event.MessageType(event.EventSticker.Type):
 		media, err := portal.preprocessMatrixMedia(ctx, sender, relaybotFormatted, content, evt.ID, whatsmeow.MediaImage)
@@ -4376,10 +4409,26 @@ func (portal *Portal) HandleMatrixMessage(sender *User, evt *event.Event, timing
 	resp, err := sender.Client.SendMessage(ctx, portal.Key.JID, msg, whatsmeow.SendRequestExtra{ID: info.ID})
 	timings.totalSend = time.Since(start)
 	timings.whatsmeow = resp.DebugTimings
-	go ms.sendMessageMetrics(evt, err, "Error sending", true)
-	if err == nil {
-		dbMsg.MarkSent(resp.Timestamp)
+	if err != nil {
+		go ms.sendMessageMetrics(evt, err, "Error sending", true)
+		return
 	}
+	dbMsg.MarkSent(resp.Timestamp)
+	if len(extraMeta.GalleryExtraParts) > 0 {
+		for i, part := range extraMeta.GalleryExtraParts {
+			partInfo := portal.generateMessageInfo(sender)
+			partDBMsg := portal.markHandled(nil, nil, partInfo, evt.ID, evt.Sender, false, true, database.MsgBeeperGallery, i+1, database.MsgNoError)
+			portal.log.Debugln("Sending gallery part", i+2, "of event", evt.ID, "to WhatsApp", partInfo.ID)
+			resp, err = sender.Client.SendMessage(ctx, portal.Key.JID, part, whatsmeow.SendRequestExtra{ID: partInfo.ID})
+			if err != nil {
+				go ms.sendMessageMetrics(evt, err, "Error sending", true)
+				return
+			}
+			portal.log.Debugfln("Sent gallery part", i+2, "of event", evt.ID)
+			partDBMsg.MarkSent(resp.Timestamp)
+		}
+	}
+	go ms.sendMessageMetrics(evt, nil, "", true)
 }
 
 func (portal *Portal) HandleMatrixReaction(sender *User, evt *event.Event) {
