@@ -41,7 +41,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/chai2010/webp"
+	cwebp "github.com/chai2010/webp"
 	"github.com/rs/zerolog"
 	"github.com/tidwall/gjson"
 	"go.mau.fi/util/dbutil"
@@ -57,6 +57,7 @@ import (
 	"go.mau.fi/whatsmeow/types/events"
 	"golang.org/x/exp/slices"
 	"golang.org/x/image/draw"
+	"golang.org/x/image/webp"
 	"google.golang.org/protobuf/proto"
 	log "maunium.net/go/maulogger/v2"
 	"maunium.net/go/mautrix"
@@ -3621,7 +3622,7 @@ func (portal *Portal) convertToWebP(img []byte) ([]byte, error) {
 	}
 
 	var webpBuffer bytes.Buffer
-	if err = webp.Encode(&webpBuffer, decodedImg, nil); err != nil {
+	if err = cwebp.Encode(&webpBuffer, decodedImg, nil); err != nil {
 		return img, fmt.Errorf("failed to encode webp image: %w", err)
 	}
 
