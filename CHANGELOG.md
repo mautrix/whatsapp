@@ -1,3 +1,7 @@
+# v0.10.2 (security update)
+
+* Stopped using libwebp for decoding webps.
+
 # v0.10.1 (2023-09-16)
 
 * Added support for double puppeting with arbitrary `as_token`s.
