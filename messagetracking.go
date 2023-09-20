@@ -147,7 +147,7 @@ func (portal *Portal) sendErrorMessage(evt *event.Event, err error, msgType stri
 	return resp.EventID
 }
 
-func (portal *Portal) sendStatusEvent(evtID, lastRetry id.EventID, err error) {
+func (portal *Portal) sendStatusEvent(evtID, lastRetry id.EventID, err error, deliveredTo *[]id.UserID) {
 	if !portal.bridge.Config.Bridge.MessageStatusEvents {
 		return
 	}
@@ -165,7 +165,8 @@ func (portal *Portal) sendStatusEvent(evtID, lastRetry id.EventID, err error) {
 			Type:    event.RelReference,
 			EventID: evtID,
 		},
-		LastRetry: lastRetry,
+		DeliveredToUsers: deliveredTo,
+		LastRetry:        lastRetry,
 	}
 	if err == nil {
 		content.Status = event.MessageStatusSuccess
@@ -224,12 +225,16 @@ func (portal *Portal) sendMessageMetrics(evt *event.Event, err error, part strin
 		if sendNotice {
 			ms.setNoticeID(portal.sendErrorMessage(evt, err, msgType, isCertain, ms.getNoticeID()))
 		}
-		portal.sendStatusEvent(origEvtID, evt.ID, err)
+		portal.sendStatusEvent(origEvtID, evt.ID, err, nil)
 	} else {
 		portal.log.Debugfln("Handled Matrix %s %s", msgType, evtDescription)
 		portal.sendDeliveryReceipt(evt.ID)
 		portal.bridge.SendMessageSuccessCheckpoint(evt, status.MsgStepRemote, ms.getRetryNum())
-		portal.sendStatusEvent(origEvtID, evt.ID, nil)
+		var deliveredTo *[]id.UserID
+		if portal.IsPrivateChat() {
+			deliveredTo = &[]id.UserID{}
+		}
+		portal.sendStatusEvent(origEvtID, evt.ID, nil, deliveredTo)
 		if prevNotice := ms.popNoticeID(); prevNotice != "" {
 			_, _ = portal.MainIntent().RedactEvent(portal.MXID, prevNotice, mautrix.ReqRedact{
 				Reason: "error resolved",

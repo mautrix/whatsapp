@@ -430,9 +430,11 @@ var cmdLogin = &commands.FullHandler{
 	Func: wrapCommand(fnLogin),
 	Name: "login",
 	Help: commands.HelpMeta{
-		Section:     commands.HelpSectionAuth,
-		Description: "Link the bridge to your WhatsApp account as a web client.",
-		Args:        "[_phone number_]",
+		Section: commands.HelpSectionAuth,
+		Description: "Link the bridge to your WhatsApp account as a web client. " +
+			"The phone number parameter is optional: if provided, the bridge will create a 8-character login code " +
+			"that can be used instead of the QR code.",
+		Args: "[_phone number_]",
 	},
 }
 
@@ -465,7 +467,7 @@ func fnLogin(ce *WrappedCommandEvent) {
 	}
 
 	if phoneNumber != "" {
-		pairingCode, err := ce.User.Client.PairPhone(phoneNumber, true)
+		pairingCode, err := ce.User.Client.PairPhone(phoneNumber, true, whatsmeow.PairClientChrome, "Chrome (Linux)")
 		if err != nil {
 			ce.ZLog.Err(err).Msg("Failed to start phone code login")
 			ce.Reply("Failed to start phone code login: %v", err)
@@ -559,12 +561,7 @@ func fnLogout(ce *WrappedCommandEvent) {
 		return
 	}
 	puppet := ce.Bridge.GetPuppetByJID(ce.User.JID)
-	if puppet.CustomMXID != "" {
-		err := puppet.SwitchCustomMXID("", "")
-		if err != nil {
-			ce.User.log.Warnln("Failed to logout-matrix while logging out of WhatsApp:", err)
-		}
-	}
+	puppet.ClearCustomMXID()
 	err := ce.User.Client.Logout()
 	if err != nil {
 		ce.User.log.Warnln("Error while logging out:", err)

@@ -612,30 +612,6 @@ func (user *User) IsLoggedIn() bool {
 	return user.IsConnected() && user.Client.IsLoggedIn()
 }
 
-func (user *User) tryAutomaticDoublePuppeting() {
-	if !user.bridge.Config.CanAutoDoublePuppet(user.MXID) {
-		return
-	}
-	user.log.Debugln("Checking if double puppeting needs to be enabled")
-	puppet := user.bridge.GetPuppetByJID(user.JID)
-	if len(puppet.CustomMXID) > 0 {
-		user.log.Debugln("User already has double-puppeting enabled")
-		// Custom puppet already enabled
-		return
-	}
-	accessToken, err := puppet.loginWithSharedSecret(user.MXID)
-	if err != nil {
-		user.log.Warnln("Failed to login with shared secret:", err)
-		return
-	}
-	err = puppet.SwitchCustomMXID(accessToken, user.MXID)
-	if err != nil {
-		puppet.log.Warnln("Failed to switch to auto-logined custom puppet:", err)
-		return
-	}
-	user.log.Infoln("Successfully automatically enabled custom puppet")
-}
-
 func (user *User) sendMarkdownBridgeAlert(formatString string, args ...interface{}) {
 	if user.bridge.Config.Bridge.DisableBridgeAlerts {
 		return
@@ -655,9 +631,9 @@ func (user *User) handleCallStart(sender types.JID, id, callType string, ts time
 		return
 	}
 	portal := user.GetPortalByJID(sender)
-	text := "Incoming call"
+	text := "Incoming call. Use the WhatsApp app to answer."
 	if callType != "" {
-		text = fmt.Sprintf("Incoming %s call", callType)
+		text = fmt.Sprintf("Incoming %s call. Use the WhatsApp app to answer.", callType)
 	}
 	portal.messages <- PortalMessage{
 		fake: &fakeMessage{
@@ -1248,7 +1224,7 @@ func (user *User) handleChatPresence(presence *events.ChatPresence) {
 }
 
 func (user *User) handleReceipt(receipt *events.Receipt) {
-	if receipt.Type != events.ReceiptTypeRead && receipt.Type != events.ReceiptTypeReadSelf {
+	if receipt.Type != events.ReceiptTypeRead && receipt.Type != events.ReceiptTypeReadSelf && receipt.Type != events.ReceiptTypeDelivered {
 		return
 	}
 	portal := user.GetPortalByMessageSource(receipt.MessageSource)

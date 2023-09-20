@@ -19,6 +19,7 @@ package database
 import (
 	"database/sql"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -133,12 +134,13 @@ const (
 type MessageType string
 
 const (
-	MsgUnknown    MessageType = ""
-	MsgFake       MessageType = "fake"
-	MsgNormal     MessageType = "message"
-	MsgReaction   MessageType = "reaction"
-	MsgEdit       MessageType = "edit"
-	MsgMatrixPoll MessageType = "matrix-poll"
+	MsgUnknown       MessageType = ""
+	MsgFake          MessageType = "fake"
+	MsgNormal        MessageType = "message"
+	MsgReaction      MessageType = "reaction"
+	MsgEdit          MessageType = "edit"
+	MsgMatrixPoll    MessageType = "matrix-poll"
+	MsgBeeperGallery MessageType = "beeper-gallery"
 )
 
 type Message struct {
@@ -155,6 +157,8 @@ type Message struct {
 	Type       MessageType
 	Error      MessageErrorType
 
+	GalleryPart int
+
 	BroadcastListJID types.JID
 }
 
@@ -166,6 +170,8 @@ func (msg *Message) IsFakeJID() bool {
 	return strings.HasPrefix(msg.JID, "FAKE::") || msg.JID == string(msg.MXID)
 }
 
+const fakeGalleryMXIDFormat = "com.beeper.gallery::%d:%s"
+
 func (msg *Message) Scan(row dbutil.Scannable) *Message {
 	var ts int64
 	err := row.Scan(&msg.Chat.JID, &msg.Chat.Receiver, &msg.JID, &msg.MXID, &msg.Sender, &msg.SenderMXID, &ts, &msg.Sent, &msg.Type, &msg.Error, &msg.BroadcastListJID)
@@ -174,6 +180,12 @@ func (msg *Message) Scan(row dbutil.Scannable) *Message {
 			msg.log.Errorln("Database scan failed:", err)
 		}
 		return nil
+	}
+	if strings.HasPrefix(msg.MXID.String(), "com.beeper.gallery::") {
+		_, err = fmt.Sscanf(msg.MXID.String(), fakeGalleryMXIDFormat, &msg.GalleryPart, &msg.MXID)
+		if err != nil {
+			msg.log.Errorln("Parsing gallery MXID failed:", err)
+		}
 	}
 	if ts != 0 {
 		msg.Timestamp = time.Unix(ts, 0)
@@ -190,11 +202,15 @@ func (msg *Message) Insert(txn dbutil.Execable) {
 	if msg.Sender.IsEmpty() {
 		sender = ""
 	}
+	mxid := msg.MXID.String()
+	if msg.GalleryPart != 0 {
+		mxid = fmt.Sprintf(fakeGalleryMXIDFormat, msg.GalleryPart, mxid)
+	}
 	_, err := txn.Exec(`
 		INSERT INTO message
 			(chat_jid, chat_receiver, jid, mxid, sender, sender_mxid, timestamp, sent, type, error, broadcast_list_jid)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-	`, msg.Chat.JID, msg.Chat.Receiver, msg.JID, msg.MXID, sender, msg.SenderMXID, msg.Timestamp.Unix(), msg.Sent, msg.Type, msg.Error, msg.BroadcastListJID)
+	`, msg.Chat.JID, msg.Chat.Receiver, msg.JID, mxid, sender, msg.SenderMXID, msg.Timestamp.Unix(), msg.Sent, msg.Type, msg.Error, msg.BroadcastListJID)
 	if err != nil {
 		msg.log.Warnfln("Failed to insert %s@%s: %v", msg.Chat, msg.JID, err)
 	}

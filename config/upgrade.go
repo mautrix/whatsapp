@@ -61,7 +61,6 @@ func DoUpgrade(helper *up.Helper) {
 	helper.Copy(up.List, "bridge", "history_sync", "deferred")
 	helper.Copy(up.Bool, "bridge", "user_avatar_sync")
 	helper.Copy(up.Bool, "bridge", "bridge_matrix_leave")
-	helper.Copy(up.Bool, "bridge", "sync_with_custom_puppets")
 	helper.Copy(up.Bool, "bridge", "sync_direct_chat_list")
 	helper.Copy(up.Bool, "bridge", "default_bridge_receipts")
 	helper.Copy(up.Bool, "bridge", "default_bridge_presence")
@@ -104,6 +103,7 @@ func DoUpgrade(helper *up.Helper) {
 	helper.Copy(up.Bool, "bridge", "crash_on_stream_replaced")
 	helper.Copy(up.Bool, "bridge", "url_previews")
 	helper.Copy(up.Bool, "bridge", "caption_in_message")
+	helper.Copy(up.Bool, "bridge", "beeper_galleries")
 	if intPolls, ok := helper.Get(up.Int, "bridge", "extev_polls"); ok {
 		val := "false"
 		if intPolls != "0" {

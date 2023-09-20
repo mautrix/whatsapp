@@ -65,7 +65,6 @@ appservice:
 
     # Whether or not to receive ephemeral events via appservice transactions.
     # Requires MSC2409 support (i.e. Synapse 1.22+).
-    # You should disable bridge -> sync_with_custom_puppets when this is enabled.
     ephemeral_events: true
 
     # Should incoming events be handled asynchronously?
@@ -211,8 +210,6 @@ bridge:
     user_avatar_sync: true
     # Should Matrix users leaving groups be bridged to WhatsApp?
     bridge_matrix_leave: true
-    # Should the bridge sync with double puppeting to receive EDUs that aren't normally sent to appservices.
-    sync_with_custom_puppets: false
     # Should the bridge update the m.direct account data event when double puppeting is enabled.
     # Note that updating the m.direct event is not atomic (except with mautrix-asmux)
     # and is therefore prone to race conditions.
@@ -223,9 +220,8 @@ bridge:
     # com.famedly.marked_unread room account data.
     sync_manual_marked_unread: true
     # When double puppeting is enabled, users can use `!wa toggle` to change whether
-    # presence and read receipts are bridged. These settings set the default values.
+    # presence is bridged. This setting sets the default value.
     # Existing users won't be affected when these are changed.
-    default_bridge_receipts: true
     default_bridge_presence: true
     # Send the presence as "available" to whatsapp when users start typing on a portal.
     # This works as a workaround for homeservers that do not support presence, and allows
@@ -304,6 +300,8 @@ bridge:
     # Send captions in the same message as images. This will send data compatible with both MSC2530 and MSC3552.
     # This is currently not supported in most clients.
     caption_in_message: false
+    # Send galleries as a single event? This is not an MSC (yet).
+    beeper_galleries: false
     # Should polls be sent using MSC3381 event types?
     extev_polls: false
     # Should cross-chat replies from WhatsApp be bridged? Most servers and clients don't support this.

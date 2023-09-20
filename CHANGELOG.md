@@ -1,3 +1,18 @@
+# v0.10.2 (security update)
+
+* Stopped using libwebp for decoding webps.
+
+# v0.10.1 (2023-09-16)
+
+* Added support for double puppeting with arbitrary `as_token`s.
+  See [docs](https://docs.mau.fi/bridges/general/double-puppeting.html#appservice-method-new) for more info.
+* Added retrying for media downloads when WhatsApp servers break and start
+  returning 429s and 503s.
+* Fixed logging in with 8-letter code.
+* Fixed syncing community announcement groups.
+* Changed "Incoming call" message to explicitly say you have to open WhatsApp
+  on your phone to answer.
+
 # v0.10.0 (2023-08-16)
 
 * Bumped minimum Go version to 1.20.
@@ -7,8 +22,8 @@
 * Added support for logging in by entering a 8-letter code on the phone instead
   of scanning a QR code.
   * Note: due to a server-side change, code login may only work when `os_name`
-    and `browser_name` in the config are set in a specific way. A future release
-    will automatically change the values to always work with code login.
+    and `browser_name` in the config are set in a specific way. This is fixed
+    in v0.10.1.
 
 # v0.9.0 (2023-07-16)
 
