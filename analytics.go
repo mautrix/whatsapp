@@ -26,27 +26,26 @@ import (
 	"maunium.net/go/mautrix/id"
 )
 
-const SegmentURL = "https://api.segment.io/v1/track"
-
-type SegmentClient struct {
+type AnalyticsClient struct {
+	url    string
 	key    string
 	userID string
 	log    log.Logger
 	client http.Client
 }
 
-var Segment SegmentClient
+var Analytics AnalyticsClient
 
-func (sc *SegmentClient) trackSync(userID id.UserID, event string, properties map[string]interface{}) error {
+func (sc *AnalyticsClient) trackSync(userID id.UserID, event string, properties map[string]interface{}) error {
 	var buf bytes.Buffer
-	var segmentUserID string
-	if Segment.userID != "" {
-		segmentUserID = Segment.userID
+	var analyticsUserID string
+	if Analytics.userID != "" {
+		analyticsUserID = Analytics.userID
 	} else {
-		segmentUserID = userID.String()
+		analyticsUserID = userID.String()
 	}
 	err := json.NewEncoder(&buf).Encode(map[string]interface{}{
-		"userId":     segmentUserID,
+		"userId":     analyticsUserID,
 		"event":      event,
 		"properties": properties,
 	})
@@ -54,7 +53,7 @@ func (sc *SegmentClient) trackSync(userID id.UserID, event string, properties ma
 		return err
 	}
 
-	req, err := http.NewRequest("POST", SegmentURL, &buf)
+	req, err := http.NewRequest(http.MethodPost, sc.url, &buf)
 	if err != nil {
 		return err
 	}
@@ -70,11 +69,11 @@ func (sc *SegmentClient) trackSync(userID id.UserID, event string, properties ma
 	return nil
 }
 
-func (sc *SegmentClient) IsEnabled() bool {
+func (sc *AnalyticsClient) IsEnabled() bool {
 	return len(sc.key) > 0
 }
 
-func (sc *SegmentClient) Track(userID id.UserID, event string, properties ...map[string]interface{}) {
+func (sc *AnalyticsClient) Track(userID id.UserID, event string, properties ...map[string]interface{}) {
 	if !sc.IsEnabled() {
 		return
 	} else if len(properties) > 1 {

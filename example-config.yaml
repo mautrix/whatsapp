@@ -76,10 +76,14 @@ appservice:
     as_token: "This value is generated when generating the registration"
     hs_token: "This value is generated when generating the registration"
 
-# Segment API key to track some events, like provisioning API login and encryption errors.
-segment_key: null
-# Optional user_id to use when sending Segment events. If null, defaults to using mxID.
-segment_user_id: null
+# Segment-compatible analytics endpoint for tracking some events, like provisioning API login and encryption errors.
+analytics:
+    # Hostname of the tracking server. The path is hardcoded to /v1/track
+    host: api.segment.io
+    # API key to send with tracking requests. Tracking is disabled if this is null.
+    token: null
+    # Optional user ID for tracking events. If null, defaults to using Matrix user ID.
+    user_id: null
 
 # Prometheus config.
 metrics:

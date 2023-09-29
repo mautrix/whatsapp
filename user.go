@@ -498,7 +498,7 @@ func (user *User) createClient(sess *store.Device) {
 	user.Client.SetForceActiveDeliveryReceipts(user.bridge.Config.Bridge.ForceActiveDeliveryReceipts)
 	user.Client.AutomaticMessageRerequestFromPhone = true
 	user.Client.GetMessageForRetry = func(requester, to types.JID, id types.MessageID) *waProto.Message {
-		Segment.Track(user.MXID, "WhatsApp incoming retry (message not found)", map[string]interface{}{
+		Analytics.Track(user.MXID, "WhatsApp incoming retry (message not found)", map[string]interface{}{
 			"requester": user.obfuscateJID(requester),
 			"messageID": id,
 		})
@@ -506,7 +506,7 @@ func (user *User) createClient(sess *store.Device) {
 		return nil
 	}
 	user.Client.PreRetryCallback = func(receipt *events.Receipt, messageID types.MessageID, retryCount int, msg *waProto.Message) bool {
-		Segment.Track(user.MXID, "WhatsApp incoming retry (accepted)", map[string]interface{}{
+		Analytics.Track(user.MXID, "WhatsApp incoming retry (accepted)", map[string]interface{}{
 			"requester":  user.obfuscateJID(receipt.Sender),
 			"messageID":  messageID,
 			"retryCount": retryCount,

@@ -773,7 +773,7 @@ func (portal *Portal) handleUndecryptableMessage(source *User, evt *events.Undec
 	if evt.IsUnavailable {
 		metricType = "unavailable"
 	}
-	Segment.Track(source.MXID, "WhatsApp undecryptable message", map[string]interface{}{
+	Analytics.Track(source.MXID, "WhatsApp undecryptable message", map[string]interface{}{
 		"messageID":         evt.Info.ID,
 		"undecryptableType": metricType,
 	})
@@ -849,7 +849,7 @@ func (portal *Portal) handleMessage(source *User, evt *events.Message, historica
 			if evt.UnavailableRequestID != "" {
 				resolveType = "phone"
 			}
-			Segment.Track(source.MXID, "WhatsApp undecryptable message resolved", map[string]interface{}{
+			Analytics.Track(source.MXID, "WhatsApp undecryptable message resolved", map[string]interface{}{
 				"messageID":   evt.Info.ID,
 				"resolveType": resolveType,
 			})

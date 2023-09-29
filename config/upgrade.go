@@ -27,8 +27,9 @@ import (
 func DoUpgrade(helper *up.Helper) {
 	bridgeconfig.Upgrader.DoUpgrade(helper)
 
-	helper.Copy(up.Str|up.Null, "segment_key")
-	helper.Copy(up.Str|up.Null, "segment_user_id")
+	helper.Copy(up.Str|up.Null, "analytics", "host")
+	helper.Copy(up.Str|up.Null, "analytics", "token")
+	helper.Copy(up.Str|up.Null, "analytics", "user_id")
 
 	helper.Copy(up.Bool, "metrics", "enabled")
 	helper.Copy(up.Str, "metrics", "listen")
@@ -181,7 +182,7 @@ var SpacedBlocks = [][]string{
 	{"appservice", "database"},
 	{"appservice", "id"},
 	{"appservice", "as_token"},
-	{"segment_key"},
+	{"analytics"},
 	{"metrics"},
 	{"whatsapp"},
 	{"bridge"},
