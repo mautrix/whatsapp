@@ -3,7 +3,6 @@ module maunium.net/go/mautrix-whatsapp
 go 1.20
 
 require (
-	github.com/chai2010/webp v1.1.1
 	github.com/gorilla/mux v1.8.0
 	github.com/gorilla/websocket v1.5.0
 	github.com/lib/pq v1.10.9
@@ -13,6 +12,7 @@ require (
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
 	github.com/tidwall/gjson v1.16.0
 	go.mau.fi/util v0.1.0
+	go.mau.fi/webp v0.1.0
 	go.mau.fi/whatsmeow v0.0.0-20230916142552-a743fdc23bf1
 	golang.org/x/exp v0.0.0-20230905200255-921286631fa9
 	golang.org/x/image v0.12.0

@@ -41,7 +41,6 @@ import (
 	"sync"
 	"time"
 
-	cwebp "github.com/chai2010/webp"
 	"github.com/rs/zerolog"
 	"github.com/tidwall/gjson"
 	"go.mau.fi/util/dbutil"
@@ -51,6 +50,7 @@ import (
 	"go.mau.fi/util/jsontime"
 	"go.mau.fi/util/random"
 	"go.mau.fi/util/variationselector"
+	cwebp "go.mau.fi/webp"
 	"go.mau.fi/whatsmeow"
 	waProto "go.mau.fi/whatsmeow/binary/proto"
 	"go.mau.fi/whatsmeow/types"
