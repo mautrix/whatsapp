@@ -3665,6 +3665,9 @@ func (portal *Portal) preprocessMatrixMedia(ctx context.Context, sender *User, r
 		}
 	}
 	mimeType := content.GetInfo().MimeType
+	if mimeType == "" {
+		content.Info.MimeType = "application/octet-stream"
+	}
 	var convertErr error
 	// Allowed mime types from https://developers.facebook.com/docs/whatsapp/on-premises/reference/media
 	switch {
