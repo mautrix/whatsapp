@@ -1011,10 +1011,10 @@ func fnOpen(ce *WrappedCommandEvent) {
 	ce.Log.Debugln("Importing", jid, "for", ce.User.MXID)
 	portal := ce.User.GetPortalByJID(info.JID)
 	if len(portal.MXID) > 0 {
-		portal.UpdateMatrixRoom(ce.User, info)
+		portal.UpdateMatrixRoom(ce.User, info, nil)
 		ce.Reply("Portal room synced.")
 	} else {
-		err = portal.CreateMatrixRoom(ce.User, info, true, true)
+		err = portal.CreateMatrixRoom(ce.User, info, nil, true, true)
 		if err != nil {
 			ce.Reply("Failed to create room: %v", err)
 		} else {

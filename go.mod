@@ -11,9 +11,9 @@ require (
 	github.com/rs/zerolog v1.30.0
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
 	github.com/tidwall/gjson v1.16.0
-	go.mau.fi/util v0.1.0
+	go.mau.fi/util v0.1.1-0.20231013112707-e938021823cc
 	go.mau.fi/webp v0.1.0
-	go.mau.fi/whatsmeow v0.0.0-20230916142552-a743fdc23bf1
+	go.mau.fi/whatsmeow v0.0.0-20231013150720-028a685d137c
 	golang.org/x/exp v0.0.0-20230905200255-921286631fa9
 	golang.org/x/image v0.12.0
 	golang.org/x/net v0.15.0

@@ -34,7 +34,7 @@ type PortalKey struct {
 }
 
 func NewPortalKey(jid, receiver types.JID) PortalKey {
-	if jid.Server == types.GroupServer {
+	if jid.Server == types.GroupServer || jid.Server == types.NewsletterServer {
 		receiver = jid
 	} else if jid.Server == types.LegacyUserServer {
 		jid.Server = types.DefaultUserServer

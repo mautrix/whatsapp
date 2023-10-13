@@ -451,7 +451,7 @@ func (prov *ProvisioningAPI) OpenGroup(w http.ResponseWriter, r *http.Request) {
 		portal := user.GetPortalByJID(info.JID)
 		status := http.StatusOK
 		if len(portal.MXID) == 0 {
-			err = portal.CreateMatrixRoom(user, info, true, true)
+			err = portal.CreateMatrixRoom(user, info, nil, true, true)
 			if err != nil {
 				jsonResponse(w, http.StatusInternalServerError, Error{
 					Error: fmt.Sprintf("Failed to create portal: %v", err),
@@ -532,7 +532,7 @@ func (prov *ProvisioningAPI) JoinGroup(w http.ResponseWriter, r *http.Request) {
 		status := http.StatusOK
 		if len(portal.MXID) == 0 {
 			time.Sleep(500 * time.Millisecond) // Wait for incoming group info to create the portal automatically
-			err = portal.CreateMatrixRoom(user, info, true, true)
+			err = portal.CreateMatrixRoom(user, info, nil, true, true)
 			if err != nil {
 				jsonResponse(w, http.StatusInternalServerError, Error{
 					Error: fmt.Sprintf("Failed to create portal: %v", err),

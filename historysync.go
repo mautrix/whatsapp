@@ -154,7 +154,7 @@ func (user *User) backfillAll() {
 					Msg("Chat already has a room, deleting messages from database")
 				user.bridge.DB.HistorySync.DeleteConversation(user.MXID, portal.Key.JID.String())
 			} else if limit < 0 || i < limit {
-				err = portal.CreateMatrixRoom(user, nil, true, true)
+				err = portal.CreateMatrixRoom(user, nil, nil, true, true)
 				if err != nil {
 					user.zlog.Err(err).Msg("Failed to create Matrix room for backfill")
 				}
@@ -316,7 +316,7 @@ func (user *User) backfillInChunks(req *database.Backfill, conv *database.Histor
 
 	if len(portal.MXID) == 0 {
 		user.log.Debugln("Creating portal for", portal.Key.JID, "as part of history sync handling")
-		err := portal.CreateMatrixRoom(user, nil, true, false)
+		err := portal.CreateMatrixRoom(user, nil, nil, true, false)
 		if err != nil {
 			user.log.Errorfln("Failed to create room for %s during backfill: %v", portal.Key.JID, err)
 			return
