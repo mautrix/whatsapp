@@ -1,3 +1,10 @@
+# v0.10.3 (unreleased)
+
+* Added basic support for channels.
+* Added default mime type for outgoing attachments when the origin Matrix
+  client forgets to specify the mime type.
+* Updated libwebp version used for encoding.
+
 # v0.10.2 (security update)
 
 * Stopped using libwebp for decoding webps.
