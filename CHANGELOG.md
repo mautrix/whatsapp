@@ -1,4 +1,4 @@
-# v0.10.3 (unreleased)
+# v0.10.3 (2023-10-16)
 
 * Added basic support for channels.
 * Added default mime type for outgoing attachments when the origin Matrix
