@@ -63,7 +63,6 @@ func DoUpgrade(helper *up.Helper) {
 	helper.Copy(up.Bool, "bridge", "user_avatar_sync")
 	helper.Copy(up.Bool, "bridge", "bridge_matrix_leave")
 	helper.Copy(up.Bool, "bridge", "sync_direct_chat_list")
-	helper.Copy(up.Bool, "bridge", "default_bridge_receipts")
 	helper.Copy(up.Bool, "bridge", "default_bridge_presence")
 	helper.Copy(up.Bool, "bridge", "send_presence_on_typing")
 	helper.Copy(up.Bool, "bridge", "force_active_delivery_receipts")
