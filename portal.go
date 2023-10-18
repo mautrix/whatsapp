@@ -1505,7 +1505,7 @@ func (portal *Portal) UpdateParentGroup(source *User, parent types.JID, updateIn
 	return false
 }
 
-func (portal *Portal) UpdateMetadata(user *User, groupInfo *types.GroupInfo) bool {
+func (portal *Portal) UpdateMetadata(user *User, groupInfo *types.GroupInfo, newsletterMetadata *types.NewsletterMetadata) bool {
 	if portal.IsPrivateChat() {
 		return false
 	} else if portal.IsStatusBroadcastList() {
@@ -1529,12 +1529,15 @@ func (portal *Portal) UpdateMetadata(user *User, groupInfo *types.GroupInfo) boo
 		return update
 	}
 	if groupInfo == nil && portal.IsNewsletter() {
-		newsletterInfo, err := user.Client.GetNewsletterInfo(portal.Key.JID)
-		if err != nil {
-			portal.zlog.Err(err).Msg("Failed to get newsletter info")
-			return false
+		if newsletterMetadata == nil {
+			var err error
+			newsletterMetadata, err = user.Client.GetNewsletterInfo(portal.Key.JID)
+			if err != nil {
+				portal.zlog.Err(err).Msg("Failed to get newsletter info")
+				return false
+			}
 		}
-		groupInfo = newsletterToGroupInfo(newsletterInfo)
+		groupInfo = newsletterToGroupInfo(newsletterMetadata)
 	}
 	if groupInfo == nil {
 		var err error
@@ -1564,6 +1567,9 @@ func (portal *Portal) UpdateMetadata(user *User, groupInfo *types.GroupInfo) boo
 
 	portal.RestrictMessageSending(groupInfo.IsAnnounce)
 	portal.RestrictMetadataChanges(groupInfo.IsLocked)
+	if newsletterMetadata != nil {
+		portal.PromoteNewsletterUser(user, newsletterMetadata.ViewerMeta.Role)
+	}
 
 	return update
 }
@@ -1586,7 +1592,7 @@ func (portal *Portal) UpdateMatrixRoom(user *User, groupInfo *types.GroupInfo, n
 	}
 
 	update := false
-	update = portal.UpdateMetadata(user, groupInfo) || update
+	update = portal.UpdateMetadata(user, groupInfo, newsletterMetadata) || update
 	if !portal.IsPrivateChat() && !portal.IsBroadcastList() && !portal.IsNewsletter() {
 		update = portal.UpdateAvatar(user, types.EmptyJID, false) || update
 	} else if newsletterMetadata != nil {
@@ -1688,6 +1694,35 @@ func (portal *Portal) RestrictMessageSending(restrict bool) id.EventID {
 	}
 
 	levels.EventsDefault = newLevel
+	resp, err := portal.MainIntent().SetPowerLevels(portal.MXID, levels)
+	if err != nil {
+		portal.log.Errorln("Failed to change power levels:", err)
+		return ""
+	} else {
+		return resp.EventID
+	}
+}
+
+func (portal *Portal) PromoteNewsletterUser(user *User, role types.NewsletterRole) id.EventID {
+	levels, err := portal.MainIntent().PowerLevels(portal.MXID)
+	if err != nil {
+		levels = portal.GetBasePowerLevels()
+	}
+
+	newLevel := 0
+	switch role {
+	case types.NewsletterRoleAdmin:
+		newLevel = 50
+	case types.NewsletterRoleOwner:
+		newLevel = 95
+	}
+
+	changed := portal.applyPowerLevelFixes(levels)
+	changed = levels.EnsureUserLevel(user.MXID, newLevel) || changed
+	if !changed {
+		return ""
+	}
+
 	resp, err := portal.MainIntent().SetPowerLevels(portal.MXID, levels)
 	if err != nil {
 		portal.log.Errorln("Failed to change power levels:", err)
@@ -1899,6 +1934,14 @@ func (portal *Portal) CreateMatrixRoom(user *User, groupInfo *types.GroupInfo, n
 			powerLevels.EnsureEventLevel(event.StateRoomName, 50)
 			powerLevels.EnsureEventLevel(event.StateRoomAvatar, 50)
 			powerLevels.EnsureEventLevel(event.StateTopic, 50)
+		}
+	}
+	if newsletterMetadata != nil {
+		switch newsletterMetadata.ViewerMeta.Role {
+		case types.NewsletterRoleAdmin:
+			powerLevels.EnsureUserLevel(user.MXID, 50)
+		case types.NewsletterRoleOwner:
+			powerLevels.EnsureUserLevel(user.MXID, 95)
 		}
 	}
 
