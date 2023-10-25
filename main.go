@@ -19,6 +19,7 @@ package main
 import (
 	_ "embed"
 	"net/http"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -90,13 +91,18 @@ func (br *WABridge) Init() {
 	br.EventProcessor.On(TypeMSC3381PollResponse, br.MatrixHandler.HandleMessage)
 	br.EventProcessor.On(TypeMSC3381V2PollResponse, br.MatrixHandler.HandleMessage)
 
-	Segment.log = br.Log.Sub("Segment")
-	Segment.key = br.Config.SegmentKey
-	Segment.userID = br.Config.SegmentUserID
-	if Segment.IsEnabled() {
-		Segment.log.Infoln("Segment metrics are enabled")
-		if Segment.userID != "" {
-			Segment.log.Infoln("Overriding Segment user_id with %v", Segment.userID)
+	Analytics.log = br.Log.Sub("Analytics")
+	Analytics.url = (&url.URL{
+		Scheme: "https",
+		Host:   br.Config.Analytics.Host,
+		Path:   "/v1/track",
+	}).String()
+	Analytics.key = br.Config.Analytics.Token
+	Analytics.userID = br.Config.Analytics.UserID
+	if Analytics.IsEnabled() {
+		Analytics.log.Infoln("Analytics metrics are enabled")
+		if Analytics.userID != "" {
+			Analytics.log.Infoln("Overriding analytics user_id with %v", Analytics.userID)
 		}
 	}
 
@@ -262,7 +268,7 @@ func main() {
 		Name:              "mautrix-whatsapp",
 		URL:               "https://github.com/mautrix/whatsapp",
 		Description:       "A Matrix-WhatsApp puppeting bridge.",
-		Version:           "0.10.2",
+		Version:           "0.10.3",
 		ProtocolName:      "WhatsApp",
 		BeeperServiceName: "whatsapp",
 		BeeperNetworkName: "whatsapp",

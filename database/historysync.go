@@ -322,6 +322,19 @@ func (hsq *HistorySyncQuery) DeleteAllMessagesForPortal(userID id.UserID, portal
 	}
 }
 
+func (hsq *HistorySyncQuery) ConversationHasMessages(userID id.UserID, portalKey PortalKey) (exists bool) {
+	err := hsq.db.QueryRow(`
+		SELECT EXISTS(
+		    SELECT 1 FROM history_sync_message
+			WHERE user_mxid=$1 AND conversation_id=$2
+		)
+	`, userID, portalKey.JID).Scan(&exists)
+	if err != nil {
+		hsq.log.Warnfln("Failed to check if any messages are stored for %s/%s: %v", userID, portalKey.JID, err)
+	}
+	return
+}
+
 func (hsq *HistorySyncQuery) DeleteConversation(userID id.UserID, jid string) {
 	// This will also clear history_sync_message as there's a foreign key constraint
 	_, err := hsq.db.Exec(`

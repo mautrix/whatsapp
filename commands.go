@@ -238,18 +238,32 @@ func fnJoin(ce *WrappedCommandEvent) {
 	if len(ce.Args) == 0 {
 		ce.Reply("**Usage:** `join <invite link>`")
 		return
-	} else if !strings.HasPrefix(ce.Args[0], whatsmeow.InviteLinkPrefix) {
-		ce.Reply("That doesn't look like a WhatsApp invite link")
-		return
 	}
 
-	jid, err := ce.User.Client.JoinGroupWithLink(ce.Args[0])
-	if err != nil {
-		ce.Reply("Failed to join group: %v", err)
-		return
+	if strings.HasPrefix(ce.Args[0], whatsmeow.InviteLinkPrefix) {
+		jid, err := ce.User.Client.JoinGroupWithLink(ce.Args[0])
+		if err != nil {
+			ce.Reply("Failed to join group: %v", err)
+			return
+		}
+		ce.Log.Debugln("%s successfully joined group %s", ce.User.MXID, jid)
+		ce.Reply("Successfully joined group `%s`, the portal should be created momentarily", jid)
+	} else if strings.HasPrefix(ce.Args[0], whatsmeow.NewsletterLinkPrefix) {
+		info, err := ce.User.Client.GetNewsletterInfoWithInvite(ce.Args[0])
+		if err != nil {
+			ce.Reply("Failed to get channel info: %v", err)
+			return
+		}
+		err = ce.User.Client.FollowNewsletter(info.ID)
+		if err != nil {
+			ce.Reply("Failed to follow channel: %v", err)
+			return
+		}
+		ce.Log.Debugln("%s successfully followed channel %s", ce.User.MXID, info.ID)
+		ce.Reply("Successfully followed channel `%s`, the portal should be created momentarily", info.ID)
+	} else {
+		ce.Reply("That doesn't look like a WhatsApp invite link")
 	}
-	ce.Log.Debugln("%s successfully joined group %s", ce.User.MXID, jid)
-	ce.Reply("Successfully joined group `%s`, the portal should be created momentarily", jid)
 }
 
 func tryDecryptEvent(crypto bridge.Crypto, evt *event.Event) (json.RawMessage, error) {
@@ -998,23 +1012,37 @@ func fnOpen(ce *WrappedCommandEvent) {
 	} else {
 		jid = types.NewJID(ce.Args[0], types.GroupServer)
 	}
-	if jid.Server != types.GroupServer || (!strings.ContainsRune(jid.User, '-') && len(jid.User) < 15) {
+	if (jid.Server != types.GroupServer && jid.Server != types.NewsletterServer) || (!strings.ContainsRune(jid.User, '-') && len(jid.User) < 15) {
 		ce.Reply("That does not look like a group JID")
 		return
 	}
 
-	info, err := ce.User.Client.GetGroupInfo(jid)
-	if err != nil {
-		ce.Reply("Failed to get group info: %v", err)
-		return
+	var err error
+	var groupInfo *types.GroupInfo
+	var newsletterMetadata *types.NewsletterMetadata
+	switch jid.Server {
+	case types.GroupServer:
+		groupInfo, err = ce.User.Client.GetGroupInfo(jid)
+		if err != nil {
+			ce.Reply("Failed to get group info: %v", err)
+			return
+		}
+		jid = groupInfo.JID
+	case types.NewsletterServer:
+		newsletterMetadata, err = ce.User.Client.GetNewsletterInfo(jid)
+		if err != nil {
+			ce.Reply("Failed to get channel info: %v", err)
+			return
+		}
+		jid = newsletterMetadata.ID
 	}
 	ce.Log.Debugln("Importing", jid, "for", ce.User.MXID)
-	portal := ce.User.GetPortalByJID(info.JID)
+	portal := ce.User.GetPortalByJID(jid)
 	if len(portal.MXID) > 0 {
-		portal.UpdateMatrixRoom(ce.User, info)
+		portal.UpdateMatrixRoom(ce.User, groupInfo, newsletterMetadata)
 		ce.Reply("Portal room synced.")
 	} else {
-		err = portal.CreateMatrixRoom(ce.User, info, true, true)
+		err = portal.CreateMatrixRoom(ce.User, groupInfo, newsletterMetadata, true, true)
 		if err != nil {
 			ce.Reply("Failed to create room: %v", err)
 		} else {

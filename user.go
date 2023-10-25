@@ -327,7 +327,7 @@ func (user *User) doPuppetResync() {
 			user.log.Warnfln("Failed to get group info for %s to do background sync: %v", portal.Key.JID, err)
 		} else {
 			user.log.Debugfln("Doing background sync for %s", portal.Key.JID)
-			portal.UpdateMatrixRoom(user, groupInfo)
+			portal.UpdateMatrixRoom(user, groupInfo, nil)
 		}
 	}
 	if len(puppetJIDs) == 0 {
@@ -498,7 +498,7 @@ func (user *User) createClient(sess *store.Device) {
 	user.Client.SetForceActiveDeliveryReceipts(user.bridge.Config.Bridge.ForceActiveDeliveryReceipts)
 	user.Client.AutomaticMessageRerequestFromPhone = true
 	user.Client.GetMessageForRetry = func(requester, to types.JID, id types.MessageID) *waProto.Message {
-		Segment.Track(user.MXID, "WhatsApp incoming retry (message not found)", map[string]interface{}{
+		Analytics.Track(user.MXID, "WhatsApp incoming retry (message not found)", map[string]interface{}{
 			"requester": user.obfuscateJID(requester),
 			"messageID": id,
 		})
@@ -506,7 +506,7 @@ func (user *User) createClient(sess *store.Device) {
 		return nil
 	}
 	user.Client.PreRetryCallback = func(receipt *events.Receipt, messageID types.MessageID, retryCount int, msg *waProto.Message) bool {
-		Segment.Track(user.MXID, "WhatsApp incoming retry (accepted)", map[string]interface{}{
+		Analytics.Track(user.MXID, "WhatsApp incoming retry (accepted)", map[string]interface{}{
 			"requester":  user.obfuscateJID(receipt.Sender),
 			"messageID":  messageID,
 			"retryCount": retryCount,
@@ -850,6 +850,10 @@ func (user *User) HandleEvent(event interface{}) {
 	case *events.JoinedGroup:
 		user.groupListCache = nil
 		go user.handleGroupCreate(v)
+	case *events.NewsletterJoin:
+		go user.handleNewsletterJoin(v)
+	case *events.NewsletterLeave:
+		go user.handleNewsletterLeave(v)
 	case *events.Picture:
 		go user.handlePictureUpdate(v)
 	case *events.Receipt:
@@ -1184,13 +1188,13 @@ func (user *User) ResyncGroups(createPortals bool) error {
 		portal := user.GetPortalByJID(group.JID)
 		if len(portal.MXID) == 0 {
 			if createPortals {
-				err = portal.CreateMatrixRoom(user, group, true, true)
+				err = portal.CreateMatrixRoom(user, group, nil, true, true)
 				if err != nil {
 					return fmt.Errorf("failed to create room for %s: %w", group.JID, err)
 				}
 			}
 		} else {
-			portal.UpdateMatrixRoom(user, group)
+			portal.UpdateMatrixRoom(user, group, nil)
 		}
 	}
 	return nil
@@ -1301,12 +1305,12 @@ func (user *User) handleGroupCreate(evt *events.JoinedGroup) {
 			user.log.Debugfln("Ignoring group create event with key %s", evt.CreateKey)
 			return
 		}
-		err := portal.CreateMatrixRoom(user, &evt.GroupInfo, true, true)
+		err := portal.CreateMatrixRoom(user, &evt.GroupInfo, nil, true, true)
 		if err != nil {
 			user.log.Errorln("Failed to create Matrix room after join notification: %v", err)
 		}
 	} else {
-		portal.UpdateMatrixRoom(user, &evt.GroupInfo)
+		portal.UpdateMatrixRoom(user, &evt.GroupInfo, nil)
 	}
 }
 
@@ -1376,6 +1380,25 @@ func (user *User) handleGroupUpdate(evt *events.GroupInfo) {
 	}
 }
 
+func (user *User) handleNewsletterJoin(evt *events.NewsletterJoin) {
+	portal := user.GetPortalByJID(evt.ID)
+	if portal.MXID == "" {
+		err := portal.CreateMatrixRoom(user, nil, &evt.NewsletterMetadata, true, false)
+		if err != nil {
+			user.zlog.Err(err).Msg("Failed to create room on newsletter join event")
+		}
+	} else {
+		portal.UpdateMatrixRoom(user, nil, &evt.NewsletterMetadata)
+	}
+}
+
+func (user *User) handleNewsletterLeave(evt *events.NewsletterLeave) {
+	portal := user.GetPortalByJID(evt.ID)
+	if portal.MXID != "" {
+		portal.HandleWhatsAppKick(user, user.JID, []types.JID{user.JID})
+	}
+}
+
 func (user *User) handlePictureUpdate(evt *events.Picture) {
 	if evt.JID.Server == types.DefaultUserServer {
 		puppet := user.bridge.GetPuppetByJID(evt.JID)
@@ -1405,7 +1428,7 @@ func (user *User) StartPM(jid types.JID, reason string) (*Portal, *Puppet, bool,
 			return portal, puppet, false, nil
 		}
 	}
-	err := portal.CreateMatrixRoom(user, nil, false, true)
+	err := portal.CreateMatrixRoom(user, nil, nil, false, true)
 	return portal, puppet, true, err
 }
 

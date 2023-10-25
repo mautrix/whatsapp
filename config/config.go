@@ -24,8 +24,11 @@ import (
 type Config struct {
 	*bridgeconfig.BaseConfig `yaml:",inline"`
 
-	SegmentKey    string `yaml:"segment_key"`
-	SegmentUserID string `yaml:"segment_user_id"`
+	Analytics struct {
+		Host   string `yaml:"host"`
+		Token  string `yaml:"token"`
+		UserID string `yaml:"user_id"`
+	}
 
 	Metrics struct {
 		Enabled bool   `yaml:"enabled"`

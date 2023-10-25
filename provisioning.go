@@ -451,7 +451,7 @@ func (prov *ProvisioningAPI) OpenGroup(w http.ResponseWriter, r *http.Request) {
 		portal := user.GetPortalByJID(info.JID)
 		status := http.StatusOK
 		if len(portal.MXID) == 0 {
-			err = portal.CreateMatrixRoom(user, info, true, true)
+			err = portal.CreateMatrixRoom(user, info, nil, true, true)
 			if err != nil {
 				jsonResponse(w, http.StatusInternalServerError, Error{
 					Error: fmt.Sprintf("Failed to create portal: %v", err),
@@ -532,7 +532,7 @@ func (prov *ProvisioningAPI) JoinGroup(w http.ResponseWriter, r *http.Request) {
 		status := http.StatusOK
 		if len(portal.MXID) == 0 {
 			time.Sleep(500 * time.Millisecond) // Wait for incoming group info to create the portal automatically
-			err = portal.CreateMatrixRoom(user, info, true, true)
+			err = portal.CreateMatrixRoom(user, info, nil, true, true)
 			if err != nil {
 				jsonResponse(w, http.StatusInternalServerError, Error{
 					Error: fmt.Sprintf("Failed to create portal: %v", err),
@@ -692,7 +692,7 @@ func (prov *ProvisioningAPI) Login(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	user.log.Debugln("Started login via provisioning API")
-	Segment.Track(user.MXID, "$login_start")
+	Analytics.Track(user.MXID, "$login_start")
 
 	for {
 		select {
@@ -701,7 +701,7 @@ func (prov *ProvisioningAPI) Login(w http.ResponseWriter, r *http.Request) {
 			case whatsmeow.QRChannelSuccess.Event:
 				jid := user.Client.Store.ID
 				user.log.Debugln("Successful login as", jid, "via provisioning API")
-				Segment.Track(user.MXID, "$login_success")
+				Analytics.Track(user.MXID, "$login_success")
 				_ = c.WriteJSON(map[string]interface{}{
 					"success":  true,
 					"jid":      jid,
@@ -711,7 +711,7 @@ func (prov *ProvisioningAPI) Login(w http.ResponseWriter, r *http.Request) {
 			case whatsmeow.QRChannelTimeout.Event:
 				user.log.Debugln("Login via provisioning API timed out")
 				errCode := "login timed out"
-				Segment.Track(user.MXID, "$login_failure", map[string]interface{}{"error": errCode})
+				Analytics.Track(user.MXID, "$login_failure", map[string]interface{}{"error": errCode})
 				_ = c.WriteJSON(Error{
 					Error:   "QR code scan timed out. Please try again.",
 					ErrCode: errCode,
@@ -719,7 +719,7 @@ func (prov *ProvisioningAPI) Login(w http.ResponseWriter, r *http.Request) {
 			case whatsmeow.QRChannelErrUnexpectedEvent.Event:
 				user.log.Debugln("Login via provisioning API failed due to unexpected event")
 				errCode := "unexpected event"
-				Segment.Track(user.MXID, "$login_failure", map[string]interface{}{"error": errCode})
+				Analytics.Track(user.MXID, "$login_failure", map[string]interface{}{"error": errCode})
 				_ = c.WriteJSON(Error{
 					Error:   "Got unexpected event while waiting for QRs, perhaps you're already logged in?",
 					ErrCode: errCode,
@@ -727,14 +727,14 @@ func (prov *ProvisioningAPI) Login(w http.ResponseWriter, r *http.Request) {
 			case whatsmeow.QRChannelClientOutdated.Event:
 				user.log.Debugln("Login via provisioning API failed due to outdated client")
 				errCode := "bridge outdated"
-				Segment.Track(user.MXID, "$login_failure", map[string]interface{}{"error": errCode})
+				Analytics.Track(user.MXID, "$login_failure", map[string]interface{}{"error": errCode})
 				_ = c.WriteJSON(Error{
 					Error:   "Got client outdated error while waiting for QRs. The bridge must be updated to continue.",
 					ErrCode: errCode,
 				})
 			case whatsmeow.QRChannelScannedWithoutMultidevice.Event:
 				errCode := "multidevice not enabled"
-				Segment.Track(user.MXID, "$login_failure", map[string]interface{}{"error": errCode})
+				Analytics.Track(user.MXID, "$login_failure", map[string]interface{}{"error": errCode})
 				_ = c.WriteJSON(Error{
 					Error:   "Please enable the WhatsApp multidevice beta and scan the QR code again.",
 					ErrCode: errCode,
@@ -742,13 +742,13 @@ func (prov *ProvisioningAPI) Login(w http.ResponseWriter, r *http.Request) {
 				continue
 			case "error":
 				errCode := "fatal error"
-				Segment.Track(user.MXID, "$login_failure", map[string]interface{}{"error": errCode})
+				Analytics.Track(user.MXID, "$login_failure", map[string]interface{}{"error": errCode})
 				_ = c.WriteJSON(Error{
 					Error:   "Fatal error while logging in",
 					ErrCode: errCode,
 				})
 			case "code":
-				Segment.Track(user.MXID, "$qrcode_retrieved")
+				Analytics.Track(user.MXID, "$qrcode_retrieved")
 				_ = c.WriteJSON(map[string]interface{}{
 					"code":    evt.Code,
 					"timeout": int(evt.Timeout.Seconds()),

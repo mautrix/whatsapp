@@ -55,6 +55,9 @@ var (
 	errPollMissingQuestion         = errors.New("poll message is missing question")
 	errPollDuplicateOption         = errors.New("poll options must be unique")
 
+	errGalleryRelay   = errors.New("can't send gallery through relay user")
+	errGalleryCaption = errors.New("can't send gallery with caption")
+
 	errEditUnknownTarget     = errors.New("unknown edit target message")
 	errEditUnknownTargetType = errors.New("unsupported edited message type")
 	errEditDifferentSender   = errors.New("can't edit message sent by another user")

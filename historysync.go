@@ -20,6 +20,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -138,8 +139,9 @@ func (user *User) backfillAll() {
 			Int("conversation_count", len(conversations)).
 			Msg("Probably received all history sync blobs, now backfilling conversations")
 		limit := user.bridge.Config.Bridge.HistorySync.MaxInitialConversations
+		bridgedCount := 0
 		// Find the portals for all the conversations.
-		for i, conv := range conversations {
+		for _, conv := range conversations {
 			jid, err := types.ParseJID(conv.ConversationID)
 			if err != nil {
 				user.zlog.Warn().Err(err).
@@ -153,8 +155,13 @@ func (user *User) backfillAll() {
 					Str("portal_jid", portal.Key.JID.String()).
 					Msg("Chat already has a room, deleting messages from database")
 				user.bridge.DB.HistorySync.DeleteConversation(user.MXID, portal.Key.JID.String())
-			} else if limit < 0 || i < limit {
-				err = portal.CreateMatrixRoom(user, nil, true, true)
+				bridgedCount++
+			} else if !user.bridge.DB.HistorySync.ConversationHasMessages(user.MXID, portal.Key) {
+				user.zlog.Debug().Str("portal_jid", portal.Key.JID.String()).Msg("Skipping chat with no messages in history sync")
+				user.bridge.DB.HistorySync.DeleteConversation(user.MXID, portal.Key.JID.String())
+			} else if limit < 0 || bridgedCount < limit {
+				bridgedCount++
+				err = portal.CreateMatrixRoom(user, nil, nil, true, true)
 				if err != nil {
 					user.zlog.Err(err).Msg("Failed to create Matrix room for backfill")
 				}
@@ -316,7 +323,7 @@ func (user *User) backfillInChunks(req *database.Backfill, conv *database.Histor
 
 	if len(portal.MXID) == 0 {
 		user.log.Debugln("Creating portal for", portal.Key.JID, "as part of history sync handling")
-		err := portal.CreateMatrixRoom(user, nil, true, false)
+		err := portal.CreateMatrixRoom(user, nil, nil, true, false)
 		if err != nil {
 			user.log.Errorfln("Failed to create room for %s during backfill: %v", portal.Key.JID, err)
 			return
@@ -491,13 +498,7 @@ func (user *User) storeHistorySync(evt *waProto.HistorySync) {
 			}
 
 			msgType := getMessageType(msgEvt.Message)
-			if msgType == "unknown" || msgType == "ignore" || msgType == "unknown_protocol" {
-				unsupportedTypes++
-				continue
-			}
-
-			// Don't store unsupported messages.
-			if !containsSupportedMessage(msgEvt.Message) {
+			if msgType == "unknown" || msgType == "ignore" || strings.HasPrefix(msgType, "unknown_protocol_") || !containsSupportedMessage(msgEvt.Message) {
 				unsupportedTypes++
 				continue
 			}
