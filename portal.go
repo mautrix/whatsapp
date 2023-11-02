@@ -508,8 +508,10 @@ func getMessageType(waMsg *waProto.Message) string {
 	switch {
 	case waMsg == nil:
 		return "ignore"
-	case waMsg.Conversation != nil, waMsg.ExtendedTextMessage != nil:
+	case waMsg.Conversation != nil:
 		return "text"
+	case waMsg.ExtendedTextMessage != nil:
+		return "post_reply"
 	case waMsg.ImageMessage != nil:
 		return fmt.Sprintf("image %s", waMsg.GetImageMessage().GetMimetype())
 	case waMsg.StickerMessage != nil:
@@ -984,6 +986,19 @@ func (portal *Portal) handleMessage(source *User, evt *events.Message, historica
 		}
 		if len(eventID) != 0 {
 			portal.finishHandling(existingMsg, &evt.Info, eventID, intent.UserID, dbMsgType, galleryPart, converted.Error)
+		}
+
+		// post_reply message is a WhatsApp status reply
+		if msgType == "post_reply" {
+			converted_quoted_message := portal.convertMessage(intent, source, &evt.Info, evt.Message.GetExtendedTextMessage().GetContextInfo().GetQuotedMessage(), false)
+			if converted_quoted_message == nil {
+				portal.log.Warnfln("Failed to convert post_reply message")
+				return
+			}
+			_, err := portal.sendMessage(converted_quoted_message.Intent, converted_quoted_message.Type, converted_quoted_message.Content, converted_quoted_message.Extra, evt.Info.Timestamp.UnixMilli())
+			if err != nil {
+				portal.log.Errorfln("Failed to send %s to Matrix: %v", msgID, err)
+			}
 		}
 	} else if msgType == "reaction" || msgType == "encrypted reaction" {
 		if evt.Message.GetEncReactionMessage() != nil {
