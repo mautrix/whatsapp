@@ -1567,7 +1567,7 @@ func (portal *Portal) UpdateMetadata(user *User, groupInfo *types.GroupInfo, new
 
 	portal.RestrictMessageSending(groupInfo.IsAnnounce)
 	portal.RestrictMetadataChanges(groupInfo.IsLocked)
-	if newsletterMetadata != nil {
+	if newsletterMetadata != nil && newsletterMetadata.ViewerMeta != nil {
 		portal.PromoteNewsletterUser(user, newsletterMetadata.ViewerMeta.Role)
 	}
 
@@ -1936,7 +1936,7 @@ func (portal *Portal) CreateMatrixRoom(user *User, groupInfo *types.GroupInfo, n
 			powerLevels.EnsureEventLevel(event.StateTopic, 50)
 		}
 	}
-	if newsletterMetadata != nil {
+	if newsletterMetadata != nil && newsletterMetadata.ViewerMeta != nil {
 		switch newsletterMetadata.ViewerMeta.Role {
 		case types.NewsletterRoleAdmin:
 			powerLevels.EnsureUserLevel(user.MXID, 50)
