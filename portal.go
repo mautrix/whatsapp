@@ -4237,6 +4237,9 @@ func (portal *Portal) convertMatrixMessage(ctx context.Context, sender *User, ev
 			return nil, sender, extraMeta, errUserNotLoggedIn
 		}
 		sender = portal.GetRelayUser()
+		if !sender.IsLoggedIn() {
+			return nil, sender, extraMeta, errRelaybotNotLoggedIn
+		}
 		isRelay = true
 	}
 	var editRootMsg *database.Message

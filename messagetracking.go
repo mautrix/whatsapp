@@ -37,6 +37,7 @@ var (
 	errUserNotConnected            = errors.New("you are not connected to WhatsApp")
 	errDifferentUser               = errors.New("user is not the recipient of this private chat portal")
 	errUserNotLoggedIn             = errors.New("user is not logged in and chat has no relay bot")
+	errRelaybotNotLoggedIn         = errors.New("neither user nor relay bot of chat are logged in")
 	errMNoticeDisabled             = errors.New("bridging m.notice messages is disabled")
 	errUnexpectedParsedContentType = errors.New("unexpected parsed content type")
 	errInvalidGeoURI               = errors.New("invalid `geo:` URI in message")
@@ -111,7 +112,8 @@ func errorToStatusReason(err error) (reason event.MessageStatusReason, status ev
 		errors.Is(err, errUserNotConnected):
 		return event.MessageStatusGenericError, event.MessageStatusRetriable, true, true, ""
 	case errors.Is(err, errUserNotLoggedIn),
-		errors.Is(err, errDifferentUser):
+		errors.Is(err, errDifferentUser),
+		errors.Is(err, errRelaybotNotLoggedIn):
 		return event.MessageStatusGenericError, event.MessageStatusRetriable, true, false, ""
 	case errors.Is(err, errMessageDisconnected),
 		errors.Is(err, errMessageRetryDisconnected):
