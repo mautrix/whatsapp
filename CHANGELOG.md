@@ -1,4 +1,4 @@
-# v0.10.4 (unreleased)
+# v0.10.4 (2023-11-16)
 
 * Added support for channels in `join` and `open` commands.
 * Added initial bridging of channel admin to room admin status.
