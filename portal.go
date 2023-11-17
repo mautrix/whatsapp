@@ -1567,7 +1567,7 @@ func (portal *Portal) UpdateMetadata(user *User, groupInfo *types.GroupInfo, new
 
 	portal.RestrictMessageSending(groupInfo.IsAnnounce)
 	portal.RestrictMetadataChanges(groupInfo.IsLocked)
-	if newsletterMetadata != nil {
+	if newsletterMetadata != nil && newsletterMetadata.ViewerMeta != nil {
 		portal.PromoteNewsletterUser(user, newsletterMetadata.ViewerMeta.Role)
 	}
 
@@ -1936,7 +1936,7 @@ func (portal *Portal) CreateMatrixRoom(user *User, groupInfo *types.GroupInfo, n
 			powerLevels.EnsureEventLevel(event.StateTopic, 50)
 		}
 	}
-	if newsletterMetadata != nil {
+	if newsletterMetadata != nil && newsletterMetadata.ViewerMeta != nil {
 		switch newsletterMetadata.ViewerMeta.Role {
 		case types.NewsletterRoleAdmin:
 			powerLevels.EnsureUserLevel(user.MXID, 50)
@@ -4226,6 +4226,9 @@ func (portal *Portal) convertMatrixMessage(ctx context.Context, sender *User, ev
 			return nil, sender, extraMeta, errUserNotLoggedIn
 		}
 		sender = portal.GetRelayUser()
+		if !sender.IsLoggedIn() {
+			return nil, sender, extraMeta, errRelaybotNotLoggedIn
+		}
 		isRelay = true
 	}
 	var editRootMsg *database.Message
@@ -4645,7 +4648,9 @@ func (portal *Portal) sendReactionToWhatsApp(sender *User, id types.MessageID, t
 		messageKeyParticipant = proto.String(target.Sender.ToNonAD().String())
 	}
 	key = variationselector.Remove(key)
-	return sender.Client.SendMessage(context.TODO(), portal.Key.JID, &waProto.Message{
+	ctx, cancel := context.WithTimeout(context.TODO(), 60*time.Second)
+	defer cancel()
+	return sender.Client.SendMessage(ctx, portal.Key.JID, &waProto.Message{
 		ReactionMessage: &waProto.ReactionMessage{
 			Key: &waProto.MessageKey{
 				RemoteJid:   proto.String(portal.Key.JID.String()),
@@ -4731,7 +4736,9 @@ func (portal *Portal) HandleMatrixRedaction(sender *User, evt *event.Event) {
 			key.Participant = proto.String(msg.Sender.ToNonAD().String())
 		}
 		portal.log.Debugfln("Sending redaction %s of %s/%s to WhatsApp", evt.ID, msg.MXID, msg.JID)
-		_, err := sender.Client.SendMessage(context.TODO(), portal.Key.JID, &waProto.Message{
+		ctx, cancel := context.WithTimeout(context.TODO(), 60*time.Second)
+		defer cancel()
+		_, err := sender.Client.SendMessage(ctx, portal.Key.JID, &waProto.Message{
 			ProtocolMessage: &waProto.ProtocolMessage{
 				Type: waProto.ProtocolMessage_REVOKE.Enum(),
 				Key:  key,

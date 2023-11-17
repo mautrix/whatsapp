@@ -1,3 +1,10 @@
+# v0.10.4 (2023-11-16)
+
+* Added support for channels in `join` and `open` commands.
+* Added initial bridging of channel admin to room admin status.
+* Fixed panic when trying to send message in a portal which has a relaybot set
+  if the relaybot user gets logged out of WhatsApp.
+
 # v0.10.3 (2023-10-16)
 
 * Added basic support for channels.
