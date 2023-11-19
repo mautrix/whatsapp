@@ -3894,7 +3894,12 @@ func (portal *Portal) preprocessMatrixMedia(ctx context.Context, sender *User, r
 			portal.log.Warnfln("Failed to re-encode %s media: %v, continuing with original file", mimeType, convertErr)
 		}
 	}
-	uploadResp, err := sender.Client.Upload(ctx, data, mediaType)
+	var uploadResp whatsmeow.UploadResponse
+	if portal.Key.JID.Server == types.NewsletterServer {
+		uploadResp, err = sender.Client.UploadNewsletter(ctx, data, mediaType)
+	} else {
+		uploadResp, err = sender.Client.Upload(ctx, data, mediaType)
+	}
 	if err != nil {
 		return nil, exerrors.NewDualError(errMediaWhatsAppUploadFailed, err)
 	}
@@ -4202,6 +4207,8 @@ type extraConvertMeta struct {
 	EditRootMsg *database.Message
 
 	GalleryExtraParts []*waProto.Message
+
+	MediaHandle string
 }
 
 func getEditError(rootMsg *database.Message, editer *User) error {
@@ -4303,6 +4310,7 @@ func (portal *Portal) convertMatrixMessage(ctx context.Context, sender *User, ev
 		if media == nil {
 			return nil, sender, extraMeta, err
 		}
+		extraMeta.MediaHandle = media.Handle
 		ctxInfo.MentionedJid = media.MentionedJIDs
 		msg.ImageMessage = &waProto.ImageMessage{
 			ContextInfo:   ctxInfo,
@@ -4321,6 +4329,9 @@ func (portal *Portal) convertMatrixMessage(ctx context.Context, sender *User, ev
 			return nil, sender, extraMeta, errGalleryRelay
 		} else if content.BeeperGalleryCaption != "" {
 			return nil, sender, extraMeta, errGalleryCaption
+		} else if portal.Key.JID.Server == types.NewsletterServer {
+			// We don't handle the media handles properly for multiple messages
+			return nil, sender, extraMeta, fmt.Errorf("can't send gallery to newsletter")
 		}
 		for i, part := range content.BeeperGalleryImages {
 			// TODO support videos
@@ -4352,6 +4363,7 @@ func (portal *Portal) convertMatrixMessage(ctx context.Context, sender *User, ev
 		if media == nil {
 			return nil, sender, extraMeta, err
 		}
+		extraMeta.MediaHandle = media.Handle
 		ctxInfo.MentionedJid = media.MentionedJIDs
 		msg.StickerMessage = &waProto.StickerMessage{
 			ContextInfo:   ctxInfo,
@@ -4371,6 +4383,7 @@ func (portal *Portal) convertMatrixMessage(ctx context.Context, sender *User, ev
 			return nil, sender, extraMeta, err
 		}
 		duration := uint32(content.GetInfo().Duration / 1000)
+		extraMeta.MediaHandle = media.Handle
 		ctxInfo.MentionedJid = media.MentionedJIDs
 		msg.VideoMessage = &waProto.VideoMessage{
 			ContextInfo:   ctxInfo,
@@ -4391,6 +4404,7 @@ func (portal *Portal) convertMatrixMessage(ctx context.Context, sender *User, ev
 		if media == nil {
 			return nil, sender, extraMeta, err
 		}
+		extraMeta.MediaHandle = media.Handle
 		duration := uint32(content.GetInfo().Duration / 1000)
 		msg.AudioMessage = &waProto.AudioMessage{
 			ContextInfo:   ctxInfo,
@@ -4415,6 +4429,7 @@ func (portal *Portal) convertMatrixMessage(ctx context.Context, sender *User, ev
 		if media == nil {
 			return nil, sender, extraMeta, err
 		}
+		extraMeta.MediaHandle = media.Handle
 		msg.DocumentMessage = &waProto.DocumentMessage{
 			ContextInfo:   ctxInfo,
 			Caption:       &media.Caption,
@@ -4562,6 +4577,9 @@ func (portal *Portal) HandleMatrixMessage(sender *User, evt *event.Event, timing
 		go ms.sendMessageMetrics(evt, err, "Error converting", true)
 		return
 	}
+	if extraMeta == nil {
+		extraMeta = &extraConvertMeta{}
+	}
 	dbMsgType := database.MsgNormal
 	if msg.PollCreationMessage != nil || msg.PollCreationMessageV2 != nil || msg.PollCreationMessageV3 != nil {
 		dbMsgType = database.MsgMatrixPoll
@@ -4576,12 +4594,15 @@ func (portal *Portal) HandleMatrixMessage(sender *User, evt *event.Event, timing
 	} else {
 		info.ID = dbMsg.JID
 	}
-	if dbMsgType == database.MsgMatrixPoll && extraMeta != nil && extraMeta.PollOptions != nil {
+	if dbMsgType == database.MsgMatrixPoll && extraMeta.PollOptions != nil {
 		dbMsg.PutPollOptions(extraMeta.PollOptions)
 	}
 	portal.log.Debugln("Sending event", evt.ID, "to WhatsApp", info.ID)
 	start = time.Now()
-	resp, err := sender.Client.SendMessage(ctx, portal.Key.JID, msg, whatsmeow.SendRequestExtra{ID: info.ID})
+	resp, err := sender.Client.SendMessage(ctx, portal.Key.JID, msg, whatsmeow.SendRequestExtra{
+		ID:          info.ID,
+		MediaHandle: extraMeta.MediaHandle,
+	})
 	timings.totalSend = time.Since(start)
 	timings.whatsmeow = resp.DebugTimings
 	if err != nil {

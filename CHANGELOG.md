@@ -1,3 +1,7 @@
+# unreleaased
+
+* Added support for sending media to channels.
+
 # v0.10.4 (2023-11-16)
 
 * Added support for channels in `join` and `open` commands.
