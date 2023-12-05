@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	_ "net/http/pprof"
 	"strings"
 	"time"
 
@@ -70,6 +71,13 @@ func (prov *ProvisioningAPI) Init() {
 	r.HandleFunc("/v1/group/join/{inviteCode}", prov.JoinGroup).Methods(http.MethodPost)
 	prov.bridge.AS.Router.HandleFunc("/_matrix/app/com.beeper.asmux/ping", prov.BridgeStatePing).Methods(http.MethodPost)
 	prov.bridge.AS.Router.HandleFunc("/_matrix/app/com.beeper.bridge_state", prov.BridgeStatePing).Methods(http.MethodPost)
+
+	if prov.bridge.Config.Bridge.Provisioning.DebugEndpoints {
+		prov.log.Debugln("Enabling debug API at /debug")
+		r := prov.bridge.AS.Router.PathPrefix("/debug").Subrouter()
+		r.Use(prov.AuthMiddleware)
+		r.PathPrefix("/pprof").Handler(http.DefaultServeMux)
+	}
 
 	// Deprecated, just use /disconnect
 	r.HandleFunc("/v1/delete_connection", prov.Disconnect).Methods(http.MethodPost)
