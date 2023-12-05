@@ -424,6 +424,8 @@ bridge:
         # Shared secret for authentication. If set to "generate", a random secret will be generated,
         # or if set to "disable", the provisioning API will be disabled.
         shared_secret: generate
+        # Enable debug API at /debug with provisioning authentication.
+        debug_endpoints: false
 
     # Permissions for using the bridge.
     # Permitted values:
