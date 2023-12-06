@@ -430,7 +430,7 @@ func (portal *Portal) handleReceipt(receipt *events.Receipt, source *User) {
 		// TODO handle lids
 		return
 	}
-	if receipt.Type == events.ReceiptTypeDelivered {
+	if receipt.Type == types.ReceiptTypeDelivered {
 		portal.handleDeliveryReceipt(receipt, source)
 		return
 	}
@@ -5039,9 +5039,7 @@ func (portal *Portal) HandleMatrixLeave(brSender bridge.User) {
 func (portal *Portal) HandleMatrixKick(brSender bridge.User, brTarget bridge.Ghost) {
 	sender := brSender.(*User)
 	target := brTarget.(*Puppet)
-	_, err := sender.Client.UpdateGroupParticipants(portal.Key.JID, map[types.JID]whatsmeow.ParticipantChange{
-		target.JID: whatsmeow.ParticipantChangeRemove,
-	})
+	_, err := sender.Client.UpdateGroupParticipants(portal.Key.JID, []types.JID{target.JID}, whatsmeow.ParticipantChangeRemove)
 	if err != nil {
 		portal.log.Errorfln("Failed to kick %s from group as %s: %v", target.JID, sender.MXID, err)
 		return
@@ -5052,9 +5050,7 @@ func (portal *Portal) HandleMatrixKick(brSender bridge.User, brTarget bridge.Gho
 func (portal *Portal) HandleMatrixInvite(brSender bridge.User, brTarget bridge.Ghost) {
 	sender := brSender.(*User)
 	target := brTarget.(*Puppet)
-	_, err := sender.Client.UpdateGroupParticipants(portal.Key.JID, map[types.JID]whatsmeow.ParticipantChange{
-		target.JID: whatsmeow.ParticipantChangeAdd,
-	})
+	_, err := sender.Client.UpdateGroupParticipants(portal.Key.JID, []types.JID{target.JID}, whatsmeow.ParticipantChangeAdd)
 	if err != nil {
 		portal.log.Errorfln("Failed to add %s to group as %s: %v", target.JID, sender.MXID, err)
 		return
