@@ -110,7 +110,13 @@ func (portal *Portal) MarkEncrypted() {
 
 func (portal *Portal) ReceiveMatrixEvent(user bridge.User, evt *event.Event) {
 	if user.GetPermissionLevel() >= bridgeconfig.PermissionLevelUser || portal.HasRelaybot() {
-		portal.matrixMessages <- PortalMatrixMessage{user: user.(*User), evt: evt, receivedAt: time.Now()}
+		portal.events <- &PortalEvent{
+			MatrixMessage: &PortalMatrixMessage{
+				user:       user.(*User),
+				evt:        evt,
+				receivedAt: time.Now(),
+			},
+		}
 	}
 }
 
@@ -199,9 +205,7 @@ func (br *WABridge) newBlankPortal(key database.PortalKey) *Portal {
 		log:    br.Log.Sub(fmt.Sprintf("Portal/%s", key)),
 		zlog:   br.ZLog.With().Str("portal_key", key.String()).Logger(),
 
-		messages:       make(chan PortalMessage, br.Config.Bridge.PortalMessageBuffer),
-		matrixMessages: make(chan PortalMatrixMessage, br.Config.Bridge.PortalMessageBuffer),
-		mediaRetries:   make(chan PortalMediaRetry, br.Config.Bridge.PortalMessageBuffer),
+		events: make(chan *PortalEvent, br.Config.Bridge.PortalMessageBuffer),
 
 		mediaErrorCache: make(map[types.MessageID]*FailedMediaMeta),
 	}
@@ -230,6 +234,12 @@ type fakeMessage struct {
 	ID        string
 	Time      time.Time
 	Important bool
+}
+
+type PortalEvent struct {
+	Message       *PortalMessage
+	MatrixMessage *PortalMatrixMessage
+	MediaRetry    *PortalMediaRetry
 }
 
 type PortalMessage struct {
@@ -279,9 +289,7 @@ type Portal struct {
 	currentlyTyping     []id.UserID
 	currentlyTypingLock sync.Mutex
 
-	messages       chan PortalMessage
-	matrixMessages chan PortalMatrixMessage
-	mediaRetries   chan PortalMediaRetry
+	events chan *PortalEvent
 
 	mediaErrorCache map[types.MessageID]*FailedMediaMeta
 
@@ -337,7 +345,7 @@ var (
 	_ bridge.TypingPortal              = (*Portal)(nil)
 )
 
-func (portal *Portal) handleWhatsAppMessageLoopItem(msg PortalMessage) {
+func (portal *Portal) handleWhatsAppMessageLoopItem(msg *PortalMessage) {
 	if len(portal.MXID) == 0 {
 		if msg.fake == nil && msg.undecryptable == nil && (msg.evt == nil || !containsSupportedMessage(msg.evt.Message)) {
 			portal.log.Debugln("Not creating portal room for incoming message: message is not a chat message")
@@ -369,7 +377,7 @@ func (portal *Portal) handleWhatsAppMessageLoopItem(msg PortalMessage) {
 	}
 }
 
-func (portal *Portal) handleMatrixMessageLoopItem(msg PortalMatrixMessage) {
+func (portal *Portal) handleMatrixMessageLoopItem(msg *PortalMatrixMessage) {
 	portal.latestEventBackfillLock.Lock()
 	defer portal.latestEventBackfillLock.Unlock()
 	evtTS := time.UnixMilli(msg.evt.Timestamp)
@@ -483,12 +491,16 @@ func (portal *Portal) handleOneMessageLoopItem() {
 		}
 	}()
 	select {
-	case msg := <-portal.messages:
-		portal.handleWhatsAppMessageLoopItem(msg)
-	case msg := <-portal.matrixMessages:
-		portal.handleMatrixMessageLoopItem(msg)
-	case retry := <-portal.mediaRetries:
-		portal.handleMediaRetry(retry.evt, retry.source)
+	case msg := <-portal.events:
+		if msg.Message != nil {
+			portal.handleWhatsAppMessageLoopItem(msg.Message)
+		} else if msg.MatrixMessage != nil {
+			portal.handleMatrixMessageLoopItem(msg.MatrixMessage)
+		} else if msg.MediaRetry != nil {
+			portal.handleMediaRetry(msg.MediaRetry.evt, msg.MediaRetry.source)
+		} else {
+			portal.log.Warn("Portal event loop returned an event without any data")
+		}
 	}
 }
 
