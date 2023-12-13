@@ -1,6 +1,8 @@
-# unreleaased
+# v0.10.5 (unreleaased)
 
 * Added support for sending media to channels.
+* Fixed voting in polls (seems to have broken due to a server-side change).
+* Improved memory usage for bridges with lots of portals.
 
 # v0.10.4 (2023-11-16)
 
