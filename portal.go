@@ -4622,7 +4622,7 @@ func (portal *Portal) HandleMatrixMessage(sender *User, evt *event.Event, timing
 		return
 	}
 	dbMsg.MarkSent(resp.Timestamp)
-	if len(extraMeta.GalleryExtraParts) > 0 {
+	if extraMeta != nil && len(extraMeta.GalleryExtraParts) > 0 {
 		for i, part := range extraMeta.GalleryExtraParts {
 			partInfo := portal.generateMessageInfo(sender)
 			partDBMsg := portal.markHandled(nil, nil, partInfo, evt.ID, evt.Sender, false, true, database.MsgBeeperGallery, i+1, database.MsgNoError)
