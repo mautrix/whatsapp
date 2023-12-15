@@ -114,7 +114,7 @@ func fnSetRelay(ce *WrappedCommandEvent) {
 	if !ce.Bridge.Config.Bridge.Relay.Enabled {
 		ce.Reply("Relay mode is not enabled on this instance of the bridge")
 	} else if ce.Bridge.Config.Bridge.Relay.AdminOnly && !ce.User.Admin {
-		ce.Reply("Only admins are allowed to enable relay mode on this instance of the bridge")
+		ce.Reply("Only bridge admins are allowed to enable relay mode on this instance of the bridge")
 	} else {
 		ce.Portal.RelayUserID = ce.User.MXID
 		ce.Portal.Update(nil)
@@ -136,7 +136,7 @@ func fnUnsetRelay(ce *WrappedCommandEvent) {
 	if !ce.Bridge.Config.Bridge.Relay.Enabled {
 		ce.Reply("Relay mode is not enabled on this instance of the bridge")
 	} else if ce.Bridge.Config.Bridge.Relay.AdminOnly && !ce.User.Admin {
-		ce.Reply("Only admins are allowed to enable relay mode on this instance of the bridge")
+		ce.Reply("Only bridge admins are allowed to enable relay mode on this instance of the bridge")
 	} else {
 		ce.Portal.RelayUserID = ""
 		ce.Portal.Update(nil)
