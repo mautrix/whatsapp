@@ -1,4 +1,4 @@
-# v0.10.5 (unreleaased)
+# v0.10.5 (2023-12-16)
 
 * Added support for sending media to channels.
 * Fixed voting in polls (seems to have broken due to a server-side change).
