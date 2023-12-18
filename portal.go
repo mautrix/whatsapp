@@ -2271,17 +2271,20 @@ func (portal *Portal) SetReply(msgID string, content *event.MessageEventContent,
 		Logger()
 	key := portal.Key
 	targetPortal := portal
+	reply_format := ""
 	defer func() {
 		if content.RelatesTo != nil && content.RelatesTo.InReplyTo != nil && targetPortal != portal {
 			content.RelatesTo.InReplyTo.UnstableRoomID = targetPortal.MXID
 		}
 	}()
 
-	if !portal.bridge.Config.Bridge.CrossRoomReplies && !replyTo.Chat.IsEmpty() && replyTo.Chat != key.JID {
+	if !replyTo.Chat.IsEmpty() && replyTo.Chat != portal.Key.JID {
 		if replyTo.Chat.Server == types.GroupServer {
 			key = database.NewPortalKey(replyTo.Chat, types.EmptyJID)
+			reply_format = "Replying to <a href='%s'>[a message]</a> in a group : %s"
 		} else if replyTo.Chat == types.StatusBroadcastJID {
-			key = database.NewPortalKey(replyTo.Chat, key.Receiver)
+			key = database.NewPortalKey(replyTo.Chat, portal.Key.Receiver)
+			reply_format = "Replying to <a href='%s'>[a status]</a> : %s"
 		}
 		if key != portal.Key {
 			targetPortal = portal.bridge.GetExistingPortalByJID(key)
@@ -2289,32 +2292,17 @@ func (portal *Portal) SetReply(msgID string, content *event.MessageEventContent,
 				return false
 			}
 		}
-		message := portal.bridge.DB.Message.GetByJID(key, replyTo.MessageID)
-		if message != nil || !message.IsFakeMXID() {
-			evt, _ := targetPortal.MainIntent().GetEvent(targetPortal.MXID, message.MXID)
-			_ = evt.Content.ParseRaw(evt.Type)
+	}
+	message := portal.bridge.DB.Message.GetByJID(portal.Key, replyTo.MessageID)
+	if message == nil || message.IsFakeMXID() {
+		if portal != targetPortal && !portal.bridge.Config.Bridge.CrossRoomReplies {
+			message := portal.bridge.DB.Message.GetByJID(key, replyTo.MessageID)
+			link := targetPortal.MXID.EventURI(message.MXID, portal.bridge.Config.Homeserver.Domain).MatrixToURL()
 			content.EnsureHasHTML()
-			content.FormattedBody = evt.GenerateReplyFallbackHTML() + content.FormattedBody
-			content.Body = evt.GenerateReplyFallbackText() + content.Body
+			content.FormattedBody = fmt.Sprintf(reply_format, link, content.FormattedBody)
+			content.Body = fmt.Sprintf(reply_format, link, content.Body)
 			return true
 		}
-	}
-
-	if portal.bridge.Config.Bridge.CrossRoomReplies && !replyTo.Chat.IsEmpty() && replyTo.Chat != key.JID {
-		if replyTo.Chat.Server == types.GroupServer {
-			key = database.NewPortalKey(replyTo.Chat, types.EmptyJID)
-		} else if replyTo.Chat == types.StatusBroadcastJID {
-			key = database.NewPortalKey(replyTo.Chat, key.Receiver)
-		}
-		if key != portal.Key {
-			targetPortal = portal.bridge.GetExistingPortalByJID(key)
-			if targetPortal == nil {
-				return false
-			}
-		}
-	}
-	message := portal.bridge.DB.Message.GetByJID(key, replyTo.MessageID)
-	if message == nil || message.IsFakeMXID() {
 		if isHungryBackfill {
 			content.RelatesTo = (&event.RelatesTo{}).SetReplyTo(targetPortal.deterministicEventID(replyTo.Sender, replyTo.MessageID, ""))
 			portal.addReplyMention(content, replyTo.Sender, "")
