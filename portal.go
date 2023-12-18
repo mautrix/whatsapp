@@ -985,7 +985,6 @@ func (portal *Portal) handleMessage(source *User, evt *events.Message, historica
 		if len(eventID) != 0 {
 			portal.finishHandling(existingMsg, &evt.Info, eventID, intent.UserID, dbMsgType, galleryPart, converted.Error)
 		}
-
 	} else if msgType == "reaction" || msgType == "encrypted reaction" {
 		if evt.Message.GetEncReactionMessage() != nil {
 			decryptedReaction, err := source.Client.DecryptReaction(evt)
