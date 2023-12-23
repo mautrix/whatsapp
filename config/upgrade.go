@@ -160,6 +160,7 @@ func DoUpgrade(helper *up.Helper) {
 	} else {
 		helper.Copy(up.Str, "bridge", "provisioning", "prefix")
 	}
+	helper.Copy(up.Bool, "bridge", "provisioning", "debug_endpoints")
 	if secret, ok := helper.Get(up.Str, "appservice", "provisioning", "shared_secret"); ok && secret != "generate" {
 		helper.Set(up.Str, secret, "bridge", "provisioning", "shared_secret")
 	} else if secret, ok = helper.Get(up.Str, "bridge", "provisioning", "shared_secret"); !ok || secret == "generate" {

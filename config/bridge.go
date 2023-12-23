@@ -136,8 +136,9 @@ type BridgeConfig struct {
 	Encryption bridgeconfig.EncryptionConfig `yaml:"encryption"`
 
 	Provisioning struct {
-		Prefix       string `yaml:"prefix"`
-		SharedSecret string `yaml:"shared_secret"`
+		Prefix         string `yaml:"prefix"`
+		SharedSecret   string `yaml:"shared_secret"`
+		DebugEndpoints bool   `yaml:"debug_endpoints"`
 	} `yaml:"provisioning"`
 
 	Permissions bridgeconfig.PermissionConfig `yaml:"permissions"`

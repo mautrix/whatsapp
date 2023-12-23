@@ -635,15 +635,17 @@ func (user *User) handleCallStart(sender types.JID, id, callType string, ts time
 	if callType != "" {
 		text = fmt.Sprintf("Incoming %s call. Use the WhatsApp app to answer.", callType)
 	}
-	portal.messages <- PortalMessage{
-		fake: &fakeMessage{
-			Sender:    sender,
-			Text:      text,
-			ID:        id,
-			Time:      ts,
-			Important: true,
+	portal.events <- &PortalEvent{
+		Message: &PortalMessage{
+			fake: &fakeMessage{
+				Sender:    sender,
+				Text:      text,
+				ID:        id,
+				Time:      ts,
+				Important: true,
+			},
+			source: user,
 		},
-		source: user,
 	}
 }
 
@@ -865,11 +867,15 @@ func (user *User) HandleEvent(event interface{}) {
 		go user.handleChatPresence(v)
 	case *events.Message:
 		portal := user.GetPortalByMessageSource(v.Info.MessageSource)
-		portal.messages <- PortalMessage{evt: v, source: user}
+		portal.events <- &PortalEvent{
+			Message: &PortalMessage{evt: v, source: user},
+		}
 	case *events.MediaRetry:
 		user.phoneSeen(v.Timestamp)
 		portal := user.GetPortalByJID(v.ChatID)
-		portal.mediaRetries <- PortalMediaRetry{evt: v, source: user}
+		portal.events <- &PortalEvent{
+			MediaRetry: &PortalMediaRetry{evt: v, source: user},
+		}
 	case *events.CallOffer:
 		user.handleCallStart(v.CallCreator, v.CallID, "", v.Timestamp)
 	case *events.CallOfferNotice:
@@ -885,22 +891,26 @@ func (user *User) HandleEvent(event interface{}) {
 			if v.Implicit {
 				text = fmt.Sprintf("Your security code with %s (device #%d) changed.", puppet.Displayname, v.JID.Device)
 			}
-			portal.messages <- PortalMessage{
-				fake: &fakeMessage{
-					Sender:    v.JID,
-					Text:      text,
-					ID:        strconv.FormatInt(v.Timestamp.Unix(), 10),
-					Time:      v.Timestamp,
-					Important: false,
+			portal.events <- &PortalEvent{
+				Message: &PortalMessage{
+					fake: &fakeMessage{
+						Sender:    v.JID,
+						Text:      text,
+						ID:        strconv.FormatInt(v.Timestamp.Unix(), 10),
+						Time:      v.Timestamp,
+						Important: false,
+					},
+					source: user,
 				},
-				source: user,
 			}
 		}
 	case *events.CallTerminate, *events.CallRelayLatency, *events.CallAccept, *events.UnknownCallEvent:
 		// ignore
 	case *events.UndecryptableMessage:
 		portal := user.GetPortalByMessageSource(v.Info.MessageSource)
-		portal.messages <- PortalMessage{undecryptable: v, source: user}
+		portal.events <- &PortalEvent{
+			Message: &PortalMessage{undecryptable: v, source: user},
+		}
 	case *events.HistorySync:
 		if user.bridge.Config.Bridge.HistorySync.Backfill {
 			user.historySyncs <- v
@@ -1228,14 +1238,16 @@ func (user *User) handleChatPresence(presence *events.ChatPresence) {
 }
 
 func (user *User) handleReceipt(receipt *events.Receipt) {
-	if receipt.Type != events.ReceiptTypeRead && receipt.Type != events.ReceiptTypeReadSelf && receipt.Type != events.ReceiptTypeDelivered {
+	if receipt.Type != types.ReceiptTypeRead && receipt.Type != types.ReceiptTypeReadSelf && receipt.Type != types.ReceiptTypeDelivered {
 		return
 	}
 	portal := user.GetPortalByMessageSource(receipt.MessageSource)
 	if portal == nil || len(portal.MXID) == 0 {
 		return
 	}
-	portal.messages <- PortalMessage{receipt: receipt, source: user}
+	portal.events <- &PortalEvent{
+		Message: &PortalMessage{receipt: receipt, source: user},
+	}
 }
 
 func (user *User) makeReadMarkerContent(eventID id.EventID, doublePuppet bool) CustomReadMarkers {

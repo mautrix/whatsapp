@@ -21,6 +21,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -452,26 +453,29 @@ func (user *User) storeHistorySync(evt *waProto.HistorySync) {
 			continue
 		}
 		totalMessageCount += len(conv.GetMessages())
-		portal := user.GetPortalByJID(jid)
 		log := log.With().
-			Str("chat_jid", portal.Key.JID.String()).
+			Str("chat_jid", jid.String()).
 			Int("msg_count", len(conv.GetMessages())).
 			Logger()
 
-		historySyncConversation := user.bridge.DB.HistorySync.NewConversationWithValues(
-			user.MXID,
-			conv.GetId(),
-			&portal.Key,
-			getConversationTimestamp(conv),
-			conv.GetMuteEndTime(),
-			conv.GetArchived(),
-			conv.GetPinned(),
-			conv.GetDisappearingMode().GetInitiator(),
-			conv.GetEndOfHistoryTransferType(),
-			conv.EphemeralExpiration,
-			conv.GetMarkedAsUnread(),
-			conv.GetUnreadCount())
-		historySyncConversation.Upsert()
+		initPortal := sync.OnceFunc(func() {
+			portal := user.GetPortalByJID(jid)
+			historySyncConversation := user.bridge.DB.HistorySync.NewConversationWithValues(
+				user.MXID,
+				conv.GetId(),
+				&portal.Key,
+				getConversationTimestamp(conv),
+				conv.GetMuteEndTime(),
+				conv.GetArchived(),
+				conv.GetPinned(),
+				conv.GetDisappearingMode().GetInitiator(),
+				conv.GetEndOfHistoryTransferType(),
+				conv.EphemeralExpiration,
+				conv.GetMarkedAsUnread(),
+				conv.GetUnreadCount())
+			historySyncConversation.Upsert()
+		})
+
 		var minTime, maxTime time.Time
 		var minTimeIndex, maxTimeIndex int
 
@@ -479,7 +483,7 @@ func (user *User) storeHistorySync(evt *waProto.HistorySync) {
 		unsupportedTypes := 0
 		for i, rawMsg := range conv.GetMessages() {
 			// Don't store messages that will just be skipped.
-			msgEvt, err := user.Client.ParseWebMessage(portal.Key.JID, rawMsg.GetMessage())
+			msgEvt, err := user.Client.ParseWebMessage(jid, rawMsg.GetMessage())
 			if err != nil {
 				log.Warn().Err(err).
 					Int("msg_index", i).
@@ -502,6 +506,8 @@ func (user *User) storeHistorySync(evt *waProto.HistorySync) {
 				unsupportedTypes++
 				continue
 			}
+
+			initPortal()
 
 			message, err := user.bridge.DB.HistorySync.NewMessageWithValues(user.MXID, conv.GetId(), msgEvt.Info.ID, rawMsg)
 			if err != nil {
