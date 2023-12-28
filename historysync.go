@@ -21,7 +21,6 @@ import (
 	"encoding/base64"
 	"fmt"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -458,8 +457,12 @@ func (user *User) storeHistorySync(evt *waProto.HistorySync) {
 			Int("msg_count", len(conv.GetMessages())).
 			Logger()
 
-		initPortal := sync.OnceFunc(func() {
-			portal := user.GetPortalByJID(jid)
+		var portal *Portal
+		initPortal := func() {
+			if portal != nil {
+				return
+			}
+			portal = user.GetPortalByJID(jid)
 			historySyncConversation := user.bridge.DB.HistorySync.NewConversationWithValues(
 				user.MXID,
 				conv.GetId(),
@@ -474,7 +477,7 @@ func (user *User) storeHistorySync(evt *waProto.HistorySync) {
 				conv.GetMarkedAsUnread(),
 				conv.GetUnreadCount())
 			historySyncConversation.Upsert()
-		})
+		}
 
 		var minTime, maxTime time.Time
 		var minTimeIndex, maxTimeIndex int
