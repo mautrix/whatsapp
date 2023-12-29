@@ -3434,6 +3434,7 @@ func (portal *Portal) uploadMedia(intent *appservice.IntentAPI, data []byte, con
 	if file != nil {
 		file.URL = mxc.CUString()
 		content.File = file
+		content.URL = mxc.CUString()
 	} else {
 		content.URL = mxc.CUString()
 	}
