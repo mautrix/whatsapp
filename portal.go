@@ -3434,7 +3434,12 @@ func (portal *Portal) uploadMedia(intent *appservice.IntentAPI, data []byte, con
 	if file != nil {
 		file.URL = mxc.CUString()
 		content.File = file
-		content.URL = mxc.CUString()
+		// Sticker events require the URL field to be present https://spec.matrix.org/v1.9/client-server-api/#events-16
+		// This seems to affect only clients based on the Rust SDK on encrypted channels (like Element X)
+		isSticker := string(content.MsgType) == event.EventSticker.Type
+		if isSticker {
+			content.URL = mxc.CUString()
+		}
 	} else {
 		content.URL = mxc.CUString()
 	}
