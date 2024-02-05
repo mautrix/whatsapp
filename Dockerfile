@@ -5,7 +5,13 @@ RUN apk add --no-cache git ca-certificates build-base su-exec olm-dev
 COPY . /build
 WORKDIR /build
 ARG DBG=0
-RUN /bin/bash -c 'if [[ $DBG -eq 1 ]]; then go install github.com/go-delve/delve/cmd/dlv@latest; else touch /go/bin/dlv; fi'
+RUN <<EOF
+if [[ $DBG -eq 1 ]]; then
+    go install github.com/go-delve/delve/cmd/dlv@latest
+else
+    touch /go/bin/dlv
+fi
+EOF
 RUN ./build.sh -o /usr/bin/mautrix-whatsapp
 
 FROM alpine:3.19
