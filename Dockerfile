@@ -6,7 +6,7 @@ COPY . /build
 WORKDIR /build
 ARG DBG=0
 RUN <<EOF
-if [[ $DBG -eq 1 ]]; then
+if [ "$DBG" = 1 ]; then
     go install github.com/go-delve/delve/cmd/dlv@latest
 else
     touch /go/bin/dlv

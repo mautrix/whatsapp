@@ -1,5 +1,5 @@
 #!/bin/sh
-if [[ $DBG -eq 1 ]]; then
+if [ "$DBG" = 1 ]; then
     GO_GCFLAGS='all=-N -l'
 else
     GO_LDFLAGS="-s -w ${GO_LDFLAGS}"

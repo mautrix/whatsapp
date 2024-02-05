@@ -36,8 +36,8 @@ fixperms
 
 EXE=/usr/bin/mautrix-whatsapp
 DLV=/usr/bin/dlv
-if [[ -x $DLV ]]; then
-    if [[ $DBGWAIT -ne 1 ]]; then
+if [ -x "$DLV" ]; then
+    if [ "$DBGWAIT" != 1 ]; then
         NOWAIT=1
     fi
     EXE="${DLV} exec ${EXE} ${NOWAIT:+--continue --accept-multiclient} --api-version 2 --headless -l :4040"
