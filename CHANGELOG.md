@@ -1,6 +1,72 @@
-# v0.8.6 (unreleased)
+# v0.10.5 (2023-12-16)
+
+* Added support for sending media to channels.
+* Fixed voting in polls (seems to have broken due to a server-side change).
+* Improved memory usage for bridges with lots of portals.
+
+# v0.10.4 (2023-11-16)
+
+* Added support for channels in `join` and `open` commands.
+* Added initial bridging of channel admin to room admin status.
+* Fixed panic when trying to send message in a portal which has a relaybot set
+  if the relaybot user gets logged out of WhatsApp.
+
+# v0.10.3 (2023-10-16)
+
+* Added basic support for channels.
+* Added default mime type for outgoing attachments when the origin Matrix
+  client forgets to specify the mime type.
+* Fixed legacy backfill creating portals for chats without messages.
+* Updated libwebp version used for encoding.
+
+# v0.10.2 (security update)
+
+* Stopped using libwebp for decoding webps.
+
+# v0.10.1 (2023-09-16)
+
+* Added support for double puppeting with arbitrary `as_token`s.
+  See [docs](https://docs.mau.fi/bridges/general/double-puppeting.html#appservice-method-new) for more info.
+* Added retrying for media downloads when WhatsApp servers break and start
+  returning 429s and 503s.
+* Fixed logging in with 8-letter code.
+* Fixed syncing community announcement groups.
+* Changed "Incoming call" message to explicitly say you have to open WhatsApp
+  on your phone to answer.
+
+# v0.10.0 (2023-08-16)
+
+* Bumped minimum Go version to 1.20.
+* Added automatic re-requesting of undecryptable WhatsApp messages from primary
+  device.
+* Added support for round video messages.
+* Added support for logging in by entering a 8-letter code on the phone instead
+  of scanning a QR code.
+  * Note: due to a server-side change, code login may only work when `os_name`
+    and `browser_name` in the config are set in a specific way. This is fixed
+    in v0.10.1.
+
+# v0.9.0 (2023-07-16)
+
+* Removed MSC2716 support.
+* Added legacy backfill support.
+* Updated Docker image to Alpine 3.18.
+* Changed all ogg audio messages from WhatsApp to be bridged as voice messages
+  to Matrix, as WhatsApp removes the voice message flag when forwarding for
+  some reason.
+* Added Prometheus metric for WhatsApp connection failures
+  (thanks to [@Half-Shot] in [#620]).
+
+[#620]: https://github.com/mautrix/whatsapp/pull/620
+
+# v0.8.6 (2023-06-16)
 
 * Implemented intentional mentions for outgoing messages.
+* Added support for appservice websockets.
+* Added additional index on message table to make bridging outgoing read
+  receipts and messages faster in chats with lots of messages.
+* Fixed handling WhatsApp poll messages that only allow one choice.
+* Fixed bridging new groups immediately when they're created.
 
 # v0.8.5 (2023-05-16)
 

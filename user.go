@@ -327,7 +327,7 @@ func (user *User) doPuppetResync() {
 			user.log.Warnfln("Failed to get group info for %s to do background sync: %v", portal.Key.JID, err)
 		} else {
 			user.log.Debugfln("Doing background sync for %s", portal.Key.JID)
-			portal.UpdateMatrixRoom(user, groupInfo)
+			portal.UpdateMatrixRoom(user, groupInfo, nil)
 		}
 	}
 	if len(puppetJIDs) == 0 {
@@ -496,8 +496,9 @@ func (user *User) createClient(sess *store.Device) {
 	user.Client = whatsmeow.NewClient(sess, &waLogger{user.log.Sub("Client")})
 	user.Client.AddEventHandler(user.HandleEvent)
 	user.Client.SetForceActiveDeliveryReceipts(user.bridge.Config.Bridge.ForceActiveDeliveryReceipts)
+	user.Client.AutomaticMessageRerequestFromPhone = true
 	user.Client.GetMessageForRetry = func(requester, to types.JID, id types.MessageID) *waProto.Message {
-		Segment.Track(user.MXID, "WhatsApp incoming retry (message not found)", map[string]interface{}{
+		Analytics.Track(user.MXID, "WhatsApp incoming retry (message not found)", map[string]interface{}{
 			"requester": user.obfuscateJID(requester),
 			"messageID": id,
 		})
@@ -505,7 +506,7 @@ func (user *User) createClient(sess *store.Device) {
 		return nil
 	}
 	user.Client.PreRetryCallback = func(receipt *events.Receipt, messageID types.MessageID, retryCount int, msg *waProto.Message) bool {
-		Segment.Track(user.MXID, "WhatsApp incoming retry (accepted)", map[string]interface{}{
+		Analytics.Track(user.MXID, "WhatsApp incoming retry (accepted)", map[string]interface{}{
 			"requester":  user.obfuscateJID(receipt.Sender),
 			"messageID":  messageID,
 			"retryCount": retryCount,
@@ -611,30 +612,6 @@ func (user *User) IsLoggedIn() bool {
 	return user.IsConnected() && user.Client.IsLoggedIn()
 }
 
-func (user *User) tryAutomaticDoublePuppeting() {
-	if !user.bridge.Config.CanAutoDoublePuppet(user.MXID) {
-		return
-	}
-	user.log.Debugln("Checking if double puppeting needs to be enabled")
-	puppet := user.bridge.GetPuppetByJID(user.JID)
-	if len(puppet.CustomMXID) > 0 {
-		user.log.Debugln("User already has double-puppeting enabled")
-		// Custom puppet already enabled
-		return
-	}
-	accessToken, err := puppet.loginWithSharedSecret(user.MXID)
-	if err != nil {
-		user.log.Warnln("Failed to login with shared secret:", err)
-		return
-	}
-	err = puppet.SwitchCustomMXID(accessToken, user.MXID)
-	if err != nil {
-		puppet.log.Warnln("Failed to switch to auto-logined custom puppet:", err)
-		return
-	}
-	user.log.Infoln("Successfully automatically enabled custom puppet")
-}
-
 func (user *User) sendMarkdownBridgeAlert(formatString string, args ...interface{}) {
 	if user.bridge.Config.Bridge.DisableBridgeAlerts {
 		return
@@ -654,19 +631,21 @@ func (user *User) handleCallStart(sender types.JID, id, callType string, ts time
 		return
 	}
 	portal := user.GetPortalByJID(sender)
-	text := "Incoming call"
+	text := "Incoming call. Use the WhatsApp app to answer."
 	if callType != "" {
-		text = fmt.Sprintf("Incoming %s call", callType)
+		text = fmt.Sprintf("Incoming %s call. Use the WhatsApp app to answer.", callType)
 	}
-	portal.messages <- PortalMessage{
-		fake: &fakeMessage{
-			Sender:    sender,
-			Text:      text,
-			ID:        id,
-			Time:      ts,
-			Important: true,
+	portal.events <- &PortalEvent{
+		Message: &PortalMessage{
+			fake: &fakeMessage{
+				Sender:    sender,
+				Text:      text,
+				ID:        id,
+				Time:      ts,
+				Important: true,
+			},
+			source: user,
 		},
-		source: user,
 	}
 }
 
@@ -676,7 +655,7 @@ const PhoneMinPingInterval = 24 * time.Hour
 
 func (user *User) sendHackyPhonePing() {
 	user.PhoneLastPinged = time.Now()
-	msgID := whatsmeow.GenerateMessageID()
+	msgID := user.Client.GenerateMessageID()
 	keyIDs := make([]*waProto.AppStateSyncKeyId, 0, 1)
 	lastKeyID, err := user.GetLastAppStateKeyID()
 	if lastKeyID != nil {
@@ -842,15 +821,18 @@ func (user *User) HandleEvent(event interface{}) {
 			user.sendMarkdownBridgeAlert("The bridge was started in another location. Use `reconnect` to reconnect this one.")
 		}
 	case *events.ConnectFailure:
-		user.BridgeState.Send(status.BridgeState{StateEvent: status.StateUnknownError, Message: fmt.Sprintf("Unknown connection failure: %s", v.Reason)})
+		user.BridgeState.Send(status.BridgeState{StateEvent: status.StateUnknownError, Message: fmt.Sprintf("Unknown connection failure: %s (%s)", v.Reason, v.Message)})
 		user.bridge.Metrics.TrackConnectionState(user.JID, false)
+		user.bridge.Metrics.TrackConnectionFailure(fmt.Sprintf("status-%d", v.Reason))
 	case *events.ClientOutdated:
 		user.log.Errorfln("Got a client outdated connect failure. The bridge is likely out of date, please update immediately.")
 		user.BridgeState.Send(status.BridgeState{StateEvent: status.StateUnknownError, Message: "Connect failure: 405 client outdated"})
 		user.bridge.Metrics.TrackConnectionState(user.JID, false)
+		user.bridge.Metrics.TrackConnectionFailure("client-outdated")
 	case *events.TemporaryBan:
 		user.BridgeState.Send(status.BridgeState{StateEvent: status.StateBadCredentials, Message: v.String()})
 		user.bridge.Metrics.TrackConnectionState(user.JID, false)
+		user.bridge.Metrics.TrackConnectionFailure("temporary-ban")
 	case *events.Disconnected:
 		// Don't send the normal transient disconnect state if we're already in a different transient disconnect state.
 		// TODO remove this if/when the phone offline state is moved to a sub-state of CONNECTED
@@ -870,6 +852,10 @@ func (user *User) HandleEvent(event interface{}) {
 	case *events.JoinedGroup:
 		user.groupListCache = nil
 		go user.handleGroupCreate(v)
+	case *events.NewsletterJoin:
+		go user.handleNewsletterJoin(v)
+	case *events.NewsletterLeave:
+		go user.handleNewsletterLeave(v)
 	case *events.Picture:
 		go user.handlePictureUpdate(v)
 	case *events.Receipt:
@@ -881,39 +867,50 @@ func (user *User) HandleEvent(event interface{}) {
 		go user.handleChatPresence(v)
 	case *events.Message:
 		portal := user.GetPortalByMessageSource(v.Info.MessageSource)
-		portal.messages <- PortalMessage{evt: v, source: user}
+		portal.events <- &PortalEvent{
+			Message: &PortalMessage{evt: v, source: user},
+		}
 	case *events.MediaRetry:
 		user.phoneSeen(v.Timestamp)
 		portal := user.GetPortalByJID(v.ChatID)
-		portal.mediaRetries <- PortalMediaRetry{evt: v, source: user}
+		portal.events <- &PortalEvent{
+			MediaRetry: &PortalMediaRetry{evt: v, source: user},
+		}
 	case *events.CallOffer:
 		user.handleCallStart(v.CallCreator, v.CallID, "", v.Timestamp)
 	case *events.CallOfferNotice:
 		user.handleCallStart(v.CallCreator, v.CallID, v.Type, v.Timestamp)
 	case *events.IdentityChange:
 		puppet := user.bridge.GetPuppetByJID(v.JID)
+		if puppet == nil {
+			return
+		}
 		portal := user.GetPortalByJID(v.JID)
 		if len(portal.MXID) > 0 && user.bridge.Config.Bridge.IdentityChangeNotices {
 			text := fmt.Sprintf("Your security code with %s changed.", puppet.Displayname)
 			if v.Implicit {
 				text = fmt.Sprintf("Your security code with %s (device #%d) changed.", puppet.Displayname, v.JID.Device)
 			}
-			portal.messages <- PortalMessage{
-				fake: &fakeMessage{
-					Sender:    v.JID,
-					Text:      text,
-					ID:        strconv.FormatInt(v.Timestamp.Unix(), 10),
-					Time:      v.Timestamp,
-					Important: false,
+			portal.events <- &PortalEvent{
+				Message: &PortalMessage{
+					fake: &fakeMessage{
+						Sender:    v.JID,
+						Text:      text,
+						ID:        strconv.FormatInt(v.Timestamp.Unix(), 10),
+						Time:      v.Timestamp,
+						Important: false,
+					},
+					source: user,
 				},
-				source: user,
 			}
 		}
 	case *events.CallTerminate, *events.CallRelayLatency, *events.CallAccept, *events.UnknownCallEvent:
 		// ignore
 	case *events.UndecryptableMessage:
 		portal := user.GetPortalByMessageSource(v.Info.MessageSource)
-		portal.messages <- PortalMessage{undecryptable: v, source: user}
+		portal.events <- &PortalEvent{
+			Message: &PortalMessage{undecryptable: v, source: user},
+		}
 	case *events.HistorySync:
 		if user.bridge.Config.Bridge.HistorySync.Backfill {
 			user.historySyncs <- v
@@ -1201,13 +1198,13 @@ func (user *User) ResyncGroups(createPortals bool) error {
 		portal := user.GetPortalByJID(group.JID)
 		if len(portal.MXID) == 0 {
 			if createPortals {
-				err = portal.CreateMatrixRoom(user, group, true, true)
+				err = portal.CreateMatrixRoom(user, group, nil, true, true)
 				if err != nil {
 					return fmt.Errorf("failed to create room for %s: %w", group.JID, err)
 				}
 			}
 		} else {
-			portal.UpdateMatrixRoom(user, group)
+			portal.UpdateMatrixRoom(user, group, nil)
 		}
 	}
 	return nil
@@ -1217,6 +1214,9 @@ const WATypingTimeout = 15 * time.Second
 
 func (user *User) handleChatPresence(presence *events.ChatPresence) {
 	puppet := user.bridge.GetPuppetByJID(presence.Sender)
+	if puppet == nil {
+		return
+	}
 	portal := user.GetPortalByJID(presence.Chat)
 	if puppet == nil || portal == nil || len(portal.MXID) == 0 {
 		return
@@ -1238,14 +1238,16 @@ func (user *User) handleChatPresence(presence *events.ChatPresence) {
 }
 
 func (user *User) handleReceipt(receipt *events.Receipt) {
-	if receipt.Type != events.ReceiptTypeRead && receipt.Type != events.ReceiptTypeReadSelf {
+	if receipt.Type != types.ReceiptTypeRead && receipt.Type != types.ReceiptTypeReadSelf && receipt.Type != types.ReceiptTypeDelivered {
 		return
 	}
 	portal := user.GetPortalByMessageSource(receipt.MessageSource)
 	if portal == nil || len(portal.MXID) == 0 {
 		return
 	}
-	portal.messages <- PortalMessage{receipt: receipt, source: user}
+	portal.events <- &PortalEvent{
+		Message: &PortalMessage{receipt: receipt, source: user},
+	}
 }
 
 func (user *User) makeReadMarkerContent(eventID id.EventID, doublePuppet bool) CustomReadMarkers {
@@ -1315,12 +1317,12 @@ func (user *User) handleGroupCreate(evt *events.JoinedGroup) {
 			user.log.Debugfln("Ignoring group create event with key %s", evt.CreateKey)
 			return
 		}
-		err := portal.CreateMatrixRoom(user, &evt.GroupInfo, true, true)
+		err := portal.CreateMatrixRoom(user, &evt.GroupInfo, nil, true, true)
 		if err != nil {
 			user.log.Errorln("Failed to create Matrix room after join notification: %v", err)
 		}
 	} else {
-		portal.UpdateMatrixRoom(user, &evt.GroupInfo)
+		portal.UpdateMatrixRoom(user, &evt.GroupInfo, nil)
 	}
 }
 
@@ -1335,6 +1337,10 @@ func (user *User) handleGroupUpdate(evt *events.GroupInfo) {
 	log := with.Logger()
 	if portal == nil || len(portal.MXID) == 0 {
 		log.Debug().Msg("Ignoring group info update in chat with no portal")
+		return
+	}
+	if evt.Sender != nil && evt.Sender.Server == types.HiddenUserServer {
+		log.Debug().Str("sender", evt.Sender.String()).Msg("Ignoring group info update from @lid user")
 		return
 	}
 	switch {
@@ -1386,6 +1392,25 @@ func (user *User) handleGroupUpdate(evt *events.GroupInfo) {
 	}
 }
 
+func (user *User) handleNewsletterJoin(evt *events.NewsletterJoin) {
+	portal := user.GetPortalByJID(evt.ID)
+	if portal.MXID == "" {
+		err := portal.CreateMatrixRoom(user, nil, &evt.NewsletterMetadata, true, false)
+		if err != nil {
+			user.zlog.Err(err).Msg("Failed to create room on newsletter join event")
+		}
+	} else {
+		portal.UpdateMatrixRoom(user, nil, &evt.NewsletterMetadata)
+	}
+}
+
+func (user *User) handleNewsletterLeave(evt *events.NewsletterLeave) {
+	portal := user.GetPortalByJID(evt.ID)
+	if portal.MXID != "" {
+		portal.HandleWhatsAppKick(user, user.JID, []types.JID{user.JID})
+	}
+}
+
 func (user *User) handlePictureUpdate(evt *events.Picture) {
 	if evt.JID.Server == types.DefaultUserServer {
 		puppet := user.bridge.GetPuppetByJID(evt.JID)
@@ -1415,7 +1440,7 @@ func (user *User) StartPM(jid types.JID, reason string) (*Portal, *Puppet, bool,
 			return portal, puppet, false, nil
 		}
 	}
-	err := portal.CreateMatrixRoom(user, nil, false, true)
+	err := portal.CreateMatrixRoom(user, nil, nil, false, true)
 	return portal, puppet, true, err
 }
 

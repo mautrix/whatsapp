@@ -65,7 +65,6 @@ appservice:
 
     # Whether or not to receive ephemeral events via appservice transactions.
     # Requires MSC2409 support (i.e. Synapse 1.22+).
-    # You should disable bridge -> sync_with_custom_puppets when this is enabled.
     ephemeral_events: true
 
     # Should incoming events be handled asynchronously?
@@ -77,10 +76,14 @@ appservice:
     as_token: "This value is generated when generating the registration"
     hs_token: "This value is generated when generating the registration"
 
-# Segment API key to track some events, like provisioning API login and encryption errors.
-segment_key: null
-# Optional user_id to use when sending Segment events. If null, defaults to using mxID.
-segment_user_id: null
+# Segment-compatible analytics endpoint for tracking some events, like provisioning API login and encryption errors.
+analytics:
+    # Hostname of the tracking server. The path is hardcoded to /v1/track
+    host: api.segment.io
+    # API key to send with tracking requests. Tracking is disabled if this is null.
+    token: null
+    # Optional user ID for tracking events. If null, defaults to using Matrix user ID.
+    user_id: null
 
 # Prometheus config.
 metrics:
@@ -95,7 +98,7 @@ whatsapp:
     os_name: Mautrix-WhatsApp bridge
     # Browser name that determines the logo shown in the mobile app.
     # Must be "unknown" for a generic icon or a valid browser name if you want a specific icon.
-    # List of valid browser names: https://github.com/tulir/whatsmeow/blob/8b34d886d543b72e5f4699cf5b2797f68d598f78/binary/proto/def.proto#L38-L51
+    # List of valid browser names: https://github.com/tulir/whatsmeow/blob/efc632c008604016ddde63bfcfca8de4e5304da9/binary/proto/def.proto#L43-L64
     browser_name: unknown
 
 # Bridge config
@@ -127,20 +130,14 @@ bridge:
     portal_message_buffer: 128
     # Settings for handling history sync payloads.
     history_sync:
-        # Enable backfilling history sync payloads from WhatsApp using batch sending?
-        # This requires a server with MSC2716 support, which is currently an experimental feature in synapse.
-        # It can be enabled by setting experimental_features -> msc2716_enabled to true in homeserver.yaml.
-        # Note that prior to Synapse 1.49, there were some bugs with the implementation, especially if using event persistence workers.
-        # There are also still some issues in Synapse's federation implementation.
-        backfill: false
-        # Should the bridge create portals for chats in the history sync payload?
-        # This has no effect unless backfill is enabled.
-        create_portals: true
-        # Use double puppets for backfilling?
-        # In order to use this, the double puppets must be in the appservice's user ID namespace
-        # (because the bridge can't use the double puppet access token with batch sending).
-        # This only affects double puppets on the local server, double puppets on other servers will never be used.
-        double_puppet_backfill: false
+        # Enable backfilling history sync payloads from WhatsApp?
+        backfill: true
+        # The maximum number of initial conversations that should be synced.
+        # Other conversations will be backfilled on demand when receiving a message or when initiating a direct chat.
+        max_initial_conversations: -1
+        # Maximum number of messages to backfill in each conversation.
+        # Set to -1 to disable limit.
+        message_count: 50
         # Should the bridge request a full sync from the phone when logging in?
         # This bumps the size of history syncs from 3 months to 1 year.
         request_full_sync: false
@@ -154,51 +151,43 @@ bridge:
             size_mb_limit: null
             # This is presumably the local storage quota, which may affect what the phone includes in the history sync blob.
             storage_quota_mb: null
-        # Settings for media requests. If the media expired, then it will not
-        # be on the WA servers.
-        # Media can always be requested by reacting with the ♻️ (recycle) emoji.
-        # These settings determine if the media requests should be done
-        # automatically during or after backfill.
-        media_requests:
-            # Should expired media be automatically requested from the server as
-            # part of the backfill process?
-            auto_request_media: true
-            # Whether to request the media immediately after the media message
-            # is backfilled ("immediate") or at a specific time of the day
-            # ("local_time").
-            request_method: immediate
-            # If request_method is "local_time", what time should the requests
-            # be sent (in minutes after midnight)?
-            request_local_time: 120
-        # The maximum number of initial conversations that should be synced.
-        # Other conversations will be backfilled on demand when the start PM
-        # provisioning endpoint is used or when a message comes in from that
-        # chat.
-        max_initial_conversations: -1
-        # If this value is greater than 0, then if the conversation's last
-        # message was more than this number of hours ago, then the conversation
-        # will automatically be marked it as read.
-        # Conversations that have a last message that is less than this number
-        # of hours ago will have their unread status synced from WhatsApp.
+        # If this value is greater than 0, then if the conversation's last message was more than
+        # this number of hours ago, then the conversation will automatically be marked it as read.
+        # Conversations that have a last message that is less than this number of hours ago will
+        # have their unread status synced from WhatsApp.
         unread_hours_threshold: 0
-        # Settings for immediate backfills. These backfills should generally be
-        # small and their main purpose is to populate each of the initial chats
-        # (as configured by max_initial_conversations) with a few messages so
-        # that you can continue conversations without loosing context.
+
+        ###############################################################################
+        # The settings below are only applicable for backfilling using batch sending, #
+        # which is no longer supported in Synapse.                                    #
+        ###############################################################################
+
+        # Settings for media requests. If the media expired, then it will not be on the WA servers.
+        # Media can always be requested by reacting with the ♻️ (recycle) emoji.
+        # These settings determine if the media requests should be done automatically during or after backfill.
+        media_requests:
+            # Should expired media be automatically requested from the server as part of the backfill process?
+            auto_request_media: true
+            # Whether to request the media immediately after the media message is backfilled ("immediate")
+            # or at a specific time of the day ("local_time").
+            request_method: immediate
+            # If request_method is "local_time", what time should the requests be sent (in minutes after midnight)?
+            request_local_time: 120
+        # Settings for immediate backfills. These backfills should generally be small and their main purpose is
+        # to populate each of the initial chats (as configured by max_initial_conversations) with a few messages
+        # so that you can continue conversations without losing context.
         immediate:
-            # The number of concurrent backfill workers to create for immediate
-            # backfills. Note that using more than one worker could cause the
-            # room list to jump around since there are no guarantees about the
-            # order in which the backfills will complete.
+            # The number of concurrent backfill workers to create for immediate backfills.
+            # Note that using more than one worker could cause the room list to jump around
+            # since there are no guarantees about the order in which the backfills will complete.
             worker_count: 1
             # The maximum number of events to backfill initially.
             max_events: 10
-        # Settings for deferred backfills. The purpose of these backfills are
-        # to fill in the rest of the chat history that was not covered by the
-        # immediate backfills. These backfills generally should happen at a
-        # slower pace so as not to overload the homeserver.
-        # Each deferred backfill config should define a "stage" of backfill
-        # (i.e. the last week of messages). The fields are as follows:
+        # Settings for deferred backfills. The purpose of these backfills are to fill in the rest of
+        # the chat history that was not covered by the immediate backfills.
+        # These backfills generally should happen at a slower pace so as not to overload the homeserver.
+        # Each deferred backfill config should define a "stage" of backfill (i.e. the last week of messages).
+        # The fields are as follows:
         # - start_days_ago: the number of days ago to start backfilling from.
         #     To indicate the start of time, use -1. For example, for a week ago, use 7.
         # - max_batch_events: the number of events to send per batch.
@@ -220,12 +209,11 @@ bridge:
             - start_days_ago: -1
               max_batch_events: 500
               batch_delay: 10
+
     # Should puppet avatars be fetched from the server even if an avatar is already set?
     user_avatar_sync: true
     # Should Matrix users leaving groups be bridged to WhatsApp?
     bridge_matrix_leave: true
-    # Should the bridge sync with double puppeting to receive EDUs that aren't normally sent to appservices.
-    sync_with_custom_puppets: false
     # Should the bridge update the m.direct account data event when double puppeting is enabled.
     # Note that updating the m.direct event is not atomic (except with mautrix-asmux)
     # and is therefore prone to race conditions.
@@ -236,9 +224,8 @@ bridge:
     # com.famedly.marked_unread room account data.
     sync_manual_marked_unread: true
     # When double puppeting is enabled, users can use `!wa toggle` to change whether
-    # presence and read receipts are bridged. These settings set the default values.
+    # presence is bridged. This setting sets the default value.
     # Existing users won't be affected when these are changed.
-    default_bridge_receipts: true
     default_bridge_presence: true
     # Send the presence as "available" to whatsapp when users start typing on a portal.
     # This works as a workaround for homeservers that do not support presence, and allows
@@ -317,6 +304,8 @@ bridge:
     # Send captions in the same message as images. This will send data compatible with both MSC2530 and MSC3552.
     # This is currently not supported in most clients.
     caption_in_message: false
+    # Send galleries as a single event? This is not an MSC (yet).
+    beeper_galleries: false
     # Should polls be sent using MSC3381 event types?
     extev_polls: false
     # Should cross-chat replies from WhatsApp be bridged? Most servers and clients don't support this.
@@ -385,6 +374,10 @@ bridge:
             delete_on_device_delete: false
             # Periodically delete megolm sessions when 2x max_age has passed since receiving the session.
             periodically_delete_expired: false
+            # Delete inbound megolm sessions that don't have the received_at field used for
+            # automatic ratcheting and expired session deletion. This is meant as a migration
+            # to delete old keys prior to the bridge update.
+            delete_outdated_inbound: false
         # What level of device verification should be required from users?
         #
         # Valid levels:
@@ -431,6 +424,8 @@ bridge:
         # Shared secret for authentication. If set to "generate", a random secret will be generated,
         # or if set to "disable", the provisioning API will be disabled.
         shared_secret: generate
+        # Enable debug API at /debug with provisioning authentication.
+        debug_endpoints: false
 
     # Permissions for using the bridge.
     # Permitted values:

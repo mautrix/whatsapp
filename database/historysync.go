@@ -22,15 +22,13 @@ import (
 	"fmt"
 	"time"
 
-	"google.golang.org/protobuf/proto"
-
-	waProto "go.mau.fi/whatsmeow/binary/proto"
-
 	_ "github.com/mattn/go-sqlite3"
+	"go.mau.fi/util/dbutil"
+	waProto "go.mau.fi/whatsmeow/binary/proto"
+	"google.golang.org/protobuf/proto"
 	log "maunium.net/go/maulogger/v2"
 
 	"maunium.net/go/mautrix/id"
-	"maunium.net/go/mautrix/util/dbutil"
 )
 
 type HistorySyncQuery struct {
@@ -166,7 +164,7 @@ func (hsc *HistorySyncConversation) Scan(row dbutil.Scannable) *HistorySyncConve
 	return hsc
 }
 
-func (hsq *HistorySyncQuery) GetNMostRecentConversations(userID id.UserID, n int) (conversations []*HistorySyncConversation) {
+func (hsq *HistorySyncQuery) GetRecentConversations(userID id.UserID, n int) (conversations []*HistorySyncConversation) {
 	nPtr := &n
 	// Negative limit on SQLite means unlimited, but Postgres prefers a NULL limit.
 	if n < 0 && hsq.db.Dialect == dbutil.Postgres {
@@ -183,7 +181,7 @@ func (hsq *HistorySyncQuery) GetNMostRecentConversations(userID id.UserID, n int
 	return
 }
 
-func (hsq *HistorySyncQuery) GetConversation(userID id.UserID, portalKey *PortalKey) (conversation *HistorySyncConversation) {
+func (hsq *HistorySyncQuery) GetConversation(userID id.UserID, portalKey PortalKey) (conversation *HistorySyncConversation) {
 	rows, err := hsq.db.Query(getConversationByPortal, userID, portalKey.JID, portalKey.Receiver)
 	defer rows.Close()
 	if err != nil || rows == nil {
@@ -321,5 +319,29 @@ func (hsq *HistorySyncQuery) DeleteAllMessagesForPortal(userID id.UserID, portal
 	`, userID, portalKey.JID)
 	if err != nil {
 		hsq.log.Warnfln("Failed to delete historical messages for %s/%s: %v", userID, portalKey.JID, err)
+	}
+}
+
+func (hsq *HistorySyncQuery) ConversationHasMessages(userID id.UserID, portalKey PortalKey) (exists bool) {
+	err := hsq.db.QueryRow(`
+		SELECT EXISTS(
+		    SELECT 1 FROM history_sync_message
+			WHERE user_mxid=$1 AND conversation_id=$2
+		)
+	`, userID, portalKey.JID).Scan(&exists)
+	if err != nil {
+		hsq.log.Warnfln("Failed to check if any messages are stored for %s/%s: %v", userID, portalKey.JID, err)
+	}
+	return
+}
+
+func (hsq *HistorySyncQuery) DeleteConversation(userID id.UserID, jid string) {
+	// This will also clear history_sync_message as there's a foreign key constraint
+	_, err := hsq.db.Exec(`
+		DELETE FROM history_sync_conversation
+		WHERE user_mxid=$1 AND conversation_id=$2
+	`, userID, jid)
+	if err != nil {
+		hsq.log.Warnfln("Failed to delete historical messages for %s/%s: %v", userID, jid, err)
 	}
 }

@@ -19,6 +19,7 @@ package main
 import (
 	_ "embed"
 	"net/http"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -27,19 +28,18 @@ import (
 
 	"google.golang.org/protobuf/proto"
 
+	"go.mau.fi/util/configupgrade"
 	"go.mau.fi/whatsmeow"
 	waProto "go.mau.fi/whatsmeow/binary/proto"
 	"go.mau.fi/whatsmeow/store"
 	"go.mau.fi/whatsmeow/store/sqlstore"
 	"go.mau.fi/whatsmeow/types"
 
-	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/bridge"
 	"maunium.net/go/mautrix/bridge/commands"
 	"maunium.net/go/mautrix/bridge/status"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
-	"maunium.net/go/mautrix/util/configupgrade"
 
 	"maunium.net/go/mautrix-whatsapp/config"
 	"maunium.net/go/mautrix-whatsapp/database"
@@ -91,13 +91,18 @@ func (br *WABridge) Init() {
 	br.EventProcessor.On(TypeMSC3381PollResponse, br.MatrixHandler.HandleMessage)
 	br.EventProcessor.On(TypeMSC3381V2PollResponse, br.MatrixHandler.HandleMessage)
 
-	Segment.log = br.Log.Sub("Segment")
-	Segment.key = br.Config.SegmentKey
-	Segment.userID = br.Config.SegmentUserID
-	if Segment.IsEnabled() {
-		Segment.log.Infoln("Segment metrics are enabled")
-		if Segment.userID != "" {
-			Segment.log.Infoln("Overriding Segment user_id with %v", Segment.userID)
+	Analytics.log = br.Log.Sub("Analytics")
+	Analytics.url = (&url.URL{
+		Scheme: "https",
+		Host:   br.Config.Analytics.Host,
+		Path:   "/v1/track",
+	}).String()
+	Analytics.key = br.Config.Analytics.Token
+	Analytics.userID = br.Config.Analytics.UserID
+	if Analytics.IsEnabled() {
+		Analytics.log.Infoln("Analytics metrics are enabled")
+		if Analytics.userID != "" {
+			Analytics.log.Infoln("Overriding analytics user_id with %v", Analytics.userID)
 		}
 	}
 
@@ -248,20 +253,6 @@ func (br *WABridge) GetConfigPtr() interface{} {
 	return br.Config
 }
 
-const unstableFeatureBatchSending = "org.matrix.msc2716"
-
-func (br *WABridge) CheckFeatures(versions *mautrix.RespVersions) (string, bool) {
-	if br.Config.Bridge.HistorySync.Backfill {
-		supported, known := versions.UnstableFeatures[unstableFeatureBatchSending]
-		if !known {
-			return "Backfilling is enabled in bridge config, but homeserver does not support MSC2716 batch sending", false
-		} else if !supported {
-			return "Backfilling is enabled in bridge config, but MSC2716 batch sending is not enabled on homeserver", false
-		}
-	}
-	return "", true
-}
-
 func main() {
 	br := &WABridge{
 		usersByMXID:         make(map[id.UserID]*User),
@@ -277,7 +268,7 @@ func main() {
 		Name:              "mautrix-whatsapp",
 		URL:               "https://github.com/mautrix/whatsapp",
 		Description:       "A Matrix-WhatsApp puppeting bridge.",
-		Version:           "0.8.5",
+		Version:           "0.10.5",
 		ProtocolName:      "WhatsApp",
 		BeeperServiceName: "whatsapp",
 		BeeperNetworkName: "whatsapp",

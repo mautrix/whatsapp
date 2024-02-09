@@ -141,6 +141,9 @@ func (formatter *Formatter) ParseWhatsApp(roomID id.RoomID, content *event.Messa
 			continue
 		} else if jid.Server == types.LegacyUserServer {
 			jid.Server = types.DefaultUserServer
+		} else if jid.Server != types.DefaultUserServer {
+			// TODO lid support?
+			continue
 		}
 		mxid, displayname := formatter.getMatrixInfoByJID(roomID, jid)
 		number := "@" + jid.User

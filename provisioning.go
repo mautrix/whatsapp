@@ -24,7 +24,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
-	"strconv"
+	_ "net/http/pprof"
 	"strings"
 	"time"
 
@@ -32,7 +32,6 @@ import (
 	"github.com/gorilla/websocket"
 
 	"go.mau.fi/whatsmeow/appstate"
-	waBinary "go.mau.fi/whatsmeow/binary"
 	"go.mau.fi/whatsmeow/types"
 
 	"go.mau.fi/whatsmeow"
@@ -61,7 +60,6 @@ func (prov *ProvisioningAPI) Init() {
 	r.HandleFunc("/v1/disconnect", prov.Disconnect).Methods(http.MethodPost)
 	r.HandleFunc("/v1/reconnect", prov.Reconnect).Methods(http.MethodPost)
 	r.HandleFunc("/v1/debug/appstate/{name}", prov.SyncAppState).Methods(http.MethodPost)
-	r.HandleFunc("/v1/debug/retry", prov.SendRetryReceipt).Methods(http.MethodPost)
 	r.HandleFunc("/v1/contacts", prov.ListContacts).Methods(http.MethodGet)
 	r.HandleFunc("/v1/groups", prov.ListGroups).Methods(http.MethodGet, http.MethodPost)
 	r.HandleFunc("/v1/resolve_identifier/{number}", prov.ResolveIdentifier).Methods(http.MethodGet)
@@ -73,6 +71,13 @@ func (prov *ProvisioningAPI) Init() {
 	r.HandleFunc("/v1/group/join/{inviteCode}", prov.JoinGroup).Methods(http.MethodPost)
 	prov.bridge.AS.Router.HandleFunc("/_matrix/app/com.beeper.asmux/ping", prov.BridgeStatePing).Methods(http.MethodPost)
 	prov.bridge.AS.Router.HandleFunc("/_matrix/app/com.beeper.bridge_state", prov.BridgeStatePing).Methods(http.MethodPost)
+
+	if prov.bridge.Config.Bridge.Provisioning.DebugEndpoints {
+		prov.log.Debugln("Enabling debug API at /debug")
+		r := prov.bridge.AS.Router.PathPrefix("/debug").Subrouter()
+		r.Use(prov.AuthMiddleware)
+		r.PathPrefix("/pprof").Handler(http.DefaultServeMux)
+	}
 
 	// Deprecated, just use /disconnect
 	r.HandleFunc("/v1/delete_connection", prov.Disconnect).Methods(http.MethodPost)
@@ -188,55 +193,6 @@ func (prov *ProvisioningAPI) Reconnect(w http.ResponseWriter, r *http.Request) {
 		user.BridgeState.Send(status.BridgeState{StateEvent: status.StateTransientDisconnect, Error: WANotConnected})
 		user.Connect()
 		jsonResponse(w, http.StatusAccepted, Response{true, "Restarted connection to WhatsApp"})
-	}
-}
-
-type debugRetryReceiptContent struct {
-	ID          types.MessageID `json:"id"`
-	From        types.JID       `json:"from"`
-	Recipient   types.JID       `json:"recipient"`
-	Participant types.JID       `json:"participant"`
-	Timestamp   int64           `json:"timestamp"`
-	Count       int             `json:"count"`
-
-	ForceIncludeIdentity bool `json:"force_include_identity"`
-}
-
-func (prov *ProvisioningAPI) SendRetryReceipt(w http.ResponseWriter, r *http.Request) {
-	var req debugRetryReceiptContent
-	user := r.Context().Value("user").(*User)
-	if user == nil || user.Client == nil {
-		jsonResponse(w, http.StatusNotFound, Error{
-			Error:   "User is not connected to WhatsApp",
-			ErrCode: "no session",
-		})
-		return
-	} else if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		jsonResponse(w, http.StatusBadRequest, Error{
-			Error:   "Failed to parse request JSON",
-			ErrCode: "bad json",
-		})
-	} else {
-		node := &waBinary.Node{
-			Attrs: waBinary.Attrs{
-				"id":   string(req.ID),
-				"from": req.From,
-				"t":    strconv.FormatInt(req.Timestamp, 10),
-			},
-		}
-		if !req.Recipient.IsEmpty() {
-			node.Attrs["recipient"] = req.Recipient
-		}
-		if !req.Participant.IsEmpty() {
-			node.Attrs["participant"] = req.Participant
-		}
-		if req.Count > 0 {
-			node.Content = []waBinary.Node{{
-				Tag:   "enc",
-				Attrs: waBinary.Attrs{"count": strconv.Itoa(req.Count)},
-			}}
-		}
-		user.Client.DangerousInternals().SendRetryReceipt(node, req.ForceIncludeIdentity)
 	}
 }
 
@@ -503,7 +459,7 @@ func (prov *ProvisioningAPI) OpenGroup(w http.ResponseWriter, r *http.Request) {
 		portal := user.GetPortalByJID(info.JID)
 		status := http.StatusOK
 		if len(portal.MXID) == 0 {
-			err = portal.CreateMatrixRoom(user, info, true, true)
+			err = portal.CreateMatrixRoom(user, info, nil, true, true)
 			if err != nil {
 				jsonResponse(w, http.StatusInternalServerError, Error{
 					Error: fmt.Sprintf("Failed to create portal: %v", err),
@@ -584,7 +540,7 @@ func (prov *ProvisioningAPI) JoinGroup(w http.ResponseWriter, r *http.Request) {
 		status := http.StatusOK
 		if len(portal.MXID) == 0 {
 			time.Sleep(500 * time.Millisecond) // Wait for incoming group info to create the portal automatically
-			err = portal.CreateMatrixRoom(user, info, true, true)
+			err = portal.CreateMatrixRoom(user, info, nil, true, true)
 			if err != nil {
 				jsonResponse(w, http.StatusInternalServerError, Error{
 					Error: fmt.Sprintf("Failed to create portal: %v", err),
@@ -744,7 +700,7 @@ func (prov *ProvisioningAPI) Login(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	user.log.Debugln("Started login via provisioning API")
-	Segment.Track(user.MXID, "$login_start")
+	Analytics.Track(user.MXID, "$login_start")
 
 	for {
 		select {
@@ -753,7 +709,7 @@ func (prov *ProvisioningAPI) Login(w http.ResponseWriter, r *http.Request) {
 			case whatsmeow.QRChannelSuccess.Event:
 				jid := user.Client.Store.ID
 				user.log.Debugln("Successful login as", jid, "via provisioning API")
-				Segment.Track(user.MXID, "$login_success")
+				Analytics.Track(user.MXID, "$login_success")
 				_ = c.WriteJSON(map[string]interface{}{
 					"success":  true,
 					"jid":      jid,
@@ -763,7 +719,7 @@ func (prov *ProvisioningAPI) Login(w http.ResponseWriter, r *http.Request) {
 			case whatsmeow.QRChannelTimeout.Event:
 				user.log.Debugln("Login via provisioning API timed out")
 				errCode := "login timed out"
-				Segment.Track(user.MXID, "$login_failure", map[string]interface{}{"error": errCode})
+				Analytics.Track(user.MXID, "$login_failure", map[string]interface{}{"error": errCode})
 				_ = c.WriteJSON(Error{
 					Error:   "QR code scan timed out. Please try again.",
 					ErrCode: errCode,
@@ -771,7 +727,7 @@ func (prov *ProvisioningAPI) Login(w http.ResponseWriter, r *http.Request) {
 			case whatsmeow.QRChannelErrUnexpectedEvent.Event:
 				user.log.Debugln("Login via provisioning API failed due to unexpected event")
 				errCode := "unexpected event"
-				Segment.Track(user.MXID, "$login_failure", map[string]interface{}{"error": errCode})
+				Analytics.Track(user.MXID, "$login_failure", map[string]interface{}{"error": errCode})
 				_ = c.WriteJSON(Error{
 					Error:   "Got unexpected event while waiting for QRs, perhaps you're already logged in?",
 					ErrCode: errCode,
@@ -779,14 +735,14 @@ func (prov *ProvisioningAPI) Login(w http.ResponseWriter, r *http.Request) {
 			case whatsmeow.QRChannelClientOutdated.Event:
 				user.log.Debugln("Login via provisioning API failed due to outdated client")
 				errCode := "bridge outdated"
-				Segment.Track(user.MXID, "$login_failure", map[string]interface{}{"error": errCode})
+				Analytics.Track(user.MXID, "$login_failure", map[string]interface{}{"error": errCode})
 				_ = c.WriteJSON(Error{
 					Error:   "Got client outdated error while waiting for QRs. The bridge must be updated to continue.",
 					ErrCode: errCode,
 				})
 			case whatsmeow.QRChannelScannedWithoutMultidevice.Event:
 				errCode := "multidevice not enabled"
-				Segment.Track(user.MXID, "$login_failure", map[string]interface{}{"error": errCode})
+				Analytics.Track(user.MXID, "$login_failure", map[string]interface{}{"error": errCode})
 				_ = c.WriteJSON(Error{
 					Error:   "Please enable the WhatsApp multidevice beta and scan the QR code again.",
 					ErrCode: errCode,
@@ -794,13 +750,13 @@ func (prov *ProvisioningAPI) Login(w http.ResponseWriter, r *http.Request) {
 				continue
 			case "error":
 				errCode := "fatal error"
-				Segment.Track(user.MXID, "$login_failure", map[string]interface{}{"error": errCode})
+				Analytics.Track(user.MXID, "$login_failure", map[string]interface{}{"error": errCode})
 				_ = c.WriteJSON(Error{
 					Error:   "Fatal error while logging in",
 					ErrCode: errCode,
 				})
 			case "code":
-				Segment.Track(user.MXID, "$qrcode_retrieved")
+				Analytics.Track(user.MXID, "$qrcode_retrieved")
 				_ = c.WriteJSON(map[string]interface{}{
 					"code":    evt.Code,
 					"timeout": int(evt.Timeout.Seconds()),

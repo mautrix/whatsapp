@@ -23,10 +23,10 @@ import (
 
 	"github.com/lib/pq"
 	_ "github.com/mattn/go-sqlite3"
+	"go.mau.fi/util/dbutil"
 	"go.mau.fi/whatsmeow/store"
 	"go.mau.fi/whatsmeow/store/sqlstore"
 	"maunium.net/go/maulogger/v2"
-	"maunium.net/go/mautrix/util/dbutil"
 
 	"maunium.net/go/mautrix-whatsapp/database/upgrades"
 )

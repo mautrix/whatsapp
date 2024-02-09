@@ -20,9 +20,10 @@ import (
 	"fmt"
 	"time"
 
+	"go.mau.fi/util/dbutil"
+
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/id"
-	"maunium.net/go/mautrix/util/dbutil"
 
 	"maunium.net/go/mautrix-whatsapp/database"
 )

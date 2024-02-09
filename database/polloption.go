@@ -21,7 +21,7 @@ import (
 	"strings"
 
 	"github.com/lib/pq"
-	"maunium.net/go/mautrix/util/dbutil"
+	"go.mau.fi/util/dbutil"
 )
 
 func scanPollOptionMapping(rows dbutil.Rows) (id string, hashArr [32]byte, err error) {

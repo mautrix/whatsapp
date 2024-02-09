@@ -37,6 +37,7 @@ var (
 	errUserNotConnected            = errors.New("you are not connected to WhatsApp")
 	errDifferentUser               = errors.New("user is not the recipient of this private chat portal")
 	errUserNotLoggedIn             = errors.New("user is not logged in and chat has no relay bot")
+	errRelaybotNotLoggedIn         = errors.New("neither user nor relay bot of chat are logged in")
 	errMNoticeDisabled             = errors.New("bridging m.notice messages is disabled")
 	errUnexpectedParsedContentType = errors.New("unexpected parsed content type")
 	errInvalidGeoURI               = errors.New("invalid `geo:` URI in message")
@@ -54,6 +55,9 @@ var (
 	errDMSentByOtherUser           = errors.New("target message was sent by the other user in a DM")
 	errPollMissingQuestion         = errors.New("poll message is missing question")
 	errPollDuplicateOption         = errors.New("poll options must be unique")
+
+	errGalleryRelay   = errors.New("can't send gallery through relay user")
+	errGalleryCaption = errors.New("can't send gallery with caption")
 
 	errEditUnknownTarget     = errors.New("unknown edit target message")
 	errEditUnknownTargetType = errors.New("unsupported edited message type")
@@ -108,7 +112,8 @@ func errorToStatusReason(err error) (reason event.MessageStatusReason, status ev
 		errors.Is(err, errUserNotConnected):
 		return event.MessageStatusGenericError, event.MessageStatusRetriable, true, true, ""
 	case errors.Is(err, errUserNotLoggedIn),
-		errors.Is(err, errDifferentUser):
+		errors.Is(err, errDifferentUser),
+		errors.Is(err, errRelaybotNotLoggedIn):
 		return event.MessageStatusGenericError, event.MessageStatusRetriable, true, false, ""
 	case errors.Is(err, errMessageDisconnected),
 		errors.Is(err, errMessageRetryDisconnected):
@@ -147,7 +152,7 @@ func (portal *Portal) sendErrorMessage(evt *event.Event, err error, msgType stri
 	return resp.EventID
 }
 
-func (portal *Portal) sendStatusEvent(evtID, lastRetry id.EventID, err error) {
+func (portal *Portal) sendStatusEvent(evtID, lastRetry id.EventID, err error, deliveredTo *[]id.UserID) {
 	if !portal.bridge.Config.Bridge.MessageStatusEvents {
 		return
 	}
@@ -165,7 +170,8 @@ func (portal *Portal) sendStatusEvent(evtID, lastRetry id.EventID, err error) {
 			Type:    event.RelReference,
 			EventID: evtID,
 		},
-		LastRetry: lastRetry,
+		DeliveredToUsers: deliveredTo,
+		LastRetry:        lastRetry,
 	}
 	if err == nil {
 		content.Status = event.MessageStatusSuccess
@@ -224,12 +230,16 @@ func (portal *Portal) sendMessageMetrics(evt *event.Event, err error, part strin
 		if sendNotice {
 			ms.setNoticeID(portal.sendErrorMessage(evt, err, msgType, isCertain, ms.getNoticeID()))
 		}
-		portal.sendStatusEvent(origEvtID, evt.ID, err)
+		portal.sendStatusEvent(origEvtID, evt.ID, err, nil)
 	} else {
 		portal.log.Debugfln("Handled Matrix %s %s", msgType, evtDescription)
 		portal.sendDeliveryReceipt(evt.ID)
 		portal.bridge.SendMessageSuccessCheckpoint(evt, status.MsgStepRemote, ms.getRetryNum())
-		portal.sendStatusEvent(origEvtID, evt.ID, nil)
+		var deliveredTo *[]id.UserID
+		if portal.IsPrivateChat() {
+			deliveredTo = &[]id.UserID{}
+		}
+		portal.sendStatusEvent(origEvtID, evt.ID, nil, deliveredTo)
 		if prevNotice := ms.popNoticeID(); prevNotice != "" {
 			_, _ = portal.MainIntent().RedactEvent(portal.MXID, prevNotice, mautrix.ReqRedact{
 				Reason: "error resolved",

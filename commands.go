@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"html"
 	"math"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -41,8 +42,6 @@ import (
 	"maunium.net/go/mautrix/bridge/status"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
-
-	"maunium.net/go/mautrix-whatsapp/database"
 )
 
 type WrappedCommandEvent struct {
@@ -71,7 +70,6 @@ func (br *WABridge) RegisterCommands() {
 		cmdPing,
 		cmdDeletePortal,
 		cmdDeleteAllPortals,
-		cmdBackfill,
 		cmdList,
 		cmdSearch,
 		cmdOpen,
@@ -116,7 +114,7 @@ func fnSetRelay(ce *WrappedCommandEvent) {
 	if !ce.Bridge.Config.Bridge.Relay.Enabled {
 		ce.Reply("Relay mode is not enabled on this instance of the bridge")
 	} else if ce.Bridge.Config.Bridge.Relay.AdminOnly && !ce.User.Admin {
-		ce.Reply("Only admins are allowed to enable relay mode on this instance of the bridge")
+		ce.Reply("Only bridge admins are allowed to enable relay mode on this instance of the bridge")
 	} else {
 		ce.Portal.RelayUserID = ce.User.MXID
 		ce.Portal.Update(nil)
@@ -138,7 +136,7 @@ func fnUnsetRelay(ce *WrappedCommandEvent) {
 	if !ce.Bridge.Config.Bridge.Relay.Enabled {
 		ce.Reply("Relay mode is not enabled on this instance of the bridge")
 	} else if ce.Bridge.Config.Bridge.Relay.AdminOnly && !ce.User.Admin {
-		ce.Reply("Only admins are allowed to enable relay mode on this instance of the bridge")
+		ce.Reply("Only bridge admins are allowed to enable relay mode on this instance of the bridge")
 	} else {
 		ce.Portal.RelayUserID = ""
 		ce.Portal.Update(nil)
@@ -240,18 +238,32 @@ func fnJoin(ce *WrappedCommandEvent) {
 	if len(ce.Args) == 0 {
 		ce.Reply("**Usage:** `join <invite link>`")
 		return
-	} else if !strings.HasPrefix(ce.Args[0], whatsmeow.InviteLinkPrefix) {
-		ce.Reply("That doesn't look like a WhatsApp invite link")
-		return
 	}
 
-	jid, err := ce.User.Client.JoinGroupWithLink(ce.Args[0])
-	if err != nil {
-		ce.Reply("Failed to join group: %v", err)
-		return
+	if strings.HasPrefix(ce.Args[0], whatsmeow.InviteLinkPrefix) {
+		jid, err := ce.User.Client.JoinGroupWithLink(ce.Args[0])
+		if err != nil {
+			ce.Reply("Failed to join group: %v", err)
+			return
+		}
+		ce.Log.Debugln("%s successfully joined group %s", ce.User.MXID, jid)
+		ce.Reply("Successfully joined group `%s`, the portal should be created momentarily", jid)
+	} else if strings.HasPrefix(ce.Args[0], whatsmeow.NewsletterLinkPrefix) {
+		info, err := ce.User.Client.GetNewsletterInfoWithInvite(ce.Args[0])
+		if err != nil {
+			ce.Reply("Failed to get channel info: %v", err)
+			return
+		}
+		err = ce.User.Client.FollowNewsletter(info.ID)
+		if err != nil {
+			ce.Reply("Failed to follow channel: %v", err)
+			return
+		}
+		ce.Log.Debugln("%s successfully followed channel %s", ce.User.MXID, info.ID)
+		ce.Reply("Successfully followed channel `%s`, the portal should be created momentarily", info.ID)
+	} else {
+		ce.Reply("That doesn't look like a WhatsApp invite link")
 	}
-	ce.Log.Debugln("%s successfully joined group %s", ce.User.MXID, jid)
-	ce.Reply("Successfully joined group `%s`, the portal should be created momentarily", jid)
 }
 
 func tryDecryptEvent(crypto bridge.Crypto, evt *event.Event) (json.RawMessage, error) {
@@ -382,7 +394,7 @@ func fnCreate(ce *WrappedCommandEvent) {
 	}
 	// TODO check m.space.parent to create rooms directly in communities
 
-	messageID := whatsmeow.GenerateMessageID()
+	messageID := ce.User.Client.GenerateMessageID()
 	ce.Log.Infofln("Creating group for %s with name %s and participants %+v (create key: %s)", ce.RoomID, roomNameEvent.Name, participants, messageID)
 	ce.User.createKeyDedup = messageID
 	resp, err := ce.User.Client.CreateGroup(whatsmeow.ReqCreateGroup{
@@ -432,10 +444,15 @@ var cmdLogin = &commands.FullHandler{
 	Func: wrapCommand(fnLogin),
 	Name: "login",
 	Help: commands.HelpMeta{
-		Section:     commands.HelpSectionAuth,
-		Description: "Link the bridge to your WhatsApp account as a web client.",
+		Section: commands.HelpSectionAuth,
+		Description: "Link the bridge to your WhatsApp account as a web client. " +
+			"The phone number parameter is optional: if provided, the bridge will create a 8-character login code " +
+			"that can be used instead of the QR code.",
+		Args: "[_phone number_]",
 	},
 }
+
+var looksLikeAPhoneRegex = regexp.MustCompile(`^\+[0-9]+$`)
 
 func fnLogin(ce *WrappedCommandEvent) {
 	if ce.User.Session != nil {
@@ -447,11 +464,31 @@ func fnLogin(ce *WrappedCommandEvent) {
 		return
 	}
 
+	var phoneNumber string
+	if len(ce.Args) > 0 {
+		phoneNumber = strings.TrimSpace(strings.Join(ce.Args, " "))
+		if !looksLikeAPhoneRegex.MatchString(phoneNumber) {
+			ce.Reply("When specifying a phone number, it must be provided in international format without spaces or other extra characters")
+			return
+		}
+	}
+
 	qrChan, err := ce.User.Login(context.Background())
 	if err != nil {
-		ce.User.log.Errorf("Failed to log in:", err)
+		ce.ZLog.Err(err).Msg("Failed to start login")
 		ce.Reply("Failed to log in: %v", err)
 		return
+	}
+
+	if phoneNumber != "" {
+		pairingCode, err := ce.User.Client.PairPhone(phoneNumber, true, whatsmeow.PairClientChrome, "Chrome (Linux)")
+		if err != nil {
+			ce.ZLog.Err(err).Msg("Failed to start phone code login")
+			ce.Reply("Failed to start phone code login: %v", err)
+			go ce.User.DeleteConnection()
+			return
+		}
+		ce.Reply("Scan the code below or enter the following code on your phone to log in: **%s**", pairingCode)
 	}
 
 	var qrEventID id.EventID
@@ -461,7 +498,7 @@ func fnLogin(ce *WrappedCommandEvent) {
 			jid := ce.User.Client.Store.ID
 			ce.Reply("Successfully logged in as +%s (device #%d)", jid.User, jid.Device)
 		case whatsmeow.QRChannelTimeout.Event:
-			ce.Reply("QR code timed out. Please restart the login.")
+			ce.Reply("Login timed out. Please restart the login.")
 		case whatsmeow.QRChannelErrUnexpectedEvent.Event:
 			ce.Reply("Failed to log in: unexpected connection event from server")
 		case whatsmeow.QRChannelClientOutdated.Event:
@@ -474,7 +511,9 @@ func fnLogin(ce *WrappedCommandEvent) {
 			qrEventID = ce.User.sendQR(ce, item.Code, qrEventID)
 		}
 	}
-	_, _ = ce.Bot.RedactEvent(ce.RoomID, qrEventID)
+	if qrEventID != "" {
+		_, _ = ce.Bot.RedactEvent(ce.RoomID, qrEventID)
+	}
 }
 
 func (user *User) sendQR(ce *WrappedCommandEvent, code string, prevEvent id.EventID) id.EventID {
@@ -536,12 +575,7 @@ func fnLogout(ce *WrappedCommandEvent) {
 		return
 	}
 	puppet := ce.Bridge.GetPuppetByJID(ce.User.JID)
-	if puppet.CustomMXID != "" {
-		err := puppet.SwitchCustomMXID("", "")
-		if err != nil {
-			ce.User.log.Warnln("Failed to logout-matrix while logging out of WhatsApp:", err)
-		}
-	}
+	puppet.ClearCustomMXID()
 	err := ce.User.Client.Logout()
 	if err != nil {
 		ce.User.log.Warnln("Error while logging out:", err)
@@ -787,46 +821,6 @@ func fnDeleteAllPortals(ce *WrappedCommandEvent) {
 	}()
 }
 
-var cmdBackfill = &commands.FullHandler{
-	Func: wrapCommand(fnBackfill),
-	Name: "backfill",
-	Help: commands.HelpMeta{
-		Section:     HelpSectionPortalManagement,
-		Description: "Backfill all messages the portal.",
-		Args:        "[_batch size_] [_batch delay_]",
-	},
-	RequiresPortal: true,
-}
-
-func fnBackfill(ce *WrappedCommandEvent) {
-	if !ce.Bridge.Config.Bridge.HistorySync.Backfill {
-		ce.Reply("Backfill is not enabled for this bridge.")
-		return
-	}
-	batchSize := 100
-	batchDelay := 5
-	if len(ce.Args) >= 1 {
-		var err error
-		batchSize, err = strconv.Atoi(ce.Args[0])
-		if err != nil || batchSize < 1 {
-			ce.Reply("\"%s\" isn't a valid batch size", ce.Args[0])
-			return
-		}
-	}
-	if len(ce.Args) >= 2 {
-		var err error
-		batchDelay, err = strconv.Atoi(ce.Args[0])
-		if err != nil || batchSize < 0 {
-			ce.Reply("\"%s\" isn't a valid batch delay", ce.Args[1])
-			return
-		}
-	}
-	backfillMessages := ce.Portal.bridge.DB.Backfill.NewWithValues(ce.User.MXID, database.BackfillImmediate, 0, &ce.Portal.Key, nil, batchSize, -1, batchDelay)
-	backfillMessages.Insert()
-
-	ce.User.BackfillQueue.ReCheck()
-}
-
 func matchesQuery(str string, query string) bool {
 	if query == "" {
 		return true
@@ -1018,23 +1012,37 @@ func fnOpen(ce *WrappedCommandEvent) {
 	} else {
 		jid = types.NewJID(ce.Args[0], types.GroupServer)
 	}
-	if jid.Server != types.GroupServer || (!strings.ContainsRune(jid.User, '-') && len(jid.User) < 15) {
+	if (jid.Server != types.GroupServer && jid.Server != types.NewsletterServer) || (!strings.ContainsRune(jid.User, '-') && len(jid.User) < 15) {
 		ce.Reply("That does not look like a group JID")
 		return
 	}
 
-	info, err := ce.User.Client.GetGroupInfo(jid)
-	if err != nil {
-		ce.Reply("Failed to get group info: %v", err)
-		return
+	var err error
+	var groupInfo *types.GroupInfo
+	var newsletterMetadata *types.NewsletterMetadata
+	switch jid.Server {
+	case types.GroupServer:
+		groupInfo, err = ce.User.Client.GetGroupInfo(jid)
+		if err != nil {
+			ce.Reply("Failed to get group info: %v", err)
+			return
+		}
+		jid = groupInfo.JID
+	case types.NewsletterServer:
+		newsletterMetadata, err = ce.User.Client.GetNewsletterInfo(jid)
+		if err != nil {
+			ce.Reply("Failed to get channel info: %v", err)
+			return
+		}
+		jid = newsletterMetadata.ID
 	}
 	ce.Log.Debugln("Importing", jid, "for", ce.User.MXID)
-	portal := ce.User.GetPortalByJID(info.JID)
+	portal := ce.User.GetPortalByJID(jid)
 	if len(portal.MXID) > 0 {
-		portal.UpdateMatrixRoom(ce.User, info)
+		portal.UpdateMatrixRoom(ce.User, groupInfo, newsletterMetadata)
 		ce.Reply("Portal room synced.")
 	} else {
-		err = portal.CreateMatrixRoom(ce.User, info, true, true)
+		err = portal.CreateMatrixRoom(ce.User, groupInfo, newsletterMetadata, true, true)
 		if err != nil {
 			ce.Reply("Failed to create room: %v", err)
 		} else {

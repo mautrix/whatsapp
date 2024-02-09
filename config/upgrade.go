@@ -19,16 +19,17 @@ package config
 import (
 	"strings"
 
+	up "go.mau.fi/util/configupgrade"
+	"go.mau.fi/util/random"
 	"maunium.net/go/mautrix/bridge/bridgeconfig"
-	"maunium.net/go/mautrix/util"
-	up "maunium.net/go/mautrix/util/configupgrade"
 )
 
 func DoUpgrade(helper *up.Helper) {
 	bridgeconfig.Upgrader.DoUpgrade(helper)
 
-	helper.Copy(up.Str|up.Null, "segment_key")
-	helper.Copy(up.Str|up.Null, "segment_user_id")
+	helper.Copy(up.Str|up.Null, "analytics", "host")
+	helper.Copy(up.Str|up.Null, "analytics", "token")
+	helper.Copy(up.Str|up.Null, "analytics", "user_id")
 
 	helper.Copy(up.Bool, "metrics", "enabled")
 	helper.Copy(up.Str, "metrics", "listen")
@@ -45,9 +46,7 @@ func DoUpgrade(helper *up.Helper) {
 	helper.Copy(up.Int, "bridge", "portal_message_buffer")
 	helper.Copy(up.Bool, "bridge", "call_start_notices")
 	helper.Copy(up.Bool, "bridge", "identity_change_notices")
-	helper.Copy(up.Bool, "bridge", "history_sync", "create_portals")
 	helper.Copy(up.Bool, "bridge", "history_sync", "backfill")
-	helper.Copy(up.Bool, "bridge", "history_sync", "double_puppet_backfill")
 	helper.Copy(up.Bool, "bridge", "history_sync", "request_full_sync")
 	helper.Copy(up.Int|up.Null, "bridge", "history_sync", "full_sync_config", "days_limit")
 	helper.Copy(up.Int|up.Null, "bridge", "history_sync", "full_sync_config", "size_mb_limit")
@@ -56,15 +55,14 @@ func DoUpgrade(helper *up.Helper) {
 	helper.Copy(up.Str, "bridge", "history_sync", "media_requests", "request_method")
 	helper.Copy(up.Int, "bridge", "history_sync", "media_requests", "request_local_time")
 	helper.Copy(up.Int, "bridge", "history_sync", "max_initial_conversations")
+	helper.Copy(up.Int, "bridge", "history_sync", "message_count")
 	helper.Copy(up.Int, "bridge", "history_sync", "unread_hours_threshold")
 	helper.Copy(up.Int, "bridge", "history_sync", "immediate", "worker_count")
 	helper.Copy(up.Int, "bridge", "history_sync", "immediate", "max_events")
 	helper.Copy(up.List, "bridge", "history_sync", "deferred")
 	helper.Copy(up.Bool, "bridge", "user_avatar_sync")
 	helper.Copy(up.Bool, "bridge", "bridge_matrix_leave")
-	helper.Copy(up.Bool, "bridge", "sync_with_custom_puppets")
 	helper.Copy(up.Bool, "bridge", "sync_direct_chat_list")
-	helper.Copy(up.Bool, "bridge", "default_bridge_receipts")
 	helper.Copy(up.Bool, "bridge", "default_bridge_presence")
 	helper.Copy(up.Bool, "bridge", "send_presence_on_typing")
 	helper.Copy(up.Bool, "bridge", "force_active_delivery_receipts")
@@ -105,6 +103,7 @@ func DoUpgrade(helper *up.Helper) {
 	helper.Copy(up.Bool, "bridge", "crash_on_stream_replaced")
 	helper.Copy(up.Bool, "bridge", "url_previews")
 	helper.Copy(up.Bool, "bridge", "caption_in_message")
+	helper.Copy(up.Bool, "bridge", "beeper_galleries")
 	if intPolls, ok := helper.Get(up.Int, "bridge", "extev_polls"); ok {
 		val := "false"
 		if intPolls != "0" {
@@ -135,6 +134,7 @@ func DoUpgrade(helper *up.Helper) {
 	helper.Copy(up.Bool, "bridge", "encryption", "delete_keys", "delete_prev_on_new_session")
 	helper.Copy(up.Bool, "bridge", "encryption", "delete_keys", "delete_on_device_delete")
 	helper.Copy(up.Bool, "bridge", "encryption", "delete_keys", "periodically_delete_expired")
+	helper.Copy(up.Bool, "bridge", "encryption", "delete_keys", "delete_outdated_inbound")
 	helper.Copy(up.Str, "bridge", "encryption", "verification_levels", "receive")
 	helper.Copy(up.Str, "bridge", "encryption", "verification_levels", "send")
 	helper.Copy(up.Str, "bridge", "encryption", "verification_levels", "share")
@@ -160,10 +160,11 @@ func DoUpgrade(helper *up.Helper) {
 	} else {
 		helper.Copy(up.Str, "bridge", "provisioning", "prefix")
 	}
+	helper.Copy(up.Bool, "bridge", "provisioning", "debug_endpoints")
 	if secret, ok := helper.Get(up.Str, "appservice", "provisioning", "shared_secret"); ok && secret != "generate" {
 		helper.Set(up.Str, secret, "bridge", "provisioning", "shared_secret")
 	} else if secret, ok = helper.Get(up.Str, "bridge", "provisioning", "shared_secret"); !ok || secret == "generate" {
-		sharedSecret := util.RandomString(64)
+		sharedSecret := random.String(64)
 		helper.Set(up.Str, sharedSecret, "bridge", "provisioning", "shared_secret")
 	} else {
 		helper.Copy(up.Str, "bridge", "provisioning", "shared_secret")
@@ -181,7 +182,7 @@ var SpacedBlocks = [][]string{
 	{"appservice", "database"},
 	{"appservice", "id"},
 	{"appservice", "as_token"},
-	{"segment_key"},
+	{"analytics"},
 	{"metrics"},
 	{"whatsapp"},
 	{"bridge"},
