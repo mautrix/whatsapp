@@ -684,6 +684,7 @@ func (prov *ProvisioningAPI) Login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	qrChan, err := user.Login(ctx)
+	expiryTime := time.Now().Add(160 * time.Second)
 	if err != nil {
 		user.log.Errorln("Failed to log in from provisioning API:", err)
 		if errors.Is(err, ErrAlreadyLoggedIn) {
@@ -699,6 +700,25 @@ func (prov *ProvisioningAPI) Login(w http.ResponseWriter, r *http.Request) {
 			})
 		}
 	}
+	phoneNum := r.URL.Query().Get("phone_number")
+	if phoneNum != "" {
+		pairingCode, err := user.Client.PairPhone(phoneNum, true, whatsmeow.PairClientChrome, "Chrome (Linux)")
+		if err != nil {
+			user.zlog.Err(err).Msg("Failed to start phone code login")
+			_ = c.WriteJSON(Error{
+				Error:   "Failed to request pairing code",
+				ErrCode: "code error",
+			})
+			go user.DeleteConnection()
+			return
+		} else {
+			_ = c.WriteJSON(map[string]any{
+				"pairing_code": pairingCode,
+				"timeout":      int(time.Until(expiryTime).Seconds()),
+			})
+		}
+	}
+
 	user.log.Debugln("Started login via provisioning API")
 	Analytics.Track(user.MXID, "$login_start")
 
