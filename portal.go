@@ -1097,10 +1097,6 @@ func (portal *Portal) getMessageIntent(user *User, info *types.MessageInfo, msgT
 		return nil
 	}
 	intent := puppet.IntentFor(portal)
-	if !intent.IsCustomPuppet && portal.IsPrivateChat() && info.Sender.User == portal.Key.Receiver.User && portal.Key.Receiver != portal.Key.JID {
-		portal.log.Debugfln("Not handling %s (%s): user doesn't have double puppeting enabled", info.ID, msgType)
-		return nil
-	}
 	return intent
 }
 
