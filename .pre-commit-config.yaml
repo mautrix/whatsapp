@@ -15,6 +15,6 @@ repos:
       - id: go-vet-repo-mod
 
   - repo: https://github.com/beeper/pre-commit-go
-    rev: v0.2.2
+    rev: v0.3.1
     hooks:
       - id: zerolog-ban-msgf

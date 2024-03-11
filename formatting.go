@@ -17,12 +17,14 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"html"
 	"regexp"
 	"sort"
 	"strings"
 
+	"github.com/rs/zerolog"
 	"go.mau.fi/whatsmeow/types"
 	"golang.org/x/exp/slices"
 	"maunium.net/go/mautrix/event"
@@ -104,22 +106,27 @@ func NewFormatter(bridge *WABridge) *Formatter {
 	return formatter
 }
 
-func (formatter *Formatter) getMatrixInfoByJID(roomID id.RoomID, jid types.JID) (mxid id.UserID, displayname string) {
+func (formatter *Formatter) getMatrixInfoByJID(ctx context.Context, roomID id.RoomID, jid types.JID) (mxid id.UserID, displayname string) {
 	if puppet := formatter.bridge.GetPuppetByJID(jid); puppet != nil {
 		mxid = puppet.MXID
 		displayname = puppet.Displayname
 	}
 	if user := formatter.bridge.GetUserByJID(jid); user != nil {
 		mxid = user.MXID
-		member := formatter.bridge.StateStore.GetMember(roomID, user.MXID)
-		if len(member.Displayname) > 0 {
+		member, err := formatter.bridge.StateStore.GetMember(ctx, roomID, user.MXID)
+		if err != nil {
+			zerolog.Ctx(ctx).Err(err).
+				Stringer("room_id", roomID).
+				Stringer("user_id", user.MXID).
+				Msg("Failed to get member profile from state store")
+		} else if len(member.Displayname) > 0 {
 			displayname = member.Displayname
 		}
 	}
 	return
 }
 
-func (formatter *Formatter) ParseWhatsApp(roomID id.RoomID, content *event.MessageEventContent, mentionedJIDs []string, allowInlineURL, forceHTML bool) {
+func (formatter *Formatter) ParseWhatsApp(ctx context.Context, roomID id.RoomID, content *event.MessageEventContent, mentionedJIDs []string, allowInlineURL, forceHTML bool) {
 	output := html.EscapeString(content.Body)
 	for regex, replacement := range formatter.waReplString {
 		output = regex.ReplaceAllString(output, replacement)
@@ -145,7 +152,7 @@ func (formatter *Formatter) ParseWhatsApp(roomID id.RoomID, content *event.Messa
 			// TODO lid support?
 			continue
 		}
-		mxid, displayname := formatter.getMatrixInfoByJID(roomID, jid)
+		mxid, displayname := formatter.getMatrixInfoByJID(ctx, roomID, jid)
 		number := "@" + jid.User
 		output = strings.ReplaceAll(output, number, fmt.Sprintf(`<a href="https://matrix.to/#/%s">%s</a>`, mxid, displayname))
 		content.Body = strings.ReplaceAll(content.Body, number, displayname)

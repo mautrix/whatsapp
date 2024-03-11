@@ -17,6 +17,9 @@
 package main
 
 import (
+	"context"
+	"fmt"
+
 	"maunium.net/go/mautrix/id"
 )
 
@@ -24,8 +27,11 @@ func (puppet *Puppet) SwitchCustomMXID(accessToken string, mxid id.UserID) error
 	puppet.CustomMXID = mxid
 	puppet.AccessToken = accessToken
 	puppet.EnablePresence = puppet.bridge.Config.Bridge.DefaultBridgePresence
-	puppet.Update()
-	err := puppet.StartCustomMXID(false)
+	err := puppet.Update(context.TODO())
+	if err != nil {
+		return fmt.Errorf("failed to save access token: %w", err)
+	}
+	err = puppet.StartCustomMXID(false)
 	if err != nil {
 		return err
 	}
@@ -45,12 +51,15 @@ func (puppet *Puppet) ClearCustomMXID() {
 	puppet.customIntent = nil
 	puppet.customUser = nil
 	if save {
-		puppet.Update()
+		err := puppet.Update(context.TODO())
+		if err != nil {
+			puppet.zlog.Err(err).Msg("Failed to clear custom MXID")
+		}
 	}
 }
 
 func (puppet *Puppet) StartCustomMXID(reloginOnFail bool) error {
-	newIntent, newAccessToken, err := puppet.bridge.DoublePuppet.Setup(puppet.CustomMXID, puppet.AccessToken, reloginOnFail)
+	newIntent, newAccessToken, err := puppet.bridge.DoublePuppet.Setup(context.TODO(), puppet.CustomMXID, puppet.AccessToken, reloginOnFail)
 	if err != nil {
 		puppet.ClearCustomMXID()
 		return err
@@ -60,11 +69,11 @@ func (puppet *Puppet) StartCustomMXID(reloginOnFail bool) error {
 	puppet.bridge.puppetsLock.Unlock()
 	if puppet.AccessToken != newAccessToken {
 		puppet.AccessToken = newAccessToken
-		puppet.Update()
+		err = puppet.Update(context.TODO())
 	}
 	puppet.customIntent = newIntent
 	puppet.customUser = puppet.bridge.GetUserByMXID(puppet.CustomMXID)
-	return nil
+	return err
 }
 
 func (user *User) tryAutomaticDoublePuppeting() {

@@ -1,5 +1,5 @@
 // mautrix-whatsapp - A Matrix-WhatsApp puppeting bridge.
-// Copyright (C) 2022 Tulir Asokan, Sumner Evans
+// Copyright (C) 2024 Tulir Asokan, Sumner Evans
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as published by
@@ -17,14 +17,12 @@
 package database
 
 import (
-	"database/sql"
-	"errors"
+	"context"
 
 	_ "github.com/mattn/go-sqlite3"
-	"go.mau.fi/util/dbutil"
-	log "maunium.net/go/maulogger/v2"
-
 	"maunium.net/go/mautrix/id"
+
+	"go.mau.fi/util/dbutil"
 )
 
 type MediaBackfillRequestStatus int
@@ -36,34 +34,46 @@ const (
 )
 
 type MediaBackfillRequestQuery struct {
-	db  *Database
-	log log.Logger
+	*dbutil.QueryHelper[*MediaBackfillRequest]
 }
 
-type MediaBackfillRequest struct {
-	db  *Database
-	log log.Logger
+const (
+	getAllMediaBackfillRequestsForUserQuery = `
+		SELECT user_mxid, portal_jid, portal_receiver, event_id, media_key, status, error
+		FROM media_backfill_requests
+		WHERE user_mxid=$1
+			AND status=0
+	`
+	deleteAllMediaBackfillRequestsForUserQuery = "DELETE FROM media_backfill_requests WHERE user_mxid=$1"
+	upsertMediaBackfillRequestQuery            = `
+		INSERT INTO media_backfill_requests (user_mxid, portal_jid, portal_receiver, event_id, media_key, status, error)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
+		ON CONFLICT (user_mxid, portal_jid, portal_receiver, event_id)
+		DO UPDATE SET
+			media_key=excluded.media_key,
+			status=excluded.status,
+			error=excluded.error
+	`
+)
 
-	UserID    id.UserID
-	PortalKey *PortalKey
-	EventID   id.EventID
-	MediaKey  []byte
-	Status    MediaBackfillRequestStatus
-	Error     string
+func (mbrq *MediaBackfillRequestQuery) GetMediaBackfillRequestsForUser(ctx context.Context, userID id.UserID) ([]*MediaBackfillRequest, error) {
+	return mbrq.QueryMany(ctx, getAllMediaBackfillRequestsForUserQuery, userID)
 }
 
-func (mbrq *MediaBackfillRequestQuery) newMediaBackfillRequest() *MediaBackfillRequest {
+func (mbrq *MediaBackfillRequestQuery) DeleteAllMediaBackfillRequests(ctx context.Context, userID id.UserID) error {
+	return mbrq.Exec(ctx, deleteAllMediaBackfillRequestsForUserQuery, userID)
+}
+
+func newMediaBackfillRequest(qh *dbutil.QueryHelper[*MediaBackfillRequest]) *MediaBackfillRequest {
 	return &MediaBackfillRequest{
-		db:        mbrq.db,
-		log:       mbrq.log,
-		PortalKey: &PortalKey{},
+		qh: qh,
 	}
 }
 
-func (mbrq *MediaBackfillRequestQuery) NewMediaBackfillRequestWithValues(userID id.UserID, portalKey *PortalKey, eventID id.EventID, mediaKey []byte) *MediaBackfillRequest {
+func (mbrq *MediaBackfillRequestQuery) NewMediaBackfillRequestWithValues(userID id.UserID, portalKey PortalKey, eventID id.EventID, mediaKey []byte) *MediaBackfillRequest {
 	return &MediaBackfillRequest{
-		db:        mbrq.db,
-		log:       mbrq.log,
+		qh: mbrq.QueryHelper,
+
 		UserID:    userID,
 		PortalKey: portalKey,
 		EventID:   eventID,
@@ -72,62 +82,25 @@ func (mbrq *MediaBackfillRequestQuery) NewMediaBackfillRequestWithValues(userID 
 	}
 }
 
-const (
-	getMediaBackfillRequestsForUser = `
-		SELECT user_mxid, portal_jid, portal_receiver, event_id, media_key, status, error
-		FROM media_backfill_requests
-		WHERE user_mxid=$1
-			AND status=0
-	`
-)
+type MediaBackfillRequest struct {
+	qh *dbutil.QueryHelper[*MediaBackfillRequest]
 
-func (mbr *MediaBackfillRequest) Upsert() {
-	_, err := mbr.db.Exec(`
-		INSERT INTO media_backfill_requests (user_mxid, portal_jid, portal_receiver, event_id, media_key, status, error)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)
-		ON CONFLICT (user_mxid, portal_jid, portal_receiver, event_id)
-		DO UPDATE SET
-			media_key=EXCLUDED.media_key,
-			status=EXCLUDED.status,
-			error=EXCLUDED.error`,
-		mbr.UserID,
-		mbr.PortalKey.JID.String(),
-		mbr.PortalKey.Receiver.String(),
-		mbr.EventID,
-		mbr.MediaKey,
-		mbr.Status,
-		mbr.Error)
-	if err != nil {
-		mbr.log.Warnfln("Failed to insert media backfill request %s/%s/%s: %v", mbr.UserID, mbr.PortalKey.String(), mbr.EventID, err)
-	}
+	UserID    id.UserID
+	PortalKey PortalKey
+	EventID   id.EventID
+	MediaKey  []byte
+	Status    MediaBackfillRequestStatus
+	Error     string
 }
 
-func (mbr *MediaBackfillRequest) Scan(row dbutil.Scannable) *MediaBackfillRequest {
-	err := row.Scan(&mbr.UserID, &mbr.PortalKey.JID, &mbr.PortalKey.Receiver, &mbr.EventID, &mbr.MediaKey, &mbr.Status, &mbr.Error)
-	if err != nil {
-		if !errors.Is(err, sql.ErrNoRows) {
-			mbr.log.Errorln("Database scan failed:", err)
-		}
-		return nil
-	}
-	return mbr
+func (mbr *MediaBackfillRequest) Scan(row dbutil.Scannable) (*MediaBackfillRequest, error) {
+	return dbutil.ValueOrErr(mbr, row.Scan(&mbr.UserID, &mbr.PortalKey.JID, &mbr.PortalKey.Receiver, &mbr.EventID, &mbr.MediaKey, &mbr.Status, &mbr.Error))
 }
 
-func (mbrq *MediaBackfillRequestQuery) GetMediaBackfillRequestsForUser(userID id.UserID) (requests []*MediaBackfillRequest) {
-	rows, err := mbrq.db.Query(getMediaBackfillRequestsForUser, userID)
-	defer rows.Close()
-	if err != nil || rows == nil {
-		return nil
-	}
-	for rows.Next() {
-		requests = append(requests, mbrq.newMediaBackfillRequest().Scan(rows))
-	}
-	return
+func (mbr *MediaBackfillRequest) sqlVariables() []any {
+	return []any{mbr.UserID, mbr.PortalKey.JID, mbr.PortalKey.Receiver, mbr.EventID, mbr.MediaKey, mbr.Status, mbr.Error}
 }
 
-func (mbrq *MediaBackfillRequestQuery) DeleteAllMediaBackfillRequests(userID id.UserID) {
-	_, err := mbrq.db.Exec("DELETE FROM media_backfill_requests WHERE user_mxid=$1", userID)
-	if err != nil {
-		mbrq.log.Warnfln("Failed to delete media backfill requests for %s: %v", userID, err)
-	}
+func (mbr *MediaBackfillRequest) Upsert(ctx context.Context) error {
+	return mbr.qh.Exec(ctx, upsertMediaBackfillRequestQuery, mbr.sqlVariables()...)
 }

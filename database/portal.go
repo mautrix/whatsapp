@@ -1,5 +1,5 @@
 // mautrix-whatsapp - A Matrix-WhatsApp puppeting bridge.
-// Copyright (C) 2021 Tulir Asokan
+// Copyright (C) 2024 Tulir Asokan
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as published by
@@ -17,15 +17,14 @@
 package database
 
 import (
+	"context"
 	"database/sql"
-	"fmt"
 	"time"
 
-	"go.mau.fi/util/dbutil"
 	"go.mau.fi/whatsmeow/types"
-	log "maunium.net/go/maulogger/v2"
-
 	"maunium.net/go/mautrix/id"
+
+	"go.mau.fi/util/dbutil"
 )
 
 type PortalKey struct {
@@ -53,90 +52,89 @@ func (key PortalKey) String() string {
 }
 
 type PortalQuery struct {
-	db  *Database
-	log log.Logger
+	*dbutil.QueryHelper[*Portal]
 }
 
-func (pq *PortalQuery) New() *Portal {
+func newPortal(qh *dbutil.QueryHelper[*Portal]) *Portal {
 	return &Portal{
-		db:  pq.db,
-		log: pq.log,
+		qh: qh,
 	}
 }
 
-const portalColumns = "jid, receiver, mxid, name, name_set, topic, topic_set, avatar, avatar_url, avatar_set, encrypted, last_sync, is_parent, parent_group, in_space, first_event_id, next_batch_id, relay_user_id, expiration_time"
-
-func (pq *PortalQuery) GetAll() []*Portal {
-	return pq.getAll(fmt.Sprintf("SELECT %s FROM portal", portalColumns))
-}
-
-func (pq *PortalQuery) GetByJID(key PortalKey) *Portal {
-	return pq.get(fmt.Sprintf("SELECT %s FROM portal WHERE jid=$1 AND receiver=$2", portalColumns), key.JID, key.Receiver)
-}
-
-func (pq *PortalQuery) GetByMXID(mxid id.RoomID) *Portal {
-	return pq.get(fmt.Sprintf("SELECT %s FROM portal WHERE mxid=$1", portalColumns), mxid)
-}
-
-func (pq *PortalQuery) GetAllByJID(jid types.JID) []*Portal {
-	return pq.getAll(fmt.Sprintf("SELECT %s FROM portal WHERE jid=$1", portalColumns), jid.ToNonAD())
-}
-
-func (pq *PortalQuery) GetAllByParentGroup(jid types.JID) []*Portal {
-	return pq.getAll(fmt.Sprintf("SELECT %s FROM portal WHERE parent_group=$1", portalColumns), jid)
-}
-
-func (pq *PortalQuery) FindPrivateChats(receiver types.JID) []*Portal {
-	return pq.getAll(fmt.Sprintf("SELECT %s FROM portal WHERE receiver=$1 AND jid LIKE '%%@s.whatsapp.net'", portalColumns), receiver.ToNonAD())
-}
-
-func (pq *PortalQuery) FindPrivateChatsNotInSpace(receiver types.JID) (keys []PortalKey) {
-	receiver = receiver.ToNonAD()
-	rows, err := pq.db.Query(`
+const (
+	getAllPortalsQuery = `
+		SELECT jid, receiver, mxid, name, name_set, topic, topic_set, avatar, avatar_url, avatar_set,
+		       encrypted, last_sync, is_parent, parent_group, in_space,
+		       first_event_id, next_batch_id, relay_user_id, expiration_time
+		FROM portal
+	`
+	getPortalByJIDQuery                   = getAllPortalsQuery + " WHERE jid=$1 AND receiver=$2"
+	getPortalByMXIDQuery                  = getAllPortalsQuery + " WHERE mxid=$1"
+	getPrivateChatsWithQuery              = getAllPortalsQuery + " WHERE jid=$1"
+	getPrivateChatsOfQuery                = getAllPortalsQuery + " WHERE receiver=$1"
+	getAllPortalsByParentGroupQuery       = getAllPortalsQuery + " WHERE parent_group=$1"
+	findPrivateChatPortalsNotInSpaceQuery = `
 		SELECT jid FROM portal
 		    LEFT JOIN user_portal ON portal.jid=user_portal.portal_jid AND portal.receiver=user_portal.portal_receiver
 		WHERE mxid<>'' AND receiver=$1 AND (user_portal.in_space=false OR user_portal.in_space IS NULL)
-	`, receiver)
-	if err != nil {
-		pq.log.Errorfln("Failed to find private chats not in space for %s: %v", receiver, err)
-		return
-	} else if rows == nil {
-		return
-	}
-	for rows.Next() {
-		var key PortalKey
+	`
+
+	insertPortalQuery = `
+		INSERT INTO portal (
+			jid, receiver, mxid, name, name_set, topic, topic_set, avatar, avatar_url, avatar_set,
+			encrypted, last_sync, is_parent, parent_group, in_space,
+			first_event_id, next_batch_id, relay_user_id, expiration_time
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
+	`
+	updatePortalQuery = `
+		UPDATE portal
+		SET mxid=$3, name=$4, name_set=$5, topic=$6, topic_set=$7, avatar=$8, avatar_url=$9, avatar_set=$10,
+		    encrypted=$11, last_sync=$12, is_parent=$13, parent_group=$14, in_space=$15,
+		    first_event_id=$16, next_batch_id=$17, relay_user_id=$18, expiration_time=$19
+		WHERE jid=$1 AND receiver=$2
+	`
+	clearPortalInSpaceQuery = "UPDATE portal SET in_space=false WHERE parent_group=$1"
+	deletePortalQuery       = "DELETE FROM portal WHERE jid=$1 AND receiver=$2"
+)
+
+func (pq *PortalQuery) GetAll(ctx context.Context) ([]*Portal, error) {
+	return pq.QueryMany(ctx, getAllPortalsQuery)
+}
+
+func (pq *PortalQuery) GetByJID(ctx context.Context, key PortalKey) (*Portal, error) {
+	return pq.QueryOne(ctx, getPortalByJIDQuery, key.JID, key.Receiver)
+}
+
+func (pq *PortalQuery) GetByMXID(ctx context.Context, mxid id.RoomID) (*Portal, error) {
+	return pq.QueryOne(ctx, getPortalByMXIDQuery, mxid)
+}
+
+func (pq *PortalQuery) GetAllByJID(ctx context.Context, jid types.JID) ([]*Portal, error) {
+	return pq.QueryMany(ctx, getPrivateChatsWithQuery, jid.ToNonAD())
+}
+
+func (pq *PortalQuery) FindPrivateChats(ctx context.Context, receiver types.JID) ([]*Portal, error) {
+	return pq.QueryMany(ctx, getPrivateChatsOfQuery, receiver.ToNonAD())
+}
+
+func (pq *PortalQuery) GetAllByParentGroup(ctx context.Context, jid types.JID) ([]*Portal, error) {
+	return pq.QueryMany(ctx, getAllPortalsByParentGroupQuery, jid)
+}
+
+func (pq *PortalQuery) FindPrivateChatsNotInSpace(ctx context.Context, receiver types.JID) (keys []PortalKey, err error) {
+	receiver = receiver.ToNonAD()
+	scanFn := func(rows dbutil.Scannable) (key PortalKey, err error) {
 		key.Receiver = receiver
 		err = rows.Scan(&key.JID)
-		if err == nil {
-			keys = append(keys, key)
-		}
+		return
 	}
-	return
-}
-
-func (pq *PortalQuery) getAll(query string, args ...interface{}) (portals []*Portal) {
-	rows, err := pq.db.Query(query, args...)
-	if err != nil || rows == nil {
-		return nil
-	}
-	defer rows.Close()
-	for rows.Next() {
-		portals = append(portals, pq.New().Scan(rows))
-	}
-	return
-}
-
-func (pq *PortalQuery) get(query string, args ...interface{}) *Portal {
-	row := pq.db.QueryRow(query, args...)
-	if row == nil {
-		return nil
-	}
-	return pq.New().Scan(row)
+	return dbutil.ConvertRowFn[PortalKey](scanFn).
+		NewRowIter(pq.GetDB().Query(ctx, findPrivateChatPortalsNotInSpaceQuery, receiver)).
+		AsList()
 }
 
 type Portal struct {
-	db  *Database
-	log log.Logger
+	qh *dbutil.QueryHelper[*Portal]
 
 	Key  PortalKey
 	MXID id.RoomID
@@ -161,15 +159,17 @@ type Portal struct {
 	ExpirationTime uint32
 }
 
-func (portal *Portal) Scan(row dbutil.Scannable) *Portal {
+func (portal *Portal) Scan(row dbutil.Scannable) (*Portal, error) {
 	var mxid, avatarURL, firstEventID, nextBatchID, relayUserID, parentGroupJID sql.NullString
 	var lastSyncTs int64
-	err := row.Scan(&portal.Key.JID, &portal.Key.Receiver, &mxid, &portal.Name, &portal.NameSet, &portal.Topic, &portal.TopicSet, &portal.Avatar, &avatarURL, &portal.AvatarSet, &portal.Encrypted, &lastSyncTs, &portal.IsParent, &parentGroupJID, &portal.InSpace, &firstEventID, &nextBatchID, &relayUserID, &portal.ExpirationTime)
+	err := row.Scan(
+		&portal.Key.JID, &portal.Key.Receiver, &mxid, &portal.Name, &portal.NameSet,
+		&portal.Topic, &portal.TopicSet, &portal.Avatar, &avatarURL, &portal.AvatarSet, &portal.Encrypted,
+		&lastSyncTs, &portal.IsParent, &parentGroupJID, &portal.InSpace,
+		&firstEventID, &nextBatchID, &relayUserID, &portal.ExpirationTime,
+	)
 	if err != nil {
-		if err != sql.ErrNoRows {
-			portal.log.Errorln("Database scan failed:", err)
-		}
-		return nil
+		return nil, err
 	}
 	if lastSyncTs > 0 {
 		portal.LastSync = time.Unix(lastSyncTs, 0)
@@ -182,96 +182,36 @@ func (portal *Portal) Scan(row dbutil.Scannable) *Portal {
 	portal.FirstEventID = id.EventID(firstEventID.String)
 	portal.NextBatchID = id.BatchID(nextBatchID.String)
 	portal.RelayUserID = id.UserID(relayUserID.String)
-	return portal
+	return portal, nil
 }
 
-func (portal *Portal) mxidPtr() *id.RoomID {
-	if len(portal.MXID) > 0 {
-		return &portal.MXID
+func (portal *Portal) sqlVariables() []any {
+	var lastSyncTS int64
+	if !portal.LastSync.IsZero() {
+		lastSyncTS = portal.LastSync.Unix()
 	}
-	return nil
-}
-
-func (portal *Portal) relayUserPtr() *id.UserID {
-	if len(portal.RelayUserID) > 0 {
-		return &portal.RelayUserID
-	}
-	return nil
-}
-
-func (portal *Portal) parentGroupPtr() *string {
-	if !portal.ParentGroup.IsEmpty() {
-		val := portal.ParentGroup.String()
-		return &val
-	}
-	return nil
-}
-
-func (portal *Portal) lastSyncTs() int64 {
-	if portal.LastSync.IsZero() {
-		return 0
-	}
-	return portal.LastSync.Unix()
-}
-
-func (portal *Portal) Insert() {
-	_, err := portal.db.Exec(`
-		INSERT INTO portal (jid, receiver, mxid, name, name_set, topic, topic_set, avatar, avatar_url, avatar_set,
-		                    encrypted, last_sync, is_parent, parent_group, in_space, first_event_id, next_batch_id,
-		                    relay_user_id, expiration_time)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
-	`,
-		portal.Key.JID, portal.Key.Receiver, portal.mxidPtr(), portal.Name, portal.NameSet, portal.Topic, portal.TopicSet,
-		portal.Avatar, portal.AvatarURL.String(), portal.AvatarSet, portal.Encrypted, portal.lastSyncTs(),
-		portal.IsParent, portal.parentGroupPtr(), portal.InSpace, portal.FirstEventID.String(), portal.NextBatchID.String(),
-		portal.relayUserPtr(), portal.ExpirationTime)
-	if err != nil {
-		portal.log.Warnfln("Failed to insert %s: %v", portal.Key, err)
+	return []any{
+		portal.Key.JID, portal.Key.Receiver, dbutil.StrPtr(portal.MXID), portal.Name, portal.NameSet,
+		portal.Topic, portal.TopicSet, portal.Avatar, portal.AvatarURL.String(), portal.AvatarSet, portal.Encrypted,
+		lastSyncTS, portal.IsParent, dbutil.StrPtr(portal.ParentGroup.String()), portal.InSpace,
+		portal.FirstEventID.String(), portal.NextBatchID.String(), dbutil.StrPtr(portal.RelayUserID), portal.ExpirationTime,
 	}
 }
 
-func (portal *Portal) Update(txn dbutil.Execable) {
-	if txn == nil {
-		txn = portal.db
-	}
-	_, err := txn.Exec(`
-		UPDATE portal
-		SET mxid=$1, name=$2, name_set=$3, topic=$4, topic_set=$5, avatar=$6, avatar_url=$7, avatar_set=$8,
-		    encrypted=$9, last_sync=$10, is_parent=$11, parent_group=$12, in_space=$13,
-		    first_event_id=$14, next_batch_id=$15, relay_user_id=$16, expiration_time=$17
-		WHERE jid=$18 AND receiver=$19
-	`, portal.mxidPtr(), portal.Name, portal.NameSet, portal.Topic, portal.TopicSet, portal.Avatar, portal.AvatarURL.String(),
-		portal.AvatarSet, portal.Encrypted, portal.lastSyncTs(), portal.IsParent, portal.parentGroupPtr(), portal.InSpace,
-		portal.FirstEventID.String(), portal.NextBatchID.String(), portal.relayUserPtr(), portal.ExpirationTime,
-		portal.Key.JID, portal.Key.Receiver)
-	if err != nil {
-		portal.log.Warnfln("Failed to update %s: %v", portal.Key, err)
-	}
+func (portal *Portal) Insert(ctx context.Context) error {
+	return portal.qh.Exec(ctx, insertPortalQuery, portal.sqlVariables()...)
 }
 
-func (portal *Portal) Delete() {
-	txn, err := portal.db.Begin()
-	if err != nil {
-		portal.log.Errorfln("Failed to begin transaction to delete portal %v: %v", portal.Key, err)
-		return
-	}
-	defer func() {
+func (portal *Portal) Update(ctx context.Context) error {
+	return portal.qh.Exec(ctx, updatePortalQuery, portal.sqlVariables()...)
+}
+
+func (portal *Portal) Delete(ctx context.Context) error {
+	return portal.qh.GetDB().DoTxn(ctx, nil, func(ctx context.Context) error {
+		err := portal.qh.Exec(ctx, clearPortalInSpaceQuery, portal.Key.JID)
 		if err != nil {
-			err = txn.Rollback()
-			if err != nil {
-				portal.log.Warnfln("Failed to rollback failed portal delete transaction: %v", err)
-			}
-		} else if err = txn.Commit(); err != nil {
-			portal.log.Warnfln("Failed to commit portal delete transaction: %v", err)
+			return err
 		}
-	}()
-	_, err = txn.Exec("UPDATE portal SET in_space=false WHERE parent_group=$1", portal.Key.JID)
-	if err != nil {
-		portal.log.Warnfln("Failed to mark child groups of %v as not in space: %v", portal.Key.JID, err)
-		return
-	}
-	_, err = txn.Exec("DELETE FROM portal WHERE jid=$1 AND receiver=$2", portal.Key.JID, portal.Key.Receiver)
-	if err != nil {
-		portal.log.Warnfln("Failed to delete %v: %v", portal.Key, err)
-	}
+		return portal.qh.Exec(ctx, deletePortalQuery, portal.Key.JID, portal.Key.Receiver)
+	})
 }

@@ -22,7 +22,7 @@ import (
 	"fmt"
 	"net/http"
 
-	log "maunium.net/go/maulogger/v2"
+	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/id"
 )
 
@@ -30,7 +30,7 @@ type AnalyticsClient struct {
 	url    string
 	key    string
 	userID string
-	log    log.Logger
+	log    zerolog.Logger
 	client http.Client
 }
 
@@ -88,9 +88,9 @@ func (sc *AnalyticsClient) Track(userID id.UserID, event string, properties ...m
 		props["bridge"] = "whatsapp"
 		err := sc.trackSync(userID, event, props)
 		if err != nil {
-			sc.log.Errorfln("Error tracking %s: %v", event, err)
+			sc.log.Err(err).Str("event", event).Msg("Error tracking event")
 		} else {
-			sc.log.Debugln("Tracked", event)
+			sc.log.Debug().Str("event", event).Msg("Tracked event")
 		}
 	}()
 }

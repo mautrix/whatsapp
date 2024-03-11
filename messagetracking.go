@@ -1,5 +1,5 @@
 // mautrix-whatsapp - A Matrix-WhatsApp puppeting bridge.
-// Copyright (C) 2022 Tulir Asokan
+// Copyright (C) 2024 Tulir Asokan
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as published by
@@ -23,7 +23,7 @@ import (
 	"sync"
 	"time"
 
-	log "maunium.net/go/maulogger/v2"
+	"github.com/rs/zerolog"
 
 	"go.mau.fi/whatsmeow"
 
@@ -123,13 +123,28 @@ func errorToStatusReason(err error) (reason event.MessageStatusReason, status ev
 	}
 }
 
-func (portal *Portal) sendErrorMessage(evt *event.Event, err error, msgType string, confirmed bool, editID id.EventID) id.EventID {
+func (portal *Portal) sendErrorMessage(ctx context.Context, evt *event.Event, err error, confirmed bool, editID id.EventID) id.EventID {
 	if !portal.bridge.Config.Bridge.MessageErrorNotices {
 		return ""
 	}
 	certainty := "may not have been"
 	if confirmed {
 		certainty = "was not"
+	}
+	var msgType string
+	switch evt.Type {
+	case event.EventMessage:
+		msgType = "message"
+	case event.EventReaction:
+		msgType = "reaction"
+	case event.EventRedaction:
+		msgType = "redaction"
+	case TypeMSC3381PollResponse, TypeMSC3381V2PollResponse:
+		msgType = "poll response"
+	case TypeMSC3381PollStart:
+		msgType = "poll start"
+	default:
+		msgType = "unknown event"
 	}
 	msg := fmt.Sprintf("\u26a0 Your %s %s bridged: %v", msgType, certainty, err)
 	if errors.Is(err, errMessageTakingLong) {
@@ -144,15 +159,15 @@ func (portal *Portal) sendErrorMessage(evt *event.Event, err error, msgType stri
 	} else {
 		content.SetReply(evt)
 	}
-	resp, err := portal.sendMainIntentMessage(content)
+	resp, err := portal.sendMainIntentMessage(ctx, content)
 	if err != nil {
-		portal.log.Warnfln("Failed to send bridging error message:", err)
+		zerolog.Ctx(ctx).Err(err).Msg("Failed to send bridging error message")
 		return ""
 	}
 	return resp.EventID
 }
 
-func (portal *Portal) sendStatusEvent(evtID, lastRetry id.EventID, err error, deliveredTo *[]id.UserID) {
+func (portal *Portal) sendStatusEvent(ctx context.Context, evtID, lastRetry id.EventID, err error, deliveredTo *[]id.UserID) {
 	if !portal.bridge.Config.Bridge.MessageStatusEvents {
 		return
 	}
@@ -179,75 +194,56 @@ func (portal *Portal) sendStatusEvent(evtID, lastRetry id.EventID, err error, de
 		content.Reason, content.Status, _, _, content.Message = errorToStatusReason(err)
 		content.Error = err.Error()
 	}
-	_, err = intent.SendMessageEvent(portal.MXID, event.BeeperMessageStatus, &content)
+	_, err = intent.SendMessageEvent(ctx, portal.MXID, event.BeeperMessageStatus, &content)
 	if err != nil {
-		portal.log.Warnln("Failed to send message status event:", err)
+		zerolog.Ctx(ctx).Err(err).Msg("Failed to send message status event")
 	}
 }
 
-func (portal *Portal) sendDeliveryReceipt(eventID id.EventID) {
+func (portal *Portal) sendDeliveryReceipt(ctx context.Context, eventID id.EventID) {
 	if portal.bridge.Config.Bridge.DeliveryReceipts {
-		err := portal.bridge.Bot.SendReceipt(portal.MXID, eventID, event.ReceiptTypeRead, nil)
+		err := portal.bridge.Bot.SendReceipt(ctx, portal.MXID, eventID, event.ReceiptTypeRead, nil)
 		if err != nil {
-			portal.log.Debugfln("Failed to send delivery receipt for %s: %v", eventID, err)
+			zerolog.Ctx(ctx).Err(err).Msg("Failed to mark message as read by bot (Matrix-side delivery receipt)")
 		}
 	}
 }
 
-func (portal *Portal) sendMessageMetrics(evt *event.Event, err error, part string, ms *metricSender) {
-	var msgType string
-	switch evt.Type {
-	case event.EventMessage:
-		msgType = "message"
-	case event.EventReaction:
-		msgType = "reaction"
-	case event.EventRedaction:
-		msgType = "redaction"
-	case TypeMSC3381PollResponse, TypeMSC3381V2PollResponse:
-		msgType = "poll response"
-	case TypeMSC3381PollStart:
-		msgType = "poll start"
-	default:
-		msgType = "unknown event"
-	}
-	evtDescription := evt.ID.String()
-	if evt.Type == event.EventRedaction {
-		evtDescription += fmt.Sprintf(" of %s", evt.Redacts)
-	}
+func (portal *Portal) sendMessageMetrics(ctx context.Context, evt *event.Event, err error, part string, ms *metricSender) {
 	origEvtID := evt.ID
 	if retryMeta := evt.Content.AsMessage().MessageSendRetry; retryMeta != nil {
 		origEvtID = retryMeta.OriginalEventID
 	}
 	if err != nil {
-		level := log.LevelError
+		level := zerolog.ErrorLevel
 		if part == "Ignoring" {
-			level = log.LevelDebug
+			level = zerolog.DebugLevel
 		}
-		portal.log.Logfln(level, "%s %s %s from %s: %v", part, msgType, evtDescription, evt.Sender, err)
+		zerolog.Ctx(ctx).WithLevel(level).Err(err).Msg(part + " Matrix event")
 		reason, statusCode, isCertain, sendNotice, _ := errorToStatusReason(err)
 		checkpointStatus := status.ReasonToCheckpointStatus(reason, statusCode)
 		portal.bridge.SendMessageCheckpoint(evt, status.MsgStepRemote, err, checkpointStatus, ms.getRetryNum())
 		if sendNotice {
-			ms.setNoticeID(portal.sendErrorMessage(evt, err, msgType, isCertain, ms.getNoticeID()))
+			ms.setNoticeID(portal.sendErrorMessage(ctx, evt, err, isCertain, ms.getNoticeID()))
 		}
-		portal.sendStatusEvent(origEvtID, evt.ID, err, nil)
+		portal.sendStatusEvent(ctx, origEvtID, evt.ID, err, nil)
 	} else {
-		portal.log.Debugfln("Handled Matrix %s %s", msgType, evtDescription)
-		portal.sendDeliveryReceipt(evt.ID)
+		zerolog.Ctx(ctx).Debug().Msg("Successfully handled Matrix event")
+		portal.sendDeliveryReceipt(ctx, evt.ID)
 		portal.bridge.SendMessageSuccessCheckpoint(evt, status.MsgStepRemote, ms.getRetryNum())
 		var deliveredTo *[]id.UserID
 		if portal.IsPrivateChat() {
 			deliveredTo = &[]id.UserID{}
 		}
-		portal.sendStatusEvent(origEvtID, evt.ID, nil, deliveredTo)
+		portal.sendStatusEvent(ctx, origEvtID, evt.ID, nil, deliveredTo)
 		if prevNotice := ms.popNoticeID(); prevNotice != "" {
-			_, _ = portal.MainIntent().RedactEvent(portal.MXID, prevNotice, mautrix.ReqRedact{
+			_, _ = portal.MainIntent().RedactEvent(ctx, portal.MXID, prevNotice, mautrix.ReqRedact{
 				Reason: "error resolved",
 			})
 		}
 	}
 	if ms != nil {
-		portal.log.Debugfln("Timings for %s: %s", evt.ID, ms.timings.String())
+		zerolog.Ctx(ctx).Debug().Object("timings", ms.timings).Msg("Matrix event timings")
 	}
 }
 
@@ -264,47 +260,16 @@ type messageTimings struct {
 	totalSend time.Duration
 }
 
-func niceRound(dur time.Duration) time.Duration {
-	switch {
-	case dur < time.Millisecond:
-		return dur
-	case dur < time.Second:
-		return dur.Round(100 * time.Microsecond)
-	default:
-		return dur.Round(time.Millisecond)
-	}
-}
-
-func (mt *messageTimings) String() string {
-	mt.initReceive = niceRound(mt.initReceive)
-	mt.decrypt = niceRound(mt.decrypt)
-	mt.portalQueue = niceRound(mt.portalQueue)
-	mt.totalReceive = niceRound(mt.totalReceive)
-	mt.implicitRR = niceRound(mt.implicitRR)
-	mt.preproc = niceRound(mt.preproc)
-	mt.convert = niceRound(mt.convert)
-	mt.whatsmeow.Queue = niceRound(mt.whatsmeow.Queue)
-	mt.whatsmeow.Marshal = niceRound(mt.whatsmeow.Marshal)
-	mt.whatsmeow.GetParticipants = niceRound(mt.whatsmeow.GetParticipants)
-	mt.whatsmeow.GetDevices = niceRound(mt.whatsmeow.GetDevices)
-	mt.whatsmeow.GroupEncrypt = niceRound(mt.whatsmeow.GroupEncrypt)
-	mt.whatsmeow.PeerEncrypt = niceRound(mt.whatsmeow.PeerEncrypt)
-	mt.whatsmeow.Send = niceRound(mt.whatsmeow.Send)
-	mt.whatsmeow.Resp = niceRound(mt.whatsmeow.Resp)
-	mt.whatsmeow.Retry = niceRound(mt.whatsmeow.Retry)
-	mt.totalSend = niceRound(mt.totalSend)
-	whatsmeowTimings := "N/A"
-	if mt.totalSend > 0 {
-		format := "queue: %[1]s, marshal: %[2]s, ske: %[3]s, pcp: %[4]s, dev: %[5]s, encrypt: %[6]s, send: %[7]s, resp: %[8]s"
-		if mt.whatsmeow.GetParticipants == 0 && mt.whatsmeow.GroupEncrypt == 0 {
-			format = "queue: %[1]s, marshal: %[2]s, dev: %[5]s, encrypt: %[6]s, send: %[7]s, resp: %[8]s"
-		}
-		if mt.whatsmeow.Retry > 0 {
-			format += ", retry: %[9]s"
-		}
-		whatsmeowTimings = fmt.Sprintf(format, mt.whatsmeow.Queue, mt.whatsmeow.Marshal, mt.whatsmeow.GroupEncrypt, mt.whatsmeow.GetParticipants, mt.whatsmeow.GetDevices, mt.whatsmeow.PeerEncrypt, mt.whatsmeow.Send, mt.whatsmeow.Resp, mt.whatsmeow.Retry)
-	}
-	return fmt.Sprintf("BRIDGE: receive: %s, decrypt: %s, queue: %s, total hs->portal: %s, implicit rr: %s -- PORTAL: preprocess: %s, convert: %s, total send: %s -- WHATSMEOW: %s", mt.initReceive, mt.decrypt, mt.implicitRR, mt.portalQueue, mt.totalReceive, mt.preproc, mt.convert, mt.totalSend, whatsmeowTimings)
+func (mt *messageTimings) MarshalZerologObject(e *zerolog.Event) {
+	e.Dur("init_receive", mt.initReceive).
+		Dur("decrypt", mt.decrypt).
+		Dur("implicit_rr", mt.implicitRR).
+		Dur("portal_queue", mt.portalQueue).
+		Dur("total_receive", mt.totalReceive).
+		Dur("preproc", mt.preproc).
+		Dur("convert", mt.convert).
+		Object("whatsmeow", mt.whatsmeow).
+		Dur("total_send", mt.totalSend)
 }
 
 type metricSender struct {
@@ -345,13 +310,13 @@ func (ms *metricSender) setNoticeID(evtID id.EventID) {
 	}
 }
 
-func (ms *metricSender) sendMessageMetrics(evt *event.Event, err error, part string, completed bool) {
+func (ms *metricSender) sendMessageMetrics(ctx context.Context, evt *event.Event, err error, part string, completed bool) {
 	ms.lock.Lock()
 	defer ms.lock.Unlock()
 	if !completed && ms.completed {
 		return
 	}
-	ms.portal.sendMessageMetrics(evt, err, part, ms)
+	ms.portal.sendMessageMetrics(ctx, evt, err, part, ms)
 	ms.retryNum++
 	ms.completed = completed
 }
