@@ -17,6 +17,7 @@
 package main
 
 import (
+	"context"
 	_ "embed"
 	"net/http"
 	"net/url"
@@ -26,14 +27,17 @@ import (
 	"sync"
 	"time"
 
+	"github.com/rs/zerolog"
+	waLog "go.mau.fi/whatsmeow/util/log"
 	"google.golang.org/protobuf/proto"
 
-	"go.mau.fi/util/configupgrade"
 	"go.mau.fi/whatsmeow"
 	waProto "go.mau.fi/whatsmeow/binary/proto"
 	"go.mau.fi/whatsmeow/store"
 	"go.mau.fi/whatsmeow/store/sqlstore"
 	"go.mau.fi/whatsmeow/types"
+
+	"go.mau.fi/util/configupgrade"
 
 	"maunium.net/go/mautrix/bridge"
 	"maunium.net/go/mautrix/bridge/commands"
@@ -91,7 +95,7 @@ func (br *WABridge) Init() {
 	br.EventProcessor.On(TypeMSC3381PollResponse, br.MatrixHandler.HandleMessage)
 	br.EventProcessor.On(TypeMSC3381V2PollResponse, br.MatrixHandler.HandleMessage)
 
-	Analytics.log = br.Log.Sub("Analytics")
+	Analytics.log = br.ZLog.With().Str("component", "analytics").Logger()
 	Analytics.url = (&url.URL{
 		Scheme: "https",
 		Host:   br.Config.Analytics.Host,
@@ -100,23 +104,20 @@ func (br *WABridge) Init() {
 	Analytics.key = br.Config.Analytics.Token
 	Analytics.userID = br.Config.Analytics.UserID
 	if Analytics.IsEnabled() {
-		Analytics.log.Infoln("Analytics metrics are enabled")
-		if Analytics.userID != "" {
-			Analytics.log.Infoln("Overriding analytics user_id with %v", Analytics.userID)
-		}
+		Analytics.log.Info().Str("override_user_id", Analytics.userID).Msg("Analytics metrics are enabled")
 	}
 
-	br.DB = database.New(br.Bridge.DB, br.Log.Sub("Database"))
-	br.WAContainer = sqlstore.NewWithDB(br.DB.RawDB, br.DB.Dialect.String(), &waLogger{br.Log.Sub("Database").Sub("WhatsApp")})
+	br.DB = database.New(br.Bridge.DB)
+	br.WAContainer = sqlstore.NewWithDB(br.DB.RawDB, br.DB.Dialect.String(), waLog.Zerolog(br.ZLog.With().Str("db_section", "whatsmeow").Logger()))
 	br.WAContainer.DatabaseErrorHandler = br.DB.HandleSignalStoreError
 
 	ss := br.Config.Bridge.Provisioning.SharedSecret
 	if len(ss) > 0 && ss != "disable" {
-		br.Provisioning = &ProvisioningAPI{bridge: br}
+		br.Provisioning = &ProvisioningAPI{bridge: br, log: br.ZLog.With().Str("component", "provisioning").Logger()}
 	}
 
 	br.Formatter = NewFormatter(br)
-	br.Metrics = NewMetricsHandler(br.Config.Metrics.Listen, br.Log.Sub("Metrics"), br.DB)
+	br.Metrics = NewMetricsHandler(br.Config.Metrics.Listen, br.ZLog.With().Str("component", "metrics").Logger(), br.DB)
 	br.MatrixHandler.TrackEventDuration = br.Metrics.TrackMatrixEvent
 
 	store.BaseClientPayload.UserAgent.OsVersion = proto.String(br.WAVersion)
@@ -148,11 +149,10 @@ func (br *WABridge) Init() {
 func (br *WABridge) Start() {
 	err := br.WAContainer.Upgrade()
 	if err != nil {
-		br.Log.Fatalln("Failed to upgrade whatsmeow database: %v", err)
+		br.ZLog.WithLevel(zerolog.FatalLevel).Err(err).Msg("Failed to upgrade whatsmeow database")
 		os.Exit(15)
 	}
 	if br.Provisioning != nil {
-		br.Log.Debugln("Initializing provisioning API")
 		br.Provisioning.Init()
 	}
 	go br.CheckWhatsAppUpdate()
@@ -166,30 +166,40 @@ func (br *WABridge) Start() {
 }
 
 func (br *WABridge) CheckWhatsAppUpdate() {
-	br.Log.Debugfln("Checking for WhatsApp web update")
+	br.ZLog.Debug().Msg("Checking for WhatsApp web update")
 	resp, err := whatsmeow.CheckUpdate(http.DefaultClient)
 	if err != nil {
-		br.Log.Warnfln("Failed to check for WhatsApp web update: %v", err)
+		br.ZLog.Warn().Err(err).Msg("Failed to check for WhatsApp web update")
 		return
 	}
 	if store.GetWAVersion() == resp.ParsedVersion {
-		br.Log.Debugfln("Bridge is using latest WhatsApp web protocol")
+		br.ZLog.Debug().Msg("Bridge is using latest WhatsApp web protocol")
 	} else if store.GetWAVersion().LessThan(resp.ParsedVersion) {
 		if resp.IsBelowHard || resp.IsBroken {
-			br.Log.Warnfln("Bridge is using outdated WhatsApp web protocol and probably doesn't work anymore (%s, latest is %s)", store.GetWAVersion(), resp.ParsedVersion)
+			br.ZLog.Warn().
+				Stringer("latest_version", resp.ParsedVersion).
+				Stringer("current_version", store.GetWAVersion()).
+				Msg("Bridge is using outdated WhatsApp web protocol and probably doesn't work anymore")
 		} else if resp.IsBelowSoft {
-			br.Log.Infofln("Bridge is using outdated WhatsApp web protocol (%s, latest is %s)", store.GetWAVersion(), resp.ParsedVersion)
+			br.ZLog.Info().
+				Stringer("latest_version", resp.ParsedVersion).
+				Stringer("current_version", store.GetWAVersion()).
+				Msg("Bridge is using outdated WhatsApp web protocol")
 		} else {
-			br.Log.Debugfln("Bridge is using outdated WhatsApp web protocol (%s, latest is %s)", store.GetWAVersion(), resp.ParsedVersion)
+			br.ZLog.Debug().
+				Stringer("latest_version", resp.ParsedVersion).
+				Stringer("current_version", store.GetWAVersion()).
+				Msg("Bridge is using outdated WhatsApp web protocol")
 		}
 	} else {
-		br.Log.Debugfln("Bridge is using newer than latest WhatsApp web protocol")
+		br.ZLog.Debug().Msg("Bridge is using newer than latest WhatsApp web protocol")
 	}
 }
 
 func (br *WABridge) Loop() {
+	ctx := br.ZLog.With().Str("action", "background loop").Logger().WithContext(context.TODO())
 	for {
-		br.SleepAndDeleteUpcoming()
+		br.SleepAndDeleteUpcoming(ctx)
 		time.Sleep(1 * time.Hour)
 		br.WarnUsersAboutDisconnection()
 	}
@@ -199,14 +209,14 @@ func (br *WABridge) WarnUsersAboutDisconnection() {
 	br.usersLock.Lock()
 	for _, user := range br.usersByUsername {
 		if user.IsConnected() && !user.PhoneRecentlySeen(true) {
-			go user.sendPhoneOfflineWarning()
+			go user.sendPhoneOfflineWarning(context.TODO())
 		}
 	}
 	br.usersLock.Unlock()
 }
 
 func (br *WABridge) StartUsers() {
-	br.Log.Debugln("Starting users")
+	br.ZLog.Debug().Msg("Starting users")
 	foundAnySessions := false
 	for _, user := range br.GetAllUsers() {
 		if !user.JID.IsEmpty() {
@@ -217,13 +227,13 @@ func (br *WABridge) StartUsers() {
 	if !foundAnySessions {
 		br.SendGlobalBridgeState(status.BridgeState{StateEvent: status.StateUnconfigured}.Fill(nil))
 	}
-	br.Log.Debugln("Starting custom puppets")
+	br.ZLog.Debug().Msg("Starting custom puppets")
 	for _, loopuppet := range br.GetAllPuppetsWithCustomMXID() {
 		go func(puppet *Puppet) {
-			puppet.log.Debugln("Starting custom puppet", puppet.CustomMXID)
+			puppet.zlog.Debug().Stringer("custom_mxid", puppet.CustomMXID).Msg("Starting double puppet")
 			err := puppet.StartCustomMXID(true)
 			if err != nil {
-				puppet.log.Errorln("Failed to start custom puppet:", err)
+				puppet.zlog.Err(err).Stringer("custom_mxid", puppet.CustomMXID).Msg("Failed to start double puppet")
 			}
 		}(loopuppet)
 	}
@@ -235,7 +245,7 @@ func (br *WABridge) Stop() {
 		if user.Client == nil {
 			continue
 		}
-		br.Log.Debugln("Disconnecting", user.MXID)
+		user.zlog.Debug().Msg("Disconnecting user")
 		user.Client.Disconnect()
 		close(user.historySyncs)
 	}

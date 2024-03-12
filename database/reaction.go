@@ -1,5 +1,5 @@
 // mautrix-whatsapp - A Matrix-WhatsApp puppeting bridge.
-// Copyright (C) 2022 Tulir Asokan
+// Copyright (C) 2024 Tulir Asokan
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as published by
@@ -17,26 +17,20 @@
 package database
 
 import (
-	"database/sql"
-	"errors"
+	"context"
+
+	"go.mau.fi/whatsmeow/types"
+	"maunium.net/go/mautrix/id"
 
 	"go.mau.fi/util/dbutil"
-	"go.mau.fi/whatsmeow/types"
-	log "maunium.net/go/maulogger/v2"
-
-	"maunium.net/go/mautrix/id"
 )
 
 type ReactionQuery struct {
-	db  *Database
-	log log.Logger
+	*dbutil.QueryHelper[*Reaction]
 }
 
-func (rq *ReactionQuery) New() *Reaction {
-	return &Reaction{
-		db:  rq.db,
-		log: rq.log,
-	}
+func newReaction(qh *dbutil.QueryHelper[*Reaction]) *Reaction {
+	return &Reaction{qh: qh}
 }
 
 const (
@@ -55,28 +49,20 @@ const (
 			DO UPDATE SET mxid=excluded.mxid, jid=excluded.jid
 	`
 	deleteReactionQuery = `
-		DELETE FROM reaction WHERE chat_jid=$1 AND chat_receiver=$2 AND target_jid=$3 AND sender=$4 AND mxid=$5
+		DELETE FROM reaction WHERE chat_jid=$1 AND chat_receiver=$2 AND target_jid=$3 AND sender=$4
 	`
 )
 
-func (rq *ReactionQuery) GetByTargetJID(chat PortalKey, jid types.MessageID, sender types.JID) *Reaction {
-	return rq.maybeScan(rq.db.QueryRow(getReactionByTargetJIDQuery, chat.JID, chat.Receiver, jid, sender.ToNonAD()))
+func (rq *ReactionQuery) GetByTargetJID(ctx context.Context, chat PortalKey, jid types.MessageID, sender types.JID) (*Reaction, error) {
+	return rq.QueryOne(ctx, getReactionByTargetJIDQuery, chat.JID, chat.Receiver, jid, sender.ToNonAD())
 }
 
-func (rq *ReactionQuery) GetByMXID(mxid id.EventID) *Reaction {
-	return rq.maybeScan(rq.db.QueryRow(getReactionByMXIDQuery, mxid))
-}
-
-func (rq *ReactionQuery) maybeScan(row *sql.Row) *Reaction {
-	if row == nil {
-		return nil
-	}
-	return rq.New().Scan(row)
+func (rq *ReactionQuery) GetByMXID(ctx context.Context, mxid id.EventID) (*Reaction, error) {
+	return rq.QueryOne(ctx, getReactionByMXIDQuery, mxid)
 }
 
 type Reaction struct {
-	db  *Database
-	log log.Logger
+	qh *dbutil.QueryHelper[*Reaction]
 
 	Chat      PortalKey
 	TargetJID types.MessageID
@@ -85,35 +71,19 @@ type Reaction struct {
 	JID       types.MessageID
 }
 
-func (reaction *Reaction) Scan(row dbutil.Scannable) *Reaction {
-	err := row.Scan(&reaction.Chat.JID, &reaction.Chat.Receiver, &reaction.TargetJID, &reaction.Sender, &reaction.MXID, &reaction.JID)
-	if err != nil {
-		if !errors.Is(err, sql.ErrNoRows) {
-			reaction.log.Errorln("Database scan failed:", err)
-		}
-		return nil
-	}
-	return reaction
+func (reaction *Reaction) Scan(row dbutil.Scannable) (*Reaction, error) {
+	return dbutil.ValueOrErr(reaction, row.Scan(&reaction.Chat.JID, &reaction.Chat.Receiver, &reaction.TargetJID, &reaction.Sender, &reaction.MXID, &reaction.JID))
 }
 
-func (reaction *Reaction) Upsert(txn dbutil.Execable) {
+func (reaction *Reaction) sqlVariables() []any {
 	reaction.Sender = reaction.Sender.ToNonAD()
-	if txn == nil {
-		txn = reaction.db
-	}
-	_, err := txn.Exec(upsertReactionQuery, reaction.Chat.JID, reaction.Chat.Receiver, reaction.TargetJID, reaction.Sender, reaction.MXID, reaction.JID)
-	if err != nil {
-		reaction.log.Warnfln("Failed to upsert reaction to %s@%s by %s: %v", reaction.Chat, reaction.TargetJID, reaction.Sender, err)
-	}
+	return []any{reaction.Chat.JID, reaction.Chat.Receiver, reaction.TargetJID, reaction.Sender, reaction.MXID, reaction.JID}
 }
 
-func (reaction *Reaction) GetTarget() *Message {
-	return reaction.db.Message.GetByJID(reaction.Chat, reaction.TargetJID)
+func (reaction *Reaction) Upsert(ctx context.Context) error {
+	return reaction.qh.Exec(ctx, upsertReactionQuery, reaction.sqlVariables()...)
 }
 
-func (reaction *Reaction) Delete() {
-	_, err := reaction.db.Exec(deleteReactionQuery, reaction.Chat.JID, reaction.Chat.Receiver, reaction.TargetJID, reaction.Sender, reaction.MXID)
-	if err != nil {
-		reaction.log.Warnfln("Failed to delete reaction %s: %v", reaction.MXID, err)
-	}
+func (reaction *Reaction) Delete(ctx context.Context) error {
+	return reaction.qh.Exec(ctx, deleteReactionQuery, reaction.Chat.JID, reaction.Chat.Receiver, reaction.TargetJID, reaction.Sender)
 }

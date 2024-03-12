@@ -1,5 +1,5 @@
 // mautrix-whatsapp - A Matrix-WhatsApp puppeting bridge.
-// Copyright (C) 2022 Tulir Asokan, Sumner Evans
+// Copyright (C) 2024 Tulir Asokan, Sumner Evans
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as published by
@@ -17,8 +17,7 @@
 package database
 
 import (
-	"database/sql"
-	"errors"
+	"context"
 	"fmt"
 	"time"
 
@@ -26,23 +25,19 @@ import (
 	"go.mau.fi/util/dbutil"
 	waProto "go.mau.fi/whatsmeow/binary/proto"
 	"google.golang.org/protobuf/proto"
-	log "maunium.net/go/maulogger/v2"
-
 	"maunium.net/go/mautrix/id"
 )
 
 type HistorySyncQuery struct {
-	db  *Database
-	log log.Logger
+	*dbutil.QueryHelper[*HistorySyncConversation]
 }
 
 type HistorySyncConversation struct {
-	db  *Database
-	log log.Logger
+	qh *dbutil.QueryHelper[*HistorySyncConversation]
 
 	UserID                   id.UserID
 	ConversationID           string
-	PortalKey                *PortalKey
+	PortalKey                PortalKey
 	LastMessageTimestamp     time.Time
 	MuteEndTime              time.Time
 	Archived                 bool
@@ -54,18 +49,16 @@ type HistorySyncConversation struct {
 	UnreadCount              uint32
 }
 
-func (hsq *HistorySyncQuery) NewConversation() *HistorySyncConversation {
+func newHistorySyncConversation(qh *dbutil.QueryHelper[*HistorySyncConversation]) *HistorySyncConversation {
 	return &HistorySyncConversation{
-		db:        hsq.db,
-		log:       hsq.log,
-		PortalKey: &PortalKey{},
+		qh: qh,
 	}
 }
 
 func (hsq *HistorySyncQuery) NewConversationWithValues(
 	userID id.UserID,
 	conversationID string,
-	portalKey *PortalKey,
+	portalKey PortalKey,
 	lastMessageTimestamp,
 	muteEndTime uint64,
 	archived bool,
@@ -74,10 +67,10 @@ func (hsq *HistorySyncQuery) NewConversationWithValues(
 	endOfHistoryTransferType waProto.Conversation_EndOfHistoryTransferType,
 	ephemeralExpiration *uint32,
 	markedAsUnread bool,
-	unreadCount uint32) *HistorySyncConversation {
+	unreadCount uint32,
+) *HistorySyncConversation {
 	return &HistorySyncConversation{
-		db:                       hsq.db,
-		log:                      hsq.log,
+		qh:                       hsq.QueryHelper,
 		UserID:                   userID,
 		ConversationID:           conversationID,
 		PortalKey:                portalKey,
@@ -94,6 +87,17 @@ func (hsq *HistorySyncQuery) NewConversationWithValues(
 }
 
 const (
+	upsertHistorySyncConversationQuery = `
+		INSERT INTO history_sync_conversation (user_mxid, conversation_id, portal_jid, portal_receiver, last_message_timestamp, archived, pinned, mute_end_time, disappearing_mode, end_of_history_transfer_type, ephemeral_expiration, marked_as_unread, unread_count)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+		ON CONFLICT (user_mxid, conversation_id)
+		DO UPDATE SET
+			last_message_timestamp=CASE
+				WHEN EXCLUDED.last_message_timestamp > history_sync_conversation.last_message_timestamp THEN EXCLUDED.last_message_timestamp
+				ELSE history_sync_conversation.last_message_timestamp
+			END,
+			end_of_history_transfer_type=EXCLUDED.end_of_history_transfer_type
+	`
 	getNMostRecentConversations = `
 		SELECT user_mxid, conversation_id, portal_jid, portal_receiver, last_message_timestamp, archived, pinned, mute_end_time, disappearing_mode, end_of_history_transfer_type, ephemeral_expiration, marked_as_unread, unread_count
 		  FROM history_sync_conversation
@@ -108,24 +112,19 @@ const (
 		   AND portal_jid=$2
 		   AND portal_receiver=$3
 	`
+	deleteAllConversationsQuery        = "DELETE FROM history_sync_conversation WHERE user_mxid=$1"
+	deleteHistorySyncConversationQuery = `
+		DELETE FROM history_sync_conversation
+		WHERE user_mxid=$1 AND conversation_id=$2
+	`
 )
 
-func (hsc *HistorySyncConversation) Upsert() {
-	_, err := hsc.db.Exec(`
-		INSERT INTO history_sync_conversation (user_mxid, conversation_id, portal_jid, portal_receiver, last_message_timestamp, archived, pinned, mute_end_time, disappearing_mode, end_of_history_transfer_type, ephemeral_expiration, marked_as_unread, unread_count)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-		ON CONFLICT (user_mxid, conversation_id)
-		DO UPDATE SET
-			last_message_timestamp=CASE
-				WHEN EXCLUDED.last_message_timestamp > history_sync_conversation.last_message_timestamp THEN EXCLUDED.last_message_timestamp
-				ELSE history_sync_conversation.last_message_timestamp
-			END,
-			end_of_history_transfer_type=EXCLUDED.end_of_history_transfer_type
-	`,
+func (hsc *HistorySyncConversation) sqlVariables() []any {
+	return []any{
 		hsc.UserID,
 		hsc.ConversationID,
-		hsc.PortalKey.JID.String(),
-		hsc.PortalKey.Receiver.String(),
+		hsc.PortalKey.JID,
+		hsc.PortalKey.Receiver,
 		hsc.LastMessageTimestamp,
 		hsc.Archived,
 		hsc.Pinned,
@@ -134,14 +133,16 @@ func (hsc *HistorySyncConversation) Upsert() {
 		hsc.EndOfHistoryTransferType,
 		hsc.EphemeralExpiration,
 		hsc.MarkedAsUnread,
-		hsc.UnreadCount)
-	if err != nil {
-		hsc.log.Warnfln("Failed to insert history sync conversation %s/%s: %v", hsc.UserID, hsc.ConversationID, err)
+		hsc.UnreadCount,
 	}
 }
 
-func (hsc *HistorySyncConversation) Scan(row dbutil.Scannable) *HistorySyncConversation {
-	err := row.Scan(
+func (hsc *HistorySyncConversation) Upsert(ctx context.Context) error {
+	return hsc.qh.Exec(ctx, upsertHistorySyncConversationQuery, hsc.sqlVariables()...)
+}
+
+func (hsc *HistorySyncConversation) Scan(row dbutil.Scannable) (*HistorySyncConversation, error) {
+	return dbutil.ValueOrErr(hsc, row.Scan(
 		&hsc.UserID,
 		&hsc.ConversationID,
 		&hsc.PortalKey.JID,
@@ -154,69 +155,59 @@ func (hsc *HistorySyncConversation) Scan(row dbutil.Scannable) *HistorySyncConve
 		&hsc.EndOfHistoryTransferType,
 		&hsc.EphemeralExpiration,
 		&hsc.MarkedAsUnread,
-		&hsc.UnreadCount)
-	if err != nil {
-		if !errors.Is(err, sql.ErrNoRows) {
-			hsc.log.Errorln("Database scan failed:", err)
-		}
-		return nil
-	}
-	return hsc
+		&hsc.UnreadCount,
+	))
 }
 
-func (hsq *HistorySyncQuery) GetRecentConversations(userID id.UserID, n int) (conversations []*HistorySyncConversation) {
+func (hsq *HistorySyncQuery) GetRecentConversations(ctx context.Context, userID id.UserID, n int) ([]*HistorySyncConversation, error) {
 	nPtr := &n
 	// Negative limit on SQLite means unlimited, but Postgres prefers a NULL limit.
-	if n < 0 && hsq.db.Dialect == dbutil.Postgres {
+	if n < 0 && hsq.GetDB().Dialect == dbutil.Postgres {
 		nPtr = nil
 	}
-	rows, err := hsq.db.Query(getNMostRecentConversations, userID, nPtr)
-	defer rows.Close()
-	if err != nil || rows == nil {
-		return nil
-	}
-	for rows.Next() {
-		conversations = append(conversations, hsq.NewConversation().Scan(rows))
-	}
-	return
+	return hsq.QueryMany(ctx, getNMostRecentConversations, userID, nPtr)
 }
 
-func (hsq *HistorySyncQuery) GetConversation(userID id.UserID, portalKey PortalKey) (conversation *HistorySyncConversation) {
-	rows, err := hsq.db.Query(getConversationByPortal, userID, portalKey.JID, portalKey.Receiver)
-	defer rows.Close()
-	if err != nil || rows == nil {
-		return nil
-	}
-	if rows.Next() {
-		conversation = hsq.NewConversation().Scan(rows)
-	}
-	return
+func (hsq *HistorySyncQuery) GetConversation(ctx context.Context, userID id.UserID, portalKey PortalKey) (*HistorySyncConversation, error) {
+	return hsq.QueryOne(ctx, getConversationByPortal, userID, portalKey.JID, portalKey.Receiver)
 }
 
-func (hsq *HistorySyncQuery) DeleteAllConversations(userID id.UserID) {
-	_, err := hsq.db.Exec("DELETE FROM history_sync_conversation WHERE user_mxid=$1", userID)
-	if err != nil {
-		hsq.log.Warnfln("Failed to delete historical chat info for %s/%s: %v", userID, err)
-	}
+func (hsq *HistorySyncQuery) DeleteAllConversations(ctx context.Context, userID id.UserID) error {
+	return hsq.Exec(ctx, deleteAllConversationsQuery, userID)
 }
 
 const (
-	getMessagesBetween = `
+	insertHistorySyncMessageQuery = `
+		INSERT INTO history_sync_message (user_mxid, conversation_id, message_id, timestamp, data, inserted_time)
+		VALUES ($1, $2, $3, $4, $5, $6)
+		ON CONFLICT (user_mxid, conversation_id, message_id) DO NOTHING
+	`
+	getHistorySyncMessagesBetweenQueryTemplate = `
 		SELECT data FROM history_sync_message
 		WHERE user_mxid=$1 AND conversation_id=$2
 			%s
 		ORDER BY timestamp DESC
 		%s
 	`
-	deleteMessagesBetweenExclusive = `
+	deleteHistorySyncMessagesBetweenExclusiveQuery = `
 		DELETE FROM history_sync_message
 		WHERE user_mxid=$1 AND conversation_id=$2 AND timestamp<$3 AND timestamp>$4
+	`
+	deleteAllHistorySyncMessagesQuery       = "DELETE FROM history_sync_message WHERE user_mxid=$1"
+	deleteHistorySyncMessagesForPortalQuery = `
+		DELETE FROM history_sync_message
+		WHERE user_mxid=$1 AND conversation_id=$2
+	`
+	conversationHasHistorySyncMessagesQuery = `
+		SELECT EXISTS(
+		    SELECT 1 FROM history_sync_message
+			WHERE user_mxid=$1 AND conversation_id=$2
+		)
 	`
 )
 
 type HistorySyncMessage struct {
-	db  *Database
-	log log.Logger
+	hsq *HistorySyncQuery
 
 	UserID         id.UserID
 	ConversationID string
@@ -231,8 +222,8 @@ func (hsq *HistorySyncQuery) NewMessageWithValues(userID id.UserID, conversation
 		return nil, err
 	}
 	return &HistorySyncMessage{
-		db:             hsq.db,
-		log:            hsq.log,
+		hsq: hsq,
+
 		UserID:         userID,
 		ConversationID: conversationID,
 		MessageID:      messageID,
@@ -241,18 +232,27 @@ func (hsq *HistorySyncQuery) NewMessageWithValues(userID id.UserID, conversation
 	}, nil
 }
 
-func (hsm *HistorySyncMessage) Insert() error {
-	_, err := hsm.db.Exec(`
-		INSERT INTO history_sync_message (user_mxid, conversation_id, message_id, timestamp, data, inserted_time)
-		VALUES ($1, $2, $3, $4, $5, $6)
-		ON CONFLICT (user_mxid, conversation_id, message_id) DO NOTHING
-	`, hsm.UserID, hsm.ConversationID, hsm.MessageID, hsm.Timestamp, hsm.Data, time.Now())
-	return err
+func (hsm *HistorySyncMessage) Insert(ctx context.Context) error {
+	return hsm.hsq.Exec(ctx, insertHistorySyncMessageQuery, hsm.UserID, hsm.ConversationID, hsm.MessageID, hsm.Timestamp, hsm.Data, time.Now())
 }
 
-func (hsq *HistorySyncQuery) GetMessagesBetween(userID id.UserID, conversationID string, startTime, endTime *time.Time, limit int) (messages []*waProto.WebMessageInfo) {
+func scanWebMessageInfo(rows dbutil.Scannable) (*waProto.WebMessageInfo, error) {
+	var msgData []byte
+	err := rows.Scan(&msgData)
+	if err != nil {
+		return nil, err
+	}
+	var historySyncMsg waProto.HistorySyncMsg
+	err = proto.Unmarshal(msgData, &historySyncMsg)
+	if err != nil {
+		return nil, fmt.Errorf("failed to unmarshal message: %w", err)
+	}
+	return historySyncMsg.GetMessage(), nil
+}
+
+func (hsq *HistorySyncQuery) GetMessagesBetween(ctx context.Context, userID id.UserID, conversationID string, startTime, endTime *time.Time, limit int) ([]*waProto.WebMessageInfo, error) {
 	whereClauses := ""
-	args := []interface{}{userID, conversationID}
+	args := []any{userID, conversationID}
 	argNum := 3
 	if startTime != nil {
 		whereClauses += fmt.Sprintf(" AND timestamp >= $%d", argNum)
@@ -268,80 +268,35 @@ func (hsq *HistorySyncQuery) GetMessagesBetween(userID id.UserID, conversationID
 	if limit > 0 {
 		limitClause = fmt.Sprintf("LIMIT %d", limit)
 	}
+	query := fmt.Sprintf(getHistorySyncMessagesBetweenQueryTemplate, whereClauses, limitClause)
 
-	rows, err := hsq.db.Query(fmt.Sprintf(getMessagesBetween, whereClauses, limitClause), args...)
-	defer rows.Close()
-	if err != nil || rows == nil {
-		if err != nil && !errors.Is(err, sql.ErrNoRows) {
-			hsq.log.Warnfln("Failed to query messages between range: %v", err)
-		}
-		return nil
-	}
-
-	var msgData []byte
-	for rows.Next() {
-		err = rows.Scan(&msgData)
-		if err != nil {
-			hsq.log.Errorfln("Database scan failed: %v", err)
-			continue
-		}
-		var historySyncMsg waProto.HistorySyncMsg
-		err = proto.Unmarshal(msgData, &historySyncMsg)
-		if err != nil {
-			hsq.log.Errorfln("Failed to unmarshal history sync message: %v", err)
-			continue
-		}
-		messages = append(messages, historySyncMsg.Message)
-	}
-	return
+	return dbutil.ConvertRowFn[*waProto.WebMessageInfo](scanWebMessageInfo).
+		NewRowIter(hsq.GetDB().Query(ctx, query, args...)).
+		AsList()
 }
 
-func (hsq *HistorySyncQuery) DeleteMessages(userID id.UserID, conversationID string, messages []*waProto.WebMessageInfo) error {
+func (hsq *HistorySyncQuery) DeleteMessages(ctx context.Context, userID id.UserID, conversationID string, messages []*waProto.WebMessageInfo) error {
 	newest := messages[0]
 	beforeTS := time.Unix(int64(newest.GetMessageTimestamp())+1, 0)
 	oldest := messages[len(messages)-1]
 	afterTS := time.Unix(int64(oldest.GetMessageTimestamp())-1, 0)
-	_, err := hsq.db.Exec(deleteMessagesBetweenExclusive, userID, conversationID, beforeTS, afterTS)
-	return err
+	return hsq.Exec(ctx, deleteHistorySyncMessagesBetweenExclusiveQuery, userID, conversationID, beforeTS, afterTS)
 }
 
-func (hsq *HistorySyncQuery) DeleteAllMessages(userID id.UserID) {
-	_, err := hsq.db.Exec("DELETE FROM history_sync_message WHERE user_mxid=$1", userID)
-	if err != nil {
-		hsq.log.Warnfln("Failed to delete historical messages for %s: %v", userID, err)
-	}
+func (hsq *HistorySyncQuery) DeleteAllMessages(ctx context.Context, userID id.UserID) error {
+	return hsq.Exec(ctx, deleteAllHistorySyncMessagesQuery, userID)
 }
 
-func (hsq *HistorySyncQuery) DeleteAllMessagesForPortal(userID id.UserID, portalKey PortalKey) {
-	_, err := hsq.db.Exec(`
-		DELETE FROM history_sync_message
-		WHERE user_mxid=$1 AND conversation_id=$2
-	`, userID, portalKey.JID)
-	if err != nil {
-		hsq.log.Warnfln("Failed to delete historical messages for %s/%s: %v", userID, portalKey.JID, err)
-	}
+func (hsq *HistorySyncQuery) DeleteAllMessagesForPortal(ctx context.Context, userID id.UserID, portalKey PortalKey) error {
+	return hsq.Exec(ctx, deleteHistorySyncMessagesForPortalQuery, userID, portalKey.JID)
 }
 
-func (hsq *HistorySyncQuery) ConversationHasMessages(userID id.UserID, portalKey PortalKey) (exists bool) {
-	err := hsq.db.QueryRow(`
-		SELECT EXISTS(
-		    SELECT 1 FROM history_sync_message
-			WHERE user_mxid=$1 AND conversation_id=$2
-		)
-	`, userID, portalKey.JID).Scan(&exists)
-	if err != nil {
-		hsq.log.Warnfln("Failed to check if any messages are stored for %s/%s: %v", userID, portalKey.JID, err)
-	}
+func (hsq *HistorySyncQuery) ConversationHasMessages(ctx context.Context, userID id.UserID, portalKey PortalKey) (exists bool, err error) {
+	err = hsq.GetDB().QueryRow(ctx, conversationHasHistorySyncMessagesQuery, userID, portalKey.JID).Scan(&exists)
 	return
 }
 
-func (hsq *HistorySyncQuery) DeleteConversation(userID id.UserID, jid string) {
+func (hsq *HistorySyncQuery) DeleteConversation(ctx context.Context, userID id.UserID, jid string) error {
 	// This will also clear history_sync_message as there's a foreign key constraint
-	_, err := hsq.db.Exec(`
-		DELETE FROM history_sync_conversation
-		WHERE user_mxid=$1 AND conversation_id=$2
-	`, userID, jid)
-	if err != nil {
-		hsq.log.Warnfln("Failed to delete historical messages for %s/%s: %v", userID, jid, err)
-	}
+	return hsq.Exec(ctx, deleteHistorySyncConversationQuery, userID, jid)
 }

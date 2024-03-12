@@ -1,5 +1,5 @@
 // mautrix-whatsapp - A Matrix-WhatsApp puppeting bridge.
-// Copyright (C) 2022 Tulir Asokan
+// Copyright (C) 2024 Tulir Asokan
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as published by
@@ -26,7 +26,6 @@ import (
 	"go.mau.fi/util/dbutil"
 	"go.mau.fi/whatsmeow/store"
 	"go.mau.fi/whatsmeow/store/sqlstore"
-	"maunium.net/go/maulogger/v2"
 
 	"maunium.net/go/mautrix-whatsapp/database/upgrades"
 )
@@ -45,51 +44,28 @@ type Database struct {
 	Reaction *ReactionQuery
 
 	DisappearingMessage  *DisappearingMessageQuery
-	Backfill             *BackfillQuery
+	BackfillQueue        *BackfillTaskQuery
+	BackfillState        *BackfillStateQuery
 	HistorySync          *HistorySyncQuery
 	MediaBackfillRequest *MediaBackfillRequestQuery
 }
 
-func New(baseDB *dbutil.Database, log maulogger.Logger) *Database {
-	db := &Database{Database: baseDB}
+func New(db *dbutil.Database) *Database {
 	db.UpgradeTable = upgrades.Table
-	db.User = &UserQuery{
-		db:  db,
-		log: log.Sub("User"),
+	return &Database{
+		Database: db,
+		User:     &UserQuery{dbutil.MakeQueryHelper(db, newUser)},
+		Portal:   &PortalQuery{dbutil.MakeQueryHelper(db, newPortal)},
+		Puppet:   &PuppetQuery{dbutil.MakeQueryHelper(db, newPuppet)},
+		Message:  &MessageQuery{dbutil.MakeQueryHelper(db, newMessage)},
+		Reaction: &ReactionQuery{dbutil.MakeQueryHelper(db, newReaction)},
+
+		DisappearingMessage:  &DisappearingMessageQuery{dbutil.MakeQueryHelper(db, newDisappearingMessage)},
+		BackfillQueue:        &BackfillTaskQuery{dbutil.MakeQueryHelper(db, newBackfillTask)},
+		BackfillState:        &BackfillStateQuery{dbutil.MakeQueryHelper(db, newBackfillState)},
+		HistorySync:          &HistorySyncQuery{dbutil.MakeQueryHelper(db, newHistorySyncConversation)},
+		MediaBackfillRequest: &MediaBackfillRequestQuery{dbutil.MakeQueryHelper(db, newMediaBackfillRequest)},
 	}
-	db.Portal = &PortalQuery{
-		db:  db,
-		log: log.Sub("Portal"),
-	}
-	db.Puppet = &PuppetQuery{
-		db:  db,
-		log: log.Sub("Puppet"),
-	}
-	db.Message = &MessageQuery{
-		db:  db,
-		log: log.Sub("Message"),
-	}
-	db.Reaction = &ReactionQuery{
-		db:  db,
-		log: log.Sub("Reaction"),
-	}
-	db.DisappearingMessage = &DisappearingMessageQuery{
-		db:  db,
-		log: log.Sub("DisappearingMessage"),
-	}
-	db.Backfill = &BackfillQuery{
-		db:  db,
-		log: log.Sub("Backfill"),
-	}
-	db.HistorySync = &HistorySyncQuery{
-		db:  db,
-		log: log.Sub("HistorySync"),
-	}
-	db.MediaBackfillRequest = &MediaBackfillRequestQuery{
-		db:  db,
-		log: log.Sub("MediaBackfillRequest"),
-	}
-	return db
 }
 
 func isRetryableError(err error) bool {

@@ -29,6 +29,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/rs/zerolog"
 	"github.com/skip2/go-qrcode"
 	"github.com/tidwall/gjson"
 
@@ -37,7 +38,6 @@ import (
 	"go.mau.fi/whatsmeow/types"
 
 	"maunium.net/go/mautrix"
-	"maunium.net/go/mautrix/bridge"
 	"maunium.net/go/mautrix/bridge/commands"
 	"maunium.net/go/mautrix/bridge/status"
 	"maunium.net/go/mautrix/event"
@@ -117,7 +117,10 @@ func fnSetRelay(ce *WrappedCommandEvent) {
 		ce.Reply("Only bridge admins are allowed to enable relay mode on this instance of the bridge")
 	} else {
 		ce.Portal.RelayUserID = ce.User.MXID
-		ce.Portal.Update(nil)
+		err := ce.Portal.Update(ce.Ctx)
+		if err != nil {
+			ce.ZLog.Err(err).Msg("Failed to save portal after setting relay user")
+		}
 		ce.Reply("Messages from non-logged-in users in this room will now be bridged through your WhatsApp account")
 	}
 }
@@ -139,7 +142,10 @@ func fnUnsetRelay(ce *WrappedCommandEvent) {
 		ce.Reply("Only bridge admins are allowed to enable relay mode on this instance of the bridge")
 	} else {
 		ce.Portal.RelayUserID = ""
-		ce.Portal.Update(nil)
+		err := ce.Portal.Update(ce.Ctx)
+		if err != nil {
+			ce.ZLog.Err(err).Msg("Failed to save portal after clearing relay user")
+		}
 		ce.Reply("Messages from non-logged-in users will no longer be bridged in this room")
 	}
 }
@@ -246,7 +252,7 @@ func fnJoin(ce *WrappedCommandEvent) {
 			ce.Reply("Failed to join group: %v", err)
 			return
 		}
-		ce.Log.Debugln("%s successfully joined group %s", ce.User.MXID, jid)
+		ce.ZLog.Debug().Stringer("group_jid", jid).Msg("User successfully joined WhatsApp group with link")
 		ce.Reply("Successfully joined group `%s`, the portal should be created momentarily", jid)
 	} else if strings.HasPrefix(ce.Args[0], whatsmeow.NewsletterLinkPrefix) {
 		info, err := ce.User.Client.GetNewsletterInfoWithInvite(ce.Args[0])
@@ -259,14 +265,14 @@ func fnJoin(ce *WrappedCommandEvent) {
 			ce.Reply("Failed to follow channel: %v", err)
 			return
 		}
-		ce.Log.Debugln("%s successfully followed channel %s", ce.User.MXID, info.ID)
+		ce.ZLog.Debug().Stringer("channel_jid", info.ID).Msg("User successfully followed WhatsApp channel with link")
 		ce.Reply("Successfully followed channel `%s`, the portal should be created momentarily", info.ID)
 	} else {
 		ce.Reply("That doesn't look like a WhatsApp invite link")
 	}
 }
 
-func tryDecryptEvent(crypto bridge.Crypto, evt *event.Event) (json.RawMessage, error) {
+func tryDecryptEvent(ce *WrappedCommandEvent, evt *event.Event) (json.RawMessage, error) {
 	var data json.RawMessage
 	if evt.Type != event.EventEncrypted {
 		data = evt.Content.VeryRaw
@@ -275,7 +281,7 @@ func tryDecryptEvent(crypto bridge.Crypto, evt *event.Event) (json.RawMessage, e
 		if err != nil && !errors.Is(err, event.ErrContentAlreadyParsed) {
 			return nil, err
 		}
-		decrypted, err := crypto.Decrypt(evt)
+		decrypted, err := ce.Bridge.Crypto.Decrypt(ce.Ctx, evt)
 		if err != nil {
 			return nil, err
 		}
@@ -311,11 +317,11 @@ var cmdAccept = &commands.FullHandler{
 func fnAccept(ce *WrappedCommandEvent) {
 	if len(ce.ReplyTo) == 0 {
 		ce.Reply("You must reply to a group invite message when using this command.")
-	} else if evt, err := ce.Portal.MainIntent().GetEvent(ce.RoomID, ce.ReplyTo); err != nil {
-		ce.Log.Errorln("Failed to get event %s to handle !wa accept command: %v", ce.ReplyTo, err)
+	} else if evt, err := ce.Portal.MainIntent().GetEvent(ce.Ctx, ce.RoomID, ce.ReplyTo); err != nil {
+		ce.ZLog.Err(err).Stringer("reply_to_mxid", ce.ReplyTo).Msg("Failed to get reply target event to handle !wa accept command")
 		ce.Reply("Failed to get reply event")
-	} else if rawContent, err := tryDecryptEvent(ce.Bridge.Crypto, evt); err != nil {
-		ce.Log.Errorln("Failed to decrypt event %s to handle !wa accept command: %v", ce.ReplyTo, err)
+	} else if rawContent, err := tryDecryptEvent(ce, evt); err != nil {
+		ce.ZLog.Err(err).Stringer("reply_to_mxid", ce.ReplyTo).Msg("Failed to decrypt reply target event to handle !wa accept command")
 		ce.Reply("Failed to decrypt reply event")
 	} else if meta, err := parseInviteMeta(rawContent); err != nil || meta == nil {
 		ce.Reply("That doesn't look like a group invite message.")
@@ -344,16 +350,16 @@ func fnCreate(ce *WrappedCommandEvent) {
 		return
 	}
 
-	members, err := ce.Bot.JoinedMembers(ce.RoomID)
+	members, err := ce.Bot.JoinedMembers(ce.Ctx, ce.RoomID)
 	if err != nil {
 		ce.Reply("Failed to get room members: %v", err)
 		return
 	}
 
 	var roomNameEvent event.RoomNameEventContent
-	err = ce.Bot.StateEvent(ce.RoomID, event.StateRoomName, "", &roomNameEvent)
+	err = ce.Bot.StateEvent(ce.Ctx, ce.RoomID, event.StateRoomName, "", &roomNameEvent)
 	if err != nil && !errors.Is(err, mautrix.MNotFound) {
-		ce.Log.Errorln("Failed to get room name to create group:", err)
+		ce.ZLog.Err(err).Msg("Failed to get room name to create group")
 		ce.Reply("Failed to get room name")
 		return
 	} else if len(roomNameEvent.Name) == 0 {
@@ -362,15 +368,17 @@ func fnCreate(ce *WrappedCommandEvent) {
 	}
 
 	var encryptionEvent event.EncryptionEventContent
-	err = ce.Bot.StateEvent(ce.RoomID, event.StateEncryption, "", &encryptionEvent)
+	err = ce.Bot.StateEvent(ce.Ctx, ce.RoomID, event.StateEncryption, "", &encryptionEvent)
 	if err != nil && !errors.Is(err, mautrix.MNotFound) {
+		ce.ZLog.Err(err).Msg("Failed to get room encryption status to create group")
 		ce.Reply("Failed to get room encryption status")
 		return
 	}
 
 	var createEvent event.CreateEventContent
-	err = ce.Bot.StateEvent(ce.RoomID, event.StateCreate, "", &createEvent)
+	err = ce.Bot.StateEvent(ce.Ctx, ce.RoomID, event.StateCreate, "", &createEvent)
 	if err != nil && !errors.Is(err, mautrix.MNotFound) {
+		ce.ZLog.Err(err).Msg("Failed to get room create event to create group")
 		ce.Reply("Failed to get room create event")
 		return
 	}
@@ -395,7 +403,11 @@ func fnCreate(ce *WrappedCommandEvent) {
 	// TODO check m.space.parent to create rooms directly in communities
 
 	messageID := ce.User.Client.GenerateMessageID()
-	ce.Log.Infofln("Creating group for %s with name %s and participants %+v (create key: %s)", ce.RoomID, roomNameEvent.Name, participants, messageID)
+	ce.ZLog.Info().
+		Str("room_name", roomNameEvent.Name).
+		Any("participants", participants).
+		Str("create_key", messageID).
+		Msg("Creating WhatsApp group for Matrix room")
 	ce.User.createKeyDedup = messageID
 	resp, err := ce.User.Client.CreateGroup(whatsmeow.ReqCreateGroup{
 		CreateKey:    messageID,
@@ -409,21 +421,25 @@ func fnCreate(ce *WrappedCommandEvent) {
 		ce.Reply("Failed to create group: %v", err)
 		return
 	}
+	ce.ZLog.UpdateContext(func(c zerolog.Context) zerolog.Context {
+		return c.Str("group_jid", resp.JID.String())
+	})
 	portal := ce.User.GetPortalByJID(resp.JID)
 	portal.roomCreateLock.Lock()
 	defer portal.roomCreateLock.Unlock()
 	if len(portal.MXID) != 0 {
-		portal.log.Warnln("Detected race condition in room creation")
+		ce.ZLog.Warn().Msg("Detected race condition in room creation")
 		// TODO race condition, clean up the old room
 	}
 	portal.MXID = ce.RoomID
+	portal.updateLogger()
 	portal.Name = roomNameEvent.Name
 	portal.IsParent = resp.IsParent
 	portal.Encrypted = encryptionEvent.Algorithm == id.AlgorithmMegolmV1
 	if !portal.Encrypted && ce.Bridge.Config.Bridge.Encryption.Default {
-		_, err = portal.MainIntent().SendStateEvent(portal.MXID, event.StateEncryption, "", portal.GetEncryptionEventContent())
+		_, err = portal.MainIntent().SendStateEvent(ce.Ctx, portal.MXID, event.StateEncryption, "", portal.GetEncryptionEventContent())
 		if err != nil {
-			portal.log.Warnln("Failed to enable encryption in room:", err)
+			ce.ZLog.Err(err).Msg("Failed to enable encryption in room")
 			if errors.Is(err, mautrix.MForbidden) {
 				ce.Reply("I don't seem to have permission to enable encryption in this room.")
 			} else {
@@ -433,8 +449,11 @@ func fnCreate(ce *WrappedCommandEvent) {
 		portal.Encrypted = true
 	}
 
-	portal.Update(nil)
-	portal.UpdateBridgeInfo()
+	err = portal.Update(ce.Ctx)
+	if err != nil {
+		ce.ZLog.Err(err).Msg("Failed to save portal after creating group")
+	}
+	portal.UpdateBridgeInfo(ce.Ctx)
 	ce.User.createKeyDedup = ""
 
 	ce.Reply("Successfully created WhatsApp group %s", portal.Key.JID)
@@ -512,7 +531,7 @@ func fnLogin(ce *WrappedCommandEvent) {
 		}
 	}
 	if qrEventID != "" {
-		_, _ = ce.Bot.RedactEvent(ce.RoomID, qrEventID)
+		_, _ = ce.Bot.RedactEvent(ce.Ctx, ce.RoomID, qrEventID)
 	}
 }
 
@@ -529,9 +548,9 @@ func (user *User) sendQR(ce *WrappedCommandEvent, code string, prevEvent id.Even
 	if len(prevEvent) != 0 {
 		content.SetEdit(prevEvent)
 	}
-	resp, err := ce.Bot.SendMessageEvent(ce.RoomID, event.EventMessage, &content)
+	resp, err := ce.Bot.SendMessageEvent(ce.Ctx, ce.RoomID, event.EventMessage, &content)
 	if err != nil {
-		user.log.Errorln("Failed to send edited QR code to user:", err)
+		ce.ZLog.Err(err).Msg("Failed to send edited QR code to user")
 	} else if len(prevEvent) == 0 {
 		prevEvent = resp.EventID
 	}
@@ -541,16 +560,16 @@ func (user *User) sendQR(ce *WrappedCommandEvent, code string, prevEvent id.Even
 func (user *User) uploadQR(ce *WrappedCommandEvent, code string) (id.ContentURI, bool) {
 	qrCode, err := qrcode.Encode(code, qrcode.Low, 256)
 	if err != nil {
-		user.log.Errorln("Failed to encode QR code:", err)
+		ce.ZLog.Err(err).Msg("Failed to encode QR code")
 		ce.Reply("Failed to encode QR code: %v", err)
 		return id.ContentURI{}, false
 	}
 
 	bot := user.bridge.AS.BotClient()
 
-	resp, err := bot.UploadBytes(qrCode, "image/png")
+	resp, err := bot.UploadBytes(ce.Ctx, qrCode, "image/png")
 	if err != nil {
-		user.log.Errorln("Failed to upload QR code:", err)
+		ce.ZLog.Err(err).Msg("Failed to upload QR code")
 		ce.Reply("Failed to upload QR code: %v", err)
 		return id.ContentURI{}, false
 	}
@@ -578,14 +597,14 @@ func fnLogout(ce *WrappedCommandEvent) {
 	puppet.ClearCustomMXID()
 	err := ce.User.Client.Logout()
 	if err != nil {
-		ce.User.log.Warnln("Error while logging out:", err)
+		ce.ZLog.Err(err).Msg("Unknown error while logging out")
 		ce.Reply("Unknown error while logging out: %v", err)
 		return
 	}
 	ce.User.Session = nil
 	ce.User.removeFromJIDMap(status.BridgeState{StateEvent: status.StateLoggedOut})
 	ce.User.DeleteConnection()
-	ce.User.DeleteSession()
+	ce.User.DeleteSession(ce.Ctx)
 	ce.Reply("Logged out successfully.")
 }
 
@@ -620,10 +639,13 @@ func fnTogglePresence(ce *WrappedCommandEvent) {
 	if ce.User.IsLoggedIn() {
 		err := ce.User.Client.SendPresence(newPresence)
 		if err != nil {
-			ce.User.log.Warnln("Failed to set presence:", err)
+			ce.ZLog.Err(err).Msg("Failed to send presence to WhatsApp")
 		}
 	}
-	customPuppet.Update()
+	err := customPuppet.Update(ce.Ctx)
+	if err != nil {
+		ce.ZLog.Err(err).Msg("Failed to save puppet after toggling presence")
+	}
 }
 
 var cmdDeleteSession = &commands.FullHandler{
@@ -642,7 +664,7 @@ func fnDeleteSession(ce *WrappedCommandEvent) {
 	}
 	ce.User.removeFromJIDMap(status.BridgeState{StateEvent: status.StateLoggedOut})
 	ce.User.DeleteConnection()
-	ce.User.DeleteSession()
+	ce.User.DeleteSession(ce.Ctx)
 	ce.Reply("Session information purged")
 }
 
@@ -716,19 +738,19 @@ func fnPing(ce *WrappedCommandEvent) {
 	}
 }
 
-func canDeletePortal(portal *Portal, userID id.UserID) bool {
+func canDeletePortal(ce *WrappedCommandEvent, portal *Portal) bool {
 	if len(portal.MXID) == 0 {
 		return false
 	}
 
-	members, err := portal.MainIntent().JoinedMembers(portal.MXID)
+	members, err := portal.MainIntent().JoinedMembers(ce.Ctx, portal.MXID)
 	if err != nil {
-		portal.log.Errorfln("Failed to get joined members to check if portal can be deleted by %s: %v", userID, err)
+		ce.ZLog.Err(err).Stringer("portal_mxid", portal.MXID).Msg("Failed to get joined members to check if portal can be deleted by user")
 		return false
 	}
 	for otherUser := range members.Joined {
 		_, isPuppet := portal.bridge.ParsePuppetMXID(otherUser)
-		if isPuppet || otherUser == portal.bridge.Bot.UserID || otherUser == userID {
+		if isPuppet || otherUser == portal.bridge.Bot.UserID || otherUser == ce.User.MXID {
 			continue
 		}
 		user := portal.bridge.GetUserByMXID(otherUser)
@@ -750,14 +772,14 @@ var cmdDeletePortal = &commands.FullHandler{
 }
 
 func fnDeletePortal(ce *WrappedCommandEvent) {
-	if !ce.User.Admin && !canDeletePortal(ce.Portal, ce.User.MXID) {
+	if !ce.User.Admin && !canDeletePortal(ce, ce.Portal) {
 		ce.Reply("Only bridge admins can delete portals with other Matrix users")
 		return
 	}
 
-	ce.Portal.log.Infoln(ce.User.MXID, "requested deletion of portal.")
-	ce.Portal.Delete()
-	ce.Portal.Cleanup(false)
+	ce.ZLog.Info().Msg("User requested deletion of current portal")
+	ce.Portal.Delete(ce.Ctx)
+	ce.Portal.Cleanup(ce.Ctx, false)
 }
 
 var cmdDeleteAllPortals = &commands.FullHandler{
@@ -778,7 +800,7 @@ func fnDeleteAllPortals(ce *WrappedCommandEvent) {
 	} else {
 		portalsToDelete = portals[:0]
 		for _, portal := range portals {
-			if canDeletePortal(portal, ce.User.MXID) {
+			if canDeletePortal(ce, portal) {
 				portalsToDelete = append(portalsToDelete, portal)
 			}
 		}
@@ -790,7 +812,7 @@ func fnDeleteAllPortals(ce *WrappedCommandEvent) {
 
 	leave := func(portal *Portal) {
 		if len(portal.MXID) > 0 {
-			_, _ = portal.MainIntent().KickUser(portal.MXID, &mautrix.ReqKickUser{
+			_, _ = portal.MainIntent().KickUser(ce.Ctx, portal.MXID, &mautrix.ReqKickUser{
 				Reason: "Deleting portal",
 				UserID: ce.User.MXID,
 			})
@@ -801,21 +823,21 @@ func fnDeleteAllPortals(ce *WrappedCommandEvent) {
 		intent := customPuppet.CustomIntent()
 		leave = func(portal *Portal) {
 			if len(portal.MXID) > 0 {
-				_, _ = intent.LeaveRoom(portal.MXID)
-				_, _ = intent.ForgetRoom(portal.MXID)
+				_, _ = intent.LeaveRoom(ce.Ctx, portal.MXID)
+				_, _ = intent.ForgetRoom(ce.Ctx, portal.MXID)
 			}
 		}
 	}
 	ce.Reply("Found %d portals, deleting...", len(portalsToDelete))
 	for _, portal := range portalsToDelete {
-		portal.Delete()
+		portal.Delete(ce.Ctx)
 		leave(portal)
 	}
 	ce.Reply("Finished deleting portal info. Now cleaning up rooms in background.")
 
 	go func() {
 		for _, portal := range portalsToDelete {
-			portal.Cleanup(false)
+			portal.Cleanup(ce.Ctx, false)
 		}
 		ce.Reply("Finished background cleanup of deleted portal rooms.")
 	}()
@@ -882,7 +904,7 @@ func fnList(ce *WrappedCommandEvent) {
 	}
 	var err error
 	page := 1
-	max := 100
+	maxPerPage := 100
 	if len(ce.Args) > 1 {
 		page, err = strconv.Atoi(ce.Args[1])
 		if err != nil || page <= 0 {
@@ -891,11 +913,11 @@ func fnList(ce *WrappedCommandEvent) {
 		}
 	}
 	if len(ce.Args) > 2 {
-		max, err = strconv.Atoi(ce.Args[2])
-		if err != nil || max <= 0 {
+		maxPerPage, err = strconv.Atoi(ce.Args[2])
+		if err != nil || maxPerPage <= 0 {
 			ce.Reply("\"%s\" isn't a valid number of items per page", ce.Args[2])
 			return
-		} else if max > 400 {
+		} else if maxPerPage > 400 {
 			ce.Reply("Warning: a high number of items per page may fail to send a reply")
 		}
 	}
@@ -924,8 +946,8 @@ func fnList(ce *WrappedCommandEvent) {
 		ce.Reply("No %s found", strings.ToLower(typeName))
 		return
 	}
-	pages := int(math.Ceil(float64(len(result)) / float64(max)))
-	if (page-1)*max >= len(result) {
+	pages := int(math.Ceil(float64(len(result)) / float64(maxPerPage)))
+	if (page-1)*maxPerPage >= len(result) {
 		if pages == 1 {
 			ce.Reply("There is only 1 page of %s", strings.ToLower(typeName))
 		} else {
@@ -933,11 +955,11 @@ func fnList(ce *WrappedCommandEvent) {
 		}
 		return
 	}
-	lastIndex := page * max
+	lastIndex := page * maxPerPage
 	if lastIndex > len(result) {
 		lastIndex = len(result)
 	}
-	result = result[(page-1)*max : lastIndex]
+	result = result[(page-1)*maxPerPage : lastIndex]
 	ce.Reply("### %s (page %d of %d)\n\n%s", typeName, page, pages, strings.Join(result, "\n"))
 }
 
@@ -1036,13 +1058,13 @@ func fnOpen(ce *WrappedCommandEvent) {
 		}
 		jid = newsletterMetadata.ID
 	}
-	ce.Log.Debugln("Importing", jid, "for", ce.User.MXID)
+	ce.ZLog.Debug().Stringer("chat_jid", jid).Msg("Importing chat for user")
 	portal := ce.User.GetPortalByJID(jid)
 	if len(portal.MXID) > 0 {
-		portal.UpdateMatrixRoom(ce.User, groupInfo, newsletterMetadata)
+		portal.UpdateMatrixRoom(ce.Ctx, ce.User, groupInfo, newsletterMetadata)
 		ce.Reply("Portal room synced.")
 	} else {
-		err = portal.CreateMatrixRoom(ce.User, groupInfo, newsletterMetadata, true, true)
+		err = portal.CreateMatrixRoom(ce.Ctx, ce.User, groupInfo, newsletterMetadata, true, true)
 		if err != nil {
 			ce.Reply("Failed to create room: %v", err)
 		} else {
@@ -1085,7 +1107,7 @@ func fnPM(ce *WrappedCommandEvent) {
 		return
 	}
 
-	portal, puppet, justCreated, err := user.StartPM(targetUser.JID, "manual PM command")
+	portal, puppet, justCreated, err := user.StartPM(ce.Ctx, targetUser.JID, "manual PM command")
 	if err != nil {
 		ce.Reply("Failed to create portal room: %v", err)
 	} else if !justCreated {
@@ -1154,11 +1176,16 @@ func fnSync(ce *WrappedCommandEvent) {
 			ce.Reply("Personal filtering spaces are not enabled on this instance of the bridge")
 			return
 		}
-		keys := ce.Bridge.DB.Portal.FindPrivateChatsNotInSpace(ce.User.JID)
+		keys, err := ce.Bridge.DB.Portal.FindPrivateChatsNotInSpace(ce.Ctx, ce.User.JID)
+		if err != nil {
+			ce.ZLog.Err(err).Msg("Failed to get list of private chats not in space")
+			ce.Reply("Failed to get list of private chats not in space")
+			return
+		}
 		count := 0
 		for _, key := range keys {
 			portal := ce.Bridge.GetPortalByJID(key)
-			portal.addToPersonalSpace(ce.User)
+			portal.addToPersonalSpace(ce.Ctx, ce.User)
 			count++
 		}
 		plural := "s"
@@ -1208,6 +1235,9 @@ func fnDisappearingTimer(ce *WrappedCommandEvent) {
 		ce.Portal.ExpirationTime = prevExpirationTime
 		return
 	}
-	ce.Portal.Update(nil)
+	err = ce.Portal.Update(ce.Ctx)
+	if err != nil {
+		ce.ZLog.Err(err).Msg("Failed to save portal after setting disappearing timer")
+	}
 	ce.React("✅")
 }

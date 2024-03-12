@@ -1,5 +1,5 @@
 // mautrix-whatsapp - A Matrix-WhatsApp puppeting bridge.
-// Copyright (C) 2021 Tulir Asokan
+// Copyright (C) 2024 Tulir Asokan
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as published by
@@ -17,29 +17,22 @@
 package database
 
 import (
-	"database/sql"
-	"errors"
+	"context"
 	"fmt"
 	"strings"
 	"time"
 
 	"go.mau.fi/util/dbutil"
 	"go.mau.fi/whatsmeow/types"
-	log "maunium.net/go/maulogger/v2"
-
 	"maunium.net/go/mautrix/id"
 )
 
 type MessageQuery struct {
-	db  *Database
-	log log.Logger
+	*dbutil.QueryHelper[*Message]
 }
 
-func (mq *MessageQuery) New() *Message {
-	return &Message{
-		db:  mq.db,
-		log: mq.log,
-	}
+func newMessage(qh *dbutil.QueryHelper[*Message]) *Message {
+	return &Message{qh: qh}
 }
 
 const (
@@ -67,60 +60,47 @@ const (
 		SELECT chat_jid, chat_receiver, jid, mxid, sender, sender_mxid, timestamp, sent, type, error, broadcast_list_jid FROM message
 		WHERE chat_jid=$1 AND chat_receiver=$2 AND timestamp>$3 AND timestamp<=$4 AND sent=true AND error='' ORDER BY timestamp ASC
 	`
+	insertMessageQuery = `
+		INSERT INTO message
+			(chat_jid, chat_receiver, jid, mxid, sender, sender_mxid, timestamp, sent, type, error, broadcast_list_jid)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+	`
+	markMessageSentQuery   = "UPDATE message SET sent=true, timestamp=$1 WHERE chat_jid=$2 AND chat_receiver=$3 AND jid=$4"
+	updateMessageMXIDQuery = "UPDATE message SET mxid=$1, type=$2, error=$3 WHERE chat_jid=$4 AND chat_receiver=$5 AND jid=$6"
+	deleteMessageQuery     = "DELETE FROM message WHERE chat_jid=$1 AND chat_receiver=$2 AND jid=$3"
 )
 
-func (mq *MessageQuery) GetAll(chat PortalKey) (messages []*Message) {
-	rows, err := mq.db.Query(getAllMessagesQuery, chat.JID, chat.Receiver)
-	if err != nil || rows == nil {
-		return nil
-	}
-	for rows.Next() {
-		messages = append(messages, mq.New().Scan(rows))
-	}
-	return
+func (mq *MessageQuery) GetAll(ctx context.Context, chat PortalKey) ([]*Message, error) {
+	return mq.QueryMany(ctx, getAllMessagesQuery, chat.JID, chat.Receiver)
 }
 
-func (mq *MessageQuery) GetByJID(chat PortalKey, jid types.MessageID) *Message {
-	return mq.maybeScan(mq.db.QueryRow(getMessageByJIDQuery, chat.JID, chat.Receiver, jid))
+func (mq *MessageQuery) GetByJID(ctx context.Context, chat PortalKey, jid types.MessageID) (*Message, error) {
+	return mq.QueryOne(ctx, getMessageByJIDQuery, chat.JID, chat.Receiver, jid)
 }
 
-func (mq *MessageQuery) GetByMXID(mxid id.EventID) *Message {
-	return mq.maybeScan(mq.db.QueryRow(getMessageByMXIDQuery, mxid))
+func (mq *MessageQuery) GetByMXID(ctx context.Context, mxid id.EventID) (*Message, error) {
+	return mq.QueryOne(ctx, getMessageByMXIDQuery, mxid)
 }
 
-func (mq *MessageQuery) GetLastInChat(chat PortalKey) *Message {
-	return mq.GetLastInChatBefore(chat, time.Now().Add(60*time.Second))
+func (mq *MessageQuery) GetLastInChat(ctx context.Context, chat PortalKey) (*Message, error) {
+	return mq.GetLastInChatBefore(ctx, chat, time.Now().Add(60*time.Second))
 }
 
-func (mq *MessageQuery) GetLastInChatBefore(chat PortalKey, maxTimestamp time.Time) *Message {
-	msg := mq.maybeScan(mq.db.QueryRow(getLastMessageInChatQuery, chat.JID, chat.Receiver, maxTimestamp.Unix()))
-	if msg == nil || msg.Timestamp.IsZero() {
+func (mq *MessageQuery) GetLastInChatBefore(ctx context.Context, chat PortalKey, maxTimestamp time.Time) (*Message, error) {
+	msg, err := mq.QueryOne(ctx, getLastMessageInChatQuery, chat.JID, chat.Receiver, maxTimestamp.Unix())
+	if msg != nil && msg.Timestamp.IsZero() {
 		// Old db, we don't know what the last message is.
-		return nil
+		msg = nil
 	}
-	return msg
+	return msg, err
 }
 
-func (mq *MessageQuery) GetFirstInChat(chat PortalKey) *Message {
-	return mq.maybeScan(mq.db.QueryRow(getFirstMessageInChatQuery, chat.JID, chat.Receiver))
+func (mq *MessageQuery) GetFirstInChat(ctx context.Context, chat PortalKey) (*Message, error) {
+	return mq.QueryOne(ctx, getFirstMessageInChatQuery, chat.JID, chat.Receiver)
 }
 
-func (mq *MessageQuery) GetMessagesBetween(chat PortalKey, minTimestamp, maxTimestamp time.Time) (messages []*Message) {
-	rows, err := mq.db.Query(getMessagesBetweenQuery, chat.JID, chat.Receiver, minTimestamp.Unix(), maxTimestamp.Unix())
-	if err != nil || rows == nil {
-		return nil
-	}
-	for rows.Next() {
-		messages = append(messages, mq.New().Scan(rows))
-	}
-	return
-}
-
-func (mq *MessageQuery) maybeScan(row *sql.Row) *Message {
-	if row == nil {
-		return nil
-	}
-	return mq.New().Scan(row)
+func (mq *MessageQuery) GetMessagesBetween(ctx context.Context, chat PortalKey, minTimestamp, maxTimestamp time.Time) ([]*Message, error) {
+	return mq.QueryMany(ctx, getMessagesBetweenQuery, chat.JID, chat.Receiver, minTimestamp.Unix(), maxTimestamp.Unix())
 }
 
 type MessageErrorType string
@@ -144,8 +124,7 @@ const (
 )
 
 type Message struct {
-	db  *Database
-	log log.Logger
+	qh *dbutil.QueryHelper[*Message]
 
 	Chat       PortalKey
 	JID        types.MessageID
@@ -172,76 +151,49 @@ func (msg *Message) IsFakeJID() bool {
 
 const fakeGalleryMXIDFormat = "com.beeper.gallery::%d:%s"
 
-func (msg *Message) Scan(row dbutil.Scannable) *Message {
+func (msg *Message) Scan(row dbutil.Scannable) (*Message, error) {
 	var ts int64
 	err := row.Scan(&msg.Chat.JID, &msg.Chat.Receiver, &msg.JID, &msg.MXID, &msg.Sender, &msg.SenderMXID, &ts, &msg.Sent, &msg.Type, &msg.Error, &msg.BroadcastListJID)
 	if err != nil {
-		if !errors.Is(err, sql.ErrNoRows) {
-			msg.log.Errorln("Database scan failed:", err)
-		}
-		return nil
+		return nil, err
 	}
 	if strings.HasPrefix(msg.MXID.String(), "com.beeper.gallery::") {
 		_, err = fmt.Sscanf(msg.MXID.String(), fakeGalleryMXIDFormat, &msg.GalleryPart, &msg.MXID)
 		if err != nil {
-			msg.log.Errorln("Parsing gallery MXID failed:", err)
+			return nil, fmt.Errorf("failed to parse gallery MXID: %w", err)
 		}
 	}
 	if ts != 0 {
 		msg.Timestamp = time.Unix(ts, 0)
 	}
-	return msg
+	return msg, nil
 }
 
-func (msg *Message) Insert(txn dbutil.Execable) {
-	if txn == nil {
-		txn = msg.db
-	}
-	var sender interface{} = msg.Sender
-	// Slightly hacky hack to allow inserting empty senders (used for post-backfill dummy events)
-	if msg.Sender.IsEmpty() {
-		sender = ""
-	}
+func (msg *Message) sqlVariables() []any {
 	mxid := msg.MXID.String()
 	if msg.GalleryPart != 0 {
 		mxid = fmt.Sprintf(fakeGalleryMXIDFormat, msg.GalleryPart, mxid)
 	}
-	_, err := txn.Exec(`
-		INSERT INTO message
-			(chat_jid, chat_receiver, jid, mxid, sender, sender_mxid, timestamp, sent, type, error, broadcast_list_jid)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-	`, msg.Chat.JID, msg.Chat.Receiver, msg.JID, mxid, sender, msg.SenderMXID, msg.Timestamp.Unix(), msg.Sent, msg.Type, msg.Error, msg.BroadcastListJID)
-	if err != nil {
-		msg.log.Warnfln("Failed to insert %s@%s: %v", msg.Chat, msg.JID, err)
-	}
+	return []any{msg.Chat.JID, msg.Chat.Receiver, msg.JID, mxid, msg.Sender, msg.SenderMXID, msg.Timestamp.Unix(), msg.Sent, msg.Type, msg.Error, msg.BroadcastListJID}
 }
 
-func (msg *Message) MarkSent(ts time.Time) {
+func (msg *Message) Insert(ctx context.Context) error {
+	return msg.qh.Exec(ctx, insertMessageQuery, msg.sqlVariables()...)
+}
+
+func (msg *Message) MarkSent(ctx context.Context, ts time.Time) error {
 	msg.Sent = true
 	msg.Timestamp = ts
-	_, err := msg.db.Exec("UPDATE message SET sent=true, timestamp=$1 WHERE chat_jid=$2 AND chat_receiver=$3 AND jid=$4", ts.Unix(), msg.Chat.JID, msg.Chat.Receiver, msg.JID)
-	if err != nil {
-		msg.log.Warnfln("Failed to update %s@%s: %v", msg.Chat, msg.JID, err)
-	}
+	return msg.qh.Exec(ctx, markMessageSentQuery, ts.Unix(), msg.Chat.JID, msg.Chat.Receiver, msg.JID)
 }
 
-func (msg *Message) UpdateMXID(txn dbutil.Execable, mxid id.EventID, newType MessageType, newError MessageErrorType) {
-	if txn == nil {
-		txn = msg.db
-	}
+func (msg *Message) UpdateMXID(ctx context.Context, mxid id.EventID, newType MessageType, newError MessageErrorType) error {
 	msg.MXID = mxid
 	msg.Type = newType
 	msg.Error = newError
-	_, err := txn.Exec("UPDATE message SET mxid=$1, type=$2, error=$3 WHERE chat_jid=$4 AND chat_receiver=$5 AND jid=$6",
-		mxid, newType, newError, msg.Chat.JID, msg.Chat.Receiver, msg.JID)
-	if err != nil {
-		msg.log.Warnfln("Failed to update %s@%s: %v", msg.Chat, msg.JID, err)
-	}
+	return msg.qh.Exec(ctx, updateMessageMXIDQuery, mxid, newType, newError, msg.Chat.JID, msg.Chat.Receiver, msg.JID)
 }
 
-func (msg *Message) Delete() {
-	_, err := msg.db.Exec("DELETE FROM message WHERE chat_jid=$1 AND chat_receiver=$2 AND jid=$3", msg.Chat.JID, msg.Chat.Receiver, msg.JID)
-	if err != nil {
-		msg.log.Warnfln("Failed to delete %s@%s: %v", msg.Chat, msg.JID, err)
-	}
+func (msg *Message) Delete(ctx context.Context) error {
+	return msg.qh.Exec(ctx, deleteMessageQuery, msg.Chat.JID, msg.Chat.Receiver, msg.JID)
 }

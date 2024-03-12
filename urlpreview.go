@@ -1,5 +1,5 @@
 // mautrix-whatsapp - A Matrix-WhatsApp puppeting bridge.
-// Copyright (C) 2022 Tulir Asokan
+// Copyright (C) 2024 Tulir Asokan
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as published by
@@ -19,7 +19,6 @@ package main
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"image"
 	"net/http"
 	"net/url"
@@ -27,33 +26,26 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tidwall/gjson"
+	"github.com/rs/zerolog"
 	"golang.org/x/net/idna"
 	"google.golang.org/protobuf/proto"
 
 	"go.mau.fi/whatsmeow"
 	waProto "go.mau.fi/whatsmeow/binary/proto"
 
-	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/appservice"
 	"maunium.net/go/mautrix/crypto/attachment"
 	"maunium.net/go/mautrix/event"
 )
 
-type BeeperLinkPreview struct {
-	mautrix.RespPreviewURL
-	MatchedURL      string                   `json:"matched_url"`
-	ImageEncryption *event.EncryptedFileInfo `json:"beeper:image:encryption,omitempty"`
-}
-
-func (portal *Portal) convertURLPreviewToBeeper(intent *appservice.IntentAPI, source *User, msg *waProto.ExtendedTextMessage) []*BeeperLinkPreview {
+func (portal *Portal) convertURLPreviewToBeeper(ctx context.Context, intent *appservice.IntentAPI, source *User, msg *waProto.ExtendedTextMessage) []*event.BeeperLinkPreview {
 	if msg.GetMatchedText() == "" {
-		return []*BeeperLinkPreview{}
+		return []*event.BeeperLinkPreview{}
 	}
 
-	output := &BeeperLinkPreview{
+	output := &event.BeeperLinkPreview{
 		MatchedURL: msg.GetMatchedText(),
-		RespPreviewURL: mautrix.RespPreviewURL{
+		LinkPreview: event.LinkPreview{
 			CanonicalURL: msg.GetCanonicalUrl(),
 			Title:        msg.GetTitle(),
 			Description:  msg.GetDescription(),
@@ -68,7 +60,7 @@ func (portal *Portal) convertURLPreviewToBeeper(intent *appservice.IntentAPI, so
 		var err error
 		thumbnailData, err = source.Client.DownloadThumbnail(msg)
 		if err != nil {
-			portal.log.Warnfln("Failed to download thumbnail for link preview: %v", err)
+			zerolog.Ctx(ctx).Err(err).Msg("Failed to download thumbnail for link preview")
 		}
 	}
 	if thumbnailData == nil && msg.JpegThumbnail != nil {
@@ -93,9 +85,9 @@ func (portal *Portal) convertURLPreviewToBeeper(intent *appservice.IntentAPI, so
 			uploadMime = "application/octet-stream"
 			output.ImageEncryption = &event.EncryptedFileInfo{EncryptedFile: *crypto}
 		}
-		resp, err := intent.UploadBytes(uploadData, uploadMime)
+		resp, err := intent.UploadBytes(ctx, uploadData, uploadMime)
 		if err != nil {
-			portal.log.Warnfln("Failed to reupload thumbnail for link preview: %v", err)
+			zerolog.Ctx(ctx).Err(err).Msg("Failed to reupload thumbnail for link preview")
 		} else {
 			if output.ImageEncryption != nil {
 				output.ImageEncryption.URL = resp.ContentURI.CUString()
@@ -108,36 +100,37 @@ func (portal *Portal) convertURLPreviewToBeeper(intent *appservice.IntentAPI, so
 		output.Type = "video.other"
 	}
 
-	return []*BeeperLinkPreview{output}
+	return []*event.BeeperLinkPreview{output}
 }
 
 var URLRegex = regexp.MustCompile(`https?://[^\s/_*]+(?:/\S*)?`)
 
-func (portal *Portal) convertURLPreviewToWhatsApp(ctx context.Context, sender *User, evt *event.Event, dest *waProto.ExtendedTextMessage) bool {
-	var preview *BeeperLinkPreview
+func (portal *Portal) convertURLPreviewToWhatsApp(ctx context.Context, sender *User, content *event.MessageEventContent, dest *waProto.ExtendedTextMessage) bool {
+	log := zerolog.Ctx(ctx)
+	var preview *event.BeeperLinkPreview
 
-	rawPreview := gjson.GetBytes(evt.Content.VeryRaw, `com\.beeper\.linkpreviews`)
-	if rawPreview.Exists() && rawPreview.IsArray() {
-		var previews []BeeperLinkPreview
-		if err := json.Unmarshal([]byte(rawPreview.Raw), &previews); err != nil || len(previews) == 0 {
+	if content.BeeperLinkPreviews != nil {
+		// Note: this check explicitly happens after checking for nil: empty arrays are treated as no previews,
+		//       but omitting the field means the bridge may look for URLs in the message text.
+		if len(content.BeeperLinkPreviews) == 0 {
 			return false
 		}
 		// WhatsApp only supports a single preview.
-		preview = &previews[0]
+		preview = content.BeeperLinkPreviews[0]
 	} else if portal.bridge.Config.Bridge.URLPreviews {
-		if matchedURL := URLRegex.FindString(evt.Content.AsMessage().Body); len(matchedURL) == 0 {
+		if matchedURL := URLRegex.FindString(content.Body); len(matchedURL) == 0 {
 			return false
 		} else if parsed, err := url.Parse(matchedURL); err != nil {
 			return false
 		} else if parsed.Host, err = idna.ToASCII(parsed.Host); err != nil {
 			return false
-		} else if mxPreview, err := portal.MainIntent().GetURLPreview(parsed.String()); err != nil {
-			portal.log.Warnfln("Failed to fetch preview for %s: %v", matchedURL, err)
+		} else if mxPreview, err := portal.MainIntent().GetURLPreview(ctx, parsed.String()); err != nil {
+			log.Err(err).Str("url", matchedURL).Msg("Failed to fetch URL preview")
 			return false
 		} else {
-			preview = &BeeperLinkPreview{
-				RespPreviewURL: *mxPreview,
-				MatchedURL:     matchedURL,
+			preview = &event.BeeperLinkPreview{
+				LinkPreview: *mxPreview,
+				MatchedURL:  matchedURL,
 			}
 		}
 	}
@@ -163,22 +156,22 @@ func (portal *Portal) convertURLPreviewToWhatsApp(ctx context.Context, sender *U
 		imageMXC = preview.ImageEncryption.URL.ParseOrIgnore()
 	}
 	if !imageMXC.IsEmpty() {
-		data, err := portal.MainIntent().DownloadBytesContext(ctx, imageMXC)
+		data, err := portal.MainIntent().DownloadBytes(ctx, imageMXC)
 		if err != nil {
-			portal.log.Errorfln("Failed to download URL preview image %s in %s: %v", preview.ImageURL, evt.ID, err)
+			log.Err(err).Str("image_url", string(preview.ImageURL)).Msg("Failed to download URL preview image")
 			return true
 		}
 		if preview.ImageEncryption != nil {
 			err = preview.ImageEncryption.DecryptInPlace(data)
 			if err != nil {
-				portal.log.Errorfln("Failed to decrypt URL preview image in %s: %v", evt.ID, err)
+				log.Err(err).Msg("Failed to decrypt URL preview image")
 				return true
 			}
 		}
 		dest.MediaKeyTimestamp = proto.Int64(time.Now().Unix())
 		uploadResp, err := sender.Client.Upload(ctx, data, whatsmeow.MediaLinkThumbnail)
 		if err != nil {
-			portal.log.Errorfln("Failed to upload URL preview thumbnail in %s: %v", evt.ID, err)
+			log.Err(err).Msg("Failed to reupload URL preview thumbnail")
 			return true
 		}
 		dest.ThumbnailSha256 = uploadResp.FileSHA256
@@ -188,7 +181,7 @@ func (portal *Portal) convertURLPreviewToWhatsApp(ctx context.Context, sender *U
 		var width, height int
 		dest.JpegThumbnail, width, height, err = createThumbnailAndGetSize(data, false)
 		if err != nil {
-			portal.log.Warnfln("Failed to create JPEG thumbnail for URL preview in %s: %v", evt.ID, err)
+			log.Err(err).Msg("Failed to create JPEG thumbnail for URL preview")
 		}
 		if preview.ImageHeight > 0 && preview.ImageWidth > 0 {
 			dest.ThumbnailWidth = proto.Uint32(uint32(preview.ImageWidth))
