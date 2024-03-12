@@ -2313,9 +2313,9 @@ func (portal *Portal) CreateMatrixRoom(ctx context.Context, user *User, groupInf
 		}
 		if portal.bridge.Config.Bridge.PrivateChatSelfPuppets {
 			rec := portal.bridge.GetPuppetByJID(portal.Key.Receiver)
-			err = rec.DefaultIntent().EnsureJoined(portal.MXID)
+			err = rec.DefaultIntent().EnsureJoined(ctx, portal.MXID)
 			if err != nil {
-				portal.log.Errorln("Failed to join created portal with puppet:", err)
+				log.Err(err).Msg("Failed to join created portal with puppet")
 			}
 		}
 
