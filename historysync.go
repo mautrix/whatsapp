@@ -526,6 +526,7 @@ func (user *User) storeHistorySync(evt *waProto.HistorySync) {
 		Msg("Storing history sync")
 
 	successfullySavedTotal := 0
+	failedToSaveTotal := 0
 	totalMessageCount := 0
 	for _, conv := range evt.GetConversations() {
 		jid, err := types.ParseJID(conv.GetId())
@@ -578,6 +579,7 @@ func (user *User) storeHistorySync(evt *waProto.HistorySync) {
 		var minTimeIndex, maxTimeIndex int
 
 		successfullySaved := 0
+		failedToSave := 0
 		unsupportedTypes := 0
 		for i, rawMsg := range conv.GetMessages() {
 			// Don't store messages that will just be skipped.
@@ -614,6 +616,7 @@ func (user *User) storeHistorySync(evt *waProto.HistorySync) {
 					Str("msg_id", msgEvt.Info.ID).
 					Time("msg_time", msgEvt.Info.Timestamp).
 					Msg("Failed to save historical message")
+				failedToSave++
 				continue
 			}
 			err = message.Insert(ctx)
@@ -623,12 +626,16 @@ func (user *User) storeHistorySync(evt *waProto.HistorySync) {
 					Str("msg_id", msgEvt.Info.ID).
 					Time("msg_time", msgEvt.Info.Timestamp).
 					Msg("Failed to save historical message")
+				failedToSave++
+			} else {
+				successfullySaved++
 			}
-			successfullySaved++
 		}
 		successfullySavedTotal += successfullySaved
+		failedToSaveTotal += failedToSave
 		log.Debug().
 			Int("saved_count", successfullySaved).
+			Int("failed_count", failedToSave).
 			Int("unsupported_msg_type_count", unsupportedTypes).
 			Time("lowest_time", minTime).
 			Int("lowest_time_index", minTimeIndex).
@@ -646,6 +653,7 @@ func (user *User) storeHistorySync(evt *waProto.HistorySync) {
 	}
 	log.Info().
 		Int("total_saved_count", successfullySavedTotal).
+		Int("total_failed_count", failedToSaveTotal).
 		Int("total_message_count", totalMessageCount).
 		Msg("Finished storing history sync")
 
