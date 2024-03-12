@@ -126,9 +126,9 @@ func (user *User) sqlVariables() []any {
 		device = dbutil.NumPtr(user.JID.Device)
 	}
 	return []any{
-		username, agent, device, user.ManagementRoom, user.SpaceRoom,
+		user.MXID, username, agent, device, user.ManagementRoom, user.SpaceRoom,
 		dbutil.UnixPtr(user.PhoneLastSeen), dbutil.UnixPtr(user.PhoneLastPinged),
-		user.Timezone, user.MXID,
+		user.Timezone,
 	}
 }
 
