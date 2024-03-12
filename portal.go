@@ -1814,6 +1814,7 @@ func (portal *Portal) GetBasePowerLevels() *event.PowerLevelsEventContent {
 		InvitePtr:       &invite,
 		Users: map[id.UserID]int{
 			portal.MainIntent().UserID: 100,
+			portal.bridge.Bot.UserID:   100,
 		},
 		Events: map[string]int{
 			event.StateRoomName.Type:     anyone,
@@ -1831,6 +1832,9 @@ func (portal *Portal) applyPowerLevelFixes(levels *event.PowerLevelsEventContent
 	changed = levels.EnsureEventLevel(event.EventReaction, 0) || changed
 	changed = levels.EnsureEventLevel(event.EventRedaction, 0) || changed
 	changed = levels.EnsureEventLevel(TypeMSC3381PollResponse, 0) || changed
+	if portal.IsPrivateChat() {
+		changed = levels.EnsureUserLevel(portal.bridge.Bot.UserID, 100) || changed
+	}
 	return changed
 }
 
