@@ -12,14 +12,14 @@ require (
 	github.com/rs/zerolog v1.32.0
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
 	github.com/tidwall/gjson v1.17.1
-	go.mau.fi/util v0.4.1-0.20240311141448-53cb04950f7e
+	go.mau.fi/util v0.4.1
 	go.mau.fi/webp v0.1.0
-	go.mau.fi/whatsmeow v0.0.0-20240312193055-9b989e1cc696
-	golang.org/x/exp v0.0.0-20240222234643-814bf88cf225
+	go.mau.fi/whatsmeow v0.0.0-20240316104858-18372a0653fa
+	golang.org/x/exp v0.0.0-20240314144324-c7f7c6466f7f
 	golang.org/x/image v0.15.0
 	golang.org/x/net v0.22.0
 	google.golang.org/protobuf v1.33.0
-	maunium.net/go/mautrix v0.18.0-beta.1.0.20240311183606-94246ffc85aa
+	maunium.net/go/mautrix v0.18.0
 )
 
 require (
@@ -48,6 +48,3 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	maunium.net/go/mauflag v1.0.0 // indirect
 )
-
-//replace go.mau.fi/util => ../../Go/go-util
-//replace maunium.net/go/mautrix => ../mautrix-go
