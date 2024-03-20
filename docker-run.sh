@@ -33,4 +33,14 @@ fi
 
 cd /data
 fixperms
-exec su-exec $UID:$GID /usr/bin/mautrix-whatsapp
+
+EXE=/usr/bin/mautrix-whatsapp
+DLV=/usr/bin/dlv
+if [ -x "$DLV" ]; then
+    if [ "$DBGWAIT" != 1 ]; then
+        NOWAIT=1
+    fi
+    EXE="${DLV} exec ${EXE} ${NOWAIT:+--continue --accept-multiclient} --api-version 2 --headless -l :4040"
+fi
+
+exec su-exec $UID:$GID $EXE
