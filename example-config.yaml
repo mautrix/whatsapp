@@ -313,6 +313,10 @@ bridge:
     # Disable generating reply fallbacks? Some extremely bad clients still rely on them,
     # but they're being phased out and will be completely removed in the future.
     disable_reply_fallbacks: false
+    # Invite the puppet which represents the bridge user into private chats?
+    # This allows proper backfilling in private chats without double puppeting enabled,
+    # but adds an additional puppet user to each private chat.
+    private_chat_self_puppets: false
     # Maximum time for handling Matrix events. Duration strings formatted for https://pkg.go.dev/time#ParseDuration
     # Null means there's no enforced timeout.
     message_handling_timeout:
