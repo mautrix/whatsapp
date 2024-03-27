@@ -3736,6 +3736,13 @@ func (portal *Portal) convertMediaMessage(ctx context.Context, intent *appservic
 			return portal.makeMediaBridgeFailureMessage(info, fmt.Errorf("failed to upload media: %w", err), converted, nil, "")
 		}
 	}
+
+	// Sticker events require the URL field to be present https://spec.matrix.org/v1.9/client-server-api/#events-16
+	// This seems to affect only clients based on the Rust SDK on encrypted channels (like Element X)
+	if typeName == "sticker" && converted.Content.File != nil {
+		converted.Extra["url"] = ""
+	}
+
 	return converted
 }
 
