@@ -54,6 +54,7 @@ func DoUpgrade(helper *up.Helper) {
 	helper.Copy(up.Bool, "bridge", "history_sync", "media_requests", "auto_request_media")
 	helper.Copy(up.Str, "bridge", "history_sync", "media_requests", "request_method")
 	helper.Copy(up.Int, "bridge", "history_sync", "media_requests", "request_local_time")
+	helper.Copy(up.Int, "bridge", "history_sync", "media_requests", "max_async_handle")
 	helper.Copy(up.Int, "bridge", "history_sync", "max_initial_conversations")
 	helper.Copy(up.Int, "bridge", "history_sync", "message_count")
 	helper.Copy(up.Int, "bridge", "history_sync", "unread_hours_threshold")

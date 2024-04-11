@@ -269,7 +269,6 @@ type fakeMessage struct {
 type PortalEvent struct {
 	Message       *PortalMessage
 	MatrixMessage *PortalMatrixMessage
-	MediaRetry    *PortalMediaRetry
 }
 
 type PortalMessage struct {
@@ -284,11 +283,6 @@ type PortalMatrixMessage struct {
 	evt        *event.Event
 	user       *User
 	receivedAt time.Time
-}
-
-type PortalMediaRetry struct {
-	evt    *events.MediaRetry
-	source *User
 }
 
 type recentlyHandledWrapper struct {
@@ -572,8 +566,6 @@ func (portal *Portal) handleOneMessageLoopItem() {
 			portal.handleWhatsAppMessageLoopItem(msg.Message)
 		} else if msg.MatrixMessage != nil {
 			portal.handleMatrixMessageLoopItem(msg.MatrixMessage)
-		} else if msg.MediaRetry != nil {
-			portal.handleMediaRetry(msg.MediaRetry.evt, msg.MediaRetry.source)
 		} else {
 			portal.zlog.Warn().Msg("Unexpected PortalEvent with no data")
 		}
@@ -3801,6 +3793,13 @@ func (portal *Portal) handleMediaRetry(retry *events.MediaRetry, source *User) {
 		Str("retry_message_id", retry.MessageID).
 		Logger()
 	ctx := log.WithContext(context.TODO())
+	err := source.mediaRetryLock.Acquire(ctx, 1)
+	if err != nil {
+		log.Err(err).Msg("Failed to acquire media retry semaphore")
+		return
+	}
+	defer source.mediaRetryLock.Release(1)
+
 	msg, err := portal.bridge.DB.Message.GetByJID(ctx, portal.Key, retry.MessageID)
 	if msg == nil {
 		log.Warn().Msg("Dropping media retry notification for unknown message")

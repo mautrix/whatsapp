@@ -173,6 +173,8 @@ bridge:
             request_method: immediate
             # If request_method is "local_time", what time should the requests be sent (in minutes after midnight)?
             request_local_time: 120
+            # Maximum number of media request responses to handle in parallel per user.
+            max_async_handle: 2
         # Settings for immediate backfills. These backfills should generally be small and their main purpose is
         # to populate each of the initial chats (as configured by max_initial_conversations) with a few messages
         # so that you can continue conversations without losing context.

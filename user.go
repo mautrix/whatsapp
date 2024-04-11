@@ -41,6 +41,7 @@ import (
 	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
 	waLog "go.mau.fi/whatsmeow/util/log"
+	"golang.org/x/sync/semaphore"
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/appservice"
 	"maunium.net/go/mautrix/bridge"
@@ -73,6 +74,8 @@ type User struct {
 
 	historySyncs chan *events.HistorySync
 	lastPresence types.Presence
+
+	mediaRetryLock *semaphore.Weighted
 
 	historySyncLoopsStarted bool
 	enqueueBackfillsTimer   *time.Timer
@@ -257,6 +260,8 @@ func (br *WABridge) NewUser(dbUser *database.User) *User {
 		lastPresence: types.PresenceUnavailable,
 
 		resyncQueue: make(map[types.JID]resyncQueueItem),
+
+		mediaRetryLock: semaphore.NewWeighted(br.Config.Bridge.HistorySync.MediaRequests.MaxAsyncHandle),
 	}
 
 	user.PermissionLevel = user.bridge.Config.Bridge.Permissions.Get(user.MXID)
@@ -955,9 +960,7 @@ func (user *User) HandleEvent(event interface{}) {
 	case *events.MediaRetry:
 		user.phoneSeen(v.Timestamp)
 		portal := user.GetPortalByJID(v.ChatID)
-		portal.events <- &PortalEvent{
-			MediaRetry: &PortalMediaRetry{evt: v, source: user},
-		}
+		go portal.handleMediaRetry(v, user)
 	case *events.CallOffer:
 		user.handleCallStart(v.CallCreator, v.CallID, "", v.Timestamp)
 	case *events.CallOfferNotice:

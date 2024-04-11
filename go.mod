@@ -18,6 +18,7 @@ require (
 	golang.org/x/exp v0.0.0-20240314144324-c7f7c6466f7f
 	golang.org/x/image v0.15.0
 	golang.org/x/net v0.22.0
+	golang.org/x/sync v0.3.0
 	google.golang.org/protobuf v1.33.0
 	maunium.net/go/mautrix v0.18.0
 )
