@@ -250,25 +250,32 @@ func (portal *Portal) legacyBackfill(ctx context.Context, user *User) {
 }
 
 func (user *User) dailyMediaRequestLoop() {
-	// Calculate when to do the first set of media retry requests
-	now := time.Now()
-	userTz, err := time.LoadLocation(user.Timezone)
-	if err != nil {
-		userTz = now.Local().Location()
-	}
-	tonightMidnight := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, userTz)
-	midnightOffset := time.Duration(user.bridge.Config.Bridge.HistorySync.MediaRequests.RequestLocalTime) * time.Minute
-	requestStartTime := tonightMidnight.Add(midnightOffset)
-
-	// If the request time for today has already happened, we need to start the
-	// request loop tomorrow instead.
-	if requestStartTime.Before(now) {
-		requestStartTime = requestStartTime.AddDate(0, 0, 1)
-	}
 	log := user.zlog.With().
 		Str("action", "daily media request loop").
 		Logger()
 	ctx := log.WithContext(context.Background())
+
+	// Calculate when to do the first set of media retry requests
+	now := time.Now()
+	userTz, err := time.LoadLocation(user.Timezone)
+	tzIsInvalid := err != nil && user.Timezone != ""
+	var requestStartTime time.Time
+	if tzIsInvalid {
+		requestStartTime = now.Add(8 * time.Hour)
+		log.Warn().Msg("Invalid time zone, using static 8 hour start time")
+	} else {
+		if userTz == nil {
+			userTz = now.Local().Location()
+		}
+		tonightMidnight := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, userTz)
+		midnightOffset := time.Duration(user.bridge.Config.Bridge.HistorySync.MediaRequests.RequestLocalTime) * time.Minute
+		requestStartTime = tonightMidnight.Add(midnightOffset)
+		// If the request time for today has already happened, we need to start the
+		// request loop tomorrow instead.
+		if requestStartTime.Before(now) {
+			requestStartTime = requestStartTime.AddDate(0, 0, 1)
+		}
+	}
 
 	// Wait to start the loop
 	log.Info().Time("start_loop_at", requestStartTime).Msg("Waiting until start time to do media retry requests")
