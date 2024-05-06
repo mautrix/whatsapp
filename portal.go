@@ -3105,6 +3105,7 @@ func (portal *Portal) convertLiveLocationMessage(ctx context.Context, intent *ap
 	if len(msg.GetCaption()) > 0 {
 		content.Body += ": " + msg.GetCaption()
 	}
+	content.Body += "\n\nUse the WhatsApp app to see the location."
 	return &ConvertedMessage{
 		Intent:    intent,
 		Type:      event.EventMessage,
