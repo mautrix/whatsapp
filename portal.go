@@ -3033,8 +3033,8 @@ func (portal *Portal) convertPollCreationMessage(ctx context.Context, intent *ap
 			},
 		}
 	}
-	body := fmt.Sprintf("%s\n\n%s", msg.GetName(), strings.Join(optionsListText, "\n"))
-	formattedBody := fmt.Sprintf("<p>%s</p><ol>%s</ol>", event.TextToHTML(msg.GetName()), strings.Join(optionsListHTML, ""))
+	body := fmt.Sprintf("%s\n\n%s\n\n(This message is a poll. Please open WhatsApp to vote.)", msg.GetName(), strings.Join(optionsListText, "\n"))
+	formattedBody := fmt.Sprintf("<p>%s</p><ol>%s</ol><p>(This message is a poll. Please open WhatsApp to vote.)</p>", event.TextToHTML(msg.GetName()), strings.Join(optionsListHTML, ""))
 	maxChoices := int(msg.GetSelectableOptionsCount())
 	if maxChoices <= 0 {
 		maxChoices = len(optionNames)
