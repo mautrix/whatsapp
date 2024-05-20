@@ -36,6 +36,9 @@ func DoUpgrade(helper *up.Helper) {
 
 	helper.Copy(up.Str, "whatsapp", "os_name")
 	helper.Copy(up.Str, "whatsapp", "browser_name")
+	helper.Copy(up.Str|up.Null, "whatsapp", "proxy")
+	helper.Copy(up.Str|up.Null, "whatsapp", "get_proxy_url")
+	helper.Copy(up.Bool, "whatsapp", "proxy_only_login")
 
 	helper.Copy(up.Str, "bridge", "username_template")
 	helper.Copy(up.Str, "bridge", "displayname_template")

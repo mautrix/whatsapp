@@ -38,6 +38,10 @@ type Config struct {
 	WhatsApp struct {
 		OSName      string `yaml:"os_name"`
 		BrowserName string `yaml:"browser_name"`
+
+		Proxy          string `yaml:"proxy"`
+		GetProxyURL    string `yaml:"get_proxy_url"`
+		ProxyOnlyLogin bool   `yaml:"proxy_only_login"`
 	} `yaml:"whatsapp"`
 
 	Bridge BridgeConfig `yaml:"bridge"`
