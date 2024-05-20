@@ -560,7 +560,9 @@ func (user *User) createClient(sess *store.Device) {
 	if !user.bridge.Config.WhatsApp.ProxyOnlyLogin || sess.ID == nil {
 		if proxy, err := user.getProxy("login"); err != nil {
 			user.zlog.Err(err).Msg("Failed to get proxy address")
-		} else if err = user.Client.SetProxyAddress(proxy); err != nil {
+		} else if err = user.Client.SetProxyAddress(proxy, whatsmeow.SetProxyOptions{
+			NoMedia: user.bridge.Config.WhatsApp.ProxyOnlyLogin,
+		}); err != nil {
 			user.zlog.Err(err).Msg("Failed to set proxy address")
 		}
 	}
