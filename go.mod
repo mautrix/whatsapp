@@ -8,18 +8,18 @@ require (
 	github.com/gorilla/websocket v1.5.0
 	github.com/lib/pq v1.10.9
 	github.com/mattn/go-sqlite3 v1.14.22
-	github.com/prometheus/client_golang v1.19.0
-	github.com/rs/zerolog v1.32.0
+	github.com/prometheus/client_golang v1.19.1
+	github.com/rs/zerolog v1.33.0
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
 	github.com/tidwall/gjson v1.17.1
 	go.mau.fi/util v0.4.2
 	go.mau.fi/webp v0.1.0
-	go.mau.fi/whatsmeow v0.0.0-20240520180327-81f8f07f1dfb
+	go.mau.fi/whatsmeow v0.0.0-20240603101645-64bc969fbe78
 	golang.org/x/exp v0.0.0-20240409090435-93d18d7e34b8
-	golang.org/x/image v0.15.0
+	golang.org/x/image v0.16.0
 	golang.org/x/net v0.25.0
 	golang.org/x/sync v0.7.0
-	google.golang.org/protobuf v1.33.0
+	google.golang.org/protobuf v1.34.1
 	maunium.net/go/mautrix v0.18.1
 )
 

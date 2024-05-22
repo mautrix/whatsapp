@@ -19,7 +19,6 @@ package main
 import (
 	"context"
 	_ "embed"
-	"net/http"
 	"net/url"
 	"os"
 	"strconv"
@@ -28,6 +27,7 @@ import (
 	"time"
 
 	"github.com/rs/zerolog"
+	"go.mau.fi/whatsmeow/proto/waCompanionReg"
 	waLog "go.mau.fi/whatsmeow/util/log"
 	"google.golang.org/protobuf/proto"
 
@@ -140,7 +140,7 @@ func (br *WABridge) Init() {
 		store.DeviceProps.Version.Secondary = proto.Uint32(uint32(secondary))
 		store.DeviceProps.Version.Tertiary = proto.Uint32(uint32(tertiary))
 	}
-	platformID, ok := waProto.DeviceProps_PlatformType_value[strings.ToUpper(br.Config.WhatsApp.BrowserName)]
+	platformID, ok := waCompanionReg.DeviceProps_PlatformType_value[strings.ToUpper(br.Config.WhatsApp.BrowserName)]
 	if ok {
 		store.DeviceProps.PlatformType = waProto.DeviceProps_PlatformType(platformID).Enum()
 	}
@@ -155,7 +155,17 @@ func (br *WABridge) Start() {
 	if br.Provisioning != nil {
 		br.Provisioning.Init()
 	}
-	go br.CheckWhatsAppUpdate()
+	// TODO find out how the new whatsapp version checks for updates
+	ver, err := whatsmeow.GetLatestVersion(br.AS.HTTPClient)
+	if err != nil {
+		br.ZLog.Err(err).Msg("Failed to get latest WhatsApp web version number")
+	} else {
+		br.ZLog.Debug().
+			Stringer("hardcoded_version", store.GetWAVersion()).
+			Stringer("latest_version", *ver).
+			Msg("Got latest WhatsApp web version number")
+		store.SetWAVersion(*ver)
+	}
 	br.WaitWebsocketConnected()
 	go br.StartUsers()
 	if br.Config.Metrics.Enabled {
@@ -163,37 +173,6 @@ func (br *WABridge) Start() {
 	}
 
 	go br.Loop()
-}
-
-func (br *WABridge) CheckWhatsAppUpdate() {
-	br.ZLog.Debug().Msg("Checking for WhatsApp web update")
-	resp, err := whatsmeow.CheckUpdate(http.DefaultClient)
-	if err != nil {
-		br.ZLog.Warn().Err(err).Msg("Failed to check for WhatsApp web update")
-		return
-	}
-	if store.GetWAVersion() == resp.ParsedVersion {
-		br.ZLog.Debug().Msg("Bridge is using latest WhatsApp web protocol")
-	} else if store.GetWAVersion().LessThan(resp.ParsedVersion) {
-		if resp.IsBelowHard || resp.IsBroken {
-			br.ZLog.Warn().
-				Stringer("latest_version", resp.ParsedVersion).
-				Stringer("current_version", store.GetWAVersion()).
-				Msg("Bridge is using outdated WhatsApp web protocol and probably doesn't work anymore")
-		} else if resp.IsBelowSoft {
-			br.ZLog.Info().
-				Stringer("latest_version", resp.ParsedVersion).
-				Stringer("current_version", store.GetWAVersion()).
-				Msg("Bridge is using outdated WhatsApp web protocol")
-		} else {
-			br.ZLog.Debug().
-				Stringer("latest_version", resp.ParsedVersion).
-				Stringer("current_version", store.GetWAVersion()).
-				Msg("Bridge is using outdated WhatsApp web protocol")
-		}
-	} else {
-		br.ZLog.Debug().Msg("Bridge is using newer than latest WhatsApp web protocol")
-	}
 }
 
 func (br *WABridge) Loop() {

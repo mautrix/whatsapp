@@ -46,7 +46,7 @@ func (portal *Portal) convertURLPreviewToBeeper(ctx context.Context, intent *app
 	output := &event.BeeperLinkPreview{
 		MatchedURL: msg.GetMatchedText(),
 		LinkPreview: event.LinkPreview{
-			CanonicalURL: msg.GetCanonicalUrl(),
+			CanonicalURL: msg.GetCanonicalURL(),
 			Title:        msg.GetTitle(),
 			Description:  msg.GetDescription(),
 		},
@@ -63,8 +63,8 @@ func (portal *Portal) convertURLPreviewToBeeper(ctx context.Context, intent *app
 			zerolog.Ctx(ctx).Err(err).Msg("Failed to download thumbnail for link preview")
 		}
 	}
-	if thumbnailData == nil && msg.JpegThumbnail != nil {
-		thumbnailData = msg.JpegThumbnail
+	if thumbnailData == nil && msg.JPEGThumbnail != nil {
+		thumbnailData = msg.JPEGThumbnail
 	}
 	if thumbnailData != nil {
 		output.ImageHeight = int(msg.GetThumbnailHeight())
@@ -140,7 +140,7 @@ func (portal *Portal) convertURLPreviewToWhatsApp(ctx context.Context, sender *U
 
 	dest.MatchedText = &preview.MatchedURL
 	if len(preview.CanonicalURL) > 0 {
-		dest.CanonicalUrl = &preview.CanonicalURL
+		dest.CanonicalURL = &preview.CanonicalURL
 	}
 	if len(preview.Description) > 0 {
 		dest.Description = &preview.Description
@@ -174,12 +174,12 @@ func (portal *Portal) convertURLPreviewToWhatsApp(ctx context.Context, sender *U
 			log.Err(err).Msg("Failed to reupload URL preview thumbnail")
 			return true
 		}
-		dest.ThumbnailSha256 = uploadResp.FileSHA256
-		dest.ThumbnailEncSha256 = uploadResp.FileEncSHA256
+		dest.ThumbnailSHA256 = uploadResp.FileSHA256
+		dest.ThumbnailEncSHA256 = uploadResp.FileEncSHA256
 		dest.ThumbnailDirectPath = &uploadResp.DirectPath
 		dest.MediaKey = uploadResp.MediaKey
 		var width, height int
-		dest.JpegThumbnail, width, height, err = createThumbnailAndGetSize(data, false)
+		dest.JPEGThumbnail, width, height, err = createThumbnailAndGetSize(data, false)
 		if err != nil {
 			log.Err(err).Msg("Failed to create JPEG thumbnail for URL preview")
 		}

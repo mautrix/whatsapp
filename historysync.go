@@ -953,7 +953,7 @@ func (portal *Portal) wrapBatchReaction(ctx context.Context, source *User, react
 			Key:     variationselector.Add(reaction.GetText()),
 		},
 	}
-	if rawTS := reaction.GetSenderTimestampMs(); rawTS >= mainEventTS.UnixMilli() && rawTS <= time.Now().UnixMilli() {
+	if rawTS := reaction.GetSenderTimestampMS(); rawTS >= mainEventTS.UnixMilli() && rawTS <= time.Now().UnixMilli() {
 		reactionInfo.Timestamp = time.UnixMilli(rawTS)
 	}
 	wrappedContent := event.Content{Parsed: &content}

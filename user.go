@@ -765,7 +765,7 @@ func (user *User) sendHackyPhonePing(ctx context.Context) {
 	lastKeyID, err := user.GetLastAppStateKeyID(ctx)
 	if lastKeyID != nil {
 		keyIDs = append(keyIDs, &waProto.AppStateSyncKeyId{
-			KeyId: lastKeyID,
+			KeyID: lastKeyID,
 		})
 	} else {
 		user.zlog.Warn().Err(err).Msg("Failed to get last app state key ID to send hacky phone ping - sending empty request")
@@ -774,7 +774,7 @@ func (user *User) sendHackyPhonePing(ctx context.Context) {
 		ProtocolMessage: &waProto.ProtocolMessage{
 			Type: waProto.ProtocolMessage_APP_STATE_SYNC_KEY_REQUEST.Enum(),
 			AppStateSyncKeyRequest: &waProto.AppStateSyncKeyRequest{
-				KeyIds: keyIDs,
+				KeyIDs: keyIDs,
 			},
 		},
 	}, whatsmeow.SendRequestExtra{Peer: true, ID: msgID})
