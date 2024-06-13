@@ -11,8 +11,7 @@ All setup and usage instructions are located on [docs.mau.fi]. Some quick links:
 * Basic usage: [Authentication](https://docs.mau.fi/bridges/go/whatsapp/authentication.html)
 
 ### Features & Roadmap
-[ROADMAP.md](https://github.com/mautrix/whatsapp/blob/master/ROADMAP.md)
-contains a general overview of what is supported by the bridge.
+[ROADMAP.md](ROADMAP.md) contains a general overview of what is supported by the bridge.
 
 ## Discussion
 Matrix room: [#whatsapp:maunium.net](https://matrix.to/#/#whatsapp:maunium.net)

@@ -100,6 +100,12 @@ whatsapp:
     # Must be "unknown" for a generic icon or a valid browser name if you want a specific icon.
     # List of valid browser names: https://github.com/tulir/whatsmeow/blob/efc632c008604016ddde63bfcfca8de4e5304da9/binary/proto/def.proto#L43-L64
     browser_name: unknown
+    # Proxy to use for all WhatsApp connections.
+    proxy: null
+    # Alternative to proxy: an HTTP endpoint that returns the proxy URL to use for WhatsApp connections.
+    get_proxy_url: null
+    # Whether the proxy options should only apply to the login websocket and not to authenticated connections.
+    proxy_only_login: false
 
 # Bridge config
 bridge:
@@ -173,6 +179,8 @@ bridge:
             request_method: immediate
             # If request_method is "local_time", what time should the requests be sent (in minutes after midnight)?
             request_local_time: 120
+            # Maximum number of media request responses to handle in parallel per user.
+            max_async_handle: 2
         # Settings for immediate backfills. These backfills should generally be small and their main purpose is
         # to populate each of the initial chats (as configured by max_initial_conversations) with a few messages
         # so that you can continue conversations without losing context.

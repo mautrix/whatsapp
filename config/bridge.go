@@ -78,6 +78,7 @@ type BridgeConfig struct {
 			AutoRequestMedia bool               `yaml:"auto_request_media"`
 			RequestMethod    MediaRequestMethod `yaml:"request_method"`
 			RequestLocalTime int                `yaml:"request_local_time"`
+			MaxAsyncHandle   int64              `yaml:"max_async_handle"`
 		} `yaml:"media_requests"`
 
 		Deferred []DeferredConfig `yaml:"deferred"`

@@ -54,10 +54,10 @@ const (
 	`
 	updateUserQuery = `
 		UPDATE "user"
-		SET username=$1, agent=$2, device=$3,
-		    management_room=$4, space_room=$5,
-		    phone_last_seen=$6, phone_last_pinged=$7, timezone=$8
-		WHERE mxid=$9
+		SET username=$2, agent=$3, device=$4,
+		    management_room=$5, space_room=$6,
+		    phone_last_seen=$7, phone_last_pinged=$8, timezone=$9
+		WHERE mxid=$1
 	`
 	getUserLastAppStateKeyIDQuery = "SELECT key_id FROM whatsmeow_app_state_sync_keys WHERE jid=$1 ORDER BY timestamp DESC LIMIT 1"
 )
@@ -126,9 +126,9 @@ func (user *User) sqlVariables() []any {
 		device = dbutil.NumPtr(user.JID.Device)
 	}
 	return []any{
-		username, agent, device, user.ManagementRoom, user.SpaceRoom,
+		user.MXID, username, agent, device, user.ManagementRoom, user.SpaceRoom,
 		dbutil.UnixPtr(user.PhoneLastSeen), dbutil.UnixPtr(user.PhoneLastPinged),
-		user.Timezone, user.MXID,
+		user.Timezone,
 	}
 }
 

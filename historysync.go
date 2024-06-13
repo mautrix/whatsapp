@@ -250,25 +250,32 @@ func (portal *Portal) legacyBackfill(ctx context.Context, user *User) {
 }
 
 func (user *User) dailyMediaRequestLoop() {
-	// Calculate when to do the first set of media retry requests
-	now := time.Now()
-	userTz, err := time.LoadLocation(user.Timezone)
-	if err != nil {
-		userTz = now.Local().Location()
-	}
-	tonightMidnight := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, userTz)
-	midnightOffset := time.Duration(user.bridge.Config.Bridge.HistorySync.MediaRequests.RequestLocalTime) * time.Minute
-	requestStartTime := tonightMidnight.Add(midnightOffset)
-
-	// If the request time for today has already happened, we need to start the
-	// request loop tomorrow instead.
-	if requestStartTime.Before(now) {
-		requestStartTime = requestStartTime.AddDate(0, 0, 1)
-	}
 	log := user.zlog.With().
 		Str("action", "daily media request loop").
 		Logger()
 	ctx := log.WithContext(context.Background())
+
+	// Calculate when to do the first set of media retry requests
+	now := time.Now()
+	userTz, err := time.LoadLocation(user.Timezone)
+	tzIsInvalid := err != nil && user.Timezone != ""
+	var requestStartTime time.Time
+	if tzIsInvalid {
+		requestStartTime = now.Add(8 * time.Hour)
+		log.Warn().Msg("Invalid time zone, using static 8 hour start time")
+	} else {
+		if userTz == nil {
+			userTz = now.Local().Location()
+		}
+		tonightMidnight := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, userTz)
+		midnightOffset := time.Duration(user.bridge.Config.Bridge.HistorySync.MediaRequests.RequestLocalTime) * time.Minute
+		requestStartTime = tonightMidnight.Add(midnightOffset)
+		// If the request time for today has already happened, we need to start the
+		// request loop tomorrow instead.
+		if requestStartTime.Before(now) {
+			requestStartTime = requestStartTime.AddDate(0, 0, 1)
+		}
+	}
 
 	// Wait to start the loop
 	log.Info().Time("start_loop_at", requestStartTime).Msg("Waiting until start time to do media retry requests")
@@ -526,6 +533,7 @@ func (user *User) storeHistorySync(evt *waProto.HistorySync) {
 		Msg("Storing history sync")
 
 	successfullySavedTotal := 0
+	failedToSaveTotal := 0
 	totalMessageCount := 0
 	for _, conv := range evt.GetConversations() {
 		jid, err := types.ParseJID(conv.GetId())
@@ -578,6 +586,7 @@ func (user *User) storeHistorySync(evt *waProto.HistorySync) {
 		var minTimeIndex, maxTimeIndex int
 
 		successfullySaved := 0
+		failedToSave := 0
 		unsupportedTypes := 0
 		for i, rawMsg := range conv.GetMessages() {
 			// Don't store messages that will just be skipped.
@@ -614,6 +623,7 @@ func (user *User) storeHistorySync(evt *waProto.HistorySync) {
 					Str("msg_id", msgEvt.Info.ID).
 					Time("msg_time", msgEvt.Info.Timestamp).
 					Msg("Failed to save historical message")
+				failedToSave++
 				continue
 			}
 			err = message.Insert(ctx)
@@ -623,12 +633,16 @@ func (user *User) storeHistorySync(evt *waProto.HistorySync) {
 					Str("msg_id", msgEvt.Info.ID).
 					Time("msg_time", msgEvt.Info.Timestamp).
 					Msg("Failed to save historical message")
+				failedToSave++
+			} else {
+				successfullySaved++
 			}
-			successfullySaved++
 		}
 		successfullySavedTotal += successfullySaved
+		failedToSaveTotal += failedToSave
 		log.Debug().
 			Int("saved_count", successfullySaved).
+			Int("failed_count", failedToSave).
 			Int("unsupported_msg_type_count", unsupportedTypes).
 			Time("lowest_time", minTime).
 			Int("lowest_time_index", minTimeIndex).
@@ -646,6 +660,7 @@ func (user *User) storeHistorySync(evt *waProto.HistorySync) {
 	}
 	log.Info().
 		Int("total_saved_count", successfullySavedTotal).
+		Int("total_failed_count", failedToSaveTotal).
 		Int("total_message_count", totalMessageCount).
 		Msg("Finished storing history sync")
 
@@ -938,7 +953,7 @@ func (portal *Portal) wrapBatchReaction(ctx context.Context, source *User, react
 			Key:     variationselector.Add(reaction.GetText()),
 		},
 	}
-	if rawTS := reaction.GetSenderTimestampMs(); rawTS >= mainEventTS.UnixMilli() && rawTS <= time.Now().UnixMilli() {
+	if rawTS := reaction.GetSenderTimestampMS(); rawTS >= mainEventTS.UnixMilli() && rawTS <= time.Now().UnixMilli() {
 		reactionInfo.Timestamp = time.UnixMilli(rawTS)
 	}
 	wrappedContent := event.Content{Parsed: &content}

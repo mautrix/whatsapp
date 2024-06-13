@@ -36,6 +36,9 @@ func DoUpgrade(helper *up.Helper) {
 
 	helper.Copy(up.Str, "whatsapp", "os_name")
 	helper.Copy(up.Str, "whatsapp", "browser_name")
+	helper.Copy(up.Str|up.Null, "whatsapp", "proxy")
+	helper.Copy(up.Str|up.Null, "whatsapp", "get_proxy_url")
+	helper.Copy(up.Bool, "whatsapp", "proxy_only_login")
 
 	helper.Copy(up.Str, "bridge", "username_template")
 	helper.Copy(up.Str, "bridge", "displayname_template")
@@ -54,6 +57,7 @@ func DoUpgrade(helper *up.Helper) {
 	helper.Copy(up.Bool, "bridge", "history_sync", "media_requests", "auto_request_media")
 	helper.Copy(up.Str, "bridge", "history_sync", "media_requests", "request_method")
 	helper.Copy(up.Int, "bridge", "history_sync", "media_requests", "request_local_time")
+	helper.Copy(up.Int, "bridge", "history_sync", "media_requests", "max_async_handle")
 	helper.Copy(up.Int, "bridge", "history_sync", "max_initial_conversations")
 	helper.Copy(up.Int, "bridge", "history_sync", "message_count")
 	helper.Copy(up.Int, "bridge", "history_sync", "unread_hours_threshold")

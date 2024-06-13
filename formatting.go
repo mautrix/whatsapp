@@ -172,7 +172,7 @@ func (formatter *Formatter) ParseWhatsApp(ctx context.Context, roomID id.RoomID,
 }
 
 func (formatter *Formatter) ParseMatrix(html string, mentions *event.Mentions) (string, []string) {
-	ctx := format.NewContext()
+	ctx := format.NewContext(context.TODO())
 	var mentionedJIDs []string
 	if mentions != nil {
 		var allowedMentions = make(map[types.JID]bool)
@@ -202,7 +202,7 @@ func (formatter *Formatter) ParseMatrix(html string, mentions *event.Mentions) (
 }
 
 func (formatter *Formatter) ParseMatrixWithoutMentions(html string) string {
-	ctx := format.NewContext()
+	ctx := format.NewContext(context.TODO())
 	ctx.ReturnData[allowedMentionsContextKey] = map[types.JID]struct{}{}
 	return formatter.matrixHTMLParser.Parse(html, ctx)
 }
