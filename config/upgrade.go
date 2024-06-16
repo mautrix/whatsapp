@@ -24,7 +24,7 @@ import (
 	"maunium.net/go/mautrix/bridge/bridgeconfig"
 )
 
-func DoUpgrade(helper *up.Helper) {
+func DoUpgrade(helper up.Helper) {
 	bridgeconfig.Upgrader.DoUpgrade(helper)
 
 	helper.Copy(up.Str|up.Null, "analytics", "host")

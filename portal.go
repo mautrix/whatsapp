@@ -2185,7 +2185,7 @@ func (portal *Portal) CreateMatrixRoom(ctx context.Context, user *User, groupInf
 		initialState = append(initialState, &event.Event{
 			Type: event.StateRoomAvatar,
 			Content: event.Content{
-				Parsed: event.RoomAvatarEventContent{URL: portal.AvatarURL},
+				Parsed: event.RoomAvatarEventContent{URL: portal.AvatarURL.CUString()},
 			},
 		})
 		portal.AvatarSet = true
@@ -5476,18 +5476,19 @@ func (portal *Portal) HandleMatrixMeta(brSender bridge.User, evt *event.Event) {
 	case *event.RoomAvatarEventContent:
 		portal.avatarLock.Lock()
 		defer portal.avatarLock.Unlock()
-		if content.URL == portal.AvatarURL || (content.URL.IsEmpty() && portal.Avatar == "remove") {
+		url := content.URL.ParseOrIgnore()
+		if url == portal.AvatarURL || (url.IsEmpty() && portal.Avatar == "remove") {
 			return
 		}
 		var data []byte
 		var err error
-		if !content.URL.IsEmpty() {
-			data, err = portal.MainIntent().DownloadBytes(ctx, content.URL)
+		if !url.IsEmpty() {
+			data, err = portal.MainIntent().DownloadBytes(ctx, url)
 			if err != nil {
-				log.Err(err).Stringer("mxc_uri", content.URL).Msg("Failed to download updated avatar")
+				log.Err(err).Stringer("mxc_uri", url).Msg("Failed to download updated avatar")
 				return
 			}
-			log.Debug().Stringer("mxc_uri", content.URL).Msg("Updating group avatar")
+			log.Debug().Stringer("mxc_uri", url).Msg("Updating group avatar")
 		} else {
 			log.Debug().Msg("Removing group avatar")
 		}
@@ -5498,7 +5499,7 @@ func (portal *Portal) HandleMatrixMeta(brSender bridge.User, evt *event.Event) {
 		}
 		log.Debug().Str("avatar_id", newID).Msg("Successfully updated group avatar")
 		portal.Avatar = newID
-		portal.AvatarURL = content.URL
+		portal.AvatarURL = url
 	default:
 		log.Debug().Type("content_type", content).Msg("Ignoring unknown metadata event type")
 		return

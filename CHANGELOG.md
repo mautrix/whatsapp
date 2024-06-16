@@ -1,3 +1,9 @@
+# v0.10.8 (2024-06-16)
+
+* Added proxying options to config.
+* Updated fallback message for live locations and polls to clarify the user
+  should open the native WhatsApp app.
+
 # v0.10.7 (2024-04-16)
 
 * Changed media download retries to be handled asynchronously instead of
