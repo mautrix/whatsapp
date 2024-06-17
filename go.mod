@@ -3,7 +3,6 @@ module maunium.net/go/mautrix-whatsapp
 go 1.21
 
 require (
-	github.com/beeper/libserv v0.0.0-20231231202820-c7303abfc32c
 	github.com/gorilla/mux v1.8.0
 	github.com/gorilla/websocket v1.5.0
 	github.com/lib/pq v1.10.9

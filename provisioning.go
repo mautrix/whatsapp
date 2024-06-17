@@ -26,17 +26,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/beeper/libserv/pkg/requestlog"
 	"github.com/gorilla/mux"
 	"github.com/gorilla/websocket"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/hlog"
-
+	"go.mau.fi/util/requestlog"
+	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/appstate"
 	"go.mau.fi/whatsmeow/types"
-
-	"go.mau.fi/whatsmeow"
-
 	"maunium.net/go/mautrix/bridge/status"
 	"maunium.net/go/mautrix/id"
 )
