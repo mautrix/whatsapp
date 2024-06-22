@@ -1217,7 +1217,7 @@ func (portal *Portal) getMessageIntent(ctx context.Context, user *User, info *ty
 		return nil
 	}
 	intent := puppet.IntentFor(portal)
-	if !intent.IsCustomPuppet && portal.IsPrivateChat() && info.Sender.User == portal.Key.Receiver.User && portal.Key.Receiver != portal.Key.JID {
+	if !portal.bridge.Config.Bridge.PrivateChatSelfPuppets && !intent.IsCustomPuppet && portal.IsPrivateChat() && info.Sender.User == portal.Key.Receiver.User && portal.Key.Receiver != portal.Key.JID {
 		zerolog.Ctx(ctx).Debug().Msg("Not handling message: user doesn't have double puppeting enabled")
 		return nil
 	}
@@ -2181,6 +2181,10 @@ func (portal *Portal) CreateMatrixRoom(ctx context.Context, user *User, groupInf
 			invite = append(invite, portal.bridge.Bot.UserID)
 		}
 	}
+	if portal.IsPrivateChat() && portal.bridge.Config.Bridge.PrivateChatSelfPuppets {
+		rec := portal.bridge.GetPuppetByJID(portal.Key.Receiver)
+		invite = append(invite, rec.MXID)
+	}
 	if !portal.AvatarURL.IsEmpty() && portal.shouldSetDMRoomMetadata() {
 		initialState = append(initialState, &event.Event{
 			Type: event.StateRoomAvatar,
@@ -2302,6 +2306,13 @@ func (portal *Portal) CreateMatrixRoom(ctx context.Context, user *User, groupInf
 			err = portal.bridge.Bot.EnsureJoined(ctx, portal.MXID)
 			if err != nil {
 				log.Err(err).Msg("Failed to ensure bridge bot is joined to created portal")
+			}
+		}
+		if portal.bridge.Config.Bridge.PrivateChatSelfPuppets {
+			rec := portal.bridge.GetPuppetByJID(portal.Key.Receiver)
+			err = rec.DefaultIntent().EnsureJoined(ctx, portal.MXID)
+			if err != nil {
+				log.Err(err).Msg("Failed to join created portal with puppet")
 			}
 		}
 
