@@ -95,27 +95,27 @@ type BridgeConfig struct {
 
 	DoublePuppetConfig bridgeconfig.DoublePuppetConfig `yaml:",inline"`
 
-	PrivateChatPortalMeta string `yaml:"private_chat_portal_meta"`
-	ParallelMemberSync    bool   `yaml:"parallel_member_sync"`
-	BridgeNotices         bool   `yaml:"bridge_notices"`
-	ResendBridgeInfo      bool   `yaml:"resend_bridge_info"`
-	MuteBridging          bool   `yaml:"mute_bridging"`
-	ArchiveTag            string `yaml:"archive_tag"`
-	PinnedTag             string `yaml:"pinned_tag"`
-	TagOnlyOnCreate       bool   `yaml:"tag_only_on_create"`
-	MarkReadOnlyOnCreate  bool   `yaml:"mark_read_only_on_create"`
-	EnableStatusBroadcast bool   `yaml:"enable_status_broadcast"`
-	MuteStatusBroadcast   bool   `yaml:"mute_status_broadcast"`
-	StatusBroadcastTag    string `yaml:"status_broadcast_tag"`
-	WhatsappThumbnail     bool   `yaml:"whatsapp_thumbnail"`
-	AllowUserInvite       bool   `yaml:"allow_user_invite"`
-	FederateRooms         bool   `yaml:"federate_rooms"`
-	URLPreviews           bool   `yaml:"url_previews"`
-	CaptionInMessage      bool   `yaml:"caption_in_message"`
-	BeeperGalleries       bool   `yaml:"beeper_galleries"`
-	ExtEvPolls            bool   `yaml:"extev_polls"`
-	CrossRoomReplies      bool   `yaml:"cross_room_replies"`
-	DisableReplyFallbacks bool   `yaml:"disable_reply_fallbacks"`
+	PrivateChatPortalMeta string        `yaml:"private_chat_portal_meta"`
+	ParallelMemberSync    bool          `yaml:"parallel_member_sync"`
+	BridgeNotices         bool          `yaml:"bridge_notices"`
+	ResendBridgeInfo      bool          `yaml:"resend_bridge_info"`
+	MuteBridging          bool          `yaml:"mute_bridging"`
+	ArchiveTag            event.RoomTag `yaml:"archive_tag"`
+	PinnedTag             event.RoomTag `yaml:"pinned_tag"`
+	TagOnlyOnCreate       bool          `yaml:"tag_only_on_create"`
+	MarkReadOnlyOnCreate  bool          `yaml:"mark_read_only_on_create"`
+	EnableStatusBroadcast bool          `yaml:"enable_status_broadcast"`
+	MuteStatusBroadcast   bool          `yaml:"mute_status_broadcast"`
+	StatusBroadcastTag    event.RoomTag `yaml:"status_broadcast_tag"`
+	WhatsappThumbnail     bool          `yaml:"whatsapp_thumbnail"`
+	AllowUserInvite       bool          `yaml:"allow_user_invite"`
+	FederateRooms         bool          `yaml:"federate_rooms"`
+	URLPreviews           bool          `yaml:"url_previews"`
+	CaptionInMessage      bool          `yaml:"caption_in_message"`
+	BeeperGalleries       bool          `yaml:"beeper_galleries"`
+	ExtEvPolls            bool          `yaml:"extev_polls"`
+	CrossRoomReplies      bool          `yaml:"cross_room_replies"`
+	DisableReplyFallbacks bool          `yaml:"disable_reply_fallbacks"`
 
 	MessageHandlingTimeout struct {
 		ErrorAfterStr string `yaml:"error_after"`

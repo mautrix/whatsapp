@@ -1129,10 +1129,10 @@ type CustomTagData struct {
 }
 
 type CustomTagEventContent struct {
-	Tags map[string]CustomTagData `json:"tags"`
+	Tags map[event.RoomTag]CustomTagData `json:"tags"`
 }
 
-func (user *User) updateChatTag(ctx context.Context, intent *appservice.IntentAPI, portal *Portal, tag string, active bool) {
+func (user *User) updateChatTag(ctx context.Context, intent *appservice.IntentAPI, portal *Portal, tag event.RoomTag, active bool) {
 	if len(portal.MXID) == 0 || len(tag) == 0 {
 		return
 	} else if intent == nil {
@@ -1149,17 +1149,17 @@ func (user *User) updateChatTag(ctx context.Context, intent *appservice.IntentAP
 	}
 	currentTag, ok := existingTags.Tags[tag]
 	if active && !ok {
-		user.zlog.Debug().Stringer("portal_mxid", portal.MXID).Str("tag", tag).Msg("Adding tag to portal")
+		user.zlog.Debug().Stringer("portal_mxid", portal.MXID).Str("tag", string(tag)).Msg("Adding tag to portal")
 		data := CustomTagData{Order: "0.5", DoublePuppet: user.bridge.Name}
 		err = intent.AddTagWithCustomData(ctx, portal.MXID, tag, &data)
 	} else if !active && ok && currentTag.DoublePuppet == user.bridge.Name {
-		user.zlog.Debug().Stringer("portal_mxid", portal.MXID).Str("tag", tag).Msg("Removing tag from portal")
+		user.zlog.Debug().Stringer("portal_mxid", portal.MXID).Str("tag", string(tag)).Msg("Removing tag from portal")
 		err = intent.RemoveTag(ctx, portal.MXID, tag)
 	} else {
 		err = nil
 	}
 	if err != nil {
-		user.zlog.Err(err).Stringer("portal_mxid", portal.MXID).Str("tag", tag).Msg("Failed to update tag through double puppet")
+		user.zlog.Err(err).Stringer("portal_mxid", portal.MXID).Str("tag", string(tag)).Msg("Failed to update tag through double puppet")
 	}
 }
 
