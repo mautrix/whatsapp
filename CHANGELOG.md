@@ -1,3 +1,8 @@
+# v0.10.9 (2024-07-16)
+
+* Added support for receiving Meta AI messages.
+* Fixed `m.relates_to` handling bug in previous release.
+
 # v0.10.8 (2024-06-16)
 
 * Added proxying options to config.
