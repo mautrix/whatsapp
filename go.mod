@@ -11,7 +11,7 @@ require (
 	github.com/rs/zerolog v1.33.0
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
 	github.com/tidwall/gjson v1.17.1
-	go.mau.fi/util v0.6.0
+	go.mau.fi/util v0.6.1-0.20240719175439-20a6073e1dd4
 	go.mau.fi/webp v0.1.0
 	go.mau.fi/whatsmeow v0.0.0-20240828153534-8acde1ba8592
 	golang.org/x/exp v0.0.0-20240707233637-46b078467d37
@@ -19,7 +19,7 @@ require (
 	golang.org/x/net v0.27.0
 	golang.org/x/sync v0.7.0
 	google.golang.org/protobuf v1.34.2
-	maunium.net/go/mautrix v0.19.0
+	maunium.net/go/mautrix v0.19.1-0.20240720173515-24ead553b23b
 )
 
 require (
