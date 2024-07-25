@@ -592,6 +592,9 @@ func (user *User) getProxy(reason string) (string, error) {
 	}
 	req.Header.Set("User-Agent", mautrix.DefaultUserAgent)
 	resp, err := http.DefaultClient.Do(req)
+	if resp != nil {
+		defer resp.Body.Close()	
+	}
 	if err != nil {
 		return "", fmt.Errorf("failed to send request: %w", err)
 	} else if resp.StatusCode >= 300 || resp.StatusCode < 200 {
