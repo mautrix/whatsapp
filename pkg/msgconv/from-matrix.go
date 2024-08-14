@@ -1,16 +1,23 @@
 package msgconv
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"image"
+	"image/color"
+	"image/png"
 	"net/http"
 	"strconv"
 	"strings"
 
 	"github.com/rs/zerolog"
+	"go.mau.fi/util/ffmpeg"
+	cwebp "go.mau.fi/webp"
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/proto/waE2E"
 	"go.mau.fi/whatsmeow/types"
+	"golang.org/x/image/webp"
 	"google.golang.org/protobuf/proto"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
@@ -78,22 +85,33 @@ func (mc *MessageConverter) constructMediaMessage(content *event.MessageEventCon
 	caption := content.Body
 	switch content.MsgType {
 	case event.MessageType(event.EventSticker.Type):
+		width := uint32(content.Info.Width)
+		height := uint32(content.Info.Height)
+
 		return &waE2E.Message{
 			StickerMessage: &waE2E.StickerMessage{
-				URL:           proto.String(uploaded.URL),
+				Width:  &width,
+				Height: &height,
+
+				ContextInfo:   contextInfo,
 				DirectPath:    proto.String(uploaded.DirectPath),
 				MediaKey:      uploaded.MediaKey,
 				Mimetype:      proto.String(mime),
 				FileEncSHA256: uploaded.FileEncSHA256,
 				FileSHA256:    uploaded.FileSHA256,
 				FileLength:    proto.Uint64(uploaded.FileLength),
-				ContextInfo:   contextInfo,
+				URL:           proto.String(uploaded.URL),
 			},
 		}
 	case event.MsgAudio:
+		waveform, seconds := getAudioInfo(content)
+
 		return &waE2E.Message{
 			AudioMessage: &waE2E.AudioMessage{
-				PTT:           proto.Bool(content.MSC3245Voice != nil),
+				Seconds:  &seconds,
+				Waveform: waveform,
+				PTT:      proto.Bool(content.MSC3245Voice != nil),
+
 				URL:           proto.String(uploaded.URL),
 				DirectPath:    proto.String(uploaded.DirectPath),
 				MediaKey:      uploaded.MediaKey,
@@ -105,8 +123,14 @@ func (mc *MessageConverter) constructMediaMessage(content *event.MessageEventCon
 			},
 		}
 	case event.MsgImage:
+		width := uint32(content.Info.Width)
+		height := uint32(content.Info.Height)
+
 		return &waE2E.Message{
 			ImageMessage: &waE2E.ImageMessage{
+				Width:  &width,
+				Height: &height,
+
 				Caption:       proto.String(caption),
 				URL:           proto.String(uploaded.URL),
 				DirectPath:    proto.String(uploaded.DirectPath),
@@ -119,8 +143,22 @@ func (mc *MessageConverter) constructMediaMessage(content *event.MessageEventCon
 			},
 		}
 	case event.MsgVideo:
+		isGif := false
+		if mime == "video/mp4" && content.Info.MimeType == "image/gif" {
+			isGif = true
+		}
+
+		width := uint32(content.Info.Width)
+		height := uint32(content.Info.Height)
+		seconds := uint32(content.Info.Duration / 1000)
+
 		return &waE2E.Message{
 			VideoMessage: &waE2E.VideoMessage{
+				GifPlayback: proto.Bool(isGif),
+				Width:       &width,
+				Height:      &height,
+				Seconds:     &seconds,
+
 				Caption:       proto.String(caption),
 				URL:           proto.String(uploaded.URL),
 				DirectPath:    proto.String(uploaded.DirectPath),
@@ -135,6 +173,8 @@ func (mc *MessageConverter) constructMediaMessage(content *event.MessageEventCon
 	case event.MsgFile:
 		return &waE2E.Message{
 			DocumentMessage: &waE2E.DocumentMessage{
+				FileName: proto.String(content.FileName),
+
 				Caption:       proto.String(caption),
 				URL:           proto.String(uploaded.URL),
 				DirectPath:    proto.String(uploaded.DirectPath),
@@ -181,7 +221,7 @@ func (mc *MessageConverter) convertPill(displayname, mxid, eventID string, ctx f
 		zerolog.Ctx(ctx.Ctx).Err(err).Str("mxid", mxid).Msg("Failed to get user for mention")
 		return displayname
 	} else if ghost != nil {
-		jid, err := types.ParseJID(string(ghost.ID))
+		jid, err = types.ParseJID(string(ghost.ID))
 		if jid.User == "" || err != nil {
 			return displayname
 		}
@@ -203,6 +243,67 @@ func (mc *MessageConverter) convertPill(displayname, mxid, eventID string, ctx f
 	return fmt.Sprintf("@%s", jid.User)
 }
 
+type PaddedImage struct {
+	image.Image
+	Size    int
+	OffsetX int
+	OffsetY int
+}
+
+func (img *PaddedImage) Bounds() image.Rectangle {
+	return image.Rect(0, 0, img.Size, img.Size)
+}
+
+func (img *PaddedImage) At(x, y int) color.Color {
+	return img.Image.At(x+img.OffsetX, y+img.OffsetY)
+}
+
+func (mc *MessageConverter) convertWebPtoPNG(webpImage []byte) ([]byte, error) {
+	webpDecoded, err := webp.Decode(bytes.NewReader(webpImage))
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode webp image: %w", err)
+	}
+
+	var pngBuffer bytes.Buffer
+	if err = png.Encode(&pngBuffer, webpDecoded); err != nil {
+		return nil, fmt.Errorf("failed to encode png image: %w", err)
+	}
+
+	return pngBuffer.Bytes(), nil
+}
+
+func (mc *MessageConverter) convertToWebP(img []byte) ([]byte, error) {
+	decodedImg, _, err := image.Decode(bytes.NewReader(img))
+	if err != nil {
+		return img, fmt.Errorf("failed to decode image: %w", err)
+	}
+
+	bounds := decodedImg.Bounds()
+	width, height := bounds.Dx(), bounds.Dy()
+	if width != height {
+		paddedImg := &PaddedImage{
+			Image:   decodedImg,
+			OffsetX: bounds.Min.Y,
+			OffsetY: bounds.Min.X,
+		}
+		if width > height {
+			paddedImg.Size = width
+			paddedImg.OffsetY -= (paddedImg.Size - height) / 2
+		} else {
+			paddedImg.Size = height
+			paddedImg.OffsetX -= (paddedImg.Size - width) / 2
+		}
+		decodedImg = paddedImg
+	}
+
+	var webpBuffer bytes.Buffer
+	if err = cwebp.Encode(&webpBuffer, decodedImg, nil); err != nil {
+		return img, fmt.Errorf("failed to encode webp image: %w", err)
+	}
+
+	return webpBuffer.Bytes(), nil
+}
+
 func (mc *MessageConverter) reuploadFileToWhatsApp(ctx context.Context, client *whatsmeow.Client, content *event.MessageEventContent) (*whatsmeow.UploadResponse, string, error) {
 	mime := content.Info.MimeType
 	fileName := content.Body
@@ -217,9 +318,54 @@ func (mc *MessageConverter) reuploadFileToWhatsApp(ctx context.Context, client *
 
 	var mediaType whatsmeow.MediaType
 	switch content.MsgType {
-	case event.MsgImage, event.MessageType(event.EventSticker.Type):
+	case event.MessageType(event.EventSticker.Type):
 		mediaType = whatsmeow.MediaImage
+		mime = "image/webp"
+
+		var convertErr error
+		data, convertErr = mc.convertToWebP(data)
+		if convertErr != nil {
+			return nil, "image/webp", fmt.Errorf("error converting image to webp: %s", convertErr.Error())
+		}
+	case event.MsgImage:
+		if mime == "image/gif" {
+			mediaType = whatsmeow.MediaVideo
+			content.MsgType = event.MsgVideo
+			if ffmpeg.Supported() {
+				var convertErr error
+				data, convertErr = ffmpeg.ConvertBytes(ctx, data, ".mp4", []string{"-f", "gif"}, []string{
+					"-pix_fmt", "yuv420p", "-c:v", "libx264", "-movflags", "+faststart",
+					"-filter:v", "crop='floor(in_w/2)*2:floor(in_h/2)*2'",
+				}, mime)
+
+				if convertErr != nil {
+					return nil, "image/gif", fmt.Errorf("error converting gif to mp4: %s", convertErr.Error())
+				}
+				mime = "video/mp4"
+			}
+		} else {
+			mediaType = whatsmeow.MediaImage
+			if mime == "image/webp" {
+				var convertErr error
+				data, convertErr = mc.convertToWebP(data)
+				if convertErr != nil {
+					return nil, "image/webp", fmt.Errorf("error converting webp to png: %s", convertErr.Error())
+				}
+				mime = "image/png"
+			}
+		}
 	case event.MsgVideo:
+		if mime == "video/webm" {
+			var convertErr error
+			data, convertErr = ffmpeg.ConvertBytes(ctx, data, ".mp4", []string{"-f", "webm"}, []string{
+				"-pix_fmt", "yuv420p", "-c:v", "libx264",
+			}, mime)
+
+			if convertErr != nil {
+				return nil, "image/gif", fmt.Errorf("error converting webm to mp4: %s", convertErr.Error())
+			}
+			mime = "video/mp4"
+		}
 		mediaType = whatsmeow.MediaVideo
 	case event.MsgAudio:
 		mediaType = whatsmeow.MediaAudio
@@ -228,7 +374,6 @@ func (mc *MessageConverter) reuploadFileToWhatsApp(ctx context.Context, client *
 	default:
 		mediaType = whatsmeow.MediaDocument
 	}
-
 	uploaded, err := client.Upload(ctx, data, mediaType)
 
 	if err != nil {
@@ -256,6 +401,23 @@ func parseGeoURI(uri string) (lat, long float64, err error) {
 		err = fmt.Errorf("latitude is not a number: %w", err)
 	} else if long, err = strconv.ParseFloat(splitCoordinates[1], 64); err != nil {
 		err = fmt.Errorf("longitude is not a number: %w", err)
+	}
+	return
+}
+
+func getAudioInfo(content *event.MessageEventContent) (output []byte, Duration uint32) {
+	audioInfo := content.MSC1767Audio
+	if audioInfo == nil {
+		return nil, uint32(content.Info.Duration / 1000)
+	}
+	waveform := audioInfo.Waveform
+	if waveform != nil {
+		return nil, uint32(audioInfo.Duration / 1000)
+	}
+	output = make([]byte, len(waveform))
+
+	for i, part := range waveform {
+		output[i] = byte(part / 4)
 	}
 	return
 }

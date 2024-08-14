@@ -149,7 +149,6 @@ func (wa *WhatsAppClient) HandleMatrixMessageRemove(ctx context.Context, msg *br
 	return err
 }
 
-func (wa *WhatsAppClient) HandleMatrixReadReceipt(ctx context.Context, msg *bridgev2.MatrixReadReceipt) error {
-	//TODO implement me
-	panic("implement me")
+func (wa *WhatsAppClient) HandleMatrixReadReceipt(_ context.Context, _ *bridgev2.MatrixReadReceipt) error {
+	return nil
 }

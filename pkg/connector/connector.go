@@ -33,7 +33,7 @@ func NewConnector() *WhatsAppConnector {
 	}
 }
 
-func (wa *WhatsAppConnector) SetMaxFileSize(maxSize int64) {
+func (wa *WhatsAppConnector) SetMaxFileSize(_ int64) {
 	println("SetMaxFileSize unimplemented")
 }
 
@@ -59,7 +59,7 @@ func (wa *WhatsAppConnector) GetName() bridgev2.BridgeName {
 
 func (wa *WhatsAppConnector) Init(bridge *bridgev2.Bridge) {
 	var err error
-	wa.Config.displaynameTemplate, err = template.New("displayname").Parse(wa.Config.Bridge.DisplaynameTemplate)
+	wa.Config.displaynameTemplate, err = template.New("displayname").Parse(wa.Config.DisplaynameTemplate)
 	if err != nil {
 		// TODO return error or do this later?
 		panic(err)
@@ -73,22 +73,22 @@ func (wa *WhatsAppConnector) Init(bridge *bridgev2.Bridge) {
 		waLog.Zerolog(bridge.Log.With().Str("db_section", "whatsmeow").Logger()),
 	)
 
-	store.DeviceProps.Os = proto.String(wa.Config.WhatsApp.OSName)
-	store.DeviceProps.RequireFullSync = proto.Bool(wa.Config.Bridge.HistorySync.RequestFullSync)
-	if fsc := wa.Config.Bridge.HistorySync.FullSyncConfig; fsc.DaysLimit > 0 && fsc.SizeLimit > 0 && fsc.StorageQuota > 0 {
+	store.DeviceProps.Os = proto.String(wa.Config.OSName)
+	store.DeviceProps.RequireFullSync = proto.Bool(wa.Config.HistorySync.RequestFullSync)
+	if fsc := wa.Config.HistorySync.FullSyncConfig; fsc.DaysLimit > 0 && fsc.SizeLimit > 0 && fsc.StorageQuota > 0 {
 		store.DeviceProps.HistorySyncConfig = &waCompanionReg.DeviceProps_HistorySyncConfig{
 			FullSyncDaysLimit:   proto.Uint32(fsc.DaysLimit),
 			FullSyncSizeMbLimit: proto.Uint32(fsc.SizeLimit),
 			StorageQuotaMb:      proto.Uint32(fsc.StorageQuota),
 		}
 	}
-	platformID, ok := waCompanionReg.DeviceProps_PlatformType_value[strings.ToUpper(wa.Config.WhatsApp.BrowserName)]
+	platformID, ok := waCompanionReg.DeviceProps_PlatformType_value[strings.ToUpper(wa.Config.BrowserName)]
 	if ok {
 		store.DeviceProps.PlatformType = waCompanionReg.DeviceProps_PlatformType(platformID).Enum()
 	}
 }
 
-func (wa *WhatsAppConnector) Start(ctx context.Context) error {
+func (wa *WhatsAppConnector) Start(_ context.Context) error {
 	err := wa.DeviceStore.Upgrade()
 	if err != nil {
 		return bridgev2.DBUpgradeError{Err: err, Section: "whatsmeow"}
@@ -107,7 +107,7 @@ func (wa *WhatsAppConnector) Start(ctx context.Context) error {
 	return nil
 }
 
-func (wa *WhatsAppConnector) LoadUserLogin(ctx context.Context, login *bridgev2.UserLogin) error {
+func (wa *WhatsAppConnector) LoadUserLogin(_ context.Context, login *bridgev2.UserLogin) error {
 	loginMetadata := login.Metadata.(*UserLoginMetadata)
 
 	jid := types.JID{

@@ -29,10 +29,10 @@ type respGetProxy struct {
 }
 
 func (wa *WhatsAppClient) getProxy(reason string) (string, error) {
-	if wa.Main.Config.WhatsApp.GetProxyURL == "" {
-		return wa.Main.Config.WhatsApp.Proxy, nil
+	if wa.Main.Config.GetProxyURL == "" {
+		return wa.Main.Config.Proxy, nil
 	}
-	parsed, err := url.Parse(wa.Main.Config.WhatsApp.GetProxyURL)
+	parsed, err := url.Parse(wa.Main.Config.GetProxyURL)
 	if err != nil {
 		return "", fmt.Errorf("failed to parse address: %w", err)
 	}
@@ -68,21 +68,21 @@ func (wa *WhatsAppClient) MakeNewClient() {
 	}
 
 	wa.Client.AutomaticMessageRerequestFromPhone = true
-	wa.Client.SetForceActiveDeliveryReceipts(wa.Main.Config.Bridge.ForceActiveDeliveryReceipts)
+	wa.Client.SetForceActiveDeliveryReceipts(wa.Main.Config.ForceActiveDeliveryReceipts)
 
 	wa.Client.AddEventHandler(wa.handleWAEvent)
 
 	//TODO: add tracking under PreRetryCallback and GetMessageForRetry (waiting till metrics/analytics are added)
-	if wa.Main.Config.WhatsApp.ProxyOnlyLogin || wa.Device.ID == nil {
+	if wa.Main.Config.ProxyOnlyLogin || wa.Device.ID == nil {
 		if proxy, err := wa.getProxy("login"); err != nil {
 			wa.UserLogin.Log.Err(err).Msg("Failed to get proxy address")
 		} else if err = wa.Client.SetProxyAddress(proxy, whatsmeow.SetProxyOptions{
-			NoMedia: wa.Main.Config.WhatsApp.ProxyOnlyLogin,
+			NoMedia: wa.Main.Config.ProxyOnlyLogin,
 		}); err != nil {
 			wa.UserLogin.Log.Err(err).Msg("Failed to set proxy address")
 		}
 	}
-	if wa.Main.Config.WhatsApp.ProxyOnlyLogin {
+	if wa.Main.Config.ProxyOnlyLogin {
 		wa.Client.ToggleProxyOnlyForLogin(true)
 	}
 
@@ -170,7 +170,7 @@ var whatsappCaps = &bridgev2.NetworkRoomCapabilities{
 	ReactionCount: 1,
 }
 
-func (wa *WhatsAppClient) GetCapabilities(ctx context.Context, portal *bridgev2.Portal) *bridgev2.NetworkRoomCapabilities {
+func (wa *WhatsAppClient) GetCapabilities(_ context.Context, portal *bridgev2.Portal) *bridgev2.NetworkRoomCapabilities {
 	if portal.Receiver == wa.UserLogin.ID && portal.ID == networkid.PortalID(wa.UserLogin.ID) {
 		// note to self mode, not implemented yet
 		return nil
@@ -199,7 +199,7 @@ func (wa *WhatsAppClient) GetPushConfigs() *bridgev2.PushConfig {
 	return pushCfg
 }
 
-func (wa *WhatsAppClient) RegisterPushNotifications(ctx context.Context, pushType bridgev2.PushType, token string) error {
+func (wa *WhatsAppClient) RegisterPushNotifications(_ context.Context, pushType bridgev2.PushType, _ string) error {
 	if wa.Client == nil {
 		return bridgev2.ErrNotLoggedIn
 	}
@@ -221,16 +221,15 @@ func (wa *WhatsAppClient) LogoutRemote(ctx context.Context) {
 	}
 }
 
-func (wa *WhatsAppClient) IsThisUser(ctx context.Context, userID networkid.UserID) bool {
+func (wa *WhatsAppClient) IsThisUser(_ context.Context, userID networkid.UserID) bool {
 	if wa.Client == nil {
 		return false
 	}
 	return userID == networkid.UserID(wa.Client.Store.ID.User)
 }
 
-func (wa *WhatsAppClient) Connect(ctx context.Context) error {
-	wa.Client.Connect()
-	return nil
+func (wa *WhatsAppClient) Connect(_ context.Context) error {
+	return wa.Client.Connect()
 }
 
 func (wa *WhatsAppClient) Disconnect() {

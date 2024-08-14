@@ -9,12 +9,12 @@ import (
 	"maunium.net/go/mautrix/bridgev2/networkid"
 )
 
-func ParseWAPortalID(portal networkid.PortalID, server string) types.JID {
+/*func ParseWAPortalID(portal networkid.PortalID, server string) types.JID {
 	return types.JID{
 		User:   string(portal),
 		Server: server,
 	}
-}
+}*/
 
 func MakeWAPortalID(jid types.JID) networkid.PortalID {
 	return networkid.PortalID(jid.User)

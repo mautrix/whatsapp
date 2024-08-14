@@ -2,6 +2,7 @@ package connector
 
 import (
 	"context"
+	"fmt"
 
 	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
@@ -87,12 +88,22 @@ func (wa *WhatsAppClient) handleWAEvent(rawEvt any) {
 			if e.Reason == events.ConnectFailureNotFound {
 				if wa.Client != nil {
 					wa.Client.Disconnect()
-					wa.Device.Delete()
+					err := wa.Device.Delete()
+					if err != nil {
+						log.Error().Msg(fmt.Sprintf("Error deleting device %s", err.Error()))
+						return
+					}
 					wa.resetWADevice()
 					wa.Client = nil
 				}
 				log.Debug().Msg("Reconnecting e2ee client after WhatsApp 415 error")
-				go wa.Connect(context.Background())
+				go func() {
+					err := wa.Connect(context.Background())
+					if err != nil {
+						log.Error().Msg(fmt.Sprintf("Error connecting %s", err.Error()))
+						return
+					}
+				}()
 			}
 		}
 

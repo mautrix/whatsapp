@@ -28,7 +28,7 @@ func (wa *WhatsAppConnector) GetLoginFlows() []bridgev2.LoginFlow {
 	}
 }
 
-func (wa *WhatsAppConnector) CreateLogin(ctx context.Context, user *bridgev2.User, flowID string) (bridgev2.LoginProcess, error) {
+func (wa *WhatsAppConnector) CreateLogin(_ context.Context, user *bridgev2.User, flowID string) (bridgev2.LoginProcess, error) {
 	//TODO: ADD PAIRING CODE HERE
 	if flowID != "qr" {
 		return nil, fmt.Errorf("invalid login flow ID")

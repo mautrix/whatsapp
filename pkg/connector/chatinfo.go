@@ -7,11 +7,11 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 )
 
-func (wa *WhatsAppClient) GetChatInfo(ctx context.Context, portal *bridgev2.Portal) (*bridgev2.ChatInfo, error) {
+func (wa *WhatsAppClient) GetChatInfo(_ context.Context, _ *bridgev2.Portal) (*bridgev2.ChatInfo, error) {
 	return nil, nil
 }
 
-func (wa *WhatsAppClient) GetUserInfo(ctx context.Context, ghost *bridgev2.Ghost) (*bridgev2.UserInfo, error) {
+func (wa *WhatsAppClient) GetUserInfo(_ context.Context, ghost *bridgev2.Ghost) (*bridgev2.UserInfo, error) {
 	jid := types.NewJID(string(ghost.ID), types.DefaultUserServer)
 
 	contact, err := wa.Client.Store.Contacts.GetContact(jid)
