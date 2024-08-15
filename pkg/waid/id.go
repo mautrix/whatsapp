@@ -2,7 +2,6 @@ package waid
 
 import (
 	"fmt"
-	"strconv"
 	"strings"
 
 	"go.mau.fi/whatsmeow/types"
@@ -17,11 +16,11 @@ import (
 }*/
 
 func MakeWAPortalID(jid types.JID) networkid.PortalID {
-	return networkid.PortalID(jid.User)
+	return networkid.PortalID(jid.ToNonAD().String())
 }
 
 func MakeWAUserID(jid *types.JID) networkid.UserID {
-	return networkid.UserID(jid.User)
+	return networkid.UserID(jid.ToNonAD().String())
 }
 
 func ParseWAUserLoginID(user networkid.UserLoginID) types.JID {
@@ -32,19 +31,19 @@ func ParseWAUserLoginID(user networkid.UserLoginID) types.JID {
 }
 
 func MakeWAUserLoginID(jid *types.JID) networkid.UserLoginID {
-	return networkid.UserLoginID(jid.User)
+	return networkid.UserLoginID(jid.ToNonAD().String())
 }
 
-func MakeUserID(user int64) networkid.UserID {
-	return networkid.UserID(strconv.Itoa(int(user)))
+func MakeUserID(user *types.JID) networkid.UserID {
+	return networkid.UserID(user.ToNonAD().String())
 }
 
-func MakeUserLoginID(user int64) networkid.UserLoginID {
+func MakeUserLoginID(user *types.JID) networkid.UserLoginID {
 	return networkid.UserLoginID(MakeUserID(user))
 }
 
 func MakeMessageID(chat, sender types.JID, id types.MessageID) networkid.MessageID {
-	return networkid.MessageID(fmt.Sprintf("%s:%s:%s", chat.String(), sender.ToNonAD().String(), id))
+	return networkid.MessageID(fmt.Sprintf("%s:%s:%s", chat.ToNonAD().String(), sender.ToNonAD().String(), id))
 }
 
 type ParsedMessageID struct {

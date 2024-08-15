@@ -3,12 +3,43 @@ package connector
 import (
 	"context"
 
+	"go.mau.fi/util/ptr"
 	"go.mau.fi/whatsmeow/types"
 	"maunium.net/go/mautrix/bridgev2"
+	"maunium.net/go/mautrix/bridgev2/database"
+	"maunium.net/go/mautrix/bridgev2/networkid"
+	"maunium.net/go/mautrix/event"
 )
 
-func (wa *WhatsAppClient) GetChatInfo(_ context.Context, _ *bridgev2.Portal) (*bridgev2.ChatInfo, error) {
-	return nil, nil
+var moderatorPL = 50
+
+func (wa *WhatsAppClient) GetChatInfo(_ context.Context, portal *bridgev2.Portal) (*bridgev2.ChatInfo, error) {
+	members := &bridgev2.ChatMemberList{
+		IsFull: true,
+		Members: []bridgev2.ChatMember{
+			{
+				EventSender: wa.makeEventSender(wa.Client.Store.ID),
+				Membership:  event.MembershipJoin,
+				PowerLevel:  &moderatorPL,
+			},
+		},
+	}
+
+	jid, _ := types.ParseJID(string(portal.ID))
+	if jid.Server == types.GroupServer {
+		return &bridgev2.ChatInfo{}, nil
+	}
+	if networkid.UserLoginID(jid.User) != wa.UserLogin.ID {
+		members.Members = append(members.Members, bridgev2.ChatMember{
+			EventSender: wa.makeEventSender(&jid),
+			Membership:  event.MembershipJoin,
+		})
+	}
+
+	return &bridgev2.ChatInfo{
+		Members: members,
+		Type:    ptr.Ptr(database.RoomTypeDM),
+	}, nil
 }
 
 func (wa *WhatsAppClient) GetUserInfo(_ context.Context, ghost *bridgev2.Ghost) (*bridgev2.UserInfo, error) {

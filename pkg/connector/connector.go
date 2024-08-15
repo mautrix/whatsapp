@@ -110,10 +110,9 @@ func (wa *WhatsAppConnector) Start(_ context.Context) error {
 func (wa *WhatsAppConnector) LoadUserLogin(_ context.Context, login *bridgev2.UserLogin) error {
 	loginMetadata := login.Metadata.(*UserLoginMetadata)
 
-	jid := types.JID{
-		Device: loginMetadata.WADeviceID,
-		Server: types.DefaultUserServer,
-		User:   string(login.ID),
+	jid, err := types.ParseJID(string(login.ID))
+	if err == nil {
+		jid.Device = loginMetadata.WADeviceID
 	}
 
 	device, err := wa.DeviceStore.GetDevice(jid)
@@ -128,7 +127,9 @@ func (wa *WhatsAppConnector) LoadUserLogin(_ context.Context, login *bridgev2.Us
 		Device:    device,
 	}
 
-	w.MakeNewClient()
+	log := w.UserLogin.Log.With().Str("component", "whatsmeow").Logger()
+
+	w.MakeNewClient(log)
 
 	err = w.Client.Connect()
 

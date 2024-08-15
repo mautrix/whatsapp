@@ -2,7 +2,6 @@ package connector
 
 import (
 	"context"
-	"time"
 
 	"github.com/rs/zerolog"
 	"go.mau.fi/whatsmeow/types/events"
@@ -19,9 +18,13 @@ type WAMessageEvent struct {
 }
 
 var (
-	_ bridgev2.RemoteMessage            = (*WAMessageEvent)(nil)
-	_ bridgev2.RemoteEventWithTimestamp = (*WAMessageEvent)(nil)
+	_ bridgev2.RemoteMessage                  = (*WAMessageEvent)(nil)
+	_ bridgev2.RemoteEventThatMayCreatePortal = (*WAMessageEvent)(nil)
 )
+
+func (evt *WAMessageEvent) ShouldCreatePortal() bool {
+	return true
+}
 
 func (evt *WAMessageEvent) GetType() bridgev2.RemoteEventType {
 	return bridgev2.RemoteEventMessage
@@ -36,15 +39,11 @@ func (evt *WAMessageEvent) AddLogContext(c zerolog.Context) zerolog.Context {
 }
 
 func (evt *WAMessageEvent) GetSender() bridgev2.EventSender {
-	return evt.wa.makeEventSender(int64(evt.Info.Sender.UserInt()))
+	return evt.wa.makeEventSender(&evt.Info.Sender)
 }
 
 func (evt *WAMessageEvent) GetID() networkid.MessageID {
 	return waid.MakeMessageID(evt.Info.Chat, evt.Info.Sender, evt.Info.ID)
-}
-
-func (evt *WAMessageEvent) GetTimestamp() time.Time {
-	return evt.GetTimestamp()
 }
 
 func (evt *WAMessageEvent) ConvertMessage(ctx context.Context, portal *bridgev2.Portal, intent bridgev2.MatrixAPI) (*bridgev2.ConvertedMessage, error) {

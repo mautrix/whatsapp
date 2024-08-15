@@ -58,10 +58,11 @@ func (wa *WhatsAppClient) getProxy(reason string) (string, error) {
 	return respData.ProxyURL, nil
 }
 
-func (wa *WhatsAppClient) MakeNewClient() {
-	wa.Client = whatsmeow.NewClient(wa.Device, waLog.Zerolog(wa.UserLogin.Log.With().Str("component", "whatsmeow").Logger()))
+func (wa *WhatsAppClient) MakeNewClient(log zerolog.Logger) {
+	wa.Client = whatsmeow.NewClient(wa.Device, waLog.Zerolog(log))
 
-	if wa.Client.Store.ID != nil {
+	if wa.Device.ID != nil {
+		wa.Client.AddEventHandler(wa.handleWAEvent)
 		wa.Client.EnableAutoReconnect = true
 	} else {
 		wa.Client.EnableAutoReconnect = false // no auto reconnect unless we are logged in
@@ -69,8 +70,6 @@ func (wa *WhatsAppClient) MakeNewClient() {
 
 	wa.Client.AutomaticMessageRerequestFromPhone = true
 	wa.Client.SetForceActiveDeliveryReceipts(wa.Main.Config.ForceActiveDeliveryReceipts)
-
-	wa.Client.AddEventHandler(wa.handleWAEvent)
 
 	//TODO: add tracking under PreRetryCallback and GetMessageForRetry (waiting till metrics/analytics are added)
 	if wa.Main.Config.ProxyOnlyLogin || wa.Device.ID == nil {
@@ -85,7 +84,6 @@ func (wa *WhatsAppClient) MakeNewClient() {
 	if wa.Main.Config.ProxyOnlyLogin {
 		wa.Client.ToggleProxyOnlyForLogin(true)
 	}
-
 }
 
 func (wa *WhatsAppClient) messageIDToKey(id *waid.ParsedMessageID) *waCommon.MessageKey {

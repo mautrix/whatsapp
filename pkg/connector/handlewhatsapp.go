@@ -23,18 +23,19 @@ func (wa *WhatsAppClient) handleWAEvent(rawEvt any) {
 	log := wa.UserLogin.Log
 
 	switch evt := rawEvt.(type) {
-	case events.Message:
+	case *events.Message:
 		log.Trace().
 			Any("info", evt.Info).
 			Any("payload", evt.Message).
 			Msg("Received WhatsApp message")
+
 		portalKey, ok := wa.makeWAPortalKey(evt.Info.Chat)
 		if !ok {
 			log.Warn().Stringer("chat", evt.Info.Chat).Msg("Ignoring WhatsApp message with unknown chat JID")
 			return
 		}
 		wa.Main.Bridge.QueueRemoteEvent(wa.UserLogin, &WAMessageEvent{
-			Message:   &evt,
+			Message:   evt,
 			portalKey: portalKey,
 			wa:        wa,
 		})
@@ -60,7 +61,7 @@ func (wa *WhatsAppClient) handleWAEvent(rawEvt any) {
 				Type:       evtType,
 				LogContext: nil,
 				PortalKey:  portalKey,
-				Sender:     wa.makeWAEventSender(evt.Sender),
+				Sender:     wa.makeEventSender(&evt.Sender),
 				Timestamp:  evt.Timestamp,
 			},
 			Targets: targets,

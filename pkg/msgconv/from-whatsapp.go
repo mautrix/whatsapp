@@ -1,11 +1,15 @@
 package msgconv
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"image"
 	_ "image/gif"
 	_ "image/jpeg"
 	_ "image/png"
+	"math"
+	"net/http"
 	"strings"
 
 	"github.com/rs/zerolog"
@@ -73,10 +77,16 @@ type ExtraMediaInfo struct {
 	IsGif bool
 
 	Caption string
+
+	MsgType event.MessageType
 }
 
 func getMediaMessageFileInfo(msg *waE2E.Message) (message MediaMessage, info event.FileInfo, contextInfo *waE2E.ContextInfo, extraInfo ExtraMediaInfo) {
+	message = nil
 	info = event.FileInfo{}
+	extraInfo = ExtraMediaInfo{}
+
+	contextInfo = &waE2E.ContextInfo{}
 	if msg.GetAudioMessage() != nil {
 		message = msg.AudioMessage
 
@@ -85,10 +95,13 @@ func getMediaMessageFileInfo(msg *waE2E.Message) (message MediaMessage, info eve
 		waveform, duration := getAudioMessageInfo(msg.AudioMessage)
 		extraInfo.Waveform = waveform
 		extraInfo.Duration = duration
+
+		extraInfo.MsgType = event.MsgAudio
 	} else if msg.GetDocumentMessage() != nil {
 		message = msg.DocumentMessage
 
 		extraInfo.Caption = msg.DocumentMessage.GetCaption()
+		extraInfo.MsgType = event.MsgFile
 	} else if msg.GetImageMessage() != nil {
 		message = msg.ImageMessage
 
@@ -96,11 +109,13 @@ func getMediaMessageFileInfo(msg *waE2E.Message) (message MediaMessage, info eve
 		info.Height = int(msg.ImageMessage.GetHeight())
 
 		extraInfo.Caption = msg.DocumentMessage.GetCaption()
+		extraInfo.MsgType = event.MsgImage
 	} else if msg.GetStickerMessage() != nil {
 		message = msg.StickerMessage
 
 		info.Width = int(msg.StickerMessage.GetWidth())
 		info.Height = int(msg.StickerMessage.GetHeight())
+		extraInfo.MsgType = event.MessageType(event.EventSticker.Type)
 	} else if msg.GetVideoMessage() != nil {
 		message = msg.VideoMessage
 
@@ -112,19 +127,16 @@ func getMediaMessageFileInfo(msg *waE2E.Message) (message MediaMessage, info eve
 		if msg.VideoMessage.GetGifPlayback() {
 			extraInfo.IsGif = true
 		}
-	} else {
-		message = nil
-		info = event.FileInfo{}
-		extraInfo = ExtraMediaInfo{}
-
-		contextInfo = &waE2E.ContextInfo{}
+		extraInfo.MsgType = event.MsgVideo
 	}
 
-	info.Size = int(message.GetFileLength())
-	info.MimeType = message.GetMimetype()
+	if message != nil {
+		info.Size = int(message.GetFileLength())
 
-	extraInfo = ExtraMediaInfo{}
-	contextInfo = message.GetContextInfo()
+		info.MimeType = message.GetMimetype()
+
+		contextInfo = message.GetContextInfo()
+	}
 	return
 }
 
@@ -145,7 +157,10 @@ func (mc *MessageConverter) parseMessageContextInfo(ctx context.Context, cm *bri
 					continue
 				}
 				mxid, displayname, err := mc.getBasicUserInfo(ctx, waid.MakeWAUserID(&parsed))
-
+				if err != nil {
+					zerolog.Ctx(ctx).Err(err).Str("jid", jid).Msg("Failed to get user info")
+					continue
+				}
 				content.Mentions.UserIDs = append(content.Mentions.UserIDs, mxid)
 				mentionText := "@" + parsed.User
 				content.Body = strings.ReplaceAll(content.Body, mentionText, displayname)
@@ -155,8 +170,8 @@ func (mc *MessageConverter) parseMessageContextInfo(ctx context.Context, cm *bri
 
 		if qm := contextInfo.GetQuotedMessage(); qm != nil {
 			pcp, _ := types.ParseJID(contextInfo.GetParticipant())
-			chat, err := types.ParseJID(contextInfo.GetRemoteJID())
-			if err != nil {
+			chat, _ := types.ParseJID(contextInfo.GetRemoteJID())
+			if chat.String() == "" {
 				chat = msgInfo.Chat
 			}
 
@@ -202,6 +217,52 @@ func (mc *MessageConverter) reuploadWhatsAppAttachment(
 	return cmp, nil
 }
 
+func convertLocationMessage(ctx context.Context, intent bridgev2.MatrixAPI, msg *waE2E.LocationMessage, portal *bridgev2.Portal) *event.MessageEventContent {
+	url := msg.GetURL()
+	if len(url) == 0 {
+		url = fmt.Sprintf("https://maps.google.com/?q=%.5f,%.5f", msg.GetDegreesLatitude(), msg.GetDegreesLongitude())
+	}
+	name := msg.GetName()
+	if len(name) == 0 {
+		latChar := 'N'
+		if msg.GetDegreesLatitude() < 0 {
+			latChar = 'S'
+		}
+		longChar := 'E'
+		if msg.GetDegreesLongitude() < 0 {
+			longChar = 'W'
+		}
+		name = fmt.Sprintf("%.4f° %c %.4f° %c", math.Abs(msg.GetDegreesLatitude()), latChar, math.Abs(msg.GetDegreesLongitude()), longChar)
+	}
+
+	content := &event.MessageEventContent{
+		MsgType:       event.MsgLocation,
+		Body:          fmt.Sprintf("Location: %s\n%s\n%s", name, msg.GetAddress(), url),
+		Format:        event.FormatHTML,
+		FormattedBody: fmt.Sprintf("Location: <a href='%s'>%s</a><br>%s", url, name, msg.GetAddress()),
+		GeoURI:        fmt.Sprintf("geo:%.5f,%.5f", msg.GetDegreesLatitude(), msg.GetDegreesLongitude()),
+	}
+
+	if len(msg.GetJPEGThumbnail()) > 0 {
+		thumbnailMime := http.DetectContentType(msg.GetJPEGThumbnail())
+		uploadedThumbnail, _, _ := intent.UploadMedia(ctx, portal.MXID, msg.GetJPEGThumbnail(), "thumb.jpeg", thumbnailMime)
+		if uploadedThumbnail != "" {
+			cfg, _, _ := image.DecodeConfig(bytes.NewReader(msg.GetJPEGThumbnail()))
+			content.Info = &event.FileInfo{
+				ThumbnailInfo: &event.FileInfo{
+					Size:     len(msg.GetJPEGThumbnail()),
+					Width:    cfg.Width,
+					Height:   cfg.Height,
+					MimeType: thumbnailMime,
+				},
+				ThumbnailURL: uploadedThumbnail,
+			}
+		}
+	}
+
+	return content
+}
+
 func (mc *MessageConverter) ToMatrix(ctx context.Context, portal *bridgev2.Portal, client *whatsmeow.Client, intent bridgev2.MatrixAPI, message *events.Message) *bridgev2.ConvertedMessage {
 	cm := &bridgev2.ConvertedMessage{
 		Parts: make([]*bridgev2.ConvertedMessagePart, 0),
@@ -213,6 +274,10 @@ func (mc *MessageConverter) ToMatrix(ctx context.Context, portal *bridgev2.Porta
 		if err != nil {
 			// TODO: THROW SOME ERROR HERE!?
 			return cm
+		}
+
+		if extraInfo.MsgType != "" {
+			cmp.Content.MsgType = extraInfo.MsgType
 		}
 
 		if extraInfo.Waveform != nil {
@@ -237,12 +302,8 @@ func (mc *MessageConverter) ToMatrix(ctx context.Context, portal *bridgev2.Porta
 		cm.Parts = append(cm.Parts, cmp)
 	} else if location := message.Message.GetLocationMessage(); location != nil {
 		cmp := &bridgev2.ConvertedMessagePart{
-			Type: event.EventMessage,
-			Content: &event.MessageEventContent{
-				MsgType: event.MsgLocation,
-				Body:    location.GetComment(),
-				GeoURI:  fmt.Sprintf("geo:%f,%f", location.GetDegreesLatitude(), location.GetDegreesLongitude()),
-			},
+			Type:    event.EventMessage,
+			Content: convertLocationMessage(ctx, intent, location, portal),
 		}
 
 		contextInfo = location.GetContextInfo()
@@ -264,6 +325,7 @@ func (mc *MessageConverter) ToMatrix(ctx context.Context, portal *bridgev2.Porta
 			cmp.Content.MsgType = event.MsgNotice
 			cmp.Content.Body = "Unknown message type, please view it on the WhatsApp app"
 		}
+		cm.Parts = append(cm.Parts, cmp)
 	}
 
 	if contextInfo != nil {

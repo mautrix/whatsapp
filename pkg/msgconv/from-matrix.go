@@ -197,7 +197,12 @@ func (mc *MessageConverter) constructTextMessage(ctx context.Context, content *e
 	parseCtx := format.NewContext(ctx)
 	parseCtx.ReturnData["mentions"] = mentions
 	parseCtx.ReturnData["portal"] = portal
-	parsed := mc.HTMLParser.Parse(content.FormattedBody, parseCtx)
+	var text string
+	if content.Format == event.FormatHTML {
+		text = mc.HTMLParser.Parse(content.FormattedBody, parseCtx)
+	} else {
+		text = content.Body
+	}
 
 	if len(mentions) > 0 {
 		contextInfo.MentionedJID = mentions
@@ -205,7 +210,7 @@ func (mc *MessageConverter) constructTextMessage(ctx context.Context, content *e
 
 	return &waE2E.Message{
 		ExtendedTextMessage: &waE2E.ExtendedTextMessage{
-			Text:        proto.String(parsed),
+			Text:        proto.String(text),
 			ContextInfo: contextInfo,
 		},
 	}
@@ -222,7 +227,7 @@ func (mc *MessageConverter) convertPill(displayname, mxid, eventID string, ctx f
 		return displayname
 	} else if ghost != nil {
 		jid, err = types.ParseJID(string(ghost.ID))
-		if jid.User == "" || err != nil {
+		if jid.String() == "" || err != nil {
 			return displayname
 		}
 	} else if user, err := mc.Bridge.GetExistingUserByMXID(ctx.Ctx, id.UserID(mxid)); err != nil {
