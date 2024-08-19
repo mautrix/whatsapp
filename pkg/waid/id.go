@@ -19,10 +19,6 @@ func MakeWAPortalID(jid types.JID) networkid.PortalID {
 	return networkid.PortalID(jid.ToNonAD().String())
 }
 
-func MakeWAUserID(jid *types.JID) networkid.UserID {
-	return networkid.UserID(jid.ToNonAD().String())
-}
-
 func ParseWAUserLoginID(user networkid.UserLoginID) types.JID {
 	return types.JID{
 		Server: types.DefaultUserServer,
@@ -30,12 +26,8 @@ func ParseWAUserLoginID(user networkid.UserLoginID) types.JID {
 	}
 }
 
-func MakeWAUserLoginID(jid *types.JID) networkid.UserLoginID {
-	return networkid.UserLoginID(jid.ToNonAD().String())
-}
-
 func MakeUserID(user *types.JID) networkid.UserID {
-	return networkid.UserID(user.ToNonAD().String())
+	return networkid.UserID(user.User)
 }
 
 func MakeUserLoginID(user *types.JID) networkid.UserLoginID {

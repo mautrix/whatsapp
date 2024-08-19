@@ -53,7 +53,6 @@ func (wa *WhatsAppClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2
 func (wa *WhatsAppClient) PreHandleMatrixReaction(_ context.Context, msg *bridgev2.MatrixReaction) (bridgev2.MatrixReactionPreResponse, error) {
 	return bridgev2.MatrixReactionPreResponse{
 		SenderID:     networkid.UserID(wa.UserLogin.ID),
-		EmojiID:      "",
 		Emoji:        variationselector.Remove(msg.Content.RelatesTo.Key),
 		MaxReactions: 1,
 	}, nil
@@ -114,7 +113,6 @@ func (wa *WhatsAppClient) HandleMatrixEdit(ctx context.Context, edit *bridgev2.M
 	}
 
 	portalJID, err := types.ParseJID(string(edit.Portal.ID))
-
 	if err != nil {
 		return err
 	}

@@ -16,7 +16,6 @@ import (
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/proto/waE2E"
 	"go.mau.fi/whatsmeow/types"
-	"go.mau.fi/whatsmeow/types/events"
 	_ "golang.org/x/image/webp"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
@@ -156,7 +155,7 @@ func (mc *MessageConverter) parseMessageContextInfo(ctx context.Context, cm *bri
 					zerolog.Ctx(ctx).Err(err).Str("jid", jid).Msg("Failed to parse mentioned JID")
 					continue
 				}
-				mxid, displayname, err := mc.getBasicUserInfo(ctx, waid.MakeWAUserID(&parsed))
+				mxid, displayname, err := mc.getBasicUserInfo(ctx, waid.MakeUserID(&parsed))
 				if err != nil {
 					zerolog.Ctx(ctx).Err(err).Str("jid", jid).Msg("Failed to get user info")
 					continue
@@ -263,12 +262,12 @@ func convertLocationMessage(ctx context.Context, intent bridgev2.MatrixAPI, msg 
 	return content
 }
 
-func (mc *MessageConverter) ToMatrix(ctx context.Context, portal *bridgev2.Portal, client *whatsmeow.Client, intent bridgev2.MatrixAPI, message *events.Message) *bridgev2.ConvertedMessage {
+func (mc *MessageConverter) ToMatrix(ctx context.Context, portal *bridgev2.Portal, client *whatsmeow.Client, intent bridgev2.MatrixAPI, message *waE2E.Message, msgInfo *types.MessageInfo) *bridgev2.ConvertedMessage {
 	cm := &bridgev2.ConvertedMessage{
 		Parts: make([]*bridgev2.ConvertedMessagePart, 0),
 	}
 
-	media, fileInfo, contextInfo, extraInfo := getMediaMessageFileInfo(message.Message)
+	media, fileInfo, contextInfo, extraInfo := getMediaMessageFileInfo(message)
 	if media != nil {
 		cmp, err := mc.reuploadWhatsAppAttachment(ctx, media, fileInfo, client, intent, portal)
 		if err != nil {
@@ -300,7 +299,7 @@ func (mc *MessageConverter) ToMatrix(ctx context.Context, portal *bridgev2.Porta
 			}
 		}
 		cm.Parts = append(cm.Parts, cmp)
-	} else if location := message.Message.GetLocationMessage(); location != nil {
+	} else if location := message.GetLocationMessage(); location != nil {
 		cmp := &bridgev2.ConvertedMessagePart{
 			Type:    event.EventMessage,
 			Content: convertLocationMessage(ctx, intent, location, portal),
@@ -315,10 +314,10 @@ func (mc *MessageConverter) ToMatrix(ctx context.Context, portal *bridgev2.Porta
 				MsgType: event.MsgText,
 			},
 		}
-		if extendedText := message.Message.GetExtendedTextMessage(); extendedText != nil {
+		if extendedText := message.GetExtendedTextMessage(); extendedText != nil {
 			cmp.Content.Body = extendedText.GetText()
 			contextInfo = extendedText.GetContextInfo()
-		} else if conversation := message.Message.GetConversation(); conversation != "" {
+		} else if conversation := message.GetConversation(); conversation != "" {
 			cmp.Content.Body = conversation
 			contextInfo = nil
 		} else {
@@ -328,8 +327,8 @@ func (mc *MessageConverter) ToMatrix(ctx context.Context, portal *bridgev2.Porta
 		cm.Parts = append(cm.Parts, cmp)
 	}
 
-	if contextInfo != nil {
-		cm = mc.parseMessageContextInfo(ctx, cm, contextInfo, message.Info)
+	if contextInfo != nil && msgInfo != nil {
+		cm = mc.parseMessageContextInfo(ctx, cm, contextInfo, *msgInfo)
 	}
 
 	return cm

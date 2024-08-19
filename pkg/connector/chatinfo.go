@@ -14,11 +14,12 @@ import (
 var moderatorPL = 50
 
 func (wa *WhatsAppClient) GetChatInfo(_ context.Context, portal *bridgev2.Portal) (*bridgev2.ChatInfo, error) {
+	myJID := wa.Client.Store.ID.ToNonAD()
 	members := &bridgev2.ChatMemberList{
 		IsFull: true,
 		Members: []bridgev2.ChatMember{
 			{
-				EventSender: wa.makeEventSender(wa.Client.Store.ID),
+				EventSender: wa.makeEventSender(&myJID),
 				Membership:  event.MembershipJoin,
 				PowerLevel:  &moderatorPL,
 			},
@@ -62,7 +63,7 @@ func (wa *WhatsAppClient) contactToUserInfo(jid types.JID, contact types.Contact
 	}
 	name := wa.Main.Config.FormatDisplayname(jid, contact)
 	ui.Name = &name
-	ui.Identifiers = append(ui.Identifiers, "tel:"+jid.User)
+	ui.Identifiers = append(ui.Identifiers, "tel:+"+jid.User)
 	// TODO: implement Profile picture stuff
 	return ui
 }

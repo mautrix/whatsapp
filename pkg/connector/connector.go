@@ -9,12 +9,12 @@ import (
 	"go.mau.fi/whatsmeow/proto/waCompanionReg"
 	"go.mau.fi/whatsmeow/store"
 	"go.mau.fi/whatsmeow/store/sqlstore"
-	"go.mau.fi/whatsmeow/types"
 	waLog "go.mau.fi/whatsmeow/util/log"
 	"google.golang.org/protobuf/proto"
 	"maunium.net/go/mautrix/bridgev2"
 
 	"maunium.net/go/mautrix-whatsapp/pkg/msgconv"
+	"maunium.net/go/mautrix-whatsapp/pkg/waid"
 )
 
 type WhatsAppConnector struct {
@@ -110,13 +110,10 @@ func (wa *WhatsAppConnector) Start(_ context.Context) error {
 func (wa *WhatsAppConnector) LoadUserLogin(_ context.Context, login *bridgev2.UserLogin) error {
 	loginMetadata := login.Metadata.(*UserLoginMetadata)
 
-	jid, err := types.ParseJID(string(login.ID))
-	if err == nil {
-		jid.Device = loginMetadata.WADeviceID
-	}
+	jid := waid.ParseWAUserLoginID(login.ID)
+	jid.Device = loginMetadata.WADeviceID
 
 	device, err := wa.DeviceStore.GetDevice(jid)
-
 	if err != nil {
 		return err
 	}
@@ -129,14 +126,11 @@ func (wa *WhatsAppConnector) LoadUserLogin(_ context.Context, login *bridgev2.Us
 
 	log := w.UserLogin.Log.With().Str("component", "whatsmeow").Logger()
 
-	w.MakeNewClient(log)
-
-	err = w.Client.Connect()
-
-	if err != nil {
-		login.Log.Err(err).Msg("Error connecting to WhatsApp")
+	if device != nil {
+		w.MakeNewClient(log)
 	}
 
 	login.Client = w
+
 	return nil
 }

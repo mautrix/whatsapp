@@ -71,7 +71,7 @@ func makeQRChan(connector *WhatsAppConnector, user *bridgev2.User) (client *what
 }
 
 func makeUserLogin(ctx context.Context, user *bridgev2.User, client *whatsmeow.Client) (ul *bridgev2.UserLogin, err error) {
-	newLoginID := waid.MakeWAUserLoginID(client.Store.ID)
+	newLoginID := waid.MakeUserLoginID(client.Store.ID)
 	ul, err = user.NewLogin(ctx, &database.UserLogin{
 		ID:         newLoginID,
 		RemoteName: client.Store.PushName,
@@ -98,10 +98,7 @@ var _ bridgev2.LoginProcessDisplayAndWait = (*QRLogin)(nil)
 
 func (qr *QRLogin) Cancel() {
 	qr.cancelChan()
-	go func() {
-		for range qr.QRChan {
-		}
-	}()
+	qr.Client.Disconnect()
 }
 
 const (
@@ -129,7 +126,7 @@ func (qr *QRLogin) Start(ctx context.Context) (*bridgev2.LoginStep, error) {
 			return nil, fmt.Errorf("invalid QR channel event: %s", resp.Event)
 		}
 	case <-ctx.Done():
-		qr.cancelChan()
+		qr.Cancel()
 		return nil, ctx.Err()
 	}
 
@@ -162,22 +159,22 @@ func (qr *QRLogin) Wait(ctx context.Context) (*bridgev2.LoginStep, error) {
 				},
 			}, nil
 		} else if resp.Event != "success" {
-			qr.cancelChan()
+			qr.Cancel()
 			return nil, fmt.Errorf("did not pair properly, err: %s", resp.Event)
 		}
 	case <-ctx.Done():
-		qr.cancelChan()
+		qr.Cancel()
 		return nil, ctx.Err()
 	}
 
-	defer qr.cancelChan()
+	defer qr.Cancel()
 
 	ul, err := makeUserLogin(ctx, qr.User, qr.Client)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create user login: %w", err)
 	}
 
-	err = qr.Main.LoadUserLogin(context.Background(), ul)
+	err = ul.Client.Connect(ul.Log.WithContext(context.Background()))
 
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect after login: %w", err)
@@ -208,6 +205,7 @@ var _ bridgev2.LoginProcessUserInput = (*PairingCodeLogin)(nil)
 var _ bridgev2.LoginProcessDisplayAndWait = (*PairingCodeLogin)(nil)
 
 func (pc *PairingCodeLogin) Cancel() {
+	pc.Client.Disconnect()
 	pc.cancelChan()
 	go func() {
 		for range pc.QRChan {
@@ -278,22 +276,22 @@ func (pc *PairingCodeLogin) Wait(ctx context.Context) (*bridgev2.LoginStep, erro
 				},
 			}, nil
 		} else if resp.Event != "success" {
-			pc.cancelChan()
+			pc.Cancel()
 			return nil, fmt.Errorf("did not pair properly, err: %s", resp.Event)
 		}
 	case <-ctx.Done():
-		pc.cancelChan()
+		pc.Cancel()
 		return nil, ctx.Err()
 	}
 
-	defer pc.cancelChan()
+	defer pc.Cancel()
 
 	ul, err := makeUserLogin(ctx, pc.User, pc.Client)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create user login: %w", err)
 	}
 
-	err = pc.Main.LoadUserLogin(context.Background(), ul)
+	err = ul.Client.Connect(ul.Log.WithContext(context.Background()))
 
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect after login: %w", err)

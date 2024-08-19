@@ -68,15 +68,15 @@ func (wa *WhatsAppClient) handleWAEvent(rawEvt any) {
 		})
 	case *events.Connected:
 		log.Debug().Msg("Connected to WhatsApp socket")
-		wa.State = status.BridgeState{StateEvent: status.StateConnected}
-		wa.UserLogin.BridgeState.Send(wa.State)
+		state := status.BridgeState{StateEvent: status.StateConnected}
+		wa.UserLogin.BridgeState.Send(state)
 	case *events.Disconnected:
 		log.Debug().Msg("Disconnected from WhatsApp socket")
-		wa.State = status.BridgeState{
+		state := status.BridgeState{
 			StateEvent: status.StateTransientDisconnect,
 			Error:      WADisconnected,
 		}
-		wa.UserLogin.BridgeState.Send(wa.State)
+		wa.UserLogin.BridgeState.Send(state)
 	case events.PermanentDisconnect:
 		switch e := evt.(type) {
 		case *events.LoggedOut:
@@ -108,12 +108,12 @@ func (wa *WhatsAppClient) handleWAEvent(rawEvt any) {
 			}
 		}
 
-		wa.State = status.BridgeState{
+		state := status.BridgeState{
 			StateEvent: status.StateUnknownError,
 			Error:      WAPermanentError,
 			Message:    evt.PermanentDisconnectDescription(),
 		}
-		wa.UserLogin.BridgeState.Send(wa.State)
+		wa.UserLogin.BridgeState.Send(state)
 	default:
 		log.Debug().Type("event_type", rawEvt).Msg("Unhandled WhatsApp event")
 	}

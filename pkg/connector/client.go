@@ -24,6 +24,10 @@ import (
 	"maunium.net/go/mautrix-whatsapp/pkg/waid"
 )
 
+const (
+	WANotLoggedIn status.BridgeStateErrorCode = "wa-not-logged-in"
+)
+
 type respGetProxy struct {
 	ProxyURL string `json:"proxy_url"`
 }
@@ -140,8 +144,6 @@ type WhatsAppClient struct {
 	UserLogin *bridgev2.UserLogin
 	Client    *whatsmeow.Client
 	Device    *store.Device
-
-	State status.BridgeState
 }
 
 var whatsappCaps = &bridgev2.NetworkRoomCapabilities{
@@ -227,7 +229,16 @@ func (wa *WhatsAppClient) IsThisUser(_ context.Context, userID networkid.UserID)
 }
 
 func (wa *WhatsAppClient) Connect(_ context.Context) error {
-	return wa.Client.Connect()
+	if wa.Client != nil {
+		return wa.Client.Connect()
+	} else {
+		state := status.BridgeState{
+			StateEvent: status.StateBadCredentials,
+			Error:      WANotLoggedIn,
+		}
+		wa.UserLogin.BridgeState.Send(state)
+		return nil
+	}
 }
 
 func (wa *WhatsAppClient) Disconnect() {
