@@ -689,6 +689,10 @@ func (prov *ProvisioningAPI) Login(w http.ResponseWriter, r *http.Request) {
 		pairingCode, err := user.Client.PairPhone(phoneNum, true, whatsmeow.PairClientChrome, "Chrome (Linux)")
 		if err != nil {
 			log.Err(err).Msg("Failed to start phone code login")
+			Analytics.Track(user.MXID, "$login_failure", map[string]any{
+				"error":    "phone code start fail",
+				"go_error": err.Error(),
+			})
 			_ = c.WriteJSON(Error{
 				Error:   "Failed to request pairing code",
 				ErrCode: "code error",
