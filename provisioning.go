@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"net/http"
 	_ "net/http/pprof"
+	"regexp"
 	"strings"
 	"time"
 
@@ -623,6 +624,8 @@ var upgrader = websocket.Upgrader{
 	Subprotocols: []string{"net.maunium.whatsapp.login"},
 }
 
+var notNumbers = regexp.MustCompile("[^0-9]")
+
 func (prov *ProvisioningAPI) Login(w http.ResponseWriter, r *http.Request) {
 	userID := r.URL.Query().Get("user_id")
 	user := prov.bridge.GetUserByMXID(id.UserID(userID))
@@ -683,9 +686,25 @@ func (prov *ProvisioningAPI) Login(w http.ResponseWriter, r *http.Request) {
 				ErrCode: "connection error",
 			})
 		}
+		return
 	}
 	phoneNum := r.URL.Query().Get("phone_number")
 	if phoneNum != "" {
+		rawPhone := phoneNum
+		phoneNum = notNumbers.ReplaceAllString(phoneNum, "")
+		if len(phoneNum) < 7 {
+			log.Warn().Str("phone", rawPhone).Msg("Invalid phone number in login request")
+			Analytics.Track(user.MXID, "$login_failure", map[string]any{
+				"error": "invalid phone number",
+				"phone": rawPhone,
+			})
+			_ = c.WriteJSON(Error{
+				Error:   "Invalid phone number",
+				ErrCode: "invalid phone number",
+			})
+			go user.DeleteConnection()
+			return
+		}
 		select {
 		case <-qrReceivedChan:
 		case <-time.After(5 * time.Second):
