@@ -692,14 +692,18 @@ func (prov *ProvisioningAPI) Login(w http.ResponseWriter, r *http.Request) {
 	if phoneNum != "" {
 		rawPhone := phoneNum
 		phoneNum = notNumbers.ReplaceAllString(phoneNum, "")
-		if len(phoneNum) < 7 {
+		if len(phoneNum) < 7 || strings.HasPrefix(phoneNum, "0") {
 			log.Warn().Str("phone", rawPhone).Msg("Invalid phone number in login request")
 			Analytics.Track(user.MXID, "$login_failure", map[string]any{
 				"error": "invalid phone number",
 				"phone": rawPhone,
 			})
+			errorMsg := "Invalid phone number"
+			if len(phoneNum) > 6 {
+				errorMsg = "Please enter the phone number in international format"
+			}
 			_ = c.WriteJSON(Error{
-				Error:   "Invalid phone number",
+				Error:   errorMsg,
 				ErrCode: "invalid phone number",
 			})
 			go user.DeleteConnection()
