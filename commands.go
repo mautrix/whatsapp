@@ -492,7 +492,7 @@ func fnLogin(ce *WrappedCommandEvent) {
 		}
 	}
 
-	qrChan, err := ce.User.Login(context.Background())
+	qrChan, qrReceivedChan, err := ce.User.Login(context.Background())
 	if err != nil {
 		ce.ZLog.Err(err).Msg("Failed to start login")
 		ce.Reply("Failed to log in: %v", err)
@@ -500,6 +500,11 @@ func fnLogin(ce *WrappedCommandEvent) {
 	}
 
 	if phoneNumber != "" {
+		select {
+		case <-qrReceivedChan:
+		case <-time.After(5 * time.Second):
+			ce.ZLog.Warn().Msg("Didn't receive QR event within 5 seconds of starting login")
+		}
 		pairingCode, err := ce.User.Client.PairPhone(phoneNumber, true, whatsmeow.PairClientChrome, "Chrome (Linux)")
 		if err != nil {
 			ce.ZLog.Err(err).Msg("Failed to start phone code login")

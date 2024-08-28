@@ -31,6 +31,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -97,6 +98,9 @@ type User struct {
 	createKeyDedup       string
 	skipGroupCreateDelay types.JID
 	groupJoinLock        sync.Mutex
+
+	qrReceived chan struct{}
+	qrWaiting  atomic.Bool
 }
 
 type resyncQueueItem struct {
@@ -537,6 +541,8 @@ func (user *User) obfuscateJID(jid types.JID) string {
 
 func (user *User) createClient(sess *store.Device) {
 	user.Client = whatsmeow.NewClient(sess, waLog.Zerolog(user.zlog.With().Str("component", "whatsmeow").Logger()))
+	user.qrReceived = make(chan struct{})
+	user.qrWaiting.Store(true)
 	user.Client.AddEventHandler(user.HandleEvent)
 	user.Client.SetForceActiveDeliveryReceipts(user.bridge.Config.Bridge.ForceActiveDeliveryReceipts)
 	user.Client.AutomaticMessageRerequestFromPhone = true
@@ -605,11 +611,11 @@ func (user *User) getProxy(reason string) (string, error) {
 	return respData.ProxyURL, nil
 }
 
-func (user *User) Login(ctx context.Context) (<-chan whatsmeow.QRChannelItem, error) {
+func (user *User) Login(ctx context.Context) (<-chan whatsmeow.QRChannelItem, chan struct{}, error) {
 	user.connLock.Lock()
 	defer user.connLock.Unlock()
 	if user.Session != nil {
-		return nil, ErrAlreadyLoggedIn
+		return nil, nil, ErrAlreadyLoggedIn
 	} else if user.Client != nil {
 		user.unlockedDeleteConnection()
 	}
@@ -618,13 +624,13 @@ func (user *User) Login(ctx context.Context) (<-chan whatsmeow.QRChannelItem, er
 	user.createClient(newSession)
 	qrChan, err := user.Client.GetQRChannel(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get QR channel: %w", err)
+		return nil, nil, fmt.Errorf("failed to get QR channel: %w", err)
 	}
 	err = user.Client.Connect()
 	if err != nil {
-		return nil, fmt.Errorf("failed to connect to WhatsApp: %w", err)
+		return nil, nil, fmt.Errorf("failed to connect to WhatsApp: %w", err)
 	}
-	return qrChan, nil
+	return qrChan, user.qrReceived, nil
 }
 
 func (user *User) Connect() bool {
@@ -1086,6 +1092,10 @@ func (user *User) HandleEvent(event interface{}) {
 		portal := user.GetPortalByJID(v.JID)
 		if portal != nil {
 			portal.HandleWhatsAppDeleteChat(ctx, user)
+		}
+	case *events.QR:
+		if user.qrWaiting.Swap(false) {
+			close(user.qrReceived)
 		}
 	default:
 		user.zlog.Debug().Type("event_type", v).Msg("Unknown type of event in HandleEvent")

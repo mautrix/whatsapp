@@ -667,7 +667,7 @@ func (prov *ProvisioningAPI) Login(w http.ResponseWriter, r *http.Request) {
 		log.Debug().Msg("No timezone provided in request")
 	}
 
-	qrChan, err := user.Login(ctx)
+	qrChan, qrReceivedChan, err := user.Login(ctx)
 	expiryTime := time.Now().Add(160 * time.Second)
 	if err != nil {
 		log.Err(err).Msg("Failed to log in via provisioning API")
@@ -686,6 +686,11 @@ func (prov *ProvisioningAPI) Login(w http.ResponseWriter, r *http.Request) {
 	}
 	phoneNum := r.URL.Query().Get("phone_number")
 	if phoneNum != "" {
+		select {
+		case <-qrReceivedChan:
+		case <-time.After(5 * time.Second):
+			log.Warn().Msg("Didn't receive QR event within 5 seconds of starting login")
+		}
 		pairingCode, err := user.Client.PairPhone(phoneNum, true, whatsmeow.PairClientChrome, "Chrome (Linux)")
 		if err != nil {
 			log.Err(err).Msg("Failed to start phone code login")
