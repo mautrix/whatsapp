@@ -16,7 +16,8 @@ proxy_only_login: false
 # {{.PushName}}     - nickname set by the WhatsApp user
 # {{.BusinessName}} - validated WhatsApp business name
 # {{.Phone}}        - phone number (international format)
-displayname_template: "{{or .BusinessName .PushName .Phone}} (WA)"
+# {{.FullName}} - Name you set in the contacts list
+displayname_template: "{{or .FullName .BusinessName .PushName .Phone}} (WA)"
 
 # Should incoming calls send a message to the Matrix room?
 call_start_notices: true

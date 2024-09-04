@@ -30,6 +30,10 @@ func MakeUserID(user *types.JID) networkid.UserID {
 	return networkid.UserID(user.User)
 }
 
+func ParseUserID(user networkid.UserID) types.JID {
+	return types.NewJID(string(user), types.DefaultUserServer)
+}
+
 func MakeUserLoginID(user *types.JID) networkid.UserLoginID {
 	return networkid.UserLoginID(MakeUserID(user))
 }

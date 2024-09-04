@@ -108,7 +108,6 @@ func upgradeConfig(helper up.Helper) {
 type DisplaynameParams struct {
 	types.ContactInfo
 	Phone string
-	JID   string
 }
 
 func (c *WhatsAppConfig) FormatDisplayname(jid types.JID, contact types.ContactInfo) string {
@@ -116,7 +115,6 @@ func (c *WhatsAppConfig) FormatDisplayname(jid types.JID, contact types.ContactI
 	err := c.displaynameTemplate.Execute(&nameBuf, &DisplaynameParams{
 		ContactInfo: contact,
 		Phone:       "+" + jid.User,
-		JID:         "+" + jid.User,
 	})
 	if err != nil {
 		panic(err)

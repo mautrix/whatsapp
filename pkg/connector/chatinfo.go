@@ -2,16 +2,24 @@ package connector
 
 import (
 	"context"
+	"fmt"
 
 	"go.mau.fi/util/ptr"
+	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/types"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/event"
+
+	"maunium.net/go/mautrix-whatsapp/pkg/waid"
 )
 
 var moderatorPL = 50
+
+var (
+	_ bridgev2.ContactListingNetworkAPI = (*WhatsAppClient)(nil)
+)
 
 func (wa *WhatsAppClient) GetChatInfo(_ context.Context, portal *bridgev2.Portal) (*bridgev2.ChatInfo, error) {
 	myJID := wa.Client.Store.ID.ToNonAD()
@@ -64,6 +72,46 @@ func (wa *WhatsAppClient) contactToUserInfo(jid types.JID, contact types.Contact
 	name := wa.Main.Config.FormatDisplayname(jid, contact)
 	ui.Name = &name
 	ui.Identifiers = append(ui.Identifiers, "tel:+"+jid.User)
-	// TODO: implement Profile picture stuff
+
+	avatar, err := wa.Client.GetProfilePictureInfo(jid, &whatsmeow.GetProfilePictureParams{
+		Preview:     false,
+		IsCommunity: false,
+	})
+
+	if avatar != nil && err == nil {
+		ui.Avatar = &bridgev2.Avatar{
+			ID: networkid.AvatarID(avatar.ID),
+			Get: func(ctx context.Context) ([]byte, error) {
+				return wa.Client.DownloadMediaWithPath(avatar.DirectPath, nil, nil, nil, 0, "", "")
+			},
+		}
+	}
+
 	return ui
+}
+
+func (wa *WhatsAppClient) GetContactList(ctx context.Context) ([]*bridgev2.ResolveIdentifierResponse, error) {
+	contacts, err := wa.Client.Store.Contacts.GetAllContacts()
+	if err != nil {
+		return nil, err
+	}
+	resp := make([]*bridgev2.ResolveIdentifierResponse, len(contacts))
+	index := 0
+	for jid := range contacts {
+		contact := contacts[jid]
+		contactResp := &bridgev2.ResolveIdentifierResponse{
+			UserInfo: wa.contactToUserInfo(jid, contact),
+			//Chat:     wa.makeCreateDMResponse(contact), TODO implement
+		}
+		contactResp.UserID = waid.MakeUserID(&jid)
+		ghost, err := wa.Main.Bridge.GetGhostByID(ctx, contactResp.UserID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get ghost for %s: %w", jid, err)
+		}
+		contactResp.Ghost = ghost
+
+		resp[index] = contactResp
+		index++
+	}
+	return resp, nil
 }

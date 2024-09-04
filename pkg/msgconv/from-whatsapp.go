@@ -139,6 +139,35 @@ func getMediaMessageFileInfo(msg *waE2E.Message) (message MediaMessage, info eve
 	return
 }
 
+func convertContactMessage(ctx context.Context, intent bridgev2.MatrixAPI, portal *bridgev2.Portal, msg *waE2E.ContactMessage) (*bridgev2.ConvertedMessagePart, error) {
+	fileName := fmt.Sprintf("%s.vcf", msg.GetDisplayName())
+	data := []byte(msg.GetVcard())
+	mimeType := "text/vcard"
+
+	mxc, file, err := intent.UploadMedia(ctx, portal.MXID, data, fileName, mimeType)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", bridgev2.ErrMediaReuploadFailed, err)
+	}
+
+	cmp := &bridgev2.ConvertedMessagePart{
+		Type: event.EventMessage,
+		Content: &event.MessageEventContent{
+			Body:     fileName,
+			FileName: fileName,
+			URL:      mxc,
+			Info: &event.FileInfo{
+				MimeType: mimeType,
+				Size:     len(msg.GetVcard()),
+			},
+			File:    file,
+			MsgType: event.MsgFile,
+		},
+		Extra: make(map[string]any),
+	}
+
+	return cmp, nil
+}
+
 func (mc *MessageConverter) parseMessageContextInfo(ctx context.Context, cm *bridgev2.ConvertedMessage, contextInfo *waE2E.ContextInfo, msgInfo types.MessageInfo) *bridgev2.ConvertedMessage {
 	for _, part := range cm.Parts {
 		content := part.Content
@@ -216,7 +245,7 @@ func (mc *MessageConverter) reuploadWhatsAppAttachment(
 	return cmp, nil
 }
 
-func convertLocationMessage(ctx context.Context, intent bridgev2.MatrixAPI, msg *waE2E.LocationMessage, portal *bridgev2.Portal) *event.MessageEventContent {
+func convertLocationMessage(ctx context.Context, intent bridgev2.MatrixAPI, portal *bridgev2.Portal, msg *waE2E.LocationMessage) *bridgev2.ConvertedMessagePart {
 	url := msg.GetURL()
 	if len(url) == 0 {
 		url = fmt.Sprintf("https://maps.google.com/?q=%.5f,%.5f", msg.GetDegreesLatitude(), msg.GetDegreesLongitude())
@@ -259,7 +288,10 @@ func convertLocationMessage(ctx context.Context, intent bridgev2.MatrixAPI, msg 
 		}
 	}
 
-	return content
+	return &bridgev2.ConvertedMessagePart{
+		Type:    event.EventMessage,
+		Content: content,
+	}
 }
 
 func (mc *MessageConverter) ToMatrix(ctx context.Context, portal *bridgev2.Portal, client *whatsmeow.Client, intent bridgev2.MatrixAPI, message *waE2E.Message, msgInfo *types.MessageInfo) *bridgev2.ConvertedMessage {
@@ -300,12 +332,18 @@ func (mc *MessageConverter) ToMatrix(ctx context.Context, portal *bridgev2.Porta
 		}
 		cm.Parts = append(cm.Parts, cmp)
 	} else if location := message.GetLocationMessage(); location != nil {
-		cmp := &bridgev2.ConvertedMessagePart{
-			Type:    event.EventMessage,
-			Content: convertLocationMessage(ctx, intent, location, portal),
-		}
+		cmp := convertLocationMessage(ctx, intent, portal, location)
 
 		contextInfo = location.GetContextInfo()
+		cm.Parts = append(cm.Parts, cmp)
+	} else if contacts := message.GetContactMessage(); contacts != nil {
+		cmp, err := convertContactMessage(ctx, intent, portal, contacts)
+		if err != nil {
+			// TODO: THROW SOME ERROR HERE!?
+			return cm
+		}
+
+		contextInfo = contacts.GetContextInfo()
 		cm.Parts = append(cm.Parts, cmp)
 	} else {
 		cmp := &bridgev2.ConvertedMessagePart{

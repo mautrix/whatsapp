@@ -3,6 +3,7 @@ package connector
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/rs/zerolog"
 	"go.mau.fi/util/variationselector"
@@ -18,6 +19,7 @@ import (
 )
 
 var (
+	_ bridgev2.TypingHandlingNetworkAPI      = (*WhatsAppClient)(nil)
 	_ bridgev2.EditHandlingNetworkAPI        = (*WhatsAppClient)(nil)
 	_ bridgev2.ReactionHandlingNetworkAPI    = (*WhatsAppClient)(nil)
 	_ bridgev2.RedactionHandlingNetworkAPI   = (*WhatsAppClient)(nil)
@@ -119,6 +121,7 @@ func (wa *WhatsAppClient) HandleMatrixEdit(ctx context.Context, edit *bridgev2.M
 
 	//TODO: DO CONVERSION VIA msgconv FUNC
 	//TODO: IMPLEMENT MEDIA CAPTION EDITS
+	//TODO: PRESERVE MEDIA
 	editMessage := wa.Client.BuildEdit(portalJID, messageID.ID, &waE2E.Message{
 		Conversation: proto.String(edit.Content.Body),
 	})
@@ -147,6 +150,47 @@ func (wa *WhatsAppClient) HandleMatrixMessageRemove(ctx context.Context, msg *br
 	return err
 }
 
-func (wa *WhatsAppClient) HandleMatrixReadReceipt(_ context.Context, _ *bridgev2.MatrixReadReceipt) error {
-	return nil
+func (wa *WhatsAppClient) HandleMatrixReadReceipt(_ context.Context, receipt *bridgev2.MatrixReadReceipt) error {
+	if receipt.ExactMessage == nil {
+		return nil
+	}
+	messageID, err := waid.ParseMessageID(receipt.ExactMessage.ID)
+	if err != nil {
+		return err
+	}
+
+	err = wa.Client.MarkRead([]types.MessageID{messageID.ID}, time.Now(), messageID.Chat, messageID.Sender)
+	return err
+}
+
+func (wa *WhatsAppClient) HandleMatrixTyping(_ context.Context, msg *bridgev2.MatrixTyping) error {
+	portalJID, err := types.ParseJID(string(msg.Portal.ID))
+	if err != nil {
+		return err
+	}
+	var chatPresence types.ChatPresence
+	var mediaPresence types.ChatPresenceMedia
+	if msg.IsTyping {
+		chatPresence = "composing"
+	} else {
+		chatPresence = "paused"
+	}
+	switch msg.Type {
+	case bridgev2.TypingTypeText:
+		mediaPresence = ""
+	case bridgev2.TypingTypeRecordingMedia:
+		mediaPresence = "audio"
+	case bridgev2.TypingTypeUploadingMedia:
+		return nil
+	}
+
+	err = wa.Client.SendChatPresence(portalJID, chatPresence, mediaPresence)
+
+	if wa.Main.Config.SendPresenceOnTyping {
+		err = wa.Client.SendPresence(types.PresenceAvailable)
+		if err != nil {
+			wa.UserLogin.Log.Warn().Err(err).Msg("Failed to set presence on typing")
+		}
+	}
+	return err
 }

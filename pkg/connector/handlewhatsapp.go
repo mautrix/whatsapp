@@ -3,6 +3,7 @@ package connector
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
@@ -51,6 +52,10 @@ func (wa *WhatsAppClient) handleWAEvent(rawEvt any) {
 			evtType = bridgev2.RemoteEventReadReceipt
 		case types.ReceiptTypeDelivered:
 			evtType = bridgev2.RemoteEventDeliveryReceipt
+		case types.ReceiptTypeSender:
+			fallthrough
+		default:
+			return
 		}
 		targets := make([]networkid.MessageID, len(evt.MessageIDs))
 		for i, id := range evt.MessageIDs {
@@ -65,6 +70,32 @@ func (wa *WhatsAppClient) handleWAEvent(rawEvt any) {
 				Timestamp:  evt.Timestamp,
 			},
 			Targets: targets,
+		})
+	case *events.ChatPresence:
+		portalKey, ok := wa.makeWAPortalKey(evt.Chat)
+		if !ok {
+			log.Warn().Stringer("chat", evt.Chat).Msg("Ignoring WhatsApp receipt with unknown chat JID")
+			return
+		}
+		Type := bridgev2.TypingTypeText
+		Timeout := 1000
+		if evt.Media == "audio" {
+			Type = bridgev2.TypingTypeRecordingMedia
+		}
+		if evt.State == "paused" {
+			Timeout = 0
+		}
+
+		wa.Main.Bridge.QueueRemoteEvent(wa.UserLogin, &simplevent.Typing{
+			EventMeta: simplevent.EventMeta{
+				Type:       bridgev2.RemoteEventTyping,
+				LogContext: nil,
+				PortalKey:  portalKey,
+				Sender:     wa.makeEventSender(&evt.Sender),
+				Timestamp:  time.Now(),
+			},
+			Timeout: time.Duration(Timeout),
+			Type:    Type,
 		})
 	case *events.Connected:
 		log.Debug().Msg("Connected to WhatsApp socket")
