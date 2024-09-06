@@ -7,15 +7,21 @@ import (
 
 	up "go.mau.fi/util/configupgrade"
 	"go.mau.fi/whatsmeow/types"
+	"gopkg.in/yaml.v3"
 	"maunium.net/go/mautrix/event"
 )
 
 type MediaRequestMethod string
 
+const (
+	MediaRequestMethodImmediate MediaRequestMethod = "immediate"
+	MediaRequestMethodLocalTime                    = "local_time"
+)
+
 //go:embed example-config.yaml
 var ExampleConfig string
 
-type WhatsAppConfig struct {
+type Config struct {
 	OSName      string `yaml:"os_name"`
 	BrowserName string `yaml:"browser_name"`
 
@@ -25,7 +31,15 @@ type WhatsAppConfig struct {
 
 	DisplaynameTemplate string `yaml:"displayname_template"`
 
-	CallStartNotices bool `yaml:"call_start_notices"`
+	CallStartNotices            bool          `yaml:"call_start_notices"`
+	SendPresenceOnTyping        bool          `yaml:"send_presence_on_typing"`
+	EnableStatusBroadcast       bool          `yaml:"enable_status_broadcast"`
+	DisableStatusBroadcastSend  bool          `yaml:"disable_status_broadcast_send"`
+	MuteStatusBroadcast         bool          `yaml:"mute_status_broadcast"`
+	StatusBroadcastTag          event.RoomTag `yaml:"status_broadcast_tag"`
+	WhatsappThumbnail           bool          `yaml:"whatsapp_thumbnail"`
+	URLPreviews                 bool          `yaml:"url_previews"`
+	ForceActiveDeliveryReceipts bool          `yaml:"force_active_delivery_receipts"`
 
 	HistorySync struct {
 		RequestFullSync bool `yaml:"request_full_sync"`
@@ -43,25 +57,22 @@ type WhatsAppConfig struct {
 		} `yaml:"media_requests"`
 	} `yaml:"history_sync"`
 
-	UserAvatarSync bool `yaml:"user_avatar_sync"`
+	displaynameTemplate *template.Template `yaml:"-"`
+}
 
-	SendPresenceOnTyping bool `yaml:"send_presence_on_typing"`
+type umConfig Config
 
-	ArchiveTag      event.RoomTag `yaml:"archive_tag"`
-	PinnedTag       event.RoomTag `yaml:"pinned_tag"`
-	TagOnlyOnCreate bool          `yaml:"tag_only_on_create"`
+func (c *Config) UnmarshalYAML(node *yaml.Node) error {
+	err := node.Decode((*umConfig)(c))
+	if err != nil {
+		return err
+	}
 
-	EnableStatusBroadcast      bool          `yaml:"enable_status_broadcast"`
-	DisableStatusBroadcastSend bool          `yaml:"disable_status_broadcast_send"`
-	MuteStatusBroadcast        bool          `yaml:"mute_status_broadcast"`
-	StatusBroadcastTag         event.RoomTag `yaml:"status_broadcast_tag"`
-
-	WhatsappThumbnail bool `yaml:"whatsapp_thumbnail"`
-
-	URLPreviews bool `yaml:"url_previews"`
-
-	ForceActiveDeliveryReceipts bool               `yaml:"force_active_delivery_receipts"`
-	displaynameTemplate         *template.Template `yaml:"-"`
+	c.displaynameTemplate, err = template.New("displayname").Parse(c.DisplaynameTemplate)
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 func upgradeConfig(helper up.Helper) {
@@ -75,34 +86,22 @@ func upgradeConfig(helper up.Helper) {
 	helper.Copy(up.Str, "displayname_template")
 
 	helper.Copy(up.Bool, "call_start_notices")
-
-	helper.Copy(up.Bool, "history_sync", "request_full_sync")
-
-	helper.Copy(up.Int, "history_sync", "full_sync_config", "days_limit")
-	helper.Copy(up.Int, "history_sync", "full_sync_config", "size_mb_limit")
-	helper.Copy(up.Int, "history_sync", "full_sync_config", "storage_quota_mb")
-
-	helper.Copy(up.Bool, "history_sync", "media_requests", "auto_request_media")
-	helper.Copy(up.Str, "history_sync", "media_requests", "request_method")
-	helper.Copy(up.Int, "history_sync", "media_requests", "request_local_time")
-	helper.Copy(up.Int, "history_sync", "media_requests", "max_async_handle")
-
-	helper.Copy(up.Bool, "user_avatar_sync")
-
 	helper.Copy(up.Bool, "send_presence_on_typing")
-
-	helper.Copy(up.Str, "archive_tag")
-	helper.Copy(up.Str, "pinned_tag")
-	helper.Copy(up.Bool, "tag_only_on_create")
-
 	helper.Copy(up.Bool, "enable_status_broadcast")
 	helper.Copy(up.Bool, "disable_status_broadcast_send")
 	helper.Copy(up.Bool, "mute_status_broadcast")
 	helper.Copy(up.Str, "status_broadcast_tag")
-
 	helper.Copy(up.Bool, "whatsapp_thumbnail")
-
 	helper.Copy(up.Bool, "url_previews")
+
+	helper.Copy(up.Bool, "history_sync", "request_full_sync")
+	helper.Copy(up.Int, "history_sync", "full_sync_config", "days_limit")
+	helper.Copy(up.Int, "history_sync", "full_sync_config", "size_mb_limit")
+	helper.Copy(up.Int, "history_sync", "full_sync_config", "storage_quota_mb")
+	helper.Copy(up.Bool, "history_sync", "media_requests", "auto_request_media")
+	helper.Copy(up.Str, "history_sync", "media_requests", "request_method")
+	helper.Copy(up.Int, "history_sync", "media_requests", "request_local_time")
+	helper.Copy(up.Int, "history_sync", "media_requests", "max_async_handle")
 }
 
 type DisplaynameParams struct {
@@ -110,7 +109,7 @@ type DisplaynameParams struct {
 	Phone string
 }
 
-func (c *WhatsAppConfig) FormatDisplayname(jid types.JID, contact types.ContactInfo) string {
+func (c *Config) FormatDisplayname(jid types.JID, contact types.ContactInfo) string {
 	var nameBuf strings.Builder
 	err := c.displaynameTemplate.Execute(&nameBuf, &DisplaynameParams{
 		ContactInfo: contact,
@@ -123,5 +122,14 @@ func (c *WhatsAppConfig) FormatDisplayname(jid types.JID, contact types.ContactI
 }
 
 func (wa *WhatsAppConnector) GetConfig() (string, any, up.Upgrader) {
-	return ExampleConfig, wa.Config, up.SimpleUpgrader(upgradeConfig)
+	return ExampleConfig, &wa.Config, &up.StructUpgrader{
+		SimpleUpgrader: up.SimpleUpgrader(upgradeConfig),
+		Blocks: [][]string{
+			{"proxy"},
+			{"displayname_template"},
+			{"call_start_notices"},
+			{"history_sync"},
+		},
+		Base: ExampleConfig,
+	}
 }

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"html"
 	"image"
 	_ "image/gif"
 	_ "image/jpeg"
@@ -13,11 +14,13 @@ import (
 	"strings"
 
 	"github.com/rs/zerolog"
+	"go.mau.fi/util/exslices"
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/proto/waE2E"
 	"go.mau.fi/whatsmeow/types"
 	_ "golang.org/x/image/webp"
 	"maunium.net/go/mautrix/bridgev2"
+	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
@@ -32,110 +35,55 @@ type MediaMessage interface {
 	GetMimetype() string
 }
 
-func getAudioMessageInfo(audioMessage *waE2E.AudioMessage) (waveform []int, duration int) {
-	if audioMessage.Waveform != nil {
-		waveform = make([]int, len(audioMessage.Waveform))
-		maxWave := 0
-		for i, part := range audioMessage.Waveform {
-			waveform[i] = int(part)
-			if waveform[i] > maxWave {
-				maxWave = waveform[i]
-			}
-		}
-		multiplier := 0
-		if maxWave > 0 {
-			multiplier = 1024 / maxWave
-		}
-		if multiplier > 32 {
-			multiplier = 32
-		}
-		for i := range waveform {
-			waveform[i] *= multiplier
-		}
-	}
-	duration = int(audioMessage.GetSeconds() * 1000)
-	return
+type MediaInfo struct {
+	event.FileInfo
+	Waveform    []int
+	IsGif       bool
+	Caption     string
+	MsgType     event.MessageType
+	ContextInfo *waE2E.ContextInfo
 }
 
-func (mc *MessageConverter) getBasicUserInfo(ctx context.Context, user networkid.UserID) (id.UserID, string, error) {
-	ghost, err := mc.Bridge.GetGhostByID(ctx, user)
-	if err != nil {
-		return "", "", fmt.Errorf("failed to get ghost by ID: %w", err)
-	}
-	login := mc.Bridge.GetCachedUserLoginByID(networkid.UserLoginID(user))
-	if login != nil {
-		return login.UserMXID, ghost.Name, nil
-	}
-	return ghost.Intent.GetMXID(), ghost.Name, nil
-}
-
-type ExtraMediaInfo struct {
-	Waveform []int
-	Duration int
-
-	IsGif bool
-
-	Caption string
-
-	MsgType event.MessageType
-}
-
-func getMediaMessageFileInfo(msg *waE2E.Message) (message MediaMessage, info event.FileInfo, contextInfo *waE2E.ContextInfo, extraInfo ExtraMediaInfo) {
-	message = nil
-	info = event.FileInfo{}
-	extraInfo = ExtraMediaInfo{}
-
-	contextInfo = &waE2E.ContextInfo{}
+func getMediaMessageFileInfo(msg *waE2E.Message) (message MediaMessage, info MediaInfo) {
 	if msg.GetAudioMessage() != nil {
+		info.MsgType = event.MsgAudio
 		message = msg.AudioMessage
 
 		info.Duration = int(msg.AudioMessage.GetSeconds() * 1000)
-
-		waveform, duration := getAudioMessageInfo(msg.AudioMessage)
-		extraInfo.Waveform = waveform
-		extraInfo.Duration = duration
-
-		extraInfo.MsgType = event.MsgAudio
+		info.Waveform = exslices.CastFunc(msg.AudioMessage.Waveform, func(from byte) int { return int(from) })
 	} else if msg.GetDocumentMessage() != nil {
+		info.MsgType = event.MsgFile
 		message = msg.DocumentMessage
 
-		extraInfo.Caption = msg.DocumentMessage.GetCaption()
-		extraInfo.MsgType = event.MsgFile
+		info.Caption = msg.DocumentMessage.GetCaption()
 	} else if msg.GetImageMessage() != nil {
+		info.MsgType = event.MsgImage
 		message = msg.ImageMessage
 
 		info.Width = int(msg.ImageMessage.GetWidth())
 		info.Height = int(msg.ImageMessage.GetHeight())
-
-		extraInfo.Caption = msg.DocumentMessage.GetCaption()
-		extraInfo.MsgType = event.MsgImage
+		info.Caption = msg.ImageMessage.GetCaption()
 	} else if msg.GetStickerMessage() != nil {
 		message = msg.StickerMessage
 
 		info.Width = int(msg.StickerMessage.GetWidth())
 		info.Height = int(msg.StickerMessage.GetHeight())
-		extraInfo.MsgType = event.MessageType(event.EventSticker.Type)
 	} else if msg.GetVideoMessage() != nil {
+		info.MsgType = event.MsgVideo
 		message = msg.VideoMessage
 
 		info.Duration = int(msg.VideoMessage.GetSeconds() * 1000)
 		info.Width = int(msg.VideoMessage.GetWidth())
 		info.Height = int(msg.VideoMessage.GetHeight())
-
-		extraInfo.Caption = msg.DocumentMessage.GetCaption()
-		if msg.VideoMessage.GetGifPlayback() {
-			extraInfo.IsGif = true
-		}
-		extraInfo.MsgType = event.MsgVideo
+		info.Caption = msg.VideoMessage.GetCaption()
+		info.IsGif = msg.VideoMessage.GetGifPlayback()
+	} else {
+		return
 	}
 
-	if message != nil {
-		info.Size = int(message.GetFileLength())
-
-		info.MimeType = message.GetMimetype()
-
-		contextInfo = message.GetContextInfo()
-	}
+	info.Size = int(message.GetFileLength())
+	info.MimeType = message.GetMimetype()
+	info.ContextInfo = message.GetContextInfo()
 	return
 }
 
@@ -168,54 +116,45 @@ func convertContactMessage(ctx context.Context, intent bridgev2.MatrixAPI, porta
 	return cmp, nil
 }
 
-func (mc *MessageConverter) parseMessageContextInfo(ctx context.Context, cm *bridgev2.ConvertedMessage, contextInfo *waE2E.ContextInfo, msgInfo types.MessageInfo) *bridgev2.ConvertedMessage {
-	for _, part := range cm.Parts {
-		content := part.Content
-		content.Mentions = &event.Mentions{
-			UserIDs: make([]id.UserID, 0),
-		}
-
-		if mentions := contextInfo.GetMentionedJID(); len(mentions) > 0 {
-			content.Format = event.FormatHTML
-			content.FormattedBody = event.TextToHTML(content.Body)
-			for _, jid := range mentions {
-				parsed, err := types.ParseJID(jid)
-				if err != nil {
-					zerolog.Ctx(ctx).Err(err).Str("jid", jid).Msg("Failed to parse mentioned JID")
-					continue
-				}
-				mxid, displayname, err := mc.getBasicUserInfo(ctx, waid.MakeUserID(&parsed))
-				if err != nil {
-					zerolog.Ctx(ctx).Err(err).Str("jid", jid).Msg("Failed to get user info")
-					continue
-				}
-				content.Mentions.UserIDs = append(content.Mentions.UserIDs, mxid)
-				mentionText := "@" + parsed.User
-				content.Body = strings.ReplaceAll(content.Body, mentionText, displayname)
-				content.FormattedBody = strings.ReplaceAll(content.FormattedBody, mentionText, fmt.Sprintf(`<a href="%s">%s</a>`, mxid.URI().MatrixToURL(), event.TextToHTML(displayname)))
-			}
-		}
-
-		if qm := contextInfo.GetQuotedMessage(); qm != nil {
-			pcp, _ := types.ParseJID(contextInfo.GetParticipant())
-			chat, _ := types.ParseJID(contextInfo.GetRemoteJID())
-			if chat.String() == "" {
-				chat = msgInfo.Chat
-			}
-
-			cm.ReplyTo = &networkid.MessageOptionalPartID{
-				MessageID: waid.MakeMessageID(chat, pcp, contextInfo.GetStanzaID()),
-			}
-		}
+func (mc *MessageConverter) getBasicUserInfo(ctx context.Context, user networkid.UserID) (id.UserID, string, error) {
+	ghost, err := mc.Bridge.GetGhostByID(ctx, user)
+	if err != nil {
+		return "", "", fmt.Errorf("failed to get ghost by ID: %w", err)
 	}
+	login := mc.Bridge.GetCachedUserLoginByID(networkid.UserLoginID(user))
+	if login != nil {
+		return login.UserMXID, ghost.Name, nil
+	}
+	return ghost.Intent.GetMXID(), ghost.Name, nil
+}
 
-	return cm
+func (mc *MessageConverter) addMentions(ctx context.Context, mentionedJID []string, into *event.MessageEventContent) {
+	if len(mentionedJID) == 0 {
+		return
+	}
+	into.EnsureHasHTML()
+	for _, jid := range mentionedJID {
+		parsed, err := types.ParseJID(jid)
+		if err != nil {
+			zerolog.Ctx(ctx).Err(err).Str("jid", jid).Msg("Failed to parse mentioned JID")
+			continue
+		}
+		mxid, displayname, err := mc.getBasicUserInfo(ctx, waid.MakeUserID(parsed))
+		if err != nil {
+			zerolog.Ctx(ctx).Err(err).Str("jid", jid).Msg("Failed to get user info")
+			continue
+		}
+		into.Mentions.UserIDs = append(into.Mentions.UserIDs, mxid)
+		mentionText := "@" + parsed.User
+		into.Body = strings.ReplaceAll(into.Body, mentionText, displayname)
+		into.FormattedBody = strings.ReplaceAll(into.FormattedBody, mentionText, fmt.Sprintf(`<a href="%s">%s</a>`, mxid.URI().MatrixToURL(), html.EscapeString(displayname)))
+	}
 }
 
 func (mc *MessageConverter) reuploadWhatsAppAttachment(
 	ctx context.Context,
 	message MediaMessage,
-	fileInfo event.FileInfo,
+	fileInfo *event.FileInfo,
 	client *whatsmeow.Client,
 	intent bridgev2.MatrixAPI,
 	portal *bridgev2.Portal,
@@ -230,19 +169,17 @@ func (mc *MessageConverter) reuploadWhatsAppAttachment(
 		return nil, fmt.Errorf("%w: %w", bridgev2.ErrMediaReuploadFailed, err)
 	}
 
-	cmp := &bridgev2.ConvertedMessagePart{
+	return &bridgev2.ConvertedMessagePart{
 		Type: event.EventMessage,
 		Content: &event.MessageEventContent{
 			Body:     fileName,
 			FileName: fileName,
+			Info:     fileInfo,
 			URL:      mxc,
-			Info:     &fileInfo,
 			File:     file,
 		},
 		Extra: make(map[string]any),
-	}
-
-	return cmp, nil
+	}, nil
 }
 
 func convertLocationMessage(ctx context.Context, intent bridgev2.MatrixAPI, portal *bridgev2.Portal, msg *waE2E.LocationMessage) *bridgev2.ConvertedMessagePart {
@@ -273,8 +210,8 @@ func convertLocationMessage(ctx context.Context, intent bridgev2.MatrixAPI, port
 
 	if len(msg.GetJPEGThumbnail()) > 0 {
 		thumbnailMime := http.DetectContentType(msg.GetJPEGThumbnail())
-		uploadedThumbnail, _, _ := intent.UploadMedia(ctx, portal.MXID, msg.GetJPEGThumbnail(), "thumb.jpeg", thumbnailMime)
-		if uploadedThumbnail != "" {
+		thumbnailURL, thumbnailFile, err := intent.UploadMedia(ctx, portal.MXID, msg.GetJPEGThumbnail(), "thumb.jpeg", thumbnailMime)
+		if err == nil {
 			cfg, _, _ := image.DecodeConfig(bytes.NewReader(msg.GetJPEGThumbnail()))
 			content.Info = &event.FileInfo{
 				ThumbnailInfo: &event.FileInfo{
@@ -283,7 +220,8 @@ func convertLocationMessage(ctx context.Context, intent bridgev2.MatrixAPI, port
 					Height:   cfg.Height,
 					MimeType: thumbnailMime,
 				},
-				ThumbnailURL: uploadedThumbnail,
+				ThumbnailURL:  thumbnailURL,
+				ThumbnailFile: thumbnailFile,
 			}
 		}
 	}
@@ -294,79 +232,98 @@ func convertLocationMessage(ctx context.Context, intent bridgev2.MatrixAPI, port
 	}
 }
 
-func (mc *MessageConverter) ToMatrix(ctx context.Context, portal *bridgev2.Portal, client *whatsmeow.Client, intent bridgev2.MatrixAPI, message *waE2E.Message, msgInfo *types.MessageInfo) *bridgev2.ConvertedMessage {
-	cm := &bridgev2.ConvertedMessage{
-		Parts: make([]*bridgev2.ConvertedMessagePart, 0),
+func makeMediaFailure(mediaType string) *bridgev2.ConvertedMessagePart {
+	return &bridgev2.ConvertedMessagePart{
+		Type: event.EventMessage,
+		Content: &event.MessageEventContent{
+			MsgType: event.MsgNotice,
+			Body:    fmt.Sprintf("Failed to bridge %s, please view it on the WhatsApp app", mediaType),
+		},
 	}
+}
 
-	media, fileInfo, contextInfo, extraInfo := getMediaMessageFileInfo(message)
+func (mc *MessageConverter) ToMatrix(ctx context.Context, portal *bridgev2.Portal, client *whatsmeow.Client, intent bridgev2.MatrixAPI, message *waE2E.Message) *bridgev2.ConvertedMessage {
+	var part *bridgev2.ConvertedMessagePart
+	var contextInfo *waE2E.ContextInfo
+	var err error
+	media, info := getMediaMessageFileInfo(message)
 	if media != nil {
-		cmp, err := mc.reuploadWhatsAppAttachment(ctx, media, fileInfo, client, intent, portal)
+		contextInfo = info.ContextInfo
+		part, err = mc.reuploadWhatsAppAttachment(ctx, media, &info.FileInfo, client, intent, portal)
 		if err != nil {
-			// TODO: THROW SOME ERROR HERE!?
-			return cm
-		}
+			part = makeMediaFailure("attachment")
+		} else {
+			part.Content.MsgType = info.MsgType
+			if message.StickerMessage != nil {
+				part.Type = event.EventSticker
+			}
 
-		if extraInfo.MsgType != "" {
-			cmp.Content.MsgType = extraInfo.MsgType
-		}
-
-		if extraInfo.Waveform != nil {
-			cmp.Content.MSC3245Voice = &event.MSC3245Voice{}
-			cmp.Content.MSC1767Audio = &event.MSC1767Audio{
-				Duration: extraInfo.Duration,
-				Waveform: extraInfo.Waveform,
+			if info.Waveform != nil {
+				part.Content.MSC3245Voice = &event.MSC3245Voice{}
+				part.Content.MSC1767Audio = &event.MSC1767Audio{
+					Duration: info.Duration,
+					Waveform: info.Waveform,
+				}
+			}
+			if info.Caption != "" {
+				part.Content.Body = info.Caption
+			}
+			if info.IsGif {
+				part.Extra["info"] = map[string]any{
+					"fi.mau.gif":           true,
+					"fi.mau.loop":          true,
+					"fi.mau.autoplay":      true,
+					"fi.mau.hide_controls": true,
+					"fi.mau.no_audio":      true,
+				}
 			}
 		}
-		if extraInfo.Caption != "" {
-			cmp.Content.Body = extraInfo.Caption
-		}
-		if extraInfo.IsGif {
-			cmp.Extra["info"] = map[string]any{
-				"fi.mau.gif":           true,
-				"fi.mau.loop":          true,
-				"fi.mau.autoplay":      true,
-				"fi.mau.hide_controls": true,
-				"fi.mau.no_audio":      true,
-			}
-		}
-		cm.Parts = append(cm.Parts, cmp)
 	} else if location := message.GetLocationMessage(); location != nil {
-		cmp := convertLocationMessage(ctx, intent, portal, location)
-
+		part = convertLocationMessage(ctx, intent, portal, location)
 		contextInfo = location.GetContextInfo()
-		cm.Parts = append(cm.Parts, cmp)
 	} else if contacts := message.GetContactMessage(); contacts != nil {
-		cmp, err := convertContactMessage(ctx, intent, portal, contacts)
+		part, err = convertContactMessage(ctx, intent, portal, contacts)
 		if err != nil {
-			// TODO: THROW SOME ERROR HERE!?
-			return cm
+			part = makeMediaFailure("contact message")
 		}
 
 		contextInfo = contacts.GetContextInfo()
-		cm.Parts = append(cm.Parts, cmp)
 	} else {
-		cmp := &bridgev2.ConvertedMessagePart{
+		part = &bridgev2.ConvertedMessagePart{
 			Type: event.EventMessage,
 			Content: &event.MessageEventContent{
 				MsgType: event.MsgText,
 			},
 		}
 		if extendedText := message.GetExtendedTextMessage(); extendedText != nil {
-			cmp.Content.Body = extendedText.GetText()
+			part.Content.Body = extendedText.GetText()
 			contextInfo = extendedText.GetContextInfo()
 		} else if conversation := message.GetConversation(); conversation != "" {
-			cmp.Content.Body = conversation
+			part.Content.Body = conversation
 			contextInfo = nil
 		} else {
-			cmp.Content.MsgType = event.MsgNotice
-			cmp.Content.Body = "Unknown message type, please view it on the WhatsApp app"
+			part.Content.MsgType = event.MsgNotice
+			part.Content.Body = "Unknown message type, please view it on the WhatsApp app"
 		}
-		cm.Parts = append(cm.Parts, cmp)
 	}
+	// TODO lots of message types missing
 
-	if contextInfo != nil && msgInfo != nil {
-		cm = mc.parseMessageContextInfo(ctx, cm, contextInfo, *msgInfo)
+	part.Content.Mentions = &event.Mentions{}
+	mc.addMentions(ctx, contextInfo.GetMentionedJID(), part.Content)
+
+	cm := &bridgev2.ConvertedMessage{
+		Parts:     []*bridgev2.ConvertedMessagePart{part},
+		Disappear: database.DisappearingSetting{},
+	}
+	if contextInfo.GetStanzaID() != "" {
+		pcp, _ := types.ParseJID(contextInfo.GetParticipant())
+		chat, _ := types.ParseJID(contextInfo.GetRemoteJID())
+		if chat.IsEmpty() {
+			chat, _ = waid.ParsePortalID(portal.ID)
+		}
+		cm.ReplyTo = &networkid.MessageOptionalPartID{
+			MessageID: waid.MakeMessageID(chat, pcp, contextInfo.GetStanzaID()),
+		}
 	}
 
 	return cm

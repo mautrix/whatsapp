@@ -6,20 +6,15 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
-	"time"
 
 	"github.com/rs/zerolog"
-	"go.mau.fi/util/ptr"
 	"go.mau.fi/whatsmeow"
-	"go.mau.fi/whatsmeow/proto/waCommon"
 	"go.mau.fi/whatsmeow/store"
 	"go.mau.fi/whatsmeow/types"
-	waLog "go.mau.fi/whatsmeow/util/log"
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/bridge/status"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
-	"maunium.net/go/mautrix/event"
 
 	"maunium.net/go/mautrix-whatsapp/pkg/waid"
 )
@@ -32,11 +27,11 @@ type respGetProxy struct {
 	ProxyURL string `json:"proxy_url"`
 }
 
-func (wa *WhatsAppClient) getProxy(reason string) (string, error) {
-	if wa.Main.Config.GetProxyURL == "" {
-		return wa.Main.Config.Proxy, nil
+func (wa *WhatsAppConnector) getProxy(reason string) (string, error) {
+	if wa.Config.GetProxyURL == "" {
+		return wa.Config.Proxy, nil
 	}
-	parsed, err := url.Parse(wa.Main.Config.GetProxyURL)
+	parsed, err := url.Parse(wa.Config.GetProxyURL)
 	if err != nil {
 		return "", fmt.Errorf("failed to parse address: %w", err)
 	}
@@ -62,81 +57,20 @@ func (wa *WhatsAppClient) getProxy(reason string) (string, error) {
 	return respData.ProxyURL, nil
 }
 
-func (wa *WhatsAppClient) MakeNewClient(log zerolog.Logger) {
-	wa.Client = whatsmeow.NewClient(wa.Device, waLog.Zerolog(log))
-
-	if wa.Device.ID != nil {
-		wa.Client.AddEventHandler(wa.handleWAEvent)
-		wa.Client.EnableAutoReconnect = true
-	} else {
-		wa.Client.EnableAutoReconnect = false // no auto reconnect unless we are logged in
+func (wa *WhatsAppConnector) updateProxy(client *whatsmeow.Client, isLogin bool) error {
+	if wa.Config.ProxyOnlyLogin && !isLogin {
+		return nil
 	}
-
-	wa.Client.AutomaticMessageRerequestFromPhone = true
-	wa.Client.SetForceActiveDeliveryReceipts(wa.Main.Config.ForceActiveDeliveryReceipts)
-
-	//TODO: add tracking under PreRetryCallback and GetMessageForRetry (waiting till metrics/analytics are added)
-	if wa.Main.Config.ProxyOnlyLogin || wa.Device.ID == nil {
-		if proxy, err := wa.getProxy("login"); err != nil {
-			wa.UserLogin.Log.Err(err).Msg("Failed to get proxy address")
-		} else if err = wa.Client.SetProxyAddress(proxy, whatsmeow.SetProxyOptions{
-			NoMedia: wa.Main.Config.ProxyOnlyLogin,
-		}); err != nil {
-			wa.UserLogin.Log.Err(err).Msg("Failed to set proxy address")
-		}
+	reason := "connect"
+	if isLogin {
+		reason = "login"
 	}
-	if wa.Main.Config.ProxyOnlyLogin {
-		wa.Client.ToggleProxyOnlyForLogin(true)
+	if proxy, err := wa.getProxy(reason); err != nil {
+		return fmt.Errorf("failed to get proxy address: %w", err)
+	} else if err = client.SetProxyAddress(proxy); err != nil {
+		return fmt.Errorf("failed to set proxy address: %w", err)
 	}
-}
-
-func (wa *WhatsAppClient) messageIDToKey(id *waid.ParsedMessageID) *waCommon.MessageKey {
-	key := &waCommon.MessageKey{
-		RemoteJID: ptr.Ptr(id.Chat.String()),
-		ID:        ptr.Ptr(id.ID),
-	}
-	if id.Sender.User == string(wa.UserLogin.ID) {
-		key.FromMe = ptr.Ptr(true)
-	}
-	if id.Chat.Server != types.MessengerServer && id.Chat.Server != types.DefaultUserServer {
-		key.Participant = ptr.Ptr(id.Sender.String())
-	}
-	return key
-}
-
-func (wa *WhatsAppClient) keyToMessageID(chat, sender types.JID, key *waCommon.MessageKey) networkid.MessageID {
-	sender = sender.ToNonAD()
-	var err error
-	if !key.GetFromMe() {
-		if key.GetParticipant() != "" {
-			sender, err = types.ParseJID(key.GetParticipant())
-			if err != nil {
-				// TODO log somehow?
-				return ""
-			}
-			if sender.Server == types.LegacyUserServer {
-				sender.Server = types.DefaultUserServer
-			}
-		} else if chat.Server == types.DefaultUserServer {
-			ownID := ptr.Val(wa.Device.ID).ToNonAD()
-			if sender.User == ownID.User {
-				sender = chat
-			} else {
-				sender = ownID
-			}
-		} else {
-			// TODO log somehow?
-			return ""
-		}
-	}
-	remoteJID, err := types.ParseJID(key.GetRemoteJID())
-	if err == nil && !remoteJID.IsEmpty() {
-		// TODO use remote jid in other cases?
-		if remoteJID.Server == types.GroupServer {
-			chat = remoteJID
-		}
-	}
-	return waid.MakeMessageID(chat, sender, key.GetID())
+	return nil
 }
 
 type WhatsAppClient struct {
@@ -144,38 +78,7 @@ type WhatsAppClient struct {
 	UserLogin *bridgev2.UserLogin
 	Client    *whatsmeow.Client
 	Device    *store.Device
-}
-
-var whatsappCaps = &bridgev2.NetworkRoomCapabilities{
-	FormattedText:    true,
-	UserMentions:     true,
-	LocationMessages: true,
-	Captions:         true,
-	Replies:          true,
-	Edits:            true,
-	EditMaxCount:     10,
-	EditMaxAge:       15 * time.Minute,
-	Deletes:          true,
-	DeleteMaxAge:     48 * time.Hour,
-	DefaultFileRestriction: &bridgev2.FileRestriction{
-		// 100MB is the limit for videos by default.
-		// HQ on images and videos can be enabled
-		// Documents can do 2GB, TODO implementation
-		MaxSize: 100 * 1024 * 1024,
-	},
-	//TODO: implement
-	Files:         map[event.MessageType]bridgev2.FileRestriction{},
-	ReadReceipts:  true,
-	Reactions:     true,
-	ReactionCount: 1,
-}
-
-func (wa *WhatsAppClient) GetCapabilities(_ context.Context, portal *bridgev2.Portal) *bridgev2.NetworkRoomCapabilities {
-	if portal.Receiver == wa.UserLogin.ID && portal.ID == networkid.PortalID(wa.UserLogin.ID) {
-		// note to self mode, not implemented yet
-		return nil
-	}
-	return whatsappCaps
+	JID       types.JID
 }
 
 var (
@@ -211,6 +114,29 @@ func (wa *WhatsAppClient) RegisterPushNotifications(_ context.Context, pushType 
 	return nil
 }
 
+func (wa *WhatsAppClient) IsThisUser(_ context.Context, userID networkid.UserID) bool {
+	return userID == waid.MakeUserID(wa.JID)
+}
+
+func (wa *WhatsAppClient) Connect(ctx context.Context) error {
+	if wa.Client == nil {
+		state := status.BridgeState{
+			StateEvent: status.StateBadCredentials,
+			Error:      WANotLoggedIn,
+		}
+		wa.UserLogin.BridgeState.Send(state)
+		return nil
+	}
+	if err := wa.Main.updateProxy(wa.Client, false); err != nil {
+		zerolog.Ctx(ctx).Err(err).Msg("Failed to update proxy")
+	}
+	return wa.Client.Connect()
+}
+
+func (wa *WhatsAppClient) Disconnect() {
+	wa.Client.Disconnect()
+}
+
 func (wa *WhatsAppClient) LogoutRemote(ctx context.Context) {
 	if wa.Client == nil {
 		return
@@ -221,44 +147,6 @@ func (wa *WhatsAppClient) LogoutRemote(ctx context.Context) {
 	}
 }
 
-func (wa *WhatsAppClient) IsThisUser(_ context.Context, userID networkid.UserID) bool {
-	if wa.Client == nil {
-		return false
-	}
-	return userID == networkid.UserID(wa.Client.Store.ID.User)
-}
-
-func (wa *WhatsAppClient) Connect(_ context.Context) error {
-	if wa.Client != nil {
-		return wa.Client.Connect()
-	} else {
-		state := status.BridgeState{
-			StateEvent: status.StateBadCredentials,
-			Error:      WANotLoggedIn,
-		}
-		wa.UserLogin.BridgeState.Send(state)
-		return nil
-	}
-}
-
-func (wa *WhatsAppClient) Disconnect() {
-	wa.Client.Disconnect()
-}
-
 func (wa *WhatsAppClient) IsLoggedIn() bool {
-	if wa.Client == nil {
-		return false
-	}
-	return wa.Client.IsLoggedIn()
-}
-
-func (wa *WhatsAppClient) FullReconnect() {
-	panic("unimplemented")
-}
-
-func (wa *WhatsAppClient) canReconnect() bool { return false }
-
-func (wa *WhatsAppClient) resetWADevice() {
-	wa.Device = nil
-	wa.UserLogin.Metadata.(*UserLoginMetadata).WADeviceID = 0
+	return wa.Client != nil && wa.Client.IsLoggedIn()
 }

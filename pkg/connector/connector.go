@@ -3,7 +3,6 @@ package connector
 import (
 	"context"
 	"strings"
-	"text/template"
 
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/proto/waCompanionReg"
@@ -19,7 +18,7 @@ import (
 
 type WhatsAppConnector struct {
 	Bridge      *bridgev2.Bridge
-	Config      *WhatsAppConfig
+	Config      Config
 	DeviceStore *sqlstore.Container
 	MsgConv     *msgconv.MessageConverter
 }
@@ -27,23 +26,8 @@ type WhatsAppConnector struct {
 var _ bridgev2.NetworkConnector = (*WhatsAppConnector)(nil)
 var _ bridgev2.MaxFileSizeingNetwork = (*WhatsAppConnector)(nil)
 
-func NewConnector() *WhatsAppConnector {
-	return &WhatsAppConnector{
-		Config: &WhatsAppConfig{},
-	}
-}
-
-func (wa *WhatsAppConnector) SetMaxFileSize(_ int64) {
-	println("SetMaxFileSize unimplemented")
-}
-
-var WhatsAppGeneralCaps = &bridgev2.NetworkGeneralCapabilities{
-	DisappearingMessages: true,
-	AggressiveUpdateInfo: false,
-}
-
-func (wa *WhatsAppConnector) GetCapabilities() *bridgev2.NetworkGeneralCapabilities {
-	return WhatsAppGeneralCaps
+func (wa *WhatsAppConnector) SetMaxFileSize(maxSize int64) {
+	wa.MsgConv.MaxFileSize = maxSize
 }
 
 func (wa *WhatsAppConnector) GetName() bridgev2.BridgeName {
@@ -58,12 +42,6 @@ func (wa *WhatsAppConnector) GetName() bridgev2.BridgeName {
 }
 
 func (wa *WhatsAppConnector) Init(bridge *bridgev2.Bridge) {
-	var err error
-	wa.Config.displaynameTemplate, err = template.New("displayname").Parse(wa.Config.DisplaynameTemplate)
-	if err != nil {
-		// TODO return error or do this later?
-		panic(err)
-	}
 	wa.Bridge = bridge
 	wa.MsgConv = msgconv.New(bridge)
 
@@ -110,8 +88,7 @@ func (wa *WhatsAppConnector) Start(_ context.Context) error {
 func (wa *WhatsAppConnector) LoadUserLogin(_ context.Context, login *bridgev2.UserLogin) error {
 	loginMetadata := login.Metadata.(*UserLoginMetadata)
 
-	jid := waid.ParseWAUserLoginID(login.ID)
-	jid.Device = loginMetadata.WADeviceID
+	jid := waid.ParseUserLoginID(login.ID, loginMetadata.WADeviceID)
 
 	device, err := wa.DeviceStore.GetDevice(jid)
 	if err != nil {
@@ -122,12 +99,16 @@ func (wa *WhatsAppConnector) LoadUserLogin(_ context.Context, login *bridgev2.Us
 		Main:      wa,
 		UserLogin: login,
 		Device:    device,
+		JID:       jid,
 	}
 
 	log := w.UserLogin.Log.With().Str("component", "whatsmeow").Logger()
 
 	if device != nil {
-		w.MakeNewClient(log)
+		w.Client = whatsmeow.NewClient(w.Device, waLog.Zerolog(log))
+		w.Client.AddEventHandler(w.handleWAEvent)
+		w.Client.AutomaticMessageRerequestFromPhone = true
+		w.Client.SetForceActiveDeliveryReceipts(wa.Config.ForceActiveDeliveryReceipts)
 	}
 
 	login.Client = w

@@ -2,8 +2,10 @@ package connector
 
 import (
 	"context"
+	"time"
 
 	"github.com/rs/zerolog"
+	"go.mau.fi/whatsmeow/proto/waE2E"
 	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
 	"maunium.net/go/mautrix/bridgev2"
@@ -15,12 +17,13 @@ import (
 
 type WAMessageEvent struct {
 	*events.Message
-	portalKey networkid.PortalKey
-	wa        *WhatsAppClient
+	wa *WhatsAppClient
 }
 
 var (
 	_ bridgev2.RemoteMessage                  = (*WAMessageEvent)(nil)
+	_ bridgev2.RemoteMessageWithTransactionID = (*WAMessageEvent)(nil)
+	_ bridgev2.RemoteEventWithTimestamp       = (*WAMessageEvent)(nil)
 	_ bridgev2.RemoteEventThatMayCreatePortal = (*WAMessageEvent)(nil)
 	_ bridgev2.RemoteReaction                 = (*WAMessageEvent)(nil)
 	_ bridgev2.RemoteReactionRemove           = (*WAMessageEvent)(nil)
@@ -29,13 +32,13 @@ var (
 )
 
 func (evt *WAMessageEvent) ConvertEdit(ctx context.Context, portal *bridgev2.Portal, intent bridgev2.MatrixAPI, existing []*database.Message) (*bridgev2.ConvertedEdit, error) {
-	// only change text and captions
 	if len(existing) > 1 {
 		zerolog.Ctx(ctx).Warn().Msg("Got edit to message with multiple parts")
 	}
 	editedMsg := evt.Message.Message.GetProtocolMessage().GetEditedMessage()
 
-	cm := evt.wa.Main.MsgConv.ToMatrix(ctx, portal, evt.wa.Client, intent, editedMsg, nil) // for media messages, it is better not to do this
+	// TODO edits to media captions may not contain the media
+	cm := evt.wa.Main.MsgConv.ToMatrix(ctx, portal, evt.wa.Client, intent, editedMsg)
 	return &bridgev2.ConvertedEdit{
 		ModifiedParts: []*bridgev2.ConvertedEditPart{cm.Parts[0].ToEditPart(existing[0])},
 	}, nil
@@ -71,11 +74,7 @@ func (evt *WAMessageEvent) GetTargetMessage() networkid.MessageID {
 }
 
 func (evt *WAMessageEvent) GetReactionEmoji() (string, networkid.EmojiID) {
-	if reactionMsg := evt.Message.Message.GetReactionMessage(); reactionMsg != nil {
-		return reactionMsg.GetText(), ""
-	} else {
-		return "", ""
-	}
+	return evt.Message.Message.GetReactionMessage().GetText(), ""
 }
 
 func (evt *WAMessageEvent) GetRemovedEmojiID() networkid.EmojiID {
@@ -88,16 +87,16 @@ func (evt *WAMessageEvent) ShouldCreatePortal() bool {
 
 func (evt *WAMessageEvent) GetType() bridgev2.RemoteEventType {
 	waMsg := evt.Message.Message
-	if reactionMsg := waMsg.GetReactionMessage(); reactionMsg != nil {
-		if reactionMsg.GetText() == "" {
+	if waMsg.ReactionMessage != nil {
+		if waMsg.ReactionMessage.GetText() == "" {
 			return bridgev2.RemoteEventReactionRemove
 		}
 		return bridgev2.RemoteEventReaction
-	} else if protocolMsg := waMsg.GetProtocolMessage(); protocolMsg != nil {
-		protocolType := protocolMsg.GetType()
-		if protocolType == 0 { // REVOKE (message deletes)
+	} else if waMsg.ProtocolMessage != nil && waMsg.ProtocolMessage.Type != nil {
+		switch *waMsg.ProtocolMessage.Type {
+		case waE2E.ProtocolMessage_REVOKE:
 			return bridgev2.RemoteEventMessageRemove
-		} else if protocolType == 14 { // Message edits
+		case waE2E.ProtocolMessage_MESSAGE_EDIT:
 			return bridgev2.RemoteEventEdit
 		}
 	}
@@ -105,21 +104,30 @@ func (evt *WAMessageEvent) GetType() bridgev2.RemoteEventType {
 }
 
 func (evt *WAMessageEvent) GetPortalKey() networkid.PortalKey {
-	return evt.portalKey
+	return evt.wa.makeWAPortalKey(evt.Info.Chat)
 }
 
 func (evt *WAMessageEvent) AddLogContext(c zerolog.Context) zerolog.Context {
-	return c.Str("message_id", evt.Info.ID).Uint64("sender_id", evt.Info.Sender.UserInt())
+	return c.Str("message_id", evt.Info.ID).Stringer("sender_id", evt.Info.Sender)
+}
+
+func (evt *WAMessageEvent) GetTimestamp() time.Time {
+	return evt.Info.Timestamp
 }
 
 func (evt *WAMessageEvent) GetSender() bridgev2.EventSender {
-	return evt.wa.makeEventSender(&evt.Info.Sender)
+	return evt.wa.makeEventSender(evt.Info.Sender)
 }
 
 func (evt *WAMessageEvent) GetID() networkid.MessageID {
 	return waid.MakeMessageID(evt.Info.Chat, evt.Info.Sender, evt.Info.ID)
 }
 
+func (evt *WAMessageEvent) GetTransactionID() networkid.TransactionID {
+	// TODO for newsletter messages, there's a different transaction ID
+	return networkid.TransactionID(evt.GetID())
+}
+
 func (evt *WAMessageEvent) ConvertMessage(ctx context.Context, portal *bridgev2.Portal, intent bridgev2.MatrixAPI) (*bridgev2.ConvertedMessage, error) {
-	return evt.wa.Main.MsgConv.ToMatrix(ctx, portal, evt.wa.Client, intent, evt.Message.Message, &evt.Message.Info), nil
+	return evt.wa.Main.MsgConv.ToMatrix(ctx, portal, evt.wa.Client, intent, evt.Message.Message), nil
 }

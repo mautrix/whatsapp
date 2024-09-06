@@ -1,7 +1,6 @@
 package connector
 
 import (
-	"context"
 	"fmt"
 	"time"
 
@@ -16,9 +15,36 @@ import (
 )
 
 const (
-	WADisconnected   status.BridgeStateErrorCode = "wa-transient-disconnect"
-	WAPermanentError status.BridgeStateErrorCode = "wa-unknown-permanent-error"
+	WALoggedOut        status.BridgeStateErrorCode = "wa-logged-out"
+	WAMainDeviceGone   status.BridgeStateErrorCode = "wa-main-device-gone"
+	WAUnknownLogout    status.BridgeStateErrorCode = "wa-unknown-logout"
+	WANotConnected     status.BridgeStateErrorCode = "wa-not-connected"
+	WAConnecting       status.BridgeStateErrorCode = "wa-connecting"
+	WAKeepaliveTimeout status.BridgeStateErrorCode = "wa-keepalive-timeout"
+	WAPhoneOffline     status.BridgeStateErrorCode = "wa-phone-offline"
+	WAConnectionFailed status.BridgeStateErrorCode = "wa-connection-failed"
+	WADisconnected     status.BridgeStateErrorCode = "wa-transient-disconnect"
+	WAStreamReplaced   status.BridgeStateErrorCode = "wa-stream-replaced"
+	WAStreamError      status.BridgeStateErrorCode = "wa-stream-error"
+	WAClientOutdated   status.BridgeStateErrorCode = "wa-client-outdated"
+	WATemporaryBan     status.BridgeStateErrorCode = "wa-temporary-ban"
 )
+
+func init() {
+	status.BridgeStateHumanErrors.Update(status.BridgeStateErrorMap{
+		WALoggedOut:        "You were logged out from another device. Relogin to continue using the bridge.",
+		WAMainDeviceGone:   "Your phone was logged out from WhatsApp. Relogin to continue using the bridge.",
+		WAUnknownLogout:    "You were logged out for an unknown reason. Relogin to continue using the bridge.",
+		WANotConnected:     "You're not connected to WhatsApp",
+		WAConnecting:       "Reconnecting to WhatsApp...",
+		WAKeepaliveTimeout: "The WhatsApp web servers are not responding. The bridge will try to reconnect.",
+		WAPhoneOffline:     "Your phone hasn't been seen in over 12 days. The bridge is currently connected, but will get disconnected if you don't open the app soon.",
+		WAConnectionFailed: "Connecting to the WhatsApp web servers failed.",
+		WADisconnected:     "Disconnected from WhatsApp. Trying to reconnect.",
+		WAClientOutdated:   "Connect failure: 405 client outdated. Bridge must be updated.",
+		WAStreamReplaced:   "Stream replaced: the bridge was started in another location.",
+	})
+}
 
 func (wa *WhatsAppClient) handleWAEvent(rawEvt any) {
 	log := wa.UserLogin.Log
@@ -29,23 +55,14 @@ func (wa *WhatsAppClient) handleWAEvent(rawEvt any) {
 			Any("info", evt.Info).
 			Any("payload", evt.Message).
 			Msg("Received WhatsApp message")
-
-		portalKey, ok := wa.makeWAPortalKey(evt.Info.Chat)
-		if !ok {
-			log.Warn().Stringer("chat", evt.Info.Chat).Msg("Ignoring WhatsApp message with unknown chat JID")
+		if evt.Info.Chat.Server == types.HiddenUserServer || evt.Info.Sender.Server == types.HiddenUserServer {
 			return
 		}
 		wa.Main.Bridge.QueueRemoteEvent(wa.UserLogin, &WAMessageEvent{
-			Message:   evt,
-			portalKey: portalKey,
-			wa:        wa,
+			Message: evt,
+			wa:      wa,
 		})
 	case *events.Receipt:
-		portalKey, ok := wa.makeWAPortalKey(evt.Chat)
-		if !ok {
-			log.Warn().Stringer("chat", evt.Chat).Msg("Ignoring WhatsApp receipt with unknown chat JID")
-			return
-		}
 		var evtType bridgev2.RemoteEventType
 		switch evt.Type {
 		case types.ReceiptTypeRead, types.ReceiptTypeReadSelf:
@@ -63,88 +80,74 @@ func (wa *WhatsAppClient) handleWAEvent(rawEvt any) {
 		}
 		wa.Main.Bridge.QueueRemoteEvent(wa.UserLogin, &simplevent.Receipt{
 			EventMeta: simplevent.EventMeta{
-				Type:       evtType,
-				LogContext: nil,
-				PortalKey:  portalKey,
-				Sender:     wa.makeEventSender(&evt.Sender),
-				Timestamp:  evt.Timestamp,
+				Type:      evtType,
+				PortalKey: wa.makeWAPortalKey(evt.Chat),
+				Sender:    wa.makeEventSender(evt.Sender),
+				Timestamp: evt.Timestamp,
 			},
 			Targets: targets,
 		})
 	case *events.ChatPresence:
-		portalKey, ok := wa.makeWAPortalKey(evt.Chat)
-		if !ok {
-			log.Warn().Stringer("chat", evt.Chat).Msg("Ignoring WhatsApp receipt with unknown chat JID")
-			return
+		typingType := bridgev2.TypingTypeText
+		timeout := 15 * time.Second
+		if evt.Media == types.ChatPresenceMediaAudio {
+			typingType = bridgev2.TypingTypeRecordingMedia
 		}
-		Type := bridgev2.TypingTypeText
-		Timeout := 1000
-		if evt.Media == "audio" {
-			Type = bridgev2.TypingTypeRecordingMedia
-		}
-		if evt.State == "paused" {
-			Timeout = 0
+		if evt.State == types.ChatPresencePaused {
+			timeout = 0
 		}
 
 		wa.Main.Bridge.QueueRemoteEvent(wa.UserLogin, &simplevent.Typing{
 			EventMeta: simplevent.EventMeta{
 				Type:       bridgev2.RemoteEventTyping,
 				LogContext: nil,
-				PortalKey:  portalKey,
-				Sender:     wa.makeEventSender(&evt.Sender),
+				PortalKey:  wa.makeWAPortalKey(evt.Chat),
+				Sender:     wa.makeEventSender(evt.Sender),
 				Timestamp:  time.Now(),
 			},
-			Timeout: time.Duration(Timeout),
-			Type:    Type,
+			Timeout: timeout,
+			Type:    typingType,
 		})
 	case *events.Connected:
 		log.Debug().Msg("Connected to WhatsApp socket")
-		state := status.BridgeState{StateEvent: status.StateConnected}
-		wa.UserLogin.BridgeState.Send(state)
+		wa.UserLogin.BridgeState.Send(status.BridgeState{StateEvent: status.StateConnected})
 	case *events.Disconnected:
-		log.Debug().Msg("Disconnected from WhatsApp socket")
-		state := status.BridgeState{
-			StateEvent: status.StateTransientDisconnect,
-			Error:      WADisconnected,
+		// Don't send the normal transient disconnect state if we're already in a different transient disconnect state.
+		// TODO remove this if/when the phone offline state is moved to a sub-state of CONNECTED
+		if wa.UserLogin.BridgeState.GetPrev().Error != WAPhoneOffline && wa.PhoneRecentlySeen(false) {
+			wa.UserLogin.BridgeState.Send(status.BridgeState{StateEvent: status.StateTransientDisconnect, Error: WADisconnected})
 		}
-		wa.UserLogin.BridgeState.Send(state)
-	case events.PermanentDisconnect:
-		switch e := evt.(type) {
-		case *events.LoggedOut:
-			if e.Reason == events.ConnectFailureLoggedOut && !e.OnConnect && wa.canReconnect() {
-				wa.resetWADevice()
-				log.Debug().Msg("Doing full reconnect after WhatsApp 401 error")
-				go wa.FullReconnect()
-			}
-		case *events.ConnectFailure:
-			if e.Reason == events.ConnectFailureNotFound {
-				if wa.Client != nil {
-					wa.Client.Disconnect()
-					err := wa.Device.Delete()
-					if err != nil {
-						log.Error().Msg(fmt.Sprintf("Error deleting device %s", err.Error()))
-						return
-					}
-					wa.resetWADevice()
-					wa.Client = nil
-				}
-				log.Debug().Msg("Reconnecting e2ee client after WhatsApp 415 error")
-				go func() {
-					err := wa.Connect(context.Background())
-					if err != nil {
-						log.Error().Msg(fmt.Sprintf("Error connecting %s", err.Error()))
-						return
-					}
-				}()
-			}
+	case *events.StreamError:
+		var message string
+		if evt.Code != "" {
+			message = fmt.Sprintf("Unknown stream error with code %s", evt.Code)
+		} else if children := evt.Raw.GetChildren(); len(children) > 0 {
+			message = fmt.Sprintf("Unknown stream error (contains %s node)", children[0].Tag)
+		} else {
+			message = "Unknown stream error"
 		}
-
-		state := status.BridgeState{
+		wa.UserLogin.BridgeState.Send(status.BridgeState{
 			StateEvent: status.StateUnknownError,
-			Error:      WAPermanentError,
-			Message:    evt.PermanentDisconnectDescription(),
-		}
-		wa.UserLogin.BridgeState.Send(state)
+			Error:      WAStreamError,
+			Message:    message,
+		})
+	case *events.StreamReplaced:
+		wa.UserLogin.BridgeState.Send(status.BridgeState{StateEvent: status.StateUnknownError, Error: WAStreamReplaced})
+	case *events.ConnectFailure:
+		wa.UserLogin.BridgeState.Send(status.BridgeState{
+			StateEvent: status.StateUnknownError,
+			Error:      status.BridgeStateErrorCode(fmt.Sprintf("wa-connect-failure-%d", evt.Reason)),
+			Message:    fmt.Sprintf("Unknown connection failure: %s (%s)", evt.Reason, evt.Message),
+		})
+	case *events.ClientOutdated:
+		wa.UserLogin.Log.Error().Msg("Got a client outdated connect failure. The bridge is likely out of date, please update immediately.")
+		wa.UserLogin.BridgeState.Send(status.BridgeState{StateEvent: status.StateUnknownError, Error: WAClientOutdated})
+	case *events.TemporaryBan:
+		wa.UserLogin.BridgeState.Send(status.BridgeState{
+			StateEvent: status.StateBadCredentials,
+			Error:      WATemporaryBan,
+			Message:    evt.String(),
+		})
 	default:
 		log.Debug().Type("event_type", rawEvt).Msg("Unhandled WhatsApp event")
 	}

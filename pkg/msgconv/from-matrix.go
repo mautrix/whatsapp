@@ -17,6 +17,7 @@ import (
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/proto/waE2E"
 	"go.mau.fi/whatsmeow/types"
+	"golang.org/x/exp/slices"
 	"golang.org/x/image/webp"
 	"google.golang.org/protobuf/proto"
 	"maunium.net/go/mautrix/bridgev2"
@@ -195,7 +196,7 @@ func (mc *MessageConverter) constructTextMessage(ctx context.Context, content *e
 	mentions := make([]string, 0)
 
 	parseCtx := format.NewContext(ctx)
-	parseCtx.ReturnData["mentions"] = mentions
+	parseCtx.ReturnData["mentions"] = &mentions
 	parseCtx.ReturnData["portal"] = portal
 	var text string
 	if content.Format == event.FormatHTML {
@@ -223,13 +224,10 @@ func (mc *MessageConverter) convertPill(displayname, mxid, eventID string, ctx f
 	var jid types.JID
 	ghost, err := mc.Bridge.GetGhostByMXID(ctx.Ctx, id.UserID(mxid))
 	if err != nil {
-		zerolog.Ctx(ctx.Ctx).Err(err).Str("mxid", mxid).Msg("Failed to get user for mention")
+		zerolog.Ctx(ctx.Ctx).Err(err).Str("mxid", mxid).Msg("Failed to get ghost for mention")
 		return displayname
 	} else if ghost != nil {
-		jid, err = types.ParseJID(string(ghost.ID))
-		if jid.String() == "" || err != nil {
-			return displayname
-		}
+		jid = waid.ParseUserID(ghost.ID)
 	} else if user, err := mc.Bridge.GetExistingUserByMXID(ctx.Ctx, id.UserID(mxid)); err != nil {
 		zerolog.Ctx(ctx.Ctx).Err(err).Str("mxid", mxid).Msg("Failed to get user for mention")
 		return displayname
@@ -239,12 +237,12 @@ func (mc *MessageConverter) convertPill(displayname, mxid, eventID string, ctx f
 		if login == nil {
 			return displayname
 		}
-		jid = waid.ParseWAUserLoginID(login.ID)
+		jid = waid.ParseUserLoginID(login.ID, 0)
 	} else {
 		return displayname
 	}
-	mentions := ctx.ReturnData["mentions"].([]string)
-	mentions = append(mentions, jid.String())
+	mentions := ctx.ReturnData["mentions"].(*[]string)
+	*mentions = append(*mentions, jid.String())
 	return fmt.Sprintf("@%s", jid.User)
 }
 
@@ -419,10 +417,17 @@ func getAudioInfo(content *event.MessageEventContent) (output []byte, Duration u
 	if waveform != nil {
 		return nil, uint32(audioInfo.Duration / 1000)
 	}
-	output = make([]byte, len(waveform))
 
-	for i, part := range waveform {
-		output[i] = byte(part / 4)
+	maxVal := slices.Max(waveform)
+	output = make([]byte, len(waveform))
+	if maxVal < 256 {
+		for i, part := range waveform {
+			output[i] = byte(part)
+		}
+	} else {
+		for i, part := range waveform {
+			output[i] = min(byte(part/4), 255)
+		}
 	}
 	return
 }

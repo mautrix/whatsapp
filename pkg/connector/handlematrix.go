@@ -32,11 +32,12 @@ func (wa *WhatsAppClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2
 		return nil, fmt.Errorf("failed to convert message: %w", err)
 	}
 	messageID := wa.Client.GenerateMessageID()
-	chatJID, err := types.ParseJID(string(msg.Portal.ID))
+	chatJID, err := waid.ParsePortalID(msg.Portal.ID)
 	if err != nil {
 		return nil, err
 	}
-	senderJID := wa.Device.ID
+	wrappedMsgID := waid.MakeMessageID(chatJID, wa.JID, messageID)
+	msg.AddPendingToIgnore(networkid.TransactionID(wrappedMsgID))
 	resp, err := wa.Client.SendMessage(ctx, chatJID, waMsg, whatsmeow.SendRequestExtra{
 		ID: messageID,
 	})
@@ -45,10 +46,11 @@ func (wa *WhatsAppClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2
 	}
 	return &bridgev2.MatrixMessageResponse{
 		DB: &database.Message{
-			ID:        waid.MakeMessageID(chatJID, senderJID.ToNonAD(), messageID),
+			ID:        wrappedMsgID,
 			SenderID:  networkid.UserID(wa.UserLogin.ID),
 			Timestamp: resp.Timestamp,
 		},
+		RemovePending: networkid.TransactionID(wrappedMsgID),
 	}, nil
 }
 
@@ -66,7 +68,7 @@ func (wa *WhatsAppClient) HandleMatrixReaction(ctx context.Context, msg *bridgev
 		return nil, err
 	}
 
-	portalJID, err := types.ParseJID(string(msg.Portal.ID))
+	portalJID, err := waid.ParsePortalID(msg.Portal.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -89,7 +91,7 @@ func (wa *WhatsAppClient) HandleMatrixReactionRemove(ctx context.Context, msg *b
 		return err
 	}
 
-	portalJID, err := types.ParseJID(string(msg.Portal.ID))
+	portalJID, err := waid.ParsePortalID(msg.Portal.ID)
 	if err != nil {
 		return err
 	}
@@ -109,24 +111,32 @@ func (wa *WhatsAppClient) HandleMatrixReactionRemove(ctx context.Context, msg *b
 
 func (wa *WhatsAppClient) HandleMatrixEdit(ctx context.Context, edit *bridgev2.MatrixEdit) error {
 	log := zerolog.Ctx(ctx)
+	editID := wa.Client.GenerateMessageID()
+
 	messageID, err := waid.ParseMessageID(edit.EditTarget.ID)
 	if err != nil {
 		return err
 	}
 
-	portalJID, err := types.ParseJID(string(edit.Portal.ID))
+	portalJID, err := waid.ParsePortalID(edit.Portal.ID)
 	if err != nil {
 		return err
 	}
 
-	//TODO: DO CONVERSION VIA msgconv FUNC
-	//TODO: IMPLEMENT MEDIA CAPTION EDITS
-	//TODO: PRESERVE MEDIA
-	editMessage := wa.Client.BuildEdit(portalJID, messageID.ID, &waE2E.Message{
-		Conversation: proto.String(edit.Content.Body),
-	})
+	waMsg, err := wa.Main.MsgConv.ToWhatsApp(ctx, wa.Client, edit.Event, edit.Content, nil, edit.Portal)
+	if err != nil {
+		return fmt.Errorf("failed to convert message: %w", err)
+	}
+	convertedEdit := wa.Client.BuildEdit(messageID.Chat, messageID.ID, waMsg)
+	if edit.OrigSender == nil {
+		convertedEdit.EditedMessage.Message.ProtocolMessage.TimestampMS = proto.Int64(edit.Event.Timestamp)
+	}
 
-	resp, err := wa.Client.SendMessage(ctx, portalJID, editMessage)
+	//wrappedMsgID := waid.MakeMessageID(portalJID, wa.JID, messageID)
+	//edit.AddPendingToIgnore(networkid.TransactionID(wrappedMsgID))
+	resp, err := wa.Client.SendMessage(ctx, portalJID, convertedEdit, whatsmeow.SendRequestExtra{
+		ID: editID,
+	})
 	log.Trace().Any("response", resp).Msg("WhatsApp edit response")
 	return err
 }
@@ -138,7 +148,7 @@ func (wa *WhatsAppClient) HandleMatrixMessageRemove(ctx context.Context, msg *br
 		return err
 	}
 
-	portalJID, err := types.ParseJID(string(msg.Portal.ID))
+	portalJID, err := waid.ParsePortalID(msg.Portal.ID)
 	if err != nil {
 		return err
 	}
@@ -150,47 +160,80 @@ func (wa *WhatsAppClient) HandleMatrixMessageRemove(ctx context.Context, msg *br
 	return err
 }
 
-func (wa *WhatsAppClient) HandleMatrixReadReceipt(_ context.Context, receipt *bridgev2.MatrixReadReceipt) error {
-	if receipt.ExactMessage == nil {
+func (wa *WhatsAppClient) HandleMatrixReadReceipt(ctx context.Context, receipt *bridgev2.MatrixReadReceipt) error {
+	if !receipt.ReadUpTo.After(receipt.LastRead) {
 		return nil
 	}
-	messageID, err := waid.ParseMessageID(receipt.ExactMessage.ID)
+	if receipt.LastRead.IsZero() {
+		receipt.LastRead = receipt.ReadUpTo.Add(-5 * time.Second)
+	}
+	portalJID, err := waid.ParsePortalID(receipt.Portal.ID)
 	if err != nil {
 		return err
 	}
-
-	err = wa.Client.MarkRead([]types.MessageID{messageID.ID}, time.Now(), messageID.Chat, messageID.Sender)
+	messages, err := receipt.Portal.Bridge.DB.Message.GetMessagesBetweenTimeQuery(ctx, receipt.Portal.PortalKey, receipt.LastRead, receipt.ReadUpTo)
+	if err != nil {
+		return fmt.Errorf("failed to get messages to mark as read: %w", err)
+	} else if len(messages) == 0 {
+		return nil
+	}
+	log := zerolog.Ctx(ctx)
+	log.Trace().
+		Time("last_read", receipt.LastRead).
+		Time("read_up_to", receipt.ReadUpTo).
+		Int("message_count", len(messages)).
+		Msg("Handling read receipt")
+	messagesToRead := make(map[types.JID][]string)
+	for _, msg := range messages {
+		parsed, err := waid.ParseMessageID(msg.ID)
+		if err != nil {
+			continue
+		}
+		if msg.SenderID == networkid.UserID(wa.UserLogin.ID) {
+			continue
+		}
+		var key types.JID
+		// In group chats, group receipts by sender. In DMs, just use blank key (no participant field).
+		if parsed.Sender != parsed.Chat {
+			key = parsed.Sender
+		}
+		messagesToRead[key] = append(messagesToRead[key], parsed.ID)
+	}
+	for messageSender, ids := range messagesToRead {
+		err = wa.Client.MarkRead(ids, receipt.Receipt.Timestamp, portalJID, messageSender)
+		if err != nil {
+			log.Err(err).Strs("ids", ids).Msg("Failed to mark messages as read")
+		}
+	}
 	return err
 }
 
-func (wa *WhatsAppClient) HandleMatrixTyping(_ context.Context, msg *bridgev2.MatrixTyping) error {
-	portalJID, err := types.ParseJID(string(msg.Portal.ID))
+func (wa *WhatsAppClient) HandleMatrixTyping(ctx context.Context, msg *bridgev2.MatrixTyping) error {
+	portalJID, err := waid.ParsePortalID(msg.Portal.ID)
 	if err != nil {
 		return err
 	}
 	var chatPresence types.ChatPresence
 	var mediaPresence types.ChatPresenceMedia
 	if msg.IsTyping {
-		chatPresence = "composing"
+		chatPresence = types.ChatPresenceComposing
 	} else {
-		chatPresence = "paused"
+		chatPresence = types.ChatPresencePaused
 	}
 	switch msg.Type {
 	case bridgev2.TypingTypeText:
-		mediaPresence = ""
+		mediaPresence = types.ChatPresenceMediaText
 	case bridgev2.TypingTypeRecordingMedia:
-		mediaPresence = "audio"
+		mediaPresence = types.ChatPresenceMediaAudio
 	case bridgev2.TypingTypeUploadingMedia:
 		return nil
 	}
 
-	err = wa.Client.SendChatPresence(portalJID, chatPresence, mediaPresence)
-
 	if wa.Main.Config.SendPresenceOnTyping {
 		err = wa.Client.SendPresence(types.PresenceAvailable)
 		if err != nil {
-			wa.UserLogin.Log.Warn().Err(err).Msg("Failed to set presence on typing")
+			zerolog.Ctx(ctx).Warn().Err(err).Msg("Failed to set presence on typing")
 		}
 	}
-	return err
+	return wa.Client.SendChatPresence(portalJID, chatPresence, mediaPresence)
 }

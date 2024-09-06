@@ -21,13 +21,40 @@ displayname_template: "{{or .FullName .BusinessName .PushName .Phone}} (WA)"
 
 # Should incoming calls send a message to the Matrix room?
 call_start_notices: true
+# Send the presence as "available" to whatsapp when users start typing on a portal.
+# This works as a workaround for homeservers that do not support presence, and allows
+# users to see when the whatsapp user on the other side is typing during a conversation.
+send_presence_on_typing: false
+# Should WhatsApp status messages be bridged into a Matrix room?
+# Disabling this won't affect already created status broadcast rooms.
+enable_status_broadcast: true
+# Should sending WhatsApp status messages be allowed?
+# This can cause issues if the user has lots of contacts, so it's disabled by default.
+disable_status_broadcast_send: true
+# Should the status broadcast room be muted and moved into low priority by default?
+# This is only applied when creating the room, the user can unmute it later.
+mute_status_broadcast: true
+# Tag to apply to the status broadcast room.
+status_broadcast_tag: m.lowpriority
+# Should the bridge use thumbnails from WhatsApp?
+# They're disabled by default due to very low resolution.
+whatsapp_thumbnail: false
+# Should the bridge detect URLs in outgoing messages, ask the homeserver to generate a preview,
+# and send it to WhatsApp? URL previews can always be sent using the `com.beeper.linkpreviews`
+# key in the event content even if this is disabled.
+url_previews: false
+# Should the bridge always send "active" delivery receipts (two gray ticks on WhatsApp)
+# even if the user isn't marked as online (e.g. when presence bridging isn't enabled)?
+#
+# By default, the bridge acts like WhatsApp web, which only sends active delivery
+# receipts when it's in the foreground.
+force_active_delivery_receipts: false
 
 # Settings for handling history sync payloads.
 history_sync:
     # Should the bridge request a full sync from the phone when logging in?
     # This bumps the size of history syncs from 3 months to 1 year.
     request_full_sync: false
-
     # Configuration parameters that are sent to the phone along with the request full sync flag.
     # By default, (when the values are null or 0), the config isn't sent at all.
     full_sync_config:
@@ -38,7 +65,6 @@ history_sync:
         size_mb_limit: null
         # This is presumably the local storage quota, which may affect what the phone includes in the history sync blob.
         storage_quota_mb: null
-
     # Settings for media requests. If the media expired, then it will not be on the WA servers.
     # Media can always be requested by reacting with the ♻️ (recycle) emoji.
     # These settings determine if the media requests should be done automatically during or after backfill.
@@ -52,48 +78,3 @@ history_sync:
         request_local_time: 120
         # Maximum number of media request responses to handle in parallel per user.
         max_async_handle: 2
-
-# Should puppet avatars be fetched from the server even if an avatar is already set?
-user_avatar_sync: true
-
-# Send the presence as "available" to whatsapp when users start typing on a portal.
-# This works as a workaround for homeservers that do not support presence, and allows
-# users to see when the whatsapp user on the other side is typing during a conversation.
-send_presence_on_typing: false
-
-# When using double puppeting, should the archived chats be moved to a specific tag in Matrix?
-# Note that WhatsApp un-archives chats when a message is received, which will also be mirrored to Matrix.
-# This can be set to a tag (e.g. m.lowpriority), or null to disable.
-archive_tag: null
-# Same as above, but for pinned chats. The favorite tag is called m.favourite
-pinned_tag: null
-# Should mute status and tags only be bridged when the portal room is created?
-tag_only_on_create: true
-
-# Should WhatsApp status messages be bridged into a Matrix room?
-# Disabling this won't affect already created status broadcast rooms.
-enable_status_broadcast: true
-# Should sending WhatsApp status messages be allowed?
-# This can cause issues if the user has lots of contacts, so it's disabled by default.
-disable_status_broadcast_send: true
-# Should the status broadcast room be muted and moved into low priority by default?
-# This is only applied when creating the room, the user can unmute it later.
-mute_status_broadcast: true
-# Tag to apply to the status broadcast room.
-status_broadcast_tag: m.lowpriority
-
-# Should the bridge use thumbnails from WhatsApp?
-# They're disabled by default due to very low resolution.
-whatsapp_thumbnail: false
-
-# Should the bridge detect URLs in outgoing messages, ask the homeserver to generate a preview,
-# and send it to WhatsApp? URL previews can always be sent using the `com.beeper.linkpreviews`
-# key in the event content even if this is disabled.
-url_previews: false
-
-# Should the bridge always send "active" delivery receipts (two gray ticks on WhatsApp)
-# even if the user isn't marked as online (e.g. when presence bridging isn't enabled)?
-#
-# By default, the bridge acts like WhatsApp web, which only sends active delivery
-# receipts when it's in the foreground.
-force_active_delivery_receipts: false

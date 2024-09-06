@@ -24,7 +24,6 @@ import (
 type MessageConverter struct {
 	Bridge      *bridgev2.Bridge
 	MaxFileSize int64
-	AsyncFiles  bool
 	HTMLParser  *format.HTMLParser
 }
 

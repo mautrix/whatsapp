@@ -8,25 +8,19 @@ import (
 	"maunium.net/go/mautrix/bridgev2/networkid"
 )
 
-/*func ParseWAPortalID(portal networkid.PortalID, server string) types.JID {
-	return types.JID{
-		User:   string(portal),
-		Server: server,
-	}
-}*/
-
-func MakeWAPortalID(jid types.JID) networkid.PortalID {
+func MakePortalID(jid types.JID) networkid.PortalID {
 	return networkid.PortalID(jid.ToNonAD().String())
 }
 
-func ParseWAUserLoginID(user networkid.UserLoginID) types.JID {
-	return types.JID{
-		Server: types.DefaultUserServer,
-		User:   string(user),
+func ParsePortalID(portal networkid.PortalID) (types.JID, error) {
+	parsed, err := types.ParseJID(string(portal))
+	if err != nil {
+		return types.EmptyJID, fmt.Errorf("invalid portal ID: %w", err)
 	}
+	return parsed, nil
 }
 
-func MakeUserID(user *types.JID) networkid.UserID {
+func MakeUserID(user types.JID) networkid.UserID {
 	return networkid.UserID(user.User)
 }
 
@@ -34,8 +28,16 @@ func ParseUserID(user networkid.UserID) types.JID {
 	return types.NewJID(string(user), types.DefaultUserServer)
 }
 
-func MakeUserLoginID(user *types.JID) networkid.UserLoginID {
-	return networkid.UserLoginID(MakeUserID(user))
+func MakeUserLoginID(user types.JID) networkid.UserLoginID {
+	return networkid.UserLoginID(user.User)
+}
+
+func ParseUserLoginID(user networkid.UserLoginID, deviceID uint16) types.JID {
+	return types.JID{
+		Server: types.DefaultUserServer,
+		User:   string(user),
+		Device: deviceID,
+	}
 }
 
 func MakeMessageID(chat, sender types.JID, id types.MessageID) networkid.MessageID {

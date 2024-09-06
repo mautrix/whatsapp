@@ -3,229 +3,165 @@ package connector
 import (
 	"context"
 	"fmt"
-	"regexp"
+	"net/http"
+	"sync/atomic"
+	"time"
 
+	"github.com/rs/zerolog"
+	"go.mau.fi/util/exsync"
 	"go.mau.fi/whatsmeow"
-	"go.mau.fi/whatsmeow/store"
+	"go.mau.fi/whatsmeow/types/events"
+	waLog "go.mau.fi/whatsmeow/util/log"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
 
 	"maunium.net/go/mautrix-whatsapp/pkg/waid"
 )
 
-func (wa *WhatsAppConnector) GetLoginFlows() []bridgev2.LoginFlow {
-	return []bridgev2.LoginFlow{
-		{
-			Name:        "QR",
-			Description: "Scan a QR code to pair the bridge to your WhatsApp account",
-			ID:          "qr",
-		},
-		{
-			Name:        "Pairing code",
-			Description: "Input your phone number to get a pairing code, to pair the bridge to your WhatsApp account",
-			ID:          "pairing-code",
-		},
-	}
-}
-
-func (wa *WhatsAppConnector) CreateLogin(_ context.Context, user *bridgev2.User, flowID string) (bridgev2.LoginProcess, error) {
-
-	if flowID == "qr" {
-		return &QRLogin{User: user, Main: wa}, nil
-	} else if flowID == "pairing-code" {
-		return &PairingCodeLogin{User: user, Main: wa}, nil
-	} else {
-		return nil, fmt.Errorf("invalid login flow ID")
-	}
-}
-
-func makeQRChan(connector *WhatsAppConnector, user *bridgev2.User) (client *whatsmeow.Client, qrChan <-chan whatsmeow.QRChannelItem, cancelFunc context.CancelFunc, err error) {
-	log := connector.Bridge.Log.With().
-		Str("action", "login").
-		Stringer("user_id", user.MXID).
-		Logger()
-	qrCtx, cancel := context.WithCancel(log.WithContext(context.Background()))
-	cancelFunc = cancel
-
-	device := connector.DeviceStore.NewDevice()
-
-	wa := &WhatsAppClient{
-		Main:   connector,
-		Device: device,
-	}
-
-	wa.MakeNewClient(log)
-
-	client = wa.Client
-
-	qrChan, err = client.GetQRChannel(qrCtx)
-	if err != nil {
-		return nil, nil, nil, err
-	}
-
-	err = client.Connect()
-	if err != nil {
-		return nil, nil, nil, err
-	}
-	return
-}
-
-func makeUserLogin(ctx context.Context, user *bridgev2.User, client *whatsmeow.Client) (ul *bridgev2.UserLogin, err error) {
-	newLoginID := waid.MakeUserLoginID(client.Store.ID)
-	ul, err = user.NewLogin(ctx, &database.UserLogin{
-		ID:         newLoginID,
-		RemoteName: client.Store.PushName,
-		Metadata: &UserLoginMetadata{
-			WADeviceID: client.Store.ID.Device,
-		},
-	}, &bridgev2.NewLoginParams{
-		DeleteOnConflict: true,
-	})
-	return
-}
-
-type QRLogin struct {
-	User       *bridgev2.User
-	Main       *WhatsAppConnector
-	Client     *whatsmeow.Client
-	cancelChan context.CancelFunc
-	QRChan     <-chan whatsmeow.QRChannelItem
-
-	AccData *store.Device
-}
-
-var _ bridgev2.LoginProcessDisplayAndWait = (*QRLogin)(nil)
-
-func (qr *QRLogin) Cancel() {
-	qr.cancelChan()
-	qr.Client.Disconnect()
-}
-
 const (
-	LoginStepQR               = "fi.mau.whatsapp.login.qr"
-	LoginStepComplete         = "fi.mau.whatsapp.login.complete"
-	LoginStepPairingCodeInput = "fi.mau.whatsapp.login.pairing.code"
-	LoginStepPairingCode      = "fi.mau.whatsapp.login.pairing.code"
+	LoginStepIDQR          = "fi.mau.whatsapp.login.qr"
+	LoginStepIDPhoneNumber = "fi.mau.whatsapp.login.phone"
+	LoginStepIDCode        = "fi.mau.whatsapp.login.code"
+	LoginStepIDComplete    = "fi.mau.whatsapp.login.complete"
+
+	LoginFlowIDQR    = "qr"
+	LoginFlowIDPhone = "phone"
 )
 
-func (qr *QRLogin) Start(ctx context.Context) (*bridgev2.LoginStep, error) {
-	client, qrChan, cancelFunc, err := makeQRChan(qr.Main, qr.User)
-	if err != nil {
-		return nil, err
-	}
-	qr.QRChan = qrChan
-	qr.cancelChan = cancelFunc
-	qr.Client = client
-	var resp whatsmeow.QRChannelItem
+func (wa *WhatsAppConnector) GetLoginFlows() []bridgev2.LoginFlow {
+	return []bridgev2.LoginFlow{{
+		Name:        "QR",
+		Description: "Scan a QR code to pair the bridge to your WhatsApp account",
+		ID:          LoginFlowIDQR,
+	}, {
+		Name:        "Pairing code",
+		Description: "Input your phone number to get a pairing code, to pair the bridge to your WhatsApp account",
+		ID:          LoginFlowIDPhone,
+	}}
+}
 
-	select {
-	case resp = <-qr.QRChan:
-		if resp.Error != nil {
-			return nil, resp.Error
-		} else if resp.Event != "code" {
-			return nil, fmt.Errorf("invalid QR channel event: %s", resp.Event)
-		}
-	case <-ctx.Done():
-		qr.Cancel()
-		return nil, ctx.Err()
+var (
+	ErrLoginClientOutdated = bridgev2.RespError{
+		ErrCode:    "FI.MAU.WHATSAPP.CLIENT_OUTDATED",
+		Err:        "Got client outdated error while waiting for QRs. The bridge must be updated to continue.",
+		StatusCode: http.StatusInternalServerError,
 	}
+	ErrLoginMultideviceNotEnabled = bridgev2.RespError{
+		ErrCode:    "FI.MAU.WHATSAPP.MULTIDEVICE_NOT_ENABLED",
+		Err:        "Please enable WhatsApp web multidevice and scan the QR code again.",
+		StatusCode: http.StatusBadRequest,
+	}
+	ErrLoginTimeout = bridgev2.RespError{
+		ErrCode:    "FI.MAU.WHATSAPP.LOGIN_TIMEOUT",
+		Err:        "Entering code or scanning QR timed out. Please try again.",
+		StatusCode: http.StatusBadRequest,
+	}
+	ErrUnexpectedDisconnect = bridgev2.RespError{
+		ErrCode:    "FI.MAU.WHATSAPP.LOGIN_UNEXPECTED_EVENT",
+		Err:        "Unexpected event while waiting for login",
+		StatusCode: http.StatusInternalServerError,
+	}
+)
 
-	return &bridgev2.LoginStep{
-		Type:         bridgev2.LoginStepTypeDisplayAndWait,
-		StepID:       LoginStepQR,
-		Instructions: "Scan the QR code on the WhatsApp mobile app to log in",
-		DisplayAndWaitParams: &bridgev2.LoginDisplayAndWaitParams{
-			Type: bridgev2.LoginDisplayTypeQR,
-			Data: resp.Code,
-		},
+func (wa *WhatsAppConnector) CreateLogin(_ context.Context, user *bridgev2.User, flowID string) (bridgev2.LoginProcess, error) {
+	return &WALogin{
+		User:      user,
+		Main:      wa,
+		PhoneCode: flowID == LoginFlowIDPhone,
+		Log: user.Log.With().
+			Str("action", "login").
+			Bool("phone_code", flowID == LoginFlowIDPhone).
+			Logger(),
 	}, nil
 }
 
-func (qr *QRLogin) Wait(ctx context.Context) (*bridgev2.LoginStep, error) {
-	if qr.QRChan == nil {
-		return nil, fmt.Errorf("login not started")
-	}
+type WALogin struct {
+	User      *bridgev2.User
+	Main      *WhatsAppConnector
+	Client    *whatsmeow.Client
+	Log       zerolog.Logger
+	PhoneCode bool
 
-	select {
-	case resp := <-qr.QRChan:
-		if resp.Event == "code" {
-			return &bridgev2.LoginStep{
-				Type:         bridgev2.LoginStepTypeDisplayAndWait,
-				StepID:       LoginStepQR,
-				Instructions: "Scan the QR code on the WhatsApp mobile app to log in",
-				DisplayAndWaitParams: &bridgev2.LoginDisplayAndWaitParams{
-					Type: bridgev2.LoginDisplayTypeQR,
-					Data: resp.Code,
-				},
-			}, nil
-		} else if resp.Event != "success" {
-			qr.Cancel()
-			return nil, fmt.Errorf("did not pair properly, err: %s", resp.Event)
-		}
-	case <-ctx.Done():
-		qr.Cancel()
-		return nil, ctx.Err()
-	}
+	QRs           []string
+	StartTime     time.Time
+	LoginError    error
+	LoginSuccess  *events.PairSuccess
+	WaitForQRs    exsync.Event
+	LoginComplete exsync.Event
+	PrevQRIndex   atomic.Int32
 
-	defer qr.Cancel()
-
-	ul, err := makeUserLogin(ctx, qr.User, qr.Client)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create user login: %w", err)
-	}
-
-	err = ul.Client.Connect(ul.Log.WithContext(context.Background()))
-
-	if err != nil {
-		return nil, fmt.Errorf("failed to connect after login: %w", err)
-	}
-
-	return &bridgev2.LoginStep{
-		Type:         bridgev2.LoginStepTypeComplete,
-		StepID:       LoginStepComplete,
-		Instructions: fmt.Sprintf("Successfully logged in as %s / %s", ul.RemoteName, ul.ID),
-		CompleteParams: &bridgev2.LoginCompleteParams{
-			UserLoginID: ul.ID,
-			UserLogin:   ul,
-		},
-	}, nil
+	Closed         atomic.Bool
+	EventHandlerID uint32
 }
 
-type PairingCodeLogin struct {
-	User       *bridgev2.User
-	Main       *WhatsAppConnector
-	Client     *whatsmeow.Client
-	cancelChan context.CancelFunc
-	QRChan     <-chan whatsmeow.QRChannelItem
+var (
+	_ bridgev2.LoginProcessDisplayAndWait = (*WALogin)(nil)
+	_ bridgev2.LoginProcessUserInput      = (*WALogin)(nil)
+)
 
-	AccData *store.Device
-}
+const LoginConnectWait = 15 * time.Second
 
-var _ bridgev2.LoginProcessUserInput = (*PairingCodeLogin)(nil)
-var _ bridgev2.LoginProcessDisplayAndWait = (*PairingCodeLogin)(nil)
-
-func (pc *PairingCodeLogin) Cancel() {
-	pc.Client.Disconnect()
-	pc.cancelChan()
-	go func() {
-		for range pc.QRChan {
-		}
-	}()
-}
-
-func (pc *PairingCodeLogin) SubmitUserInput(_ context.Context, input map[string]string) (*bridgev2.LoginStep, error) {
-	phoneNumber := input["phone_number"]
-	if phoneNumber == "" {
-		return nil, fmt.Errorf("invalid or missing phone number")
-	}
-	pairingCode, err := pc.Client.PairPhone(phoneNumber, true, whatsmeow.PairClientChrome, "Chrome (Linux)")
-	if err != nil {
+func (wl *WALogin) Start(ctx context.Context) (*bridgev2.LoginStep, error) {
+	device := wl.Main.DeviceStore.NewDevice()
+	wl.Client = whatsmeow.NewClient(device, waLog.Zerolog(wl.Log))
+	wl.EventHandlerID = wl.Client.AddEventHandler(wl.handleEvent)
+	if err := wl.Main.updateProxy(wl.Client, true); err != nil {
 		return nil, err
 	}
+
+	if wl.PhoneCode {
+		return &bridgev2.LoginStep{
+			Type:   bridgev2.LoginStepTypeUserInput,
+			StepID: LoginStepIDPhoneNumber,
+			UserInputParams: &bridgev2.LoginUserInputParams{
+				Fields: []bridgev2.LoginInputDataField{{
+					Type:        bridgev2.LoginInputFieldTypePhoneNumber,
+					ID:          "phone_number",
+					Name:        "Phone number",
+					Description: "Your WhatsApp phone number in international format",
+				}},
+			},
+		}, nil
+	}
+	err := wl.Client.Connect()
+	if err != nil {
+		wl.Log.Err(err).Msg("Failed to connect to WhatsApp for QR login")
+		return nil, err
+	}
+	ctx, cancel := context.WithTimeout(ctx, LoginConnectWait)
+	defer cancel()
+	err = wl.WaitForQRs.Wait(ctx)
+	if err != nil {
+		wl.Log.Warn().Err(err).Msg("Timed out waiting for first QR")
+		wl.Cancel()
+		return nil, err
+	}
+	return makeQRStep(wl.QRs[0]), nil
+}
+
+func (wl *WALogin) SubmitUserInput(ctx context.Context, input map[string]string) (*bridgev2.LoginStep, error) {
+	ctx, cancel := context.WithTimeout(ctx, LoginConnectWait)
+	defer cancel()
+	err := wl.Client.Connect()
+	if err != nil {
+		wl.Log.Err(err).Msg("Failed to connect to WhatsApp for phone code login")
+		return nil, err
+	}
+	err = wl.WaitForQRs.Wait(ctx)
+	if err != nil {
+		wl.Log.Warn().Err(err).Msg("Timed out waiting for connection")
+		return nil, fmt.Errorf("failed to wait for connection: %w", err)
+	}
+	pairingCode, err := wl.Client.PairPhone(input["phone_number"], true, whatsmeow.PairClientChrome, "Chrome (Linux)")
+	if err != nil {
+		wl.Log.Err(err).Msg("Failed to request phone code login")
+		return nil, err
+	}
+	wl.Log.Debug().Msg("Phone code login started")
 	return &bridgev2.LoginStep{
 		Type:         bridgev2.LoginStepTypeDisplayAndWait,
-		StepID:       LoginStepPairingCode,
-		Instructions: "Input the pairing code on the WhatsApp mobile app to log in",
+		StepID:       LoginStepIDCode,
+		Instructions: "Input the pairing code in the WhatsApp mobile app to log in",
 		DisplayAndWaitParams: &bridgev2.LoginDisplayAndWaitParams{
 			Type: bridgev2.LoginDisplayTypeCode,
 			Data: pairingCode,
@@ -233,77 +169,146 @@ func (pc *PairingCodeLogin) SubmitUserInput(_ context.Context, input map[string]
 	}, nil
 }
 
-var onlyNumberRegex = regexp.MustCompile(`\D+`)
-
-func (pc *PairingCodeLogin) Start(_ context.Context) (*bridgev2.LoginStep, error) {
-	client, qrChan, cancelFunc, err := makeQRChan(pc.Main, pc.User)
-	if err != nil {
-		return nil, err
-	}
-	pc.QRChan = qrChan
-	pc.cancelChan = cancelFunc
-	pc.Client = client
-
+func makeQRStep(qr string) *bridgev2.LoginStep {
 	return &bridgev2.LoginStep{
-		Type:   bridgev2.LoginStepTypeUserInput,
-		StepID: LoginStepPairingCodeInput,
-		UserInputParams: &bridgev2.LoginUserInputParams{
-			Fields: []bridgev2.LoginInputDataField{
-				{
-					Type:        bridgev2.LoginInputFieldTypePhoneNumber,
-					ID:          "phone_number",
-					Name:        "phone number",
-					Description: "An international phone number format without symbols",
-					Validate: func(s string) (string, error) {
-						return onlyNumberRegex.ReplaceAllString(s, ""), nil
-					},
-				},
-			},
+		Type:         bridgev2.LoginStepTypeDisplayAndWait,
+		StepID:       LoginStepIDQR,
+		Instructions: "Scan the QR code with the WhatsApp mobile app to log in",
+		DisplayAndWaitParams: &bridgev2.LoginDisplayAndWaitParams{
+			Type: bridgev2.LoginDisplayTypeQR,
+			Data: qr,
 		},
-	}, nil
+	}
 }
 
-func (pc *PairingCodeLogin) Wait(ctx context.Context) (*bridgev2.LoginStep, error) {
+var qrIntervals = []time.Duration{1 * time.Minute, 20 * time.Second, 20 * time.Second, 20 * time.Second, 20 * time.Second, 20 * time.Second}
 
-	select {
-	case resp := <-pc.QRChan:
-		if resp.Event == "code" {
-			return &bridgev2.LoginStep{
-				Type:   bridgev2.LoginStepTypeDisplayAndWait,
-				StepID: LoginStepPairingCode,
-				DisplayAndWaitParams: &bridgev2.LoginDisplayAndWaitParams{
-					Type: bridgev2.LoginDisplayTypeNothing,
-				},
-			}, nil
-		} else if resp.Event != "success" {
-			pc.Cancel()
-			return nil, fmt.Errorf("did not pair properly, err: %s", resp.Event)
+func (wl *WALogin) getQRIndex() (currentIndex int, timeUntilNext time.Duration) {
+	timeSinceStart := time.Since(wl.StartTime)
+	var sum time.Duration
+	for i, interval := range qrIntervals {
+		if timeSinceStart > sum+interval {
+			sum += interval
+		} else {
+			return i, interval - (timeSinceStart - sum)
 		}
-	case <-ctx.Done():
-		pc.Cancel()
-		return nil, ctx.Err()
+	}
+	return -1, 0
+}
+
+func (wl *WALogin) handleEvent(rawEvt any) {
+	if wl.Closed.Load() {
+		return
+	}
+	switch evt := rawEvt.(type) {
+	case *events.QR:
+		wl.Log.Debug().Int("code_count", len(evt.Codes)).Msg("Received QR codes")
+		wl.QRs = evt.Codes
+		wl.StartTime = time.Now()
+		wl.WaitForQRs.Set()
+		return
+	case *events.QRScannedWithoutMultidevice:
+		wl.Log.Error().Msg("QR code scanned without multidevice enabled")
+		wl.LoginError = ErrLoginMultideviceNotEnabled
+	case *events.ClientOutdated:
+		wl.Log.Error().Msg("Got client outdated error")
+		wl.LoginError = ErrLoginClientOutdated
+	case *events.PairSuccess:
+		wl.Log.Info().Any("event_data", evt).Msg("Got pair successful event")
+		wl.LoginSuccess = evt
+	case *events.PairError:
+		wl.Log.Error().Any("event_data", evt).Msg("Got pair error event")
+		wl.LoginError = bridgev2.RespError{
+			ErrCode:    "FI.MAU.WHATSAPP.PAIR_ERROR",
+			Err:        evt.Error.Error(),
+			StatusCode: http.StatusInternalServerError,
+		}
+	case *events.Disconnected:
+		wl.Log.Warn().Msg("Got disconnected event (login timed out)")
+		wl.LoginError = ErrLoginTimeout
+	case *events.Connected, *events.ConnectFailure, *events.LoggedOut, *events.TemporaryBan:
+		wl.Log.Warn().Any("event_data", evt).Type("event_type", evt).Msg("Got unexpected disconnect event")
+		wl.LoginError = ErrUnexpectedDisconnect
+	default:
+		wl.Log.Warn().Type("event_type", evt).Msg("Got unexpected event")
+		return
+	}
+	wl.LoginComplete.Set()
+}
+
+func (wl *WALogin) Wait(ctx context.Context) (*bridgev2.LoginStep, error) {
+	if wl.PhoneCode {
+		err := wl.LoginComplete.Wait(ctx)
+		if err != nil {
+			wl.Cancel()
+			return nil, err
+		}
+	} else {
+		prevIndex := int(wl.PrevQRIndex.Load())
+		currentIndex, timeUntilNext := wl.getQRIndex()
+		nextIndex := currentIndex + 1
+		logEvt := wl.Log.Debug().
+			Int("prev_index", prevIndex).
+			Int("current_index", currentIndex)
+		if currentIndex > prevIndex {
+			logEvt.Msg("Returning new QR immediately")
+			wl.PrevQRIndex.Store(int32(currentIndex))
+			return makeQRStep(wl.QRs[currentIndex]), nil
+		}
+		logEvt.Int("next_index", nextIndex).Stringer("time_until_next", timeUntilNext).Msg("Waiting for next QR")
+		select {
+		case <-time.After(timeUntilNext):
+			if nextIndex < 0 || nextIndex >= len(wl.QRs) {
+				wl.Log.Debug().Msg("No more QRs to return")
+				wl.Cancel()
+				return nil, ErrLoginTimeout
+			}
+			wl.PrevQRIndex.Store(int32(nextIndex))
+			return makeQRStep(wl.QRs[nextIndex]), nil
+		case <-ctx.Done():
+			wl.Cancel()
+			return nil, ctx.Err()
+		case <-wl.LoginComplete.GetChan():
+			wl.Cancel()
+		}
+	}
+	wl.Log.Debug().Err(wl.LoginError).Msg("Login completed")
+	if wl.LoginError != nil {
+		return nil, wl.LoginError
 	}
 
-	defer pc.Cancel()
-
-	ul, err := makeUserLogin(ctx, pc.User, pc.Client)
+	newLoginID := waid.MakeUserLoginID(wl.LoginSuccess.ID)
+	ul, err := wl.User.NewLogin(ctx, &database.UserLogin{
+		ID:         newLoginID,
+		RemoteName: "+" + wl.LoginSuccess.ID.User,
+		Metadata: &UserLoginMetadata{
+			WADeviceID: wl.LoginSuccess.ID.Device,
+		},
+	}, &bridgev2.NewLoginParams{
+		DeleteOnConflict: true,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create user login: %w", err)
 	}
 
 	err = ul.Client.Connect(ul.Log.WithContext(context.Background()))
-
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect after login: %w", err)
 	}
 
 	return &bridgev2.LoginStep{
 		Type:         bridgev2.LoginStepTypeComplete,
-		StepID:       LoginStepComplete,
-		Instructions: fmt.Sprintf("Successfully logged in as %s / %s", ul.RemoteName, ul.ID),
+		StepID:       LoginStepIDComplete,
+		Instructions: fmt.Sprintf("Successfully logged in as %s", ul.RemoteName),
 		CompleteParams: &bridgev2.LoginCompleteParams{
 			UserLoginID: ul.ID,
 			UserLogin:   ul,
 		},
 	}, nil
+}
+
+func (wl *WALogin) Cancel() {
+	wl.Closed.Store(true)
+	wl.Client.RemoveEventHandler(wl.EventHandlerID)
+	wl.Client.Disconnect()
 }
