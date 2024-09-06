@@ -24,6 +24,15 @@ var m = mxmain.BridgeMain{
 }
 
 func main() {
+	m.PostInit = func() {
+		m.CheckLegacyDB(
+			57,
+			"v0.8.6",
+			"v0.11.0",
+			m.LegacyMigrateSimple(legacyMigrateRenameTables, legacyMigrateCopyData, 16),
+			true,
+		)
+	}
 	m.InitVersion(Tag, Commit, BuildTime)
 	m.Run()
 }
