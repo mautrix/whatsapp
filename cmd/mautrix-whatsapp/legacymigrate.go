@@ -26,6 +26,7 @@ ALTER TABLE "user" RENAME TO user_old;
 //go:embed legacymigrate.sql
 var legacyMigrateCopyData string
 
+//lint:ignore U1000 - TODO use this function
 func migrateLegacyConfig(helper up.Helper) {
 	helper.Set(up.Str, "maunium.net/go/mautrix-whatsapp", "encryption", "pickle_key")
 	bridgeconfig.CopyToOtherLocation(helper, up.Str, []string{"bridge", "displayname_template"}, []string{"network", "displayname_template"})

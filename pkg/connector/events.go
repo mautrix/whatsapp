@@ -49,7 +49,7 @@ func (evt *WAMessageEvent) GetTargetMessage() networkid.MessageID {
 		key := reactionMsg.GetKey()
 		senderID := key.GetParticipant()
 		if senderID == "" {
-			if key.GetFromMe() == true {
+			if key.GetFromMe() {
 				senderID = evt.Info.Sender.ToNonAD().String()
 			} else {
 				senderID = evt.wa.Client.Store.ID.ToNonAD().String() // could be false in groups
@@ -61,7 +61,7 @@ func (evt *WAMessageEvent) GetTargetMessage() networkid.MessageID {
 		key := protocolMsg.GetKey()
 		senderID := key.GetParticipant()
 		if senderID == "" {
-			if key.GetFromMe() == true {
+			if key.GetFromMe() {
 				senderID = evt.Info.Sender.ToNonAD().String()
 			} else {
 				senderID = evt.wa.Client.Store.ID.ToNonAD().String() // could be false in groups

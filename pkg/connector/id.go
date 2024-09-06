@@ -41,6 +41,7 @@ func (wa *WhatsAppClient) messageIDToKey(id *waid.ParsedMessageID) *waCommon.Mes
 	return key
 }
 
+//lint:ignore U1000 - TODO use this function
 func (wa *WhatsAppClient) keyToMessageID(chat, sender types.JID, key *waCommon.MessageKey) networkid.MessageID {
 	sender = sender.ToNonAD()
 	var err error

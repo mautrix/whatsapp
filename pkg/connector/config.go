@@ -15,7 +15,7 @@ type MediaRequestMethod string
 
 const (
 	MediaRequestMethodImmediate MediaRequestMethod = "immediate"
-	MediaRequestMethodLocalTime                    = "local_time"
+	MediaRequestMethodLocalTime MediaRequestMethod = "local_time"
 )
 
 //go:embed example-config.yaml

@@ -314,6 +314,9 @@ func (mc *MessageConverter) reuploadFileToWhatsApp(ctx context.Context, client *
 		fileName = content.FileName
 	}
 	data, err := mc.Bridge.Bot.DownloadMedia(ctx, content.URL, content.File)
+	if err != nil {
+		return nil, "", fmt.Errorf("%w: %w", bridgev2.ErrMediaDownloadFailed, err)
+	}
 
 	if mime == "" {
 		mime = http.DetectContentType(data)
@@ -325,47 +328,41 @@ func (mc *MessageConverter) reuploadFileToWhatsApp(ctx context.Context, client *
 		mediaType = whatsmeow.MediaImage
 		mime = "image/webp"
 
-		var convertErr error
-		data, convertErr = mc.convertToWebP(data)
-		if convertErr != nil {
-			return nil, "image/webp", fmt.Errorf("error converting image to webp: %s", convertErr.Error())
+		data, err = mc.convertToWebP(data)
+		if err != nil {
+			return nil, "image/webp", fmt.Errorf("%w (to webp): %w", bridgev2.ErrMediaConvertFailed, err)
 		}
 	case event.MsgImage:
 		if mime == "image/gif" {
 			mediaType = whatsmeow.MediaVideo
 			content.MsgType = event.MsgVideo
 			if ffmpeg.Supported() {
-				var convertErr error
-				data, convertErr = ffmpeg.ConvertBytes(ctx, data, ".mp4", []string{"-f", "gif"}, []string{
+				data, err = ffmpeg.ConvertBytes(ctx, data, ".mp4", []string{"-f", "gif"}, []string{
 					"-pix_fmt", "yuv420p", "-c:v", "libx264", "-movflags", "+faststart",
 					"-filter:v", "crop='floor(in_w/2)*2:floor(in_h/2)*2'",
 				}, mime)
-
-				if convertErr != nil {
-					return nil, "image/gif", fmt.Errorf("error converting gif to mp4: %s", convertErr.Error())
+				if err != nil {
+					return nil, "image/gif", fmt.Errorf("%w (gif to mp4): %w", bridgev2.ErrMediaConvertFailed, err)
 				}
 				mime = "video/mp4"
 			}
 		} else {
 			mediaType = whatsmeow.MediaImage
 			if mime == "image/webp" {
-				var convertErr error
-				data, convertErr = mc.convertToWebP(data)
-				if convertErr != nil {
-					return nil, "image/webp", fmt.Errorf("error converting webp to png: %s", convertErr.Error())
+				data, err = mc.convertWebPtoPNG(data)
+				if err != nil {
+					return nil, "image/webp", fmt.Errorf("%w (webp to png): %s", bridgev2.ErrMediaConvertFailed, err)
 				}
 				mime = "image/png"
 			}
 		}
 	case event.MsgVideo:
 		if mime == "video/webm" {
-			var convertErr error
-			data, convertErr = ffmpeg.ConvertBytes(ctx, data, ".mp4", []string{"-f", "webm"}, []string{
+			data, err = ffmpeg.ConvertBytes(ctx, data, ".mp4", []string{"-f", "webm"}, []string{
 				"-pix_fmt", "yuv420p", "-c:v", "libx264",
 			}, mime)
-
-			if convertErr != nil {
-				return nil, "image/gif", fmt.Errorf("error converting webm to mp4: %s", convertErr.Error())
+			if err != nil {
+				return nil, "image/gif", fmt.Errorf("%w (webm to mp4): %w", bridgev2.ErrMediaConvertFailed, err)
 			}
 			mime = "video/mp4"
 		}

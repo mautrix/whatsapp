@@ -35,8 +35,9 @@ var whatsappCaps = &bridgev2.NetworkRoomCapabilities{
 	},
 	Files: map[event.MessageType]bridgev2.FileRestriction{
 		event.MsgImage: {
-			MaxSize:   WAMaxFileSize,
-			MimeTypes: []string{"image/png", "image/jpeg"},
+			MaxSize: WAMaxFileSize,
+			// webp isn't actually allowed, but will be converted to png
+			MimeTypes: []string{"image/png", "image/jpeg", "image/webp"},
 		},
 		event.MsgAudio: {
 			MaxSize:   WAMaxFileSize,
