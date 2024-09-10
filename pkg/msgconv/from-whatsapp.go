@@ -9,8 +9,10 @@ import (
 	_ "image/gif"
 	_ "image/jpeg"
 	_ "image/png"
+	"io"
 	"math"
 	"net/http"
+	"os"
 	"strings"
 
 	"github.com/rs/zerolog"
@@ -163,6 +165,9 @@ func (mc *MessageConverter) addMentions(ctx context.Context, mentionedJID []stri
 	}
 }
 
+// TODO read this from config?
+const uploadFileThreshold = 5 * 1024 * 1024
+
 func (mc *MessageConverter) reuploadWhatsAppAttachment(
 	ctx context.Context,
 	message MediaMessage,
@@ -171,19 +176,46 @@ func (mc *MessageConverter) reuploadWhatsAppAttachment(
 	intent bridgev2.MatrixAPI,
 	portal *bridgev2.Portal,
 ) (*bridgev2.ConvertedMessagePart, error) {
-	data, err := client.Download(message)
-	if err != nil {
-		return nil, fmt.Errorf("%w: %w", bridgev2.ErrMediaDownloadFailed, err)
-	}
-	if fileInfo.MimeType == "" {
-		fileInfo.MimeType = http.DetectContentType(data)
-	}
-	if fileInfo.FileName == "" {
-		fileInfo.FileName = strings.TrimPrefix(string(fileInfo.MsgType), "m.") + exmime.ExtensionFromMimetype(fileInfo.MimeType)
-	}
-	mxc, file, err := intent.UploadMedia(ctx, portal.MXID, data, fileInfo.FileName, fileInfo.MimeType)
-	if err != nil {
-		return nil, fmt.Errorf("%w: %w", bridgev2.ErrMediaReuploadFailed, err)
+	var mxc id.ContentURIString
+	var file *event.EncryptedFileInfo
+	if fileInfo.Size > uploadFileThreshold {
+		var err error
+		mxc, file, err = intent.UploadMediaStream(ctx, portal.MXID, -1, true, func(file io.Writer) (*bridgev2.FileStreamResult, error) {
+			err := client.DownloadToFile(message, file.(*os.File))
+			if err != nil {
+				return nil, fmt.Errorf("%w: %w", bridgev2.ErrMediaDownloadFailed, err)
+			}
+			if fileInfo.MimeType == "" {
+				header := make([]byte, 512)
+				n, _ := file.(*os.File).ReadAt(header, 0)
+				fileInfo.MimeType = http.DetectContentType(header[:n])
+			}
+			if fileInfo.FileName == "" {
+				fileInfo.FileName = strings.TrimPrefix(string(fileInfo.MsgType), "m.") + exmime.ExtensionFromMimetype(fileInfo.MimeType)
+			}
+			return &bridgev2.FileStreamResult{
+				FileName: fileInfo.FileName,
+				MimeType: fileInfo.MimeType,
+			}, nil
+		})
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		data, err := client.Download(message)
+		if err != nil {
+			return nil, fmt.Errorf("%w: %w", bridgev2.ErrMediaDownloadFailed, err)
+		}
+		if fileInfo.MimeType == "" {
+			fileInfo.MimeType = http.DetectContentType(data)
+		}
+		if fileInfo.FileName == "" {
+			fileInfo.FileName = strings.TrimPrefix(string(fileInfo.MsgType), "m.") + exmime.ExtensionFromMimetype(fileInfo.MimeType)
+		}
+		mxc, file, err = intent.UploadMedia(ctx, portal.MXID, data, fileInfo.FileName, fileInfo.MimeType)
+		if err != nil {
+			return nil, fmt.Errorf("%w: %w", bridgev2.ErrMediaReuploadFailed, err)
+		}
 	}
 
 	return &bridgev2.ConvertedMessagePart{
@@ -268,6 +300,7 @@ func (mc *MessageConverter) ToMatrix(ctx context.Context, portal *bridgev2.Porta
 		contextInfo = info.ContextInfo
 		part, err = mc.reuploadWhatsAppAttachment(ctx, media, &info, client, intent, portal)
 		if err != nil {
+			zerolog.Ctx(ctx).Err(err).Msg("Failed to reupload WhatsApp attachment")
 			part = makeMediaFailure("attachment")
 		} else {
 			part.Content.MsgType = info.MsgType
@@ -301,6 +334,7 @@ func (mc *MessageConverter) ToMatrix(ctx context.Context, portal *bridgev2.Porta
 	} else if contacts := message.GetContactMessage(); contacts != nil {
 		part, err = convertContactMessage(ctx, intent, portal, contacts)
 		if err != nil {
+			zerolog.Ctx(ctx).Err(err).Msg("Failed to convert contact message")
 			part = makeMediaFailure("contact message")
 		}
 
