@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/rs/zerolog"
+	"go.mau.fi/util/exmime"
 	"go.mau.fi/util/exslices"
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/proto/waE2E"
@@ -37,6 +38,7 @@ type MediaMessage interface {
 
 type MediaInfo struct {
 	event.FileInfo
+	FileName    string
 	Waveform    []int
 	IsGif       bool
 	Caption     string
@@ -45,30 +47,31 @@ type MediaInfo struct {
 }
 
 func getMediaMessageFileInfo(msg *waE2E.Message) (message MediaMessage, info MediaInfo) {
-	if msg.GetAudioMessage() != nil {
+	if msg.AudioMessage != nil {
 		info.MsgType = event.MsgAudio
 		message = msg.AudioMessage
 
 		info.Duration = int(msg.AudioMessage.GetSeconds() * 1000)
 		info.Waveform = exslices.CastFunc(msg.AudioMessage.Waveform, func(from byte) int { return int(from) })
-	} else if msg.GetDocumentMessage() != nil {
+	} else if msg.DocumentMessage != nil {
 		info.MsgType = event.MsgFile
 		message = msg.DocumentMessage
 
 		info.Caption = msg.DocumentMessage.GetCaption()
-	} else if msg.GetImageMessage() != nil {
+		info.FileName = msg.DocumentMessage.GetFileName()
+	} else if msg.ImageMessage != nil {
 		info.MsgType = event.MsgImage
 		message = msg.ImageMessage
 
 		info.Width = int(msg.ImageMessage.GetWidth())
 		info.Height = int(msg.ImageMessage.GetHeight())
 		info.Caption = msg.ImageMessage.GetCaption()
-	} else if msg.GetStickerMessage() != nil {
+	} else if msg.StickerMessage != nil {
 		message = msg.StickerMessage
 
 		info.Width = int(msg.StickerMessage.GetWidth())
 		info.Height = int(msg.StickerMessage.GetHeight())
-	} else if msg.GetVideoMessage() != nil {
+	} else if msg.VideoMessage != nil {
 		info.MsgType = event.MsgVideo
 		message = msg.VideoMessage
 
@@ -77,6 +80,15 @@ func getMediaMessageFileInfo(msg *waE2E.Message) (message MediaMessage, info Med
 		info.Height = int(msg.VideoMessage.GetHeight())
 		info.Caption = msg.VideoMessage.GetCaption()
 		info.IsGif = msg.VideoMessage.GetGifPlayback()
+	} else if msg.PtvMessage != nil {
+		info.MsgType = event.MsgVideo
+		message = msg.PtvMessage
+
+		info.Duration = int(msg.PtvMessage.GetSeconds() * 1000)
+		info.Width = int(msg.PtvMessage.GetWidth())
+		info.Height = int(msg.PtvMessage.GetHeight())
+		info.Caption = msg.PtvMessage.GetCaption()
+		info.IsGif = msg.PtvMessage.GetGifPlayback()
 	} else {
 		return
 	}
@@ -154,7 +166,7 @@ func (mc *MessageConverter) addMentions(ctx context.Context, mentionedJID []stri
 func (mc *MessageConverter) reuploadWhatsAppAttachment(
 	ctx context.Context,
 	message MediaMessage,
-	fileInfo *event.FileInfo,
+	fileInfo *MediaInfo,
 	client *whatsmeow.Client,
 	intent bridgev2.MatrixAPI,
 	portal *bridgev2.Portal,
@@ -163,8 +175,13 @@ func (mc *MessageConverter) reuploadWhatsAppAttachment(
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", bridgev2.ErrMediaDownloadFailed, err)
 	}
-	var fileName string
-	mxc, file, err := intent.UploadMedia(ctx, portal.MXID, data, fileName, fileInfo.MimeType)
+	if fileInfo.MimeType == "" {
+		fileInfo.MimeType = http.DetectContentType(data)
+	}
+	if fileInfo.FileName == "" {
+		fileInfo.FileName = strings.TrimPrefix(string(fileInfo.MsgType), "m.") + exmime.ExtensionFromMimetype(fileInfo.MimeType)
+	}
+	mxc, file, err := intent.UploadMedia(ctx, portal.MXID, data, fileInfo.FileName, fileInfo.MimeType)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", bridgev2.ErrMediaReuploadFailed, err)
 	}
@@ -172,9 +189,9 @@ func (mc *MessageConverter) reuploadWhatsAppAttachment(
 	return &bridgev2.ConvertedMessagePart{
 		Type: event.EventMessage,
 		Content: &event.MessageEventContent{
-			Body:     fileName,
-			FileName: fileName,
-			Info:     fileInfo,
+			Body:     fileInfo.FileName,
+			FileName: fileInfo.FileName,
+			Info:     &fileInfo.FileInfo,
 			URL:      mxc,
 			File:     file,
 		},
@@ -249,7 +266,7 @@ func (mc *MessageConverter) ToMatrix(ctx context.Context, portal *bridgev2.Porta
 	media, info := getMediaMessageFileInfo(message)
 	if media != nil {
 		contextInfo = info.ContextInfo
-		part, err = mc.reuploadWhatsAppAttachment(ctx, media, &info.FileInfo, client, intent, portal)
+		part, err = mc.reuploadWhatsAppAttachment(ctx, media, &info, client, intent, portal)
 		if err != nil {
 			part = makeMediaFailure("attachment")
 		} else {

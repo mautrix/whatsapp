@@ -67,6 +67,7 @@ type WAMessageEvent struct {
 	Message  *waE2E.Message
 	MsgEvent *events.Message
 
+	parsedMessageType             string
 	isUndecryptableUpsertSubEvent bool
 }
 
@@ -82,6 +83,10 @@ var (
 	_ bridgev2.RemoteEdit                     = (*WAMessageEvent)(nil)
 	_ bridgev2.RemoteMessageRemove            = (*WAMessageEvent)(nil)
 )
+
+func (evt *WAMessageEvent) AddLogContext(c zerolog.Context) zerolog.Context {
+	return evt.MessageInfoWrapper.AddLogContext(c).Str("parsed_message_type", evt.parsedMessageType)
+}
 
 func (evt *WAMessageEvent) ConvertEdit(ctx context.Context, portal *bridgev2.Portal, intent bridgev2.MatrixAPI, existing []*database.Message) (*bridgev2.ConvertedEdit, error) {
 	if len(existing) > 1 {
@@ -146,21 +151,20 @@ func (evt *WAMessageEvent) GetRemovedEmojiID() networkid.EmojiID {
 }
 
 func (evt *WAMessageEvent) GetType() bridgev2.RemoteEventType {
-	waMsg := evt.Message
-	if waMsg.ReactionMessage != nil {
-		if waMsg.ReactionMessage.GetText() == "" {
-			return bridgev2.RemoteEventReactionRemove
-		}
+	switch evt.parsedMessageType {
+	case "reaction":
 		return bridgev2.RemoteEventReaction
-	} else if waMsg.ProtocolMessage != nil && waMsg.ProtocolMessage.Type != nil {
-		switch *waMsg.ProtocolMessage.Type {
-		case waE2E.ProtocolMessage_REVOKE:
-			return bridgev2.RemoteEventMessageRemove
-		case waE2E.ProtocolMessage_MESSAGE_EDIT:
-			return bridgev2.RemoteEventEdit
-		}
+	case "reaction remove":
+		return bridgev2.RemoteEventReactionRemove
+	case "edit":
+		return bridgev2.RemoteEventEdit
+	case "revoke":
+		return bridgev2.RemoteEventMessageRemove
+	case "ignore":
+		return bridgev2.RemoteEventUnknown
+	default:
+		return bridgev2.RemoteEventMessageUpsert
 	}
-	return bridgev2.RemoteEventMessageUpsert
 }
 
 func (evt *WAMessageEvent) HandleExisting(ctx context.Context, portal *bridgev2.Portal, intent bridgev2.MatrixAPI, existing []*database.Message) (bridgev2.UpsertResult, error) {

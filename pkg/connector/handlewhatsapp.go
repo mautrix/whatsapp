@@ -225,6 +225,10 @@ func (wa *WhatsAppClient) handleWAMessage(evt *events.Message) {
 	if evt.Info.Chat.Server == types.HiddenUserServer || evt.Info.Sender.Server == types.HiddenUserServer {
 		return
 	}
+	parsedMessageType := getMessageType(evt.Message)
+	if parsedMessageType == "ignore" {
+		return
+	}
 	wa.Main.Bridge.QueueRemoteEvent(wa.UserLogin, &WAMessageEvent{
 		MessageInfoWrapper: &MessageInfoWrapper{
 			Info: evt.Info,
@@ -232,6 +236,8 @@ func (wa *WhatsAppClient) handleWAMessage(evt *events.Message) {
 		},
 		Message:  evt.Message,
 		MsgEvent: evt,
+
+		parsedMessageType: parsedMessageType,
 	})
 }
 
