@@ -2,6 +2,7 @@ package connector
 
 import (
 	"go.mau.fi/util/jsontime"
+	"go.mau.fi/whatsmeow/types"
 	"maunium.net/go/mautrix/bridgev2/database"
 )
 
@@ -26,12 +27,24 @@ func (wa *WhatsAppConnector) GetDBMetaTypes() database.MetaTypes {
 }
 
 type UserLoginMetadata struct {
-	WADeviceID uint16 `json:"wa_device_id"`
-	//TODO: Add phone last ping/seen
+	WADeviceID      uint16        `json:"wa_device_id"`
+	PhoneLastSeen   jsontime.Unix `json:"phone_last_seen"`
+	PhoneLastPinged jsontime.Unix `json:"phone_last_pinged"`
+	Timezone        string        `json:"timezone"`
 }
 
+type MessageErrorType string
+
+const (
+	MsgNoError             MessageErrorType = ""
+	MsgErrDecryptionFailed MessageErrorType = "decryption_failed"
+	MsgErrMediaNotFound    MessageErrorType = "media_not_found"
+)
+
 type MessageMetadata struct {
-	SenderDeviceID uint16 `json:"sender_device_id,omitempty"`
+	SenderDeviceID   uint16           `json:"sender_device_id,omitempty"`
+	Error            MessageErrorType `json:"error,omitempty"`
+	BroadcastListJID *types.JID       `json:"broadcast_list_jid,omitempty"`
 }
 
 type ReactionMetadata struct {

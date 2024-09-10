@@ -17,33 +17,33 @@ import (
 )
 
 func (wa *WhatsAppConnector) LoadUserLogin(_ context.Context, login *bridgev2.UserLogin) error {
+	w := &WhatsAppClient{
+		Main:      wa,
+		UserLogin: login,
+	}
+	login.Client = w
+
 	loginMetadata := login.Metadata.(*UserLoginMetadata)
+	if loginMetadata.WADeviceID == 0 {
+		return nil
+	}
 
-	jid := waid.ParseUserLoginID(login.ID, loginMetadata.WADeviceID)
-
-	device, err := wa.DeviceStore.GetDevice(jid)
+	var err error
+	w.JID = waid.ParseUserLoginID(login.ID, loginMetadata.WADeviceID)
+	w.Device, err = wa.DeviceStore.GetDevice(w.JID)
 	if err != nil {
 		return err
 	}
 
-	w := &WhatsAppClient{
-		Main:      wa,
-		UserLogin: login,
-		Device:    device,
-		JID:       jid,
-	}
-
-	if device != nil {
+	if w.Device != nil {
 		log := w.UserLogin.Log.With().Str("component", "whatsmeow").Logger()
 		w.Client = whatsmeow.NewClient(w.Device, waLog.Zerolog(log))
 		w.Client.AddEventHandler(w.handleWAEvent)
 		w.Client.AutomaticMessageRerequestFromPhone = true
 		w.Client.SetForceActiveDeliveryReceipts(wa.Config.ForceActiveDeliveryReceipts)
 	} else {
-		w.UserLogin.Log.Debug().Stringer("jid", jid).Msg("No device found for user in whatsmeow store")
+		w.UserLogin.Log.Warn().Stringer("jid", w.JID).Msg("No device found for user in whatsmeow store")
 	}
-
-	login.Client = w
 
 	return nil
 }

@@ -130,6 +130,8 @@ SELECT
 --  json_object
     (
         'sender_device_id', CAST(nullif(split_part(replace(sender, '@s.whatsapp.net', ''), ':', 2), '') AS INTEGER)
+        'broadcast_list_jid', broadcast_list_jid,
+        'error', CAST(error AS TEXT),
     ) -- metadata
 FROM message_old;
 
