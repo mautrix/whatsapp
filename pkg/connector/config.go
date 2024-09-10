@@ -79,8 +79,8 @@ func upgradeConfig(helper up.Helper) {
 	helper.Copy(up.Str, "os_name")
 	helper.Copy(up.Str, "browser_name")
 
-	helper.Copy(up.Str, "proxy")
-	helper.Copy(up.Str, "get_proxy_url")
+	helper.Copy(up.Str|up.Null, "proxy")
+	helper.Copy(up.Str|up.Null, "get_proxy_url")
 	helper.Copy(up.Bool, "proxy_only_login")
 
 	helper.Copy(up.Str, "displayname_template")
@@ -95,9 +95,9 @@ func upgradeConfig(helper up.Helper) {
 	helper.Copy(up.Bool, "url_previews")
 
 	helper.Copy(up.Bool, "history_sync", "request_full_sync")
-	helper.Copy(up.Int, "history_sync", "full_sync_config", "days_limit")
-	helper.Copy(up.Int, "history_sync", "full_sync_config", "size_mb_limit")
-	helper.Copy(up.Int, "history_sync", "full_sync_config", "storage_quota_mb")
+	helper.Copy(up.Int|up.Null, "history_sync", "full_sync_config", "days_limit")
+	helper.Copy(up.Int|up.Null, "history_sync", "full_sync_config", "size_mb_limit")
+	helper.Copy(up.Int|up.Null, "history_sync", "full_sync_config", "storage_quota_mb")
 	helper.Copy(up.Bool, "history_sync", "media_requests", "auto_request_media")
 	helper.Copy(up.Str, "history_sync", "media_requests", "request_method")
 	helper.Copy(up.Int, "history_sync", "media_requests", "request_local_time")

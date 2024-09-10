@@ -27,6 +27,7 @@ var (
 	_ bridgev2.RemoteEventThatMayCreatePortal = (*WAMessageEvent)(nil)
 	_ bridgev2.RemoteReaction                 = (*WAMessageEvent)(nil)
 	_ bridgev2.RemoteReactionRemove           = (*WAMessageEvent)(nil)
+	_ bridgev2.RemoteReactionWithMeta         = (*WAMessageEvent)(nil)
 	_ bridgev2.RemoteEdit                     = (*WAMessageEvent)(nil)
 	_ bridgev2.RemoteMessageRemove            = (*WAMessageEvent)(nil)
 )
@@ -75,6 +76,12 @@ func (evt *WAMessageEvent) GetTargetMessage() networkid.MessageID {
 
 func (evt *WAMessageEvent) GetReactionEmoji() (string, networkid.EmojiID) {
 	return evt.Message.Message.GetReactionMessage().GetText(), ""
+}
+
+func (evt *WAMessageEvent) GetReactionDBMetadata() any {
+	return &ReactionMetadata{
+		SenderDeviceID: evt.Info.Sender.Device,
+	}
 }
 
 func (evt *WAMessageEvent) GetRemovedEmojiID() networkid.EmojiID {
@@ -129,5 +136,11 @@ func (evt *WAMessageEvent) GetTransactionID() networkid.TransactionID {
 }
 
 func (evt *WAMessageEvent) ConvertMessage(ctx context.Context, portal *bridgev2.Portal, intent bridgev2.MatrixAPI) (*bridgev2.ConvertedMessage, error) {
-	return evt.wa.Main.MsgConv.ToMatrix(ctx, portal, evt.wa.Client, intent, evt.Message.Message), nil
+	converted := evt.wa.Main.MsgConv.ToMatrix(ctx, portal, evt.wa.Client, intent, evt.Message.Message)
+	for _, part := range converted.Parts {
+		part.DBMetadata = &MessageMetadata{
+			SenderDeviceID: evt.Info.Sender.Device,
+		}
+	}
+	return converted, nil
 }

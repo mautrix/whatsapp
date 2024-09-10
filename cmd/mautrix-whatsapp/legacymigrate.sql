@@ -20,7 +20,8 @@ SELECT
         'phone_last_seen', phone_last_seen,
         'phone_last_pinged', phone_last_pinged,
         'timezone', timezone
-    ) -- metadata
+    ), -- metadata
+    '{}' -- remote_profile
 FROM user_old
 WHERE username<>'' AND device<>0;
 
@@ -50,6 +51,9 @@ SELECT
         -- TODO name quality
     ) -- metadata
 FROM puppet_old;
+
+INSERT INTO ghost (bridge_id, id, name, avatar_id, avatar_hash, avatar_mxc, name_set, avatar_set, contact_info_set, is_bot, identifiers, metadata)
+VALUES ('', '', '', '', '', '', false, false, false, false, '[]', '{}');
 
 INSERT INTO portal (
     bridge_id, id, receiver, mxid, parent_id, parent_receiver, relay_bridge_id, relay_login_id, other_user_id,
@@ -98,21 +102,35 @@ SELECT
     last_read_ts * 1000000000 -- last_read TODO check multiplier
 FROM user_portal_old;
 
+ALTER TABLE message_old ADD COLUMN combined_id TEXT;
+UPDATE message_old SET combined_id = chat_jid || ':' || (
+    CASE WHEN sender LIKE '%:%@s.whatsapp.net'
+        THEN (split_part(replace(sender, '@s.whatsapp.net', ''), ':', 1) || '@s.whatsapp.net')
+        ELSE sender
+    END
+) || ':' || jid;
+
 INSERT INTO message (
     bridge_id, id, part_id, mxid, room_id, room_receiver, sender_id, sender_mxid, timestamp, edit_count, metadata
 )
 SELECT
     '', -- bridge_id
-    jid, -- id FIXME requires prefix
+    combined_id, -- id
     '', -- part_id
     mxid,
     chat_jid, -- room_id
     CASE WHEN chat_receiver LIKE '%@s.whatsapp.net' THEN chat_receiver ELSE '' END, -- room_receiver
-    sender, -- sender_id
+    CASE WHEN sender=chat_jid THEN '' ELSE split_part(replace(sender, '@s.whatsapp.net', ''), ':', 1) END, -- sender_id
     sender_mxid, -- sender_mxid
     timestamp * 1000000000, -- timestamp TODO check multiplier
     0, -- edit_count
-    '{}' -- metadata
+    -- only: postgres
+    jsonb_build_object
+    -- only: sqlite (line commented)
+--  json_object
+    (
+        'sender_device_id', CAST(nullif(split_part(replace(sender, '@s.whatsapp.net', ''), ':', 2), '') AS INTEGER)
+    ) -- metadata
 FROM message_old;
 
 INSERT INTO reaction (
@@ -120,17 +138,27 @@ INSERT INTO reaction (
 )
 SELECT
     '', -- bridge_id
-    target_jid, -- message_id FIXME requires prefix
+    message_old.combined_id, -- message_id
     '', -- message_part_id
-    sender, -- sender_id
+    replace(reaction_old.sender, '@s.whatsapp.net', ''), -- sender_id
     '', -- emoji_id
-    chat_jid, -- room_id
-    CASE WHEN chat_receiver LIKE '%@s.whatsapp.net' THEN chat_receiver ELSE '' END, -- room_receiver
-    mxid,
+    reaction_old.chat_jid, -- room_id
+    CASE WHEN reaction_old.chat_receiver LIKE '%@s.whatsapp.net' THEN reaction_old.chat_receiver ELSE '' END, -- room_receiver
+    reaction_old.mxid,
     0, -- timestamp
     '', -- emoji
-    '{}' -- metadata
-FROM reaction_old;
+    -- only: postgres
+    jsonb_build_object
+    -- only: sqlite (line commented)
+--  json_object
+    (
+        'sender_device_id', CAST(nullif(split_part(replace(reaction_old.sender, '@s.whatsapp.net', ''), ':', 2), '') AS INTEGER)
+    ) -- metadata
+FROM reaction_old
+LEFT JOIN message_old
+    ON reaction_old.chat_jid = message_old.chat_jid
+    AND reaction_old.chat_receiver = message_old.chat_receiver
+    AND reaction_old.target_jid = message_old.jid;
 
 INSERT INTO disappearing_message (bridge_id, mx_room, mxid, type, timer, disappear_at)
 SELECT
@@ -152,7 +180,7 @@ SELECT
     CASE WHEN portal_receiver LIKE '%@s.whatsapp.net' THEN portal_receiver ELSE '' END, -- portal_receiver
     (SELECT id FROM user_login WHERE user_login.user_mxid=backfill_queue_old.user_mxid), -- user_login_id
     COUNT(*), -- batch_count
-    COUNT(*) == COUNT(completed_at), -- is_done
+    COUNT(*) = COUNT(completed_at), -- is_done
     '', -- cursor
     '', -- oldest_message_id
     -- only: postgres
@@ -165,14 +193,81 @@ FROM backfill_queue_old
 WHERE type IN (0, 200)
 GROUP BY user_mxid, portal_jid, portal_receiver;
 
+INSERT INTO whatsapp_poll_option_id (bridge_id, msg_mxid, opt_id, opt_hash)
+SELECT '', msg_mxid, opt_id, opt_hash
+FROM poll_option_id_old;
+
+INSERT INTO whatsapp_history_sync_conversation (
+    bridge_id, user_login_id, chat_jid, last_message_timestamp, archived, pinned, mute_end_time,
+    end_of_history_transfer_type, ephemeral_expiration, ephemeral_setting_timestamp, marked_as_unread, unread_count
+)
+SELECT
+    '',
+    user_login.id,
+    portal_jid,
+    -- only: postgres
+    CAST(EXTRACT(EPOCH FROM last_message_timestamp) AS BIGINT),
+    -- only: sqlite (line commented)
+--  unixepoch(last_message_timestamp),
+    archived,
+    CASE WHEN pinned > 0 THEN true ELSE false END,
+    -- only: postgres
+    CAST(EXTRACT(EPOCH FROM mute_end_time) AS BIGINT),
+    -- only: sqlite (line commented)
+--  unixepoch(mute_end_time),
+    end_of_history_transfer_type,
+    ephemeral_expiration,
+    0,
+    marked_as_unread,
+    unread_count
+FROM history_sync_conversation_old
+LEFT JOIN user_login ON user_login.user_mxid = history_sync_conversation_old.user_mxid
+WHERE user_login.id IS NOT NULL;
+
+INSERT INTO whatsapp_history_sync_message (
+    bridge_id, user_login_id, chat_jid, message_id, timestamp, data, inserted_time
+)
+SELECT
+    '',
+    user_login.id,
+    conversation_id,
+    message_id,
+    -- only: postgres
+    CAST(EXTRACT(EPOCH FROM timestamp) AS BIGINT),
+    -- only: sqlite (line commented)
+--  unixepoch(timestamp),
+    data,
+    -- only: postgres
+    CAST(EXTRACT(EPOCH FROM inserted_time) AS BIGINT)
+    -- only: sqlite (line commented)
+--  unixepoch(inserted_time)
+FROM history_sync_message_old
+LEFT JOIN user_login ON user_login.user_mxid = history_sync_message_old.user_mxid
+WHERE user_login.id IS NOT NULL;
+
+INSERT INTO whatsapp_media_backfill_request (
+    bridge_id, user_login_id, portal_id, portal_receiver, event_id, media_key, status, error
+)
+SELECT
+    '',
+    user_login.id,
+    portal_jid,
+    CASE WHEN portal_receiver LIKE '%@s.whatsapp.net' THEN portal_receiver ELSE '' END,
+    event_id,
+    media_key,
+    status,
+    error
+FROM media_backfill_requests_old
+LEFT JOIN user_login ON user_login.user_mxid = media_backfill_requests_old.user_mxid
+WHERE user_login.id IS NOT NULL;
+
 DROP TABLE backfill_queue_old;
 DROP TABLE backfill_state_old;
 DROP TABLE disappearing_message_old;
--- TODO migrate these tables
--- DROP TABLE history_sync_message_old;
--- DROP TABLE history_sync_conversation_old;
--- DROP TABLE media_backfill_requests_old;
--- DROP TABLE poll_option_id_old;
+DROP TABLE history_sync_message_old;
+DROP TABLE history_sync_conversation_old;
+DROP TABLE media_backfill_requests_old;
+DROP TABLE poll_option_id_old;
 DROP TABLE user_portal_old;
 DROP TABLE reaction_old;
 DROP TABLE message_old;

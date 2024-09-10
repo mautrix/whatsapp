@@ -1,9 +1,11 @@
 package main
 
 import (
+	"maunium.net/go/mautrix/bridgev2/bridgeconfig"
 	"maunium.net/go/mautrix/bridgev2/matrix/mxmain"
 
 	"maunium.net/go/mautrix-whatsapp/pkg/connector"
+	"maunium.net/go/mautrix-whatsapp/pkg/connector/wadb/upgrades"
 )
 
 // Information to find out exactly which commit the bridge was built from.
@@ -24,12 +26,16 @@ var m = mxmain.BridgeMain{
 }
 
 func main() {
+	bridgeconfig.HackyMigrateLegacyNetworkConfig = migrateLegacyConfig
 	m.PostInit = func() {
 		m.CheckLegacyDB(
 			57,
 			"v0.8.6",
 			"v0.11.0",
-			m.LegacyMigrateSimple(legacyMigrateRenameTables, legacyMigrateCopyData, 16),
+			m.LegacyMigrateWithAnotherUpgrader(
+				legacyMigrateRenameTables, legacyMigrateCopyData, 17,
+				upgrades.Table, "whatsapp_version", 1,
+			),
 			true,
 		)
 	}

@@ -12,6 +12,7 @@ import (
 	"google.golang.org/protobuf/proto"
 	"maunium.net/go/mautrix/bridgev2"
 
+	"maunium.net/go/mautrix-whatsapp/pkg/connector/wadb"
 	"maunium.net/go/mautrix-whatsapp/pkg/msgconv"
 	"maunium.net/go/mautrix-whatsapp/pkg/waid"
 )
@@ -21,6 +22,7 @@ type WhatsAppConnector struct {
 	Config      Config
 	DeviceStore *sqlstore.Container
 	MsgConv     *msgconv.MessageConverter
+	DB          *wadb.Database
 }
 
 var _ bridgev2.NetworkConnector = (*WhatsAppConnector)(nil)
@@ -44,6 +46,7 @@ func (wa *WhatsAppConnector) GetName() bridgev2.BridgeName {
 func (wa *WhatsAppConnector) Init(bridge *bridgev2.Bridge) {
 	wa.Bridge = bridge
 	wa.MsgConv = msgconv.New(bridge)
+	wa.DB = wadb.New(bridge.DB.Database, bridge.Log.With().Str("db_section", "whatsapp").Logger())
 
 	wa.DeviceStore = sqlstore.NewWithDB(
 		bridge.DB.RawDB,
@@ -66,10 +69,14 @@ func (wa *WhatsAppConnector) Init(bridge *bridgev2.Bridge) {
 	}
 }
 
-func (wa *WhatsAppConnector) Start(_ context.Context) error {
+func (wa *WhatsAppConnector) Start(ctx context.Context) error {
 	err := wa.DeviceStore.Upgrade()
 	if err != nil {
 		return bridgev2.DBUpgradeError{Err: err, Section: "whatsmeow"}
+	}
+	err = wa.DB.Upgrade(ctx)
+	if err != nil {
+		return bridgev2.DBUpgradeError{Err: err, Section: "whatsapp"}
 	}
 
 	ver, err := whatsmeow.GetLatestVersion(nil)

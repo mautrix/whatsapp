@@ -10,8 +10,12 @@ func (wa *WhatsAppConnector) GetDBMetaTypes() database.MetaTypes {
 		Ghost: func() any {
 			return &GhostMetadata{}
 		},
-		Message:  nil,
-		Reaction: nil,
+		Message: func() any {
+			return &MessageMetadata{}
+		},
+		Reaction: func() any {
+			return &ReactionMetadata{}
+		},
 		Portal: func() any {
 			return &PortalMetadata{}
 		},
@@ -24,6 +28,14 @@ func (wa *WhatsAppConnector) GetDBMetaTypes() database.MetaTypes {
 type UserLoginMetadata struct {
 	WADeviceID uint16 `json:"wa_device_id"`
 	//TODO: Add phone last ping/seen
+}
+
+type MessageMetadata struct {
+	SenderDeviceID uint16 `json:"sender_device_id,omitempty"`
+}
+
+type ReactionMetadata struct {
+	SenderDeviceID uint16 `json:"sender_device_id,omitempty"`
 }
 
 type PortalMetadata struct {

@@ -47,8 +47,11 @@ func (wa *WhatsAppClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2
 	return &bridgev2.MatrixMessageResponse{
 		DB: &database.Message{
 			ID:        wrappedMsgID,
-			SenderID:  networkid.UserID(wa.UserLogin.ID),
+			SenderID:  waid.MakeUserID(wa.JID),
 			Timestamp: resp.Timestamp,
+			Metadata: &MessageMetadata{
+				SenderDeviceID: wa.JID.Device,
+			},
 		},
 		RemovePending: networkid.TransactionID(wrappedMsgID),
 	}, nil
@@ -56,7 +59,7 @@ func (wa *WhatsAppClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2
 
 func (wa *WhatsAppClient) PreHandleMatrixReaction(_ context.Context, msg *bridgev2.MatrixReaction) (bridgev2.MatrixReactionPreResponse, error) {
 	return bridgev2.MatrixReactionPreResponse{
-		SenderID:     networkid.UserID(wa.UserLogin.ID),
+		SenderID:     waid.MakeUserID(wa.JID),
 		Emoji:        variationselector.Remove(msg.Content.RelatesTo.Key),
 		MaxReactions: 1,
 	}, nil
@@ -82,7 +85,11 @@ func (wa *WhatsAppClient) HandleMatrixReaction(ctx context.Context, msg *bridgev
 
 	resp, err := wa.Client.SendMessage(ctx, portalJID, reactionMsg)
 	zerolog.Ctx(ctx).Trace().Any("response", resp).Msg("WhatsApp reaction response")
-	return nil, err
+	return &database.Reaction{
+		Metadata: &ReactionMetadata{
+			SenderDeviceID: wa.JID.Device,
+		},
+	}, err
 }
 
 func (wa *WhatsAppClient) HandleMatrixReactionRemove(ctx context.Context, msg *bridgev2.MatrixReactionRemove) error {
