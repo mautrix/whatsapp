@@ -63,7 +63,7 @@ INSERT INTO portal (
 SELECT
     '', -- bridge_id
     jid, -- id
-    CASE WHEN receiver LIKE '%@s.whatsapp.net' THEN receiver ELSE '' END, -- receiver
+    CASE WHEN receiver LIKE '%@s.whatsapp.net' THEN replace(receiver, '@s.whatsapp.net', '') ELSE '' END, -- receiver
     mxid,
     parent_group, -- parent_id
     '', -- parent_receiver
@@ -96,7 +96,7 @@ SELECT
     user_mxid,
     (SELECT id FROM user_login WHERE user_login.user_mxid=user_portal_old.user_mxid), -- login_id
     portal_jid, -- portal_id
-    CASE WHEN portal_receiver LIKE '%@s.whatsapp.net' THEN portal_receiver ELSE '' END, -- portal_receiver
+    CASE WHEN portal_receiver LIKE '%@s.whatsapp.net' THEN replace(portal_receiver, '@s.whatsapp.net', '') ELSE '' END, -- portal_receiver
     in_space,
     false, -- preferred
     last_read_ts * 1000000000 -- last_read TODO check multiplier
@@ -119,7 +119,7 @@ SELECT
     '', -- part_id
     mxid,
     chat_jid, -- room_id
-    CASE WHEN chat_receiver LIKE '%@s.whatsapp.net' THEN chat_receiver ELSE '' END, -- room_receiver
+    CASE WHEN chat_receiver LIKE '%@s.whatsapp.net' THEN replace(chat_receiver, '@s.whatsapp.net', '') ELSE '' END, -- room_receiver
     CASE WHEN sender=chat_jid THEN '' ELSE split_part(replace(sender, '@s.whatsapp.net', ''), ':', 1) END, -- sender_id
     sender_mxid, -- sender_mxid
     timestamp * 1000000000, -- timestamp TODO check multiplier
@@ -145,7 +145,7 @@ SELECT
     replace(reaction_old.sender, '@s.whatsapp.net', ''), -- sender_id
     '', -- emoji_id
     reaction_old.chat_jid, -- room_id
-    CASE WHEN reaction_old.chat_receiver LIKE '%@s.whatsapp.net' THEN reaction_old.chat_receiver ELSE '' END, -- room_receiver
+    CASE WHEN reaction_old.chat_receiver LIKE '%@s.whatsapp.net' THEN replace(reaction_old.chat_receiver, '@s.whatsapp.net', '') ELSE '' END, -- room_receiver
     reaction_old.mxid,
     0, -- timestamp
     '', -- emoji
@@ -179,7 +179,7 @@ INSERT INTO backfill_task (
 SELECT
     '', -- bridge_id
     portal_jid, -- portal_id
-    CASE WHEN portal_receiver LIKE '%@s.whatsapp.net' THEN portal_receiver ELSE '' END, -- portal_receiver
+    CASE WHEN portal_receiver LIKE '%@s.whatsapp.net' THEN replace(portal_receiver, '@s.whatsapp.net', '') ELSE '' END, -- portal_receiver
     (SELECT id FROM user_login WHERE user_login.user_mxid=backfill_queue_old.user_mxid), -- user_login_id
     COUNT(*), -- batch_count
     COUNT(*) = COUNT(completed_at), -- is_done
@@ -254,7 +254,7 @@ SELECT
     '',
     user_login.id,
     portal_jid,
-    CASE WHEN portal_receiver LIKE '%@s.whatsapp.net' THEN portal_receiver ELSE '' END,
+    CASE WHEN portal_receiver LIKE '%@s.whatsapp.net' THEN replace(portal_receiver, '@s.whatsapp.net', '') ELSE '' END,
     event_id,
     media_key,
     status,
