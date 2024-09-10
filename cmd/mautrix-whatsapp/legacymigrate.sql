@@ -8,7 +8,7 @@ INSERT INTO user_login (bridge_id, user_mxid, id, remote_name, space_room, metad
 SELECT
     '', -- bridge_id
     mxid, -- user_mxid
-    username || '@s.whatsapp.net', -- id
+    username, -- id
     '+' || username, -- remote_name
     space_room,
     -- only: postgres

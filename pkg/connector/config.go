@@ -107,6 +107,8 @@ func upgradeConfig(helper up.Helper) {
 type DisplaynameParams struct {
 	types.ContactInfo
 	Phone string
+	// Deprecated form of Phone
+	JID string
 }
 
 func (c *Config) FormatDisplayname(jid types.JID, contact types.ContactInfo) string {
@@ -114,6 +116,7 @@ func (c *Config) FormatDisplayname(jid types.JID, contact types.ContactInfo) str
 	err := c.displaynameTemplate.Execute(&nameBuf, &DisplaynameParams{
 		ContactInfo: contact,
 		Phone:       "+" + jid.User,
+		JID:         "+" + jid.User,
 	})
 	if err != nil {
 		panic(err)

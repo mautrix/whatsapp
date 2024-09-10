@@ -14,7 +14,6 @@ import (
 
 	"maunium.net/go/mautrix-whatsapp/pkg/connector/wadb"
 	"maunium.net/go/mautrix-whatsapp/pkg/msgconv"
-	"maunium.net/go/mautrix-whatsapp/pkg/waid"
 )
 
 type WhatsAppConnector struct {
@@ -89,36 +88,5 @@ func (wa *WhatsAppConnector) Start(ctx context.Context) error {
 			Msg("Got latest WhatsApp web version number")
 		store.SetWAVersion(*ver)
 	}
-	return nil
-}
-
-func (wa *WhatsAppConnector) LoadUserLogin(_ context.Context, login *bridgev2.UserLogin) error {
-	loginMetadata := login.Metadata.(*UserLoginMetadata)
-
-	jid := waid.ParseUserLoginID(login.ID, loginMetadata.WADeviceID)
-
-	device, err := wa.DeviceStore.GetDevice(jid)
-	if err != nil {
-		return err
-	}
-
-	w := &WhatsAppClient{
-		Main:      wa,
-		UserLogin: login,
-		Device:    device,
-		JID:       jid,
-	}
-
-	log := w.UserLogin.Log.With().Str("component", "whatsmeow").Logger()
-
-	if device != nil {
-		w.Client = whatsmeow.NewClient(w.Device, waLog.Zerolog(log))
-		w.Client.AddEventHandler(w.handleWAEvent)
-		w.Client.AutomaticMessageRerequestFromPhone = true
-		w.Client.SetForceActiveDeliveryReceipts(wa.Config.ForceActiveDeliveryReceipts)
-	}
-
-	login.Client = w
-
 	return nil
 }

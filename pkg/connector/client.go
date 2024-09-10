@@ -2,16 +2,13 @@ package connector
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"net/http"
-	"net/url"
 
 	"github.com/rs/zerolog"
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/store"
 	"go.mau.fi/whatsmeow/types"
-	"maunium.net/go/mautrix"
+	waLog "go.mau.fi/whatsmeow/util/log"
 	"maunium.net/go/mautrix/bridge/status"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
@@ -19,57 +16,35 @@ import (
 	"maunium.net/go/mautrix-whatsapp/pkg/waid"
 )
 
-const (
-	WANotLoggedIn status.BridgeStateErrorCode = "wa-not-logged-in"
-)
+func (wa *WhatsAppConnector) LoadUserLogin(_ context.Context, login *bridgev2.UserLogin) error {
+	loginMetadata := login.Metadata.(*UserLoginMetadata)
 
-type respGetProxy struct {
-	ProxyURL string `json:"proxy_url"`
-}
+	jid := waid.ParseUserLoginID(login.ID, loginMetadata.WADeviceID)
 
-func (wa *WhatsAppConnector) getProxy(reason string) (string, error) {
-	if wa.Config.GetProxyURL == "" {
-		return wa.Config.Proxy, nil
-	}
-	parsed, err := url.Parse(wa.Config.GetProxyURL)
+	device, err := wa.DeviceStore.GetDevice(jid)
 	if err != nil {
-		return "", fmt.Errorf("failed to parse address: %w", err)
+		return err
 	}
-	q := parsed.Query()
-	q.Set("reason", reason)
-	parsed.RawQuery = q.Encode()
-	req, err := http.NewRequest(http.MethodGet, parsed.String(), nil)
-	if err != nil {
-		return "", fmt.Errorf("failed to prepare request: %w", err)
-	}
-	req.Header.Set("User-Agent", mautrix.DefaultUserAgent)
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("failed to send request: %w", err)
-	} else if resp.StatusCode >= 300 || resp.StatusCode < 200 {
-		return "", fmt.Errorf("unexpected status code %d", resp.StatusCode)
-	}
-	var respData respGetProxy
-	err = json.NewDecoder(resp.Body).Decode(&respData)
-	if err != nil {
-		return "", fmt.Errorf("failed to decode response: %w", err)
-	}
-	return respData.ProxyURL, nil
-}
 
-func (wa *WhatsAppConnector) updateProxy(client *whatsmeow.Client, isLogin bool) error {
-	if wa.Config.ProxyOnlyLogin && !isLogin {
-		return nil
+	w := &WhatsAppClient{
+		Main:      wa,
+		UserLogin: login,
+		Device:    device,
+		JID:       jid,
 	}
-	reason := "connect"
-	if isLogin {
-		reason = "login"
+
+	if device != nil {
+		log := w.UserLogin.Log.With().Str("component", "whatsmeow").Logger()
+		w.Client = whatsmeow.NewClient(w.Device, waLog.Zerolog(log))
+		w.Client.AddEventHandler(w.handleWAEvent)
+		w.Client.AutomaticMessageRerequestFromPhone = true
+		w.Client.SetForceActiveDeliveryReceipts(wa.Config.ForceActiveDeliveryReceipts)
+	} else {
+		w.UserLogin.Log.Debug().Stringer("jid", jid).Msg("No device found for user in whatsmeow store")
 	}
-	if proxy, err := wa.getProxy(reason); err != nil {
-		return fmt.Errorf("failed to get proxy address: %w", err)
-	} else if err = client.SetProxyAddress(proxy); err != nil {
-		return fmt.Errorf("failed to set proxy address: %w", err)
-	}
+
+	login.Client = w
+
 	return nil
 }
 
@@ -81,16 +56,7 @@ type WhatsAppClient struct {
 	JID       types.JID
 }
 
-var (
-	_ bridgev2.NetworkAPI = (*WhatsAppClient)(nil)
-	//_ bridgev2.TypingHandlingNetworkAPI      = (*WhatsAppClient)(nil)
-	//_ bridgev2.IdentifierResolvingNetworkAPI = (*WhatsAppClient)(nil)
-	//_ bridgev2.GroupCreatingNetworkAPI       = (*WhatsAppClient)(nil)
-	//_ bridgev2.ContactListingNetworkAPI      = (*WhatsAppClient)(nil)
-	//_ bridgev2.RoomNameHandlingNetworkAPI    = (*WhatsAppClient)(nil)
-	//_ bridgev2.RoomAvatarHandlingNetworkAPI  = (*WhatsAppClient)(nil)
-	//_ bridgev2.RoomTopicHandlingNetworkAPI   = (*WhatsAppClient)(nil)
-)
+var _ bridgev2.NetworkAPI = (*WhatsAppClient)(nil)
 
 var pushCfg = &bridgev2.PushConfig{
 	Web: &bridgev2.WebPushConfig{},
@@ -134,7 +100,9 @@ func (wa *WhatsAppClient) Connect(ctx context.Context) error {
 }
 
 func (wa *WhatsAppClient) Disconnect() {
-	wa.Client.Disconnect()
+	if wa.Client != nil {
+		wa.Client.Disconnect()
+	}
 }
 
 func (wa *WhatsAppClient) LogoutRemote(ctx context.Context) {

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"time"
 
+	"go.mau.fi/whatsmeow/appstate"
 	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
 	"maunium.net/go/mautrix/bridge/status"
@@ -15,6 +16,7 @@ import (
 )
 
 const (
+	WANotLoggedIn      status.BridgeStateErrorCode = "wa-not-logged-in"
 	WALoggedOut        status.BridgeStateErrorCode = "wa-logged-out"
 	WAMainDeviceGone   status.BridgeStateErrorCode = "wa-main-device-gone"
 	WAUnknownLogout    status.BridgeStateErrorCode = "wa-unknown-logout"
@@ -111,6 +113,42 @@ func (wa *WhatsAppClient) handleWAEvent(rawEvt any) {
 	case *events.Connected:
 		log.Debug().Msg("Connected to WhatsApp socket")
 		wa.UserLogin.BridgeState.Send(status.BridgeState{StateEvent: status.StateConnected})
+		if len(wa.Client.Store.PushName) > 0 {
+			go func() {
+				err := wa.Client.SendPresence(types.PresenceUnavailable)
+				if err != nil {
+					log.Warn().Err(err).Msg("Failed to send initial presence after connecting")
+				}
+			}()
+		}
+	case *events.AppStateSyncComplete:
+		if len(wa.Client.Store.PushName) > 0 && evt.Name == appstate.WAPatchCriticalBlock {
+			err := wa.Client.SendPresence(types.PresenceUnavailable)
+			if err != nil {
+				log.Warn().Err(err).Msg("Failed to send presence after app state sync")
+			}
+		} else if evt.Name == appstate.WAPatchCriticalUnblockLow {
+			go func() {
+				// TODO resync contacts
+				//err := user.ResyncContacts(false)
+				//if err != nil {
+				//	user.zlog.Err(err).Msg("Failed to resync contacts after app state sync")
+				//}
+			}()
+		}
+	case *events.PushNameSetting:
+		// Send presence available when connecting and when the pushname is changed.
+		// This makes sure that outgoing messages always have the right pushname.
+		err := wa.Client.SendPresence(types.PresenceUnavailable)
+		if err != nil {
+			log.Warn().Err(err).Msg("Failed to send presence after push name update")
+		}
+		_, _, err = wa.Client.Store.Contacts.PutPushName(wa.JID.ToNonAD(), evt.Action.GetName())
+		if err != nil {
+			log.Err(err).Msg("Failed to update push name in store")
+		}
+		// TODO update own ghost info
+		//go user.syncPuppet(user.JID.ToNonAD(), "push name setting")
 	case *events.Disconnected:
 		// Don't send the normal transient disconnect state if we're already in a different transient disconnect state.
 		// TODO remove this if/when the phone offline state is moved to a sub-state of CONNECTED

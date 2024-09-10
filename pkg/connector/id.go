@@ -20,6 +20,10 @@ func (wa *WhatsAppClient) makeWAPortalKey(chatJID types.JID) (key networkid.Port
 }
 
 func (wa *WhatsAppClient) makeEventSender(id types.JID) bridgev2.EventSender {
+	if id.Server == types.NewsletterServer {
+		// Send as bot
+		return bridgev2.EventSender{}
+	}
 	return bridgev2.EventSender{
 		IsFromMe:    waid.MakeUserLoginID(id) == wa.UserLogin.ID,
 		Sender:      waid.MakeUserID(id),
