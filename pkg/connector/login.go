@@ -12,6 +12,7 @@ import (
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/types/events"
 	waLog "go.mau.fi/whatsmeow/util/log"
+	"maunium.net/go/mautrix/bridge/status"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
 
@@ -281,6 +282,10 @@ func (wl *WALogin) Wait(ctx context.Context) (*bridgev2.LoginStep, error) {
 	ul, err := wl.User.NewLogin(ctx, &database.UserLogin{
 		ID:         newLoginID,
 		RemoteName: "+" + wl.LoginSuccess.ID.User,
+		RemoteProfile: status.RemoteProfile{
+			Phone: "+" + wl.LoginSuccess.ID.User,
+			Name:  wl.LoginSuccess.BusinessName,
+		},
 		Metadata: &UserLoginMetadata{
 			WADeviceID: wl.LoginSuccess.ID.Device,
 		},

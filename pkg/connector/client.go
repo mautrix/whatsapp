@@ -100,19 +100,20 @@ func (wa *WhatsAppClient) Connect(ctx context.Context) error {
 }
 
 func (wa *WhatsAppClient) Disconnect() {
-	if wa.Client != nil {
-		wa.Client.Disconnect()
+	if cli := wa.Client; cli != nil {
+		cli.Disconnect()
+		wa.Client = nil
 	}
 }
 
 func (wa *WhatsAppClient) LogoutRemote(ctx context.Context) {
-	if wa.Client == nil {
-		return
+	if cli := wa.Client; cli != nil {
+		err := cli.Logout()
+		if err != nil {
+			zerolog.Ctx(ctx).Err(err).Msg("Failed to log out")
+		}
 	}
-	err := wa.Client.Logout()
-	if err != nil {
-		zerolog.Ctx(ctx).Err(err).Msg("Failed to log out")
-	}
+	wa.Disconnect()
 }
 
 func (wa *WhatsAppClient) IsLoggedIn() bool {

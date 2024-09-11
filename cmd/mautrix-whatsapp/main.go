@@ -1,6 +1,8 @@
 package main
 
 import (
+	"net/http"
+
 	"maunium.net/go/mautrix/bridgev2/bridgeconfig"
 	"maunium.net/go/mautrix/bridgev2/matrix/mxmain"
 
@@ -38,6 +40,16 @@ func main() {
 			),
 			true,
 		)
+	}
+	m.PostStart = func() {
+		if m.Matrix.Provisioning != nil {
+			m.Matrix.Provisioning.Router.HandleFunc("/v1/login", legacyProvLogin).Methods(http.MethodGet)
+			m.Matrix.Provisioning.Router.HandleFunc("/v1/logout", legacyProvLogout).Methods(http.MethodPost)
+			m.Matrix.Provisioning.Router.HandleFunc("/v1/contacts", legacyProvContacts).Methods(http.MethodPost)
+			m.Matrix.Provisioning.Router.HandleFunc("/v1/resolve_identifier/{number}", legacyProvResolveIdentifier).Methods(http.MethodGet)
+			m.Matrix.Provisioning.Router.HandleFunc("/v1/pm/{number}", legacyProvResolveIdentifier).Methods(http.MethodPost)
+			m.Matrix.Provisioning.GetAuthFromRequest = legacyProvAuth
+		}
 	}
 	m.InitVersion(Tag, Commit, BuildTime)
 	m.Run()
