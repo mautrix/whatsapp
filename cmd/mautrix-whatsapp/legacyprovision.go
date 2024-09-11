@@ -205,7 +205,8 @@ func legacyProvLogout(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	for _, login := range allLogins {
-		login.Logout(r.Context())
+		// Intentionally don't delete the user login, only logout remote
+		login.Client.(*connector.WhatsAppClient).LogoutRemote(r.Context())
 	}
 	exhttp.WriteJSONResponse(w, http.StatusOK, Response{true, "Logged out successfully"})
 }
