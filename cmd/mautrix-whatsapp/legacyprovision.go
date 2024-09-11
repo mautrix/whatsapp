@@ -12,6 +12,7 @@ import (
 	"go.mau.fi/util/exhttp"
 	"go.mau.fi/whatsmeow/types"
 	"maunium.net/go/mautrix"
+	"maunium.net/go/mautrix/bridge/status"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/matrix"
 	"maunium.net/go/mautrix/id"
@@ -189,8 +190,17 @@ func legacyProvLogin(w http.ResponseWriter, r *http.Request) {
 				"platform": step.CompleteParams.UserLogin.Client.(*connector.WhatsAppClient).Device.Platform,
 				"phone":    step.CompleteParams.UserLogin.RemoteProfile.Phone,
 			})
+			go handleLoginComplete(context.WithoutCancel(ctx), user, step.CompleteParams.UserLogin)
 		}
 		break
+	}
+}
+func handleLoginComplete(ctx context.Context, user *bridgev2.User, newLogin *bridgev2.UserLogin) {
+	allLogins := user.GetUserLogins()
+	for _, login := range allLogins {
+		if login.ID != newLogin.ID {
+			login.Delete(ctx, status.BridgeState{StateEvent: status.StateLoggedOut, Reason: "LOGIN_OVERRIDDEN"}, bridgev2.DeleteOpts{})
+		}
 	}
 }
 
