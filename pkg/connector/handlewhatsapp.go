@@ -35,6 +35,7 @@ const (
 func init() {
 	status.BridgeStateHumanErrors.Update(status.BridgeStateErrorMap{
 		WALoggedOut:        "You were logged out from another device. Relogin to continue using the bridge.",
+		WANotLoggedIn:      "You're not logged into WhatsApp. Relogin to continue using the bridge.",
 		WAMainDeviceGone:   "Your phone was logged out from WhatsApp. Relogin to continue using the bridge.",
 		WAUnknownLogout:    "You were logged out for an unknown reason. Relogin to continue using the bridge.",
 		WANotConnected:     "You're not connected to WhatsApp",
