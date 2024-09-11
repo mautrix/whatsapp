@@ -165,7 +165,7 @@ func legacyProvLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	} else {
 		_ = conn.WriteJSON(map[string]any{
-			"qr_code": step.DisplayAndWaitParams.Data,
+			"code":    step.DisplayAndWaitParams.Data,
 			"timeout": 60,
 		})
 	}
@@ -176,7 +176,7 @@ func legacyProvLogin(w http.ResponseWriter, r *http.Request) {
 			respondWebsocketWithError(conn, err, "Failed to wait for login")
 		} else if step.StepID == connector.LoginStepIDQR {
 			_ = conn.WriteJSON(map[string]any{
-				"qr_code": step.DisplayAndWaitParams.Data,
+				"code":    step.DisplayAndWaitParams.Data,
 				"timeout": 20,
 			})
 			continue
