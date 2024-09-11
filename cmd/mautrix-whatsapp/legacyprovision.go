@@ -254,7 +254,23 @@ func legacyProvResolveIdentifier(w http.ResponseWriter, r *http.Request) {
 		matrix.RespondWithError(w, err, "Internal error resolving identifier")
 		return
 	}
-	portal, _ := m.Bridge.GetExistingPortalByKey(r.Context(), resp.Chat.PortalKey)
+	var portal *bridgev2.Portal
+	if startChat {
+		portal, err = m.Bridge.GetPortalByKey(r.Context(), resp.Chat.PortalKey)
+		if err != nil {
+			hlog.FromRequest(r).Warn().Err(err).Stringer("portal_key", resp.Chat.PortalKey).Msg("Failed to get portal by key")
+			matrix.RespondWithError(w, err, "Internal error getting portal by key")
+			return
+		}
+		err = portal.CreateMatrixRoom(r.Context(), userLogin, nil)
+		if err != nil {
+			hlog.FromRequest(r).Warn().Err(err).Stringer("portal_key", resp.Chat.PortalKey).Msg("Failed to create matrix room for portal")
+			matrix.RespondWithError(w, err, "Internal error creating matrix room for portal")
+			return
+		}
+	} else {
+		portal, _ = m.Bridge.GetExistingPortalByKey(r.Context(), resp.Chat.PortalKey)
+	}
 	var roomID id.RoomID
 	if portal != nil {
 		roomID = portal.MXID
