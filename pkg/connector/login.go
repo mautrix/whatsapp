@@ -73,6 +73,9 @@ func (wa *WhatsAppConnector) CreateLogin(_ context.Context, user *bridgev2.User,
 			Str("action", "login").
 			Bool("phone_code", flowID == LoginFlowIDPhone).
 			Logger(),
+
+		WaitForQRs:    exsync.NewEvent(),
+		LoginComplete: exsync.NewEvent(),
 	}, nil
 }
 
@@ -87,8 +90,8 @@ type WALogin struct {
 	StartTime     time.Time
 	LoginError    error
 	LoginSuccess  *events.PairSuccess
-	WaitForQRs    exsync.Event
-	LoginComplete exsync.Event
+	WaitForQRs    *exsync.Event
+	LoginComplete *exsync.Event
 	PrevQRIndex   atomic.Int32
 
 	Closed         atomic.Bool
