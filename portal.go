@@ -2544,7 +2544,7 @@ func (portal *Portal) HandleMessageReaction(ctx context.Context, intent *appserv
 		})
 	}
 
-	targetJID := reaction.GetKey().GetId()
+	targetJID := reaction.GetKey().GetID()
 	log := zerolog.Ctx(ctx).With().
 		Str("reaction_target_id", targetJID).
 		Logger()

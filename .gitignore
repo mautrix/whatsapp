@@ -4,10 +4,10 @@
 !.pre-commit-config.yaml
 !example-config.yaml
 
-*.session
 *.json
 *.db
 *.log
+*.bak
 
 /mautrix-whatsapp
 /start

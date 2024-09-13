@@ -15,7 +15,11 @@ function fixperms {
 }
 
 if [[ ! -f /data/config.yaml ]]; then
-	cp /opt/mautrix-whatsapp/example-config.yaml /data/config.yaml
+	if [[ "$BRIDGEV2" == "1" ]]; then
+		/usr/bin/mautrix-whatsapp -c /data/config.yaml -e
+	else
+		cp /opt/mautrix-whatsapp/example-config.yaml /data/config.yaml
+	fi
 	echo "Didn't find a config file."
 	echo "Copied default config file to /data/config.yaml"
 	echo "Modify that config file to your liking."

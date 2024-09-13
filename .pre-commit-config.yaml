@@ -1,6 +1,6 @@
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v4.5.0
+    rev: v4.6.0
     hooks:
       - id: trailing-whitespace
         exclude_types: [markdown]
@@ -12,10 +12,26 @@ repos:
     rev: v1.0.0-rc.1
     hooks:
       - id: go-imports-repo
-        args: ["-w"]
+        args:
+          - "-local"
+          - "maunium.net/go/mautrix-whatsapp"
+          - "-w"
       - id: go-vet-repo-mod
+      # TODO switch to standard staticcheck after deleting old bridge
+      #- id: go-staticcheck-repo-mod
+
+  - repo: local
+    hooks:
+      - id: go-staticcheck-custom
+        name: go-staticcheck-custom
+        language: system
+        types: [go]
+        pass_filenames: false
+        entry: sh -c 'staticcheck $(go list ./cmd/... ./pkg/...)'
 
   - repo: https://github.com/beeper/pre-commit-go
     rev: v0.3.1
     hooks:
       - id: zerolog-ban-msgf
+      # TODO enable after deleting old bridge
+      #- id: zerolog-use-stringer
