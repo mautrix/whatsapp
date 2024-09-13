@@ -337,6 +337,7 @@ func (mc *MessageConverter) reuploadFileToWhatsApp(ctx context.Context, client *
 			mime = "image/webp"
 		}
 	case event.MsgImage:
+		mediaType = whatsmeow.MediaImage
 		switch mime {
 		case "image/jpeg", "image/png":
 			// allowed
@@ -398,7 +399,7 @@ func (mc *MessageConverter) reuploadFileToWhatsApp(ctx context.Context, client *
 			Str("file_name", fileName).
 			Str("mime_type", mime).
 			Bool("is_voice_clip", content.MSC3245Voice != nil).
-			Msg("Failed upload metadata")
+			Msg("Failed upload media")
 		return nil, "", fmt.Errorf("%w: %w", bridgev2.ErrMediaReuploadFailed, err)
 	}
 	return &uploaded, mime, nil
