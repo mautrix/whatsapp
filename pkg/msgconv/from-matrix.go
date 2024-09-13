@@ -64,7 +64,7 @@ func (mc *MessageConverter) ToWhatsApp(
 		if err != nil {
 			return nil, err
 		}
-		message = mc.constructMediaMessage(content, uploaded, contextInfo, mime)
+		message = mc.constructMediaMessage(ctx, content, portal, uploaded, contextInfo, mime)
 	case event.MsgLocation:
 		lat, long, err := parseGeoURI(content.GeoURI)
 		if err != nil {
@@ -82,8 +82,18 @@ func (mc *MessageConverter) ToWhatsApp(
 	return message, nil
 }
 
-func (mc *MessageConverter) constructMediaMessage(content *event.MessageEventContent, uploaded *whatsmeow.UploadResponse, contextInfo *waE2E.ContextInfo, mime string) *waE2E.Message {
-	caption := content.Body
+func (mc *MessageConverter) constructMediaMessage(
+	ctx context.Context,
+	content *event.MessageEventContent,
+	portal *bridgev2.Portal,
+	uploaded *whatsmeow.UploadResponse,
+	contextInfo *waE2E.ContextInfo,
+	mime string,
+) *waE2E.Message {
+	var caption string
+	if content.FileName != "" && content.Body != content.FileName {
+		caption, contextInfo.MentionedJID = mc.parseText(ctx, content, portal)
+	}
 	switch content.MsgType {
 	case event.MessageType(event.EventSticker.Type):
 		width := uint32(content.Info.Width)
@@ -192,19 +202,22 @@ func (mc *MessageConverter) constructMediaMessage(content *event.MessageEventCon
 	}
 }
 
-func (mc *MessageConverter) constructTextMessage(ctx context.Context, content *event.MessageEventContent, portal *bridgev2.Portal, contextInfo *waE2E.ContextInfo) *waE2E.Message {
-	mentions := make([]string, 0)
+func (mc *MessageConverter) parseText(ctx context.Context, content *event.MessageEventContent, portal *bridgev2.Portal) (text string, mentions []string) {
+	mentions = make([]string, 0)
 
 	parseCtx := format.NewContext(ctx)
 	parseCtx.ReturnData["mentions"] = &mentions
 	parseCtx.ReturnData["portal"] = portal
-	var text string
 	if content.Format == event.FormatHTML {
 		text = mc.HTMLParser.Parse(content.FormattedBody, parseCtx)
 	} else {
 		text = content.Body
 	}
+	return
+}
 
+func (mc *MessageConverter) constructTextMessage(ctx context.Context, content *event.MessageEventContent, portal *bridgev2.Portal, contextInfo *waE2E.ContextInfo) *waE2E.Message {
+	text, mentions := mc.parseText(ctx, content, portal)
 	if len(mentions) > 0 {
 		contextInfo.MentionedJID = mentions
 	}
