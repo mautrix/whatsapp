@@ -103,6 +103,7 @@ SELECT
 FROM user_portal_old;
 
 ALTER TABLE message_old ADD COLUMN combined_id TEXT;
+DELETE FROM message_old WHERE sender IS NULL;
 UPDATE message_old SET combined_id = chat_jid || ':' || (
     CASE WHEN sender LIKE '%:%@s.whatsapp.net'
         THEN (split_part(replace(sender, '@s.whatsapp.net', ''), ':', 1) || '@s.whatsapp.net')
