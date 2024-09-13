@@ -108,6 +108,7 @@ const LoginConnectWait = 15 * time.Second
 func (wl *WALogin) Start(ctx context.Context) (*bridgev2.LoginStep, error) {
 	device := wl.Main.DeviceStore.NewDevice()
 	wl.Client = whatsmeow.NewClient(device, waLog.Zerolog(wl.Log))
+	wl.Client.EnableAutoReconnect = false
 	wl.EventHandlerID = wl.Client.AddEventHandler(wl.handleEvent)
 	if err := wl.Main.updateProxy(wl.Client, true); err != nil {
 		return nil, err

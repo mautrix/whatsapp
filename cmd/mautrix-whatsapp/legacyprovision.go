@@ -160,6 +160,7 @@ func legacyProvLogin(w http.ResponseWriter, r *http.Request) {
 	if phoneNum != "" {
 		if step.StepID != connector.LoginStepIDPhoneNumber {
 			respondWebsocketWithError(conn, errors.New("unexpected step"), "Unexpected step while starting phone number login")
+			waLogin.Cancel()
 			return
 		}
 		step, err = waLogin.SubmitUserInput(ctx, map[string]string{"phone_number": phoneNum})
@@ -169,6 +170,7 @@ func legacyProvLogin(w http.ResponseWriter, r *http.Request) {
 			return
 		} else if step.StepID != connector.LoginStepIDCode {
 			respondWebsocketWithError(conn, errors.New("unexpected step"), "Unexpected step after submitting phone number")
+			waLogin.Cancel()
 			return
 		}
 		_ = conn.WriteJSON(map[string]any{
@@ -177,6 +179,7 @@ func legacyProvLogin(w http.ResponseWriter, r *http.Request) {
 		})
 	} else if step.StepID != connector.LoginStepIDQR {
 		respondWebsocketWithError(conn, errors.New("unexpected step"), "Unexpected step while starting QR login")
+		waLogin.Cancel()
 		return
 	} else {
 		_ = conn.WriteJSON(map[string]any{
@@ -197,6 +200,7 @@ func legacyProvLogin(w http.ResponseWriter, r *http.Request) {
 			continue
 		} else if step.StepID != connector.LoginStepIDComplete {
 			respondWebsocketWithError(conn, errors.New("unexpected step"), "Unexpected step while waiting for login")
+			waLogin.Cancel()
 		} else {
 			// TODO delete old logins
 			_ = conn.WriteJSON(map[string]any{
