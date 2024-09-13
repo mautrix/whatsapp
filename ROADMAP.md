@@ -6,22 +6,22 @@
     * [x] Location messages
     * [x] Media/files
     * [x] Replies
-    * [x] Polls
-    * [x] Poll votes
+    * [ ] Polls
+    * [ ] Poll votes
   * [x] Message redactions
   * [x] Reactions
   * [x] Presence
   * [x] Typing notifications
   * [x] Read receipts
   * [ ] Power level
-  * [x] Membership actions
-    * [x] Invite
-    * [x] Leave
-    * [x] Kick
-  * [x] Room metadata changes
-    * [x] Name
-    * [x] Avatar
-    * [x] Topic
+  * [ ] Membership actions
+    * [ ] Invite
+    * [ ] Leave
+    * [ ] Kick
+  * [ ] Room metadata changes
+    * [ ] Name
+    * [ ] Avatar
+    * [ ] Topic
   * [ ] Initial room metadata
 * WhatsApp → Matrix
   * [x] Message content
@@ -31,8 +31,8 @@
     * [x] Location messages
     * [x] Contact messages
     * [x] Replies
-    * [x] Polls
-    * [x] Poll votes
+    * [ ] Polls
+    * [ ] Poll votes
   * [ ] Chat types
     * [x] Private chat
     * [x] Group chat
@@ -46,19 +46,19 @@
   * [x] Typing notifications
   * [x] Read receipts
   * [x] Admin/superadmin status
-  * [x] Membership actions
-    * [x] Invite
-    * [x] Join
-    * [x] Leave
-    * [x] Kick
-  * [x] Group metadata changes
-    * [x] Title
-    * [x] Avatar
-    * [x] Description
-  * [x] Initial group metadata
-  * [x] User metadata changes
-    * [x] Display name
-    * [x] Avatar
+  * [ ] Membership actions
+    * [ ] Invite
+    * [ ] Join
+    * [ ] Leave
+    * [ ] Kick
+  * [ ] Group metadata changes
+    * [ ] Title
+    * [ ] Avatar
+    * [ ] Description
+  * [ ] Initial group metadata
+  * [ ] User metadata changes
+    * [ ] Display name
+    * [ ] Avatar
   * [x] Initial user metadata
     * [x] Display name
     * [x] Avatar
