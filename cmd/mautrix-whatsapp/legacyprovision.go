@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"regexp"
 	"strings"
 
 	"github.com/gorilla/mux"
@@ -82,6 +83,8 @@ func respondWebsocketWithError(conn *websocket.Conn, err error, message string) 
 	_ = conn.WriteJSON(&mautrixRespErr)
 }
 
+var notNumbers = regexp.MustCompile("[^0-9]")
+
 func legacyProvLogin(w http.ResponseWriter, r *http.Request) {
 	log := hlog.FromRequest(r)
 
@@ -127,6 +130,18 @@ func legacyProvLogin(w http.ResponseWriter, r *http.Request) {
 	loginFlowID := connector.LoginFlowIDQR
 	phoneNum := r.URL.Query().Get("phone_number")
 	if phoneNum != "" {
+		phoneNum = notNumbers.ReplaceAllString(phoneNum, "")
+		if len(phoneNum) < 7 || strings.HasPrefix(phoneNum, "0") {
+			errorMsg := "Invalid phone number"
+			if len(phoneNum) > 6 {
+				errorMsg = "Please enter the phone number in international format"
+			}
+			_ = conn.WriteJSON(Error{
+				Error:   errorMsg,
+				ErrCode: "invalid phone number",
+			})
+			return
+		}
 		loginFlowID = connector.LoginFlowIDPhone
 	}
 	login, err := c.CreateLogin(ctx, user, loginFlowID)
@@ -147,7 +162,7 @@ func legacyProvLogin(w http.ResponseWriter, r *http.Request) {
 			respondWebsocketWithError(conn, errors.New("unexpected step"), "Unexpected step while starting phone number login")
 			return
 		}
-		step, err = waLogin.SubmitUserInput(ctx, map[string]string{"phone": phoneNum})
+		step, err = waLogin.SubmitUserInput(ctx, map[string]string{"phone_number": phoneNum})
 		if err != nil {
 			log.Err(err).Msg("Failed to submit phone number")
 			respondWebsocketWithError(conn, err, "Failed to start phone code login")
