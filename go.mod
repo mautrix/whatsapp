@@ -1,6 +1,8 @@
 module maunium.net/go/mautrix-whatsapp
 
-go 1.22
+go 1.22.0
+
+toolchain go1.23.1
 
 require (
 	github.com/gorilla/mux v1.8.0
@@ -11,16 +13,16 @@ require (
 	github.com/rs/zerolog v1.33.0
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
 	github.com/tidwall/gjson v1.17.3
-	go.mau.fi/util v0.7.1-0.20240904173517-ca3b3fe376c2
+	go.mau.fi/util v0.7.1-0.20240913091524-7617daa66719
 	go.mau.fi/webp v0.1.0
-	go.mau.fi/whatsmeow v0.0.0-20240910221757-4e565c74c313
-	golang.org/x/exp v0.0.0-20240904232852-e7e105dedf7e
+	go.mau.fi/whatsmeow v0.0.0-20240911102933-bb3364aa3986
+	golang.org/x/exp v0.0.0-20240909161429-701f63a606c0
 	golang.org/x/image v0.20.0
 	golang.org/x/net v0.29.0
 	golang.org/x/sync v0.8.0
 	google.golang.org/protobuf v1.34.2
 	gopkg.in/yaml.v3 v3.0.1
-	maunium.net/go/mautrix v0.20.1-0.20240911105342-008836806673
+	maunium.net/go/mautrix v0.20.1-0.20240913095532-e12ecbe82d36
 )
 
 require (

@@ -2,6 +2,9 @@ name: Go
 
 on: [push, pull_request]
 
+env:
+  GOTOOLCHAIN: local
+
 jobs:
   lint:
     runs-on: ubuntu-latest
