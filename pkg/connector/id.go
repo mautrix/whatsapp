@@ -10,13 +10,19 @@ import (
 	"maunium.net/go/mautrix-whatsapp/pkg/waid"
 )
 
-func (wa *WhatsAppClient) makeWAPortalKey(chatJID types.JID) (key networkid.PortalKey) {
-	key.ID = waid.MakePortalID(chatJID)
+func (wa *WhatsAppClient) makeWAPortalKey(chatJID types.JID) networkid.PortalKey {
+	key := networkid.PortalKey{
+		ID: waid.MakePortalID(chatJID),
+	}
 	switch chatJID.Server {
 	case types.DefaultUserServer, types.HiddenUserServer, types.BroadcastServer:
 		key.Receiver = wa.UserLogin.ID
+	default:
+		if wa.Main.Bridge.Config.SplitPortals {
+			key.Receiver = wa.UserLogin.ID
+		}
 	}
-	return
+	return key
 }
 
 func (wa *WhatsAppClient) makeEventSender(id types.JID) bridgev2.EventSender {
