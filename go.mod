@@ -15,7 +15,7 @@ require (
 	github.com/tidwall/gjson v1.17.3
 	go.mau.fi/util v0.7.1-0.20240913091524-7617daa66719
 	go.mau.fi/webp v0.1.0
-	go.mau.fi/whatsmeow v0.0.0-20240911102933-bb3364aa3986
+	go.mau.fi/whatsmeow v0.0.0-20240916205343-ea8c175b2e2c
 	golang.org/x/exp v0.0.0-20240909161429-701f63a606c0
 	golang.org/x/image v0.20.0
 	golang.org/x/net v0.29.0

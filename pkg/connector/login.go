@@ -76,6 +76,7 @@ func (wa *WhatsAppConnector) CreateLogin(_ context.Context, user *bridgev2.User,
 
 		WaitForQRs:    exsync.NewEvent(),
 		LoginComplete: exsync.NewEvent(),
+		Received515:   exsync.NewEvent(),
 	}, nil
 }
 
@@ -92,6 +93,7 @@ type WALogin struct {
 	LoginSuccess  *events.PairSuccess
 	WaitForQRs    *exsync.Event
 	LoginComplete *exsync.Event
+	Received515   *exsync.Event
 	PrevQRIndex   atomic.Int32
 
 	Closed         atomic.Bool
@@ -109,6 +111,7 @@ func (wl *WALogin) Start(ctx context.Context) (*bridgev2.LoginStep, error) {
 	device := wl.Main.DeviceStore.NewDevice()
 	wl.Client = whatsmeow.NewClient(device, waLog.Zerolog(wl.Log))
 	wl.Client.EnableAutoReconnect = false
+	wl.Client.DisableLoginAutoReconnect = true
 	wl.EventHandlerID = wl.Client.AddEventHandler(wl.handleEvent)
 	if err := wl.Main.updateProxy(ctx, wl.Client, true); err != nil {
 		return nil, err
@@ -234,6 +237,8 @@ func (wl *WALogin) handleEvent(rawEvt any) {
 	case *events.Connected, *events.ConnectFailure, *events.LoggedOut, *events.TemporaryBan:
 		wl.Log.Warn().Any("event_data", evt).Type("event_type", evt).Msg("Got unexpected disconnect event")
 		wl.LoginError = ErrUnexpectedDisconnect
+	case *events.ManualLoginReconnect:
+		wl.Received515.Set()
 	default:
 		wl.Log.Warn().Type("event_type", evt).Msg("Got unexpected event")
 		return
@@ -274,12 +279,20 @@ func (wl *WALogin) Wait(ctx context.Context) (*bridgev2.LoginStep, error) {
 			wl.Cancel()
 			return nil, ctx.Err()
 		case <-wl.LoginComplete.GetChan():
-			wl.Cancel()
 		}
 	}
-	wl.Log.Debug().Err(wl.LoginError).Msg("Login completed")
 	if wl.LoginError != nil {
+		wl.Log.Debug().Err(wl.LoginError).Msg("Login completed with error")
+		wl.Cancel()
 		return nil, wl.LoginError
+	}
+	wl.Log.Debug().Msg("Login completed without error, waiting for 515 event")
+	ctxTimeout, cancel := context.WithTimeout(ctx, 10*time.Second)
+	err := wl.Received515.Wait(ctxTimeout)
+	cancel()
+	wl.Cancel()
+	if err != nil {
+		return nil, fmt.Errorf("timed out waiting for 515: %w", err)
 	}
 
 	newLoginID := waid.MakeUserLoginID(wl.LoginSuccess.ID)
