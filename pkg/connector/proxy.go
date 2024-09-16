@@ -1,11 +1,13 @@
 package connector
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/url"
 
+	"github.com/rs/zerolog"
 	"go.mau.fi/whatsmeow"
 	"maunium.net/go/mautrix"
 )
@@ -46,7 +48,7 @@ func (wa *WhatsAppConnector) getProxy(reason string) (string, error) {
 	return respData.ProxyURL, nil
 }
 
-func (wa *WhatsAppConnector) updateProxy(client *whatsmeow.Client, isLogin bool) error {
+func (wa *WhatsAppConnector) updateProxy(ctx context.Context, client *whatsmeow.Client, isLogin bool) error {
 	if wa.Config.ProxyOnlyLogin && !isLogin {
 		return nil
 	}
@@ -59,5 +61,6 @@ func (wa *WhatsAppConnector) updateProxy(client *whatsmeow.Client, isLogin bool)
 	} else if err = client.SetProxyAddress(proxy); err != nil {
 		return fmt.Errorf("failed to set proxy address: %w", err)
 	}
+	zerolog.Ctx(ctx).Debug().Msg("Enabled proxy")
 	return nil
 }

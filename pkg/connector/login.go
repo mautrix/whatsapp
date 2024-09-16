@@ -110,7 +110,7 @@ func (wl *WALogin) Start(ctx context.Context) (*bridgev2.LoginStep, error) {
 	wl.Client = whatsmeow.NewClient(device, waLog.Zerolog(wl.Log))
 	wl.Client.EnableAutoReconnect = false
 	wl.EventHandlerID = wl.Client.AddEventHandler(wl.handleEvent)
-	if err := wl.Main.updateProxy(wl.Client, true); err != nil {
+	if err := wl.Main.updateProxy(ctx, wl.Client, true); err != nil {
 		return nil, err
 	}
 
