@@ -169,7 +169,9 @@ func (evt *WAMessageEvent) GetType() bridgev2.RemoteEventType {
 
 func (evt *WAMessageEvent) HandleExisting(ctx context.Context, portal *bridgev2.Portal, intent bridgev2.MatrixAPI, existing []*database.Message) (bridgev2.UpsertResult, error) {
 	if existing[0].Metadata.(*waid.MessageMetadata).Error == waid.MsgErrDecryptionFailed {
-		zerolog.Ctx(ctx).Debug().Stringer("existing_mxid", existing[0].MXID).Msg("Ignoring duplicate message")
+		zerolog.Ctx(ctx).Debug().
+			Stringer("existing_mxid", existing[0].MXID).
+			Msg("Received decryptable version of previously undecryptable message")
 		evt.isUndecryptableUpsertSubEvent = true
 		return bridgev2.UpsertResult{SubEvents: []bridgev2.RemoteEvent{
 			&WANowDecryptableMessage{WAMessageEvent: evt, editParts: existing}},
@@ -207,7 +209,7 @@ func (evt *WANowDecryptableMessage) AddLogContext(c zerolog.Context) zerolog.Con
 }
 
 func (evt *WANowDecryptableMessage) GetType() bridgev2.RemoteEventType {
-	return bridgev2.RemoteEventMessage
+	return bridgev2.RemoteEventEdit
 }
 
 type WAUndecryptableMessage struct {
