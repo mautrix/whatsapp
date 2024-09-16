@@ -49,7 +49,7 @@ func (wa *WhatsAppClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2
 			ID:        wrappedMsgID,
 			SenderID:  waid.MakeUserID(wa.JID),
 			Timestamp: resp.Timestamp,
-			Metadata: &MessageMetadata{
+			Metadata: &waid.MessageMetadata{
 				SenderDeviceID: wa.JID.Device,
 			},
 		},
@@ -86,7 +86,7 @@ func (wa *WhatsAppClient) HandleMatrixReaction(ctx context.Context, msg *bridgev
 	resp, err := wa.Client.SendMessage(ctx, portalJID, reactionMsg)
 	zerolog.Ctx(ctx).Trace().Any("response", resp).Msg("WhatsApp reaction response")
 	return &database.Reaction{
-		Metadata: &ReactionMetadata{
+		Metadata: &waid.ReactionMetadata{
 			SenderDeviceID: wa.JID.Device,
 		},
 	}, err

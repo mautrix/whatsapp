@@ -163,7 +163,7 @@ func (wa *WhatsAppClient) handleWAEvent(rawEvt any) {
 	case *events.OfflineSyncCompleted:
 		if !wa.PhoneRecentlySeen(true) {
 			log.Info().
-				Time("phone_last_seen", wa.UserLogin.Metadata.(*UserLoginMetadata).PhoneLastSeen.Time).
+				Time("phone_last_seen", wa.UserLogin.Metadata.(*waid.UserLoginMetadata).PhoneLastSeen.Time).
 				Msg("Offline sync completed, but phone last seen date is still old - sending phone offline bridge status")
 			wa.UserLogin.BridgeState.Send(status.BridgeState{StateEvent: status.StateTransientDisconnect, Error: WAPhoneOffline})
 		} else {
@@ -319,7 +319,7 @@ func (wa *WhatsAppClient) handleWALogout(reason events.ConnectFailureReason, onC
 	wa.Client.Disconnect()
 	wa.Client = nil
 	wa.JID = types.EmptyJID
-	wa.UserLogin.Metadata.(*UserLoginMetadata).WADeviceID = 0
+	wa.UserLogin.Metadata.(*waid.UserLoginMetadata).WADeviceID = 0
 	wa.UserLogin.BridgeState.Send(status.BridgeState{
 		StateEvent: status.StateBadCredentials,
 		Error:      errorCode,

@@ -20,7 +20,7 @@ func (wa *WhatsAppClient) GetUserInfo(ctx context.Context, ghost *bridgev2.Ghost
 	if err != nil {
 		return nil, err
 	}
-	fetchAvatar := !ghost.Metadata.(*GhostMetadata).AvatarFetchAttempted
+	fetchAvatar := !ghost.Metadata.(*waid.GhostMetadata).AvatarFetchAttempted
 	return wa.contactToUserInfo(ctx, jid, contact, fetchAvatar), nil
 }
 
@@ -51,7 +51,7 @@ func (wa *WhatsAppClient) contactToUserInfo(ctx context.Context, jid types.JID, 
 }
 
 func markAvatarFetchAttempted(_ context.Context, ghost *bridgev2.Ghost) bool {
-	meta := ghost.Metadata.(*GhostMetadata)
+	meta := ghost.Metadata.(*waid.GhostMetadata)
 	if !meta.AvatarFetchAttempted {
 		meta.AvatarFetchAttempted = true
 		return true

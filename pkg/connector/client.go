@@ -23,7 +23,7 @@ func (wa *WhatsAppConnector) LoadUserLogin(_ context.Context, login *bridgev2.Us
 	}
 	login.Client = w
 
-	loginMetadata := login.Metadata.(*UserLoginMetadata)
+	loginMetadata := login.Metadata.(*waid.UserLoginMetadata)
 	if loginMetadata.WADeviceID == 0 {
 		return nil
 	}

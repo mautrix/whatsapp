@@ -54,7 +54,7 @@ func (wa *WhatsAppClient) GetChatInfo(ctx context.Context, portal *bridgev2.Port
 
 func updateDisappearingTimerSetAt(ts int64) bridgev2.ExtraUpdater[*bridgev2.Portal] {
 	return func(_ context.Context, portal *bridgev2.Portal) bool {
-		meta := portal.Metadata.(*PortalMetadata)
+		meta := portal.Metadata.(*waid.PortalMetadata)
 		if meta.DisappearingTimerSetAt != ts {
 			meta.DisappearingTimerSetAt = ts
 			return true

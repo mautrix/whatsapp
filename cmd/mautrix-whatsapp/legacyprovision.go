@@ -205,7 +205,7 @@ func legacyProvLogin(w http.ResponseWriter, r *http.Request) {
 			// TODO delete old logins
 			_ = conn.WriteJSON(map[string]any{
 				"success":  true,
-				"jid":      waid.ParseUserLoginID(step.CompleteParams.UserLoginID, step.CompleteParams.UserLogin.Metadata.(*connector.UserLoginMetadata).WADeviceID).String(),
+				"jid":      waid.ParseUserLoginID(step.CompleteParams.UserLoginID, step.CompleteParams.UserLogin.Metadata.(*waid.UserLoginMetadata).WADeviceID).String(),
 				"platform": step.CompleteParams.UserLogin.Client.(*connector.WhatsAppClient).Device.Platform,
 				"phone":    step.CompleteParams.UserLogin.RemoteProfile.Phone,
 			})

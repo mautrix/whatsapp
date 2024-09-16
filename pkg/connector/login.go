@@ -290,7 +290,7 @@ func (wl *WALogin) Wait(ctx context.Context) (*bridgev2.LoginStep, error) {
 			Phone: "+" + wl.LoginSuccess.ID.User,
 			Name:  wl.LoginSuccess.BusinessName,
 		},
-		Metadata: &UserLoginMetadata{
+		Metadata: &waid.UserLoginMetadata{
 			WADeviceID: wl.LoginSuccess.ID.Device,
 		},
 	}, &bridgev2.NewLoginParams{

@@ -141,7 +141,7 @@ func (evt *WAMessageEvent) GetReactionEmoji() (string, networkid.EmojiID) {
 }
 
 func (evt *WAMessageEvent) GetReactionDBMetadata() any {
-	return &ReactionMetadata{
+	return &waid.ReactionMetadata{
 		SenderDeviceID: evt.Info.Sender.Device,
 	}
 }
@@ -168,7 +168,7 @@ func (evt *WAMessageEvent) GetType() bridgev2.RemoteEventType {
 }
 
 func (evt *WAMessageEvent) HandleExisting(ctx context.Context, portal *bridgev2.Portal, intent bridgev2.MatrixAPI, existing []*database.Message) (bridgev2.UpsertResult, error) {
-	if existing[0].Metadata.(*MessageMetadata).Error == MsgErrDecryptionFailed {
+	if existing[0].Metadata.(*waid.MessageMetadata).Error == waid.MsgErrDecryptionFailed {
 		zerolog.Ctx(ctx).Debug().Stringer("existing_mxid", existing[0].MXID).Msg("Ignoring duplicate message")
 		evt.isUndecryptableUpsertSubEvent = true
 		return bridgev2.UpsertResult{SubEvents: []bridgev2.RemoteEvent{
@@ -182,11 +182,11 @@ func (evt *WAMessageEvent) HandleExisting(ctx context.Context, portal *bridgev2.
 func (evt *WAMessageEvent) ConvertMessage(ctx context.Context, portal *bridgev2.Portal, intent bridgev2.MatrixAPI) (*bridgev2.ConvertedMessage, error) {
 	converted := evt.wa.Main.MsgConv.ToMatrix(ctx, portal, evt.wa.Client, intent, evt.Message)
 	for _, part := range converted.Parts {
-		part.DBMetadata = &MessageMetadata{
+		part.DBMetadata = &waid.MessageMetadata{
 			SenderDeviceID: evt.Info.Sender.Device,
 		}
 		if evt.Info.IsIncomingBroadcast() {
-			part.DBMetadata.(*MessageMetadata).BroadcastListJID = &evt.Info.Chat
+			part.DBMetadata.(*waid.MessageMetadata).BroadcastListJID = &evt.Info.Chat
 			if part.Extra == nil {
 				part.Extra = map[string]any{}
 			}
@@ -261,9 +261,9 @@ func (evt *WAUndecryptableMessage) ConvertMessage(ctx context.Context, portal *b
 			Type:    event.EventMessage,
 			Content: &undecryptableMessageContent,
 			Extra:   extra,
-			DBMetadata: &MessageMetadata{
+			DBMetadata: &waid.MessageMetadata{
 				SenderDeviceID:   evt.Info.Sender.Device,
-				Error:            MsgErrDecryptionFailed,
+				Error:            waid.MsgErrDecryptionFailed,
 				BroadcastListJID: broadcastListJID,
 			},
 		}},
