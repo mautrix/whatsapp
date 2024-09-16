@@ -101,7 +101,7 @@ func (evt *WAMessageEvent) ConvertEdit(ctx context.Context, portal *bridgev2.Por
 	}
 
 	// TODO edits to media captions may not contain the media
-	cm := evt.wa.Main.MsgConv.ToMatrix(ctx, portal, evt.wa.Client, intent, editedMsg)
+	cm := evt.wa.Main.MsgConv.ToMatrix(ctx, portal, evt.wa.Client, intent, editedMsg, &evt.Info)
 	return &bridgev2.ConvertedEdit{
 		ModifiedParts: []*bridgev2.ConvertedEditPart{cm.Parts[0].ToEditPart(existing[0])},
 	}, nil
@@ -180,19 +180,7 @@ func (evt *WAMessageEvent) HandleExisting(ctx context.Context, portal *bridgev2.
 }
 
 func (evt *WAMessageEvent) ConvertMessage(ctx context.Context, portal *bridgev2.Portal, intent bridgev2.MatrixAPI) (*bridgev2.ConvertedMessage, error) {
-	converted := evt.wa.Main.MsgConv.ToMatrix(ctx, portal, evt.wa.Client, intent, evt.Message)
-	for _, part := range converted.Parts {
-		part.DBMetadata = &waid.MessageMetadata{
-			SenderDeviceID: evt.Info.Sender.Device,
-		}
-		if evt.Info.IsIncomingBroadcast() {
-			part.DBMetadata.(*waid.MessageMetadata).BroadcastListJID = &evt.Info.Chat
-			if part.Extra == nil {
-				part.Extra = map[string]any{}
-			}
-			part.Extra["fi.mau.whatsapp.source_broadcast_list"] = evt.Info.Chat.String()
-		}
-	}
+	converted := evt.wa.Main.MsgConv.ToMatrix(ctx, portal, evt.wa.Client, intent, evt.Message, &evt.Info)
 	return converted, nil
 }
 

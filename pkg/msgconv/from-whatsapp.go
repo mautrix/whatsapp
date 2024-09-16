@@ -291,34 +291,41 @@ func makeMediaFailure(mediaType string) *bridgev2.ConvertedMessagePart {
 	}
 }
 
-func (mc *MessageConverter) ToMatrix(ctx context.Context, portal *bridgev2.Portal, client *whatsmeow.Client, intent bridgev2.MatrixAPI, message *waE2E.Message) *bridgev2.ConvertedMessage {
+func (mc *MessageConverter) ToMatrix(
+	ctx context.Context,
+	portal *bridgev2.Portal,
+	client *whatsmeow.Client,
+	intent bridgev2.MatrixAPI,
+	message *waE2E.Message,
+	info *types.MessageInfo,
+) *bridgev2.ConvertedMessage {
 	var part *bridgev2.ConvertedMessagePart
 	var contextInfo *waE2E.ContextInfo
 	var err error
-	media, info := getMediaMessageFileInfo(message)
+	media, mediaInfo := getMediaMessageFileInfo(message)
 	if media != nil {
-		contextInfo = info.ContextInfo
-		part, err = mc.reuploadWhatsAppAttachment(ctx, media, &info, client, intent, portal)
+		contextInfo = mediaInfo.ContextInfo
+		part, err = mc.reuploadWhatsAppAttachment(ctx, media, &mediaInfo, client, intent, portal)
 		if err != nil {
 			zerolog.Ctx(ctx).Err(err).Msg("Failed to reupload WhatsApp attachment")
 			part = makeMediaFailure("attachment")
 		} else {
-			part.Content.MsgType = info.MsgType
+			part.Content.MsgType = mediaInfo.MsgType
 			if message.StickerMessage != nil {
 				part.Type = event.EventSticker
 			}
 
-			if info.Waveform != nil {
+			if mediaInfo.Waveform != nil {
 				part.Content.MSC3245Voice = &event.MSC3245Voice{}
 				part.Content.MSC1767Audio = &event.MSC1767Audio{
-					Duration: info.Duration,
-					Waveform: info.Waveform,
+					Duration: mediaInfo.Duration,
+					Waveform: mediaInfo.Waveform,
 				}
 			}
-			if info.Caption != "" {
-				part.Content.Body = info.Caption
+			if mediaInfo.Caption != "" {
+				part.Content.Body = mediaInfo.Caption
 			}
-			if info.IsGif {
+			if mediaInfo.IsGif {
 				part.Extra["info"] = map[string]any{
 					"fi.mau.gif":           true,
 					"fi.mau.loop":          true,
@@ -360,6 +367,16 @@ func (mc *MessageConverter) ToMatrix(ctx context.Context, portal *bridgev2.Porta
 	// TODO lots of message types missing
 
 	part.Content.Mentions = &event.Mentions{}
+	part.DBMetadata = &waid.MessageMetadata{
+		SenderDeviceID: info.Sender.Device,
+	}
+	if info.IsIncomingBroadcast() {
+		part.DBMetadata.(*waid.MessageMetadata).BroadcastListJID = &info.Chat
+		if part.Extra == nil {
+			part.Extra = map[string]any{}
+		}
+		part.Extra["fi.mau.whatsapp.source_broadcast_list"] = info.Chat.String()
+	}
 	mc.addMentions(ctx, contextInfo.GetMentionedJID(), part.Content)
 
 	cm := &bridgev2.ConvertedMessage{
