@@ -13,6 +13,7 @@ import (
 
 	"github.com/rs/zerolog"
 	"go.mau.fi/util/ffmpeg"
+	"go.mau.fi/util/ptr"
 	cwebp "go.mau.fi/webp"
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/proto/waE2E"
@@ -53,6 +54,13 @@ func (mc *MessageConverter) ToWhatsApp(
 			contextInfo.QuotedMessage = &waE2E.Message{Conversation: proto.String("")}
 		} else {
 			return nil, err
+		}
+	}
+	if portal.Disappear.Timer > 0 {
+		contextInfo.Expiration = ptr.Ptr(uint32(portal.Disappear.Timer.Seconds()))
+		setAt := portal.Metadata.(*waid.PortalMetadata).DisappearingTimerSetAt
+		if setAt > 0 {
+			contextInfo.EphemeralSettingTimestamp = ptr.Ptr(setAt)
 		}
 	}
 
