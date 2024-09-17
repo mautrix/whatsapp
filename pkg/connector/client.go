@@ -3,9 +3,11 @@ package connector
 import (
 	"context"
 	"fmt"
+	"sync/atomic"
 
 	"github.com/rs/zerolog"
 	"go.mau.fi/whatsmeow"
+	"go.mau.fi/whatsmeow/proto/waHistorySync"
 	"go.mau.fi/whatsmeow/store"
 	"go.mau.fi/whatsmeow/types"
 	waLog "go.mau.fi/whatsmeow/util/log"
@@ -20,6 +22,8 @@ func (wa *WhatsAppConnector) LoadUserLogin(_ context.Context, login *bridgev2.Us
 	w := &WhatsAppClient{
 		Main:      wa,
 		UserLogin: login,
+
+		historySyncs: make(chan *waHistorySync.HistorySync, 64),
 	}
 	login.Client = w
 
@@ -54,6 +58,9 @@ type WhatsAppClient struct {
 	Client    *whatsmeow.Client
 	Device    *store.Device
 	JID       types.JID
+
+	historySyncs        chan *waHistorySync.HistorySync
+	stopHistorySyncLoop atomic.Pointer[context.CancelFunc]
 }
 
 var _ bridgev2.NetworkAPI = (*WhatsAppClient)(nil)
@@ -96,10 +103,14 @@ func (wa *WhatsAppClient) Connect(ctx context.Context) error {
 	if err := wa.Main.updateProxy(ctx, wa.Client, false); err != nil {
 		zerolog.Ctx(ctx).Err(err).Msg("Failed to update proxy")
 	}
+	go wa.historySyncLoop()
 	return wa.Client.Connect()
 }
 
 func (wa *WhatsAppClient) Disconnect() {
+	if stopHistorySyncLoop := wa.stopHistorySyncLoop.Swap(nil); stopHistorySyncLoop != nil {
+		(*stopHistorySyncLoop)()
+	}
 	if cli := wa.Client; cli != nil {
 		cli.Disconnect()
 		wa.Client = nil

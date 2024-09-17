@@ -42,8 +42,9 @@ type Config struct {
 	ForceActiveDeliveryReceipts bool          `yaml:"force_active_delivery_receipts"`
 
 	HistorySync struct {
-		RequestFullSync bool `yaml:"request_full_sync"`
-		FullSyncConfig  struct {
+		MaxInitialConversations int  `yaml:"max_initial_conversations"`
+		RequestFullSync         bool `yaml:"request_full_sync"`
+		FullSyncConfig          struct {
 			DaysLimit    uint32 `yaml:"days_limit"`
 			SizeLimit    uint32 `yaml:"size_mb_limit"`
 			StorageQuota uint32 `yaml:"storage_quota_mb"`
@@ -94,6 +95,7 @@ func upgradeConfig(helper up.Helper) {
 	helper.Copy(up.Bool, "whatsapp_thumbnail")
 	helper.Copy(up.Bool, "url_previews")
 
+	helper.Copy(up.Int, "history_sync", "max_initial_conversations")
 	helper.Copy(up.Bool, "history_sync", "request_full_sync")
 	helper.Copy(up.Int|up.Null, "history_sync", "full_sync_config", "days_limit")
 	helper.Copy(up.Int|up.Null, "history_sync", "full_sync_config", "size_mb_limit")

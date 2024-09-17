@@ -7,21 +7,25 @@ import (
 
 	"github.com/rs/zerolog"
 	"go.mau.fi/util/ptr"
-	"go.mau.fi/whatsmeow/proto/waHistorySync"
 	"go.mau.fi/whatsmeow/types"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/event"
 
+	"maunium.net/go/mautrix-whatsapp/pkg/connector/wadb"
 	"maunium.net/go/mautrix-whatsapp/pkg/waid"
 )
 
-func (wa *WhatsAppClient) GetChatInfo(ctx context.Context, portal *bridgev2.Portal) (wrapped *bridgev2.ChatInfo, err error) {
+func (wa *WhatsAppClient) GetChatInfo(ctx context.Context, portal *bridgev2.Portal) (*bridgev2.ChatInfo, error) {
 	portalJID, err := waid.ParsePortalID(portal.ID)
 	if err != nil {
 		return nil, err
 	}
+	return wa.getChatInfo(ctx, portalJID, nil)
+}
+
+func (wa *WhatsAppClient) getChatInfo(ctx context.Context, portalJID types.JID, conv *wadb.Conversation) (wrapped *bridgev2.ChatInfo, err error) {
 	switch portalJID.Server {
 	case types.DefaultUserServer:
 		wrapped = wa.wrapDMInfo(portalJID)
@@ -46,8 +50,15 @@ func (wa *WhatsAppClient) GetChatInfo(ctx context.Context, portal *bridgev2.Port
 	default:
 		return nil, fmt.Errorf("unsupported server %s", portalJID.Server)
 	}
-	var conv *waHistorySync.Conversation
-	applyHistoryInfo(wrapped, conv)
+	if conv == nil {
+		conv, err = wa.Main.DB.Conversation.Get(ctx, wa.UserLogin.ID, portalJID)
+		if err != nil {
+			zerolog.Ctx(ctx).Warn().Err(err).Msg("Failed to get history sync conversation info")
+		}
+	}
+	if conv != nil {
+		applyHistoryInfo(wrapped, conv)
+	}
 	wa.applyChatSettings(ctx, portalJID, wrapped)
 	return wrapped, nil
 }
@@ -79,25 +90,27 @@ func (wa *WhatsAppClient) applyChatSettings(ctx context.Context, chatID types.JI
 	}
 }
 
-func applyHistoryInfo(info *bridgev2.ChatInfo, conv *waHistorySync.Conversation) {
+func applyHistoryInfo(info *bridgev2.ChatInfo, conv *wadb.Conversation) {
 	if conv == nil {
 		return
 	}
 	info.CanBackfill = true
 	info.UserLocal = &bridgev2.UserLocalPortalInfo{
-		MutedUntil: ptr.Ptr(time.Unix(int64(conv.GetMuteEndTime()), 0)),
+		MutedUntil: ptr.Ptr(conv.MuteEndTime),
 	}
-	if conv.GetPinned() > 0 {
+	if ptr.Val(conv.Pinned) {
 		info.UserLocal.Tag = ptr.Ptr(event.RoomTagFavourite)
-	} else if conv.GetArchived() {
+	} else if ptr.Val(conv.Archived) {
 		info.UserLocal.Tag = ptr.Ptr(event.RoomTagLowPriority)
 	}
-	if conv.GetEphemeralExpiration() > 0 {
+	if ptr.Val(conv.EphemeralExpiration) > 0 {
 		info.Disappear = &database.DisappearingSetting{
 			Type:  database.DisappearingTypeAfterRead,
-			Timer: time.Duration(conv.GetEphemeralExpiration()) * time.Second,
+			Timer: time.Duration(*conv.EphemeralExpiration) * time.Second,
 		}
-		info.ExtraUpdates = bridgev2.MergeExtraUpdaters(info.ExtraUpdates, updateDisappearingTimerSetAt(conv.GetEphemeralSettingTimestamp()))
+		if conv.EphemeralSettingTimestamp != nil {
+			info.ExtraUpdates = bridgev2.MergeExtraUpdaters(info.ExtraUpdates, updateDisappearingTimerSetAt(*conv.EphemeralSettingTimestamp))
+		}
 	}
 }
 

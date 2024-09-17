@@ -52,6 +52,10 @@ force_active_delivery_receipts: false
 
 # Settings for handling history sync payloads.
 history_sync:
+    # How many conversations should the bridge create after login?
+    # If -1, all conversations received from history sync will be bridged.
+    # Other conversations will be backfilled on demand when receiving a message.
+    max_initial_conversations: -1
     # Should the bridge request a full sync from the phone when logging in?
     # This bumps the size of history syncs from 3 months to 1 year.
     request_full_sync: false

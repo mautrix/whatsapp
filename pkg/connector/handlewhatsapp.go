@@ -87,7 +87,9 @@ func (wa *WhatsAppClient) handleWAEvent(rawEvt any) {
 		// TODO
 
 	case *events.HistorySync:
-		// TODO
+		if wa.Main.Bridge.Config.Backfill.Enabled {
+			wa.historySyncs <- evt.Data
+		}
 	case *events.MediaRetry:
 		// TODO
 

@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"go.mau.fi/util/dbutil"
+	"go.mau.fi/util/ptr"
 	"go.mau.fi/whatsmeow/proto/waHistorySync"
 	"go.mau.fi/whatsmeow/types"
 	"maunium.net/go/mautrix/bridgev2/networkid"
@@ -20,14 +21,41 @@ type Conversation struct {
 	UserLoginID               networkid.UserLoginID
 	ChatJID                   types.JID
 	LastMessageTimestamp      time.Time
-	Archived                  bool
-	Pinned                    bool
+	Archived                  *bool
+	Pinned                    *bool
 	MuteEndTime               time.Time
-	EndOfHistoryTransferType  waHistorySync.Conversation_EndOfHistoryTransferType
-	EphemeralExpiration       time.Duration
-	EphemeralSettingTimestamp int64
-	MarkedAsUnread            bool
-	UnreadCount               uint32
+	EndOfHistoryTransferType  *waHistorySync.Conversation_EndOfHistoryTransferType
+	EphemeralExpiration       *uint32
+	EphemeralSettingTimestamp *int64
+	MarkedAsUnread            *bool
+	UnreadCount               *uint32
+}
+
+func parseHistoryTime(ts *uint64) time.Time {
+	if ts == nil || *ts == 0 {
+		return time.Time{}
+	}
+	return time.Unix(int64(*ts), 0)
+}
+
+func NewConversation(loginID networkid.UserLoginID, chatJID types.JID, conv *waHistorySync.Conversation) *Conversation {
+	var pinned *bool
+	if conv.Pinned != nil {
+		pinned = ptr.Ptr(*conv.Pinned > 0)
+	}
+	return &Conversation{
+		UserLoginID:               loginID,
+		ChatJID:                   chatJID,
+		LastMessageTimestamp:      parseHistoryTime(conv.LastMsgTimestamp),
+		Archived:                  conv.Archived,
+		Pinned:                    pinned,
+		MuteEndTime:               parseHistoryTime(conv.MuteEndTime),
+		EndOfHistoryTransferType:  conv.EndOfHistoryTransferType,
+		EphemeralExpiration:       conv.EphemeralExpiration,
+		EphemeralSettingTimestamp: conv.EphemeralSettingTimestamp,
+		MarkedAsUnread:            conv.MarkedAsUnread,
+		UnreadCount:               conv.UnreadCount,
+	}
 }
 
 const (
@@ -40,12 +68,19 @@ const (
 		ON CONFLICT (bridge_id, user_login_id, chat_jid)
 		DO UPDATE SET
 			last_message_timestamp=CASE
-				WHEN excluded.last_message_timestamp > whatsapp_history_sync_conversation.last_message_timestamp THEN excluded.last_message_timestamp
+				WHEN whatsapp_history_sync_conversation.last_message_timestamp IS NULL
+				         OR excluded.last_message_timestamp > whatsapp_history_sync_conversation.last_message_timestamp
+					THEN excluded.last_message_timestamp
 				ELSE whatsapp_history_sync_conversation.last_message_timestamp
 			END,
+			archived=COALESCE(excluded.archived, whatsapp_history_sync_conversation.archived),
+			pinned=COALESCE(excluded.pinned, whatsapp_history_sync_conversation.pinned),
+			mute_end_time=COALESCE(excluded.mute_end_time, whatsapp_history_sync_conversation.mute_end_time),
+			end_of_history_transfer_type=COALESCE(excluded.end_of_history_transfer_type, whatsapp_history_sync_conversation.end_of_history_transfer_type),
 			ephemeral_expiration=COALESCE(excluded.ephemeral_expiration, whatsapp_history_sync_conversation.ephemeral_expiration),
 			ephemeral_setting_timestamp=COALESCE(excluded.ephemeral_setting_timestamp, whatsapp_history_sync_conversation.ephemeral_setting_timestamp),
-			end_of_history_transfer_type=excluded.end_of_history_transfer_type
+			marked_as_unread=COALESCE(excluded.marked_as_unread, whatsapp_history_sync_conversation.marked_as_unread),
+			unread_count=COALESCE(excluded.unread_count, whatsapp_history_sync_conversation.unread_count)
 	`
 	getRecentConversations = `
 		SELECT
@@ -97,16 +132,23 @@ func (cq *ConversationQuery) Delete(ctx context.Context, loginID networkid.UserL
 }
 
 func (c *Conversation) sqlVariables() []any {
+	var lastMessageTS, muteEndTime int64
+	if !c.LastMessageTimestamp.IsZero() {
+		lastMessageTS = c.LastMessageTimestamp.Unix()
+	}
+	if !c.MuteEndTime.IsZero() {
+		muteEndTime = c.MuteEndTime.Unix()
+	}
 	return []any{
 		c.BridgeID,
 		c.UserLoginID,
 		c.ChatJID,
-		c.LastMessageTimestamp.Unix(),
+		lastMessageTS,
 		c.Archived,
 		c.Pinned,
-		c.MuteEndTime.Unix(),
+		muteEndTime,
 		c.EndOfHistoryTransferType,
-		int64(c.EphemeralExpiration.Seconds()),
+		c.EphemeralExpiration,
 		c.EphemeralSettingTimestamp,
 		c.MarkedAsUnread,
 		c.UnreadCount,
@@ -114,7 +156,7 @@ func (c *Conversation) sqlVariables() []any {
 }
 
 func (c *Conversation) Scan(row dbutil.Scannable) (*Conversation, error) {
-	var lastMessageTS, muteEndTime, ephemeralExpiration int64
+	var lastMessageTS, muteEndTime int64
 	err := row.Scan(
 		&c.BridgeID,
 		&c.UserLoginID,
@@ -124,7 +166,7 @@ func (c *Conversation) Scan(row dbutil.Scannable) (*Conversation, error) {
 		&c.Pinned,
 		&muteEndTime,
 		&c.EndOfHistoryTransferType,
-		&ephemeralExpiration,
+		&c.EphemeralExpiration,
 		&c.EphemeralSettingTimestamp,
 		&c.MarkedAsUnread,
 		&c.UnreadCount,
@@ -138,6 +180,5 @@ func (c *Conversation) Scan(row dbutil.Scannable) (*Conversation, error) {
 	if muteEndTime != 0 {
 		c.MuteEndTime = time.Unix(muteEndTime, 0)
 	}
-	c.EphemeralExpiration = time.Duration(ephemeralExpiration) * time.Second
 	return c, nil
 }
