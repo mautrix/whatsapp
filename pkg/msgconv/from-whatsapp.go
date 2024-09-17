@@ -1,6 +1,7 @@
 package msgconv
 
 import (
+	"archive/zip"
 	"bytes"
 	"context"
 	"fmt"
@@ -43,6 +44,7 @@ type MediaInfo struct {
 	FileName    string
 	Waveform    []int
 	IsGif       bool
+	IsSticker   bool
 	Caption     string
 	MsgType     event.MessageType
 	ContextInfo *waE2E.ContextInfo
@@ -73,6 +75,7 @@ func getMediaMessageFileInfo(msg *waE2E.Message) (message MediaMessage, info Med
 
 		info.Width = int(msg.StickerMessage.GetWidth())
 		info.Height = int(msg.StickerMessage.GetHeight())
+		info.IsSticker = true
 	} else if msg.VideoMessage != nil {
 		info.MsgType = event.MsgVideo
 		message = msg.VideoMessage
@@ -205,6 +208,23 @@ func (mc *MessageConverter) reuploadWhatsAppAttachment(
 		data, err := client.Download(message)
 		if err != nil {
 			return nil, fmt.Errorf("%w: %w", bridgev2.ErrMediaDownloadFailed, err)
+		}
+		if fileInfo.IsSticker && fileInfo.MimeType == "application/was" {
+			zipReader, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
+			if err != nil {
+				return nil, fmt.Errorf("failed to read sticker zip: %w", err)
+			}
+			animationFile, err := zipReader.Open("animation/animation.json")
+			if err != nil {
+				return nil, fmt.Errorf("failed to open animation.json: %w", err)
+			}
+			data, err = io.ReadAll(animationFile)
+			_ = animationFile.Close()
+			if err != nil {
+				return nil, fmt.Errorf("failed to read animation.json: %w", err)
+			}
+			fileInfo.MimeType = "image/lottie+json"
+			fileInfo.FileName = "sticker.json"
 		}
 		if fileInfo.MimeType == "" {
 			fileInfo.MimeType = http.DetectContentType(data)
