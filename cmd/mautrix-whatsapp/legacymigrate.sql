@@ -228,13 +228,14 @@ LEFT JOIN user_login ON user_login.user_mxid = history_sync_conversation_old.use
 WHERE user_login.id IS NOT NULL;
 
 INSERT INTO whatsapp_history_sync_message (
-    bridge_id, user_login_id, chat_jid, message_id, timestamp, data, inserted_time
+    bridge_id, user_login_id, chat_jid, sender_jid, message_id, timestamp, data, inserted_time
 )
 SELECT
     '',
     user_login.id,
     conversation_id,
     message_id,
+    '',
     -- only: postgres
     CAST(EXTRACT(EPOCH FROM timestamp) AS BIGINT),
     -- only: sqlite (line commented)
