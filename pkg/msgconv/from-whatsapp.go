@@ -218,6 +218,14 @@ func (mc *MessageConverter) reuploadWhatsAppAttachment(
 			if err != nil {
 				return nil, fmt.Errorf("failed to open animation.json: %w", err)
 			}
+			animationFileInfo, err := animationFile.Stat()
+			if err != nil {
+				_ = animationFile.Close()
+				return nil, fmt.Errorf("failed to stat animation.json: %w", err)
+			} else if animationFileInfo.Size() > uploadFileThreshold {
+				_ = animationFile.Close()
+				return nil, fmt.Errorf("animation.json is too large (%.2f MiB)", float64(animationFileInfo.Size())/1024/1024)
+			}
 			data, err = io.ReadAll(animationFile)
 			_ = animationFile.Close()
 			if err != nil {
