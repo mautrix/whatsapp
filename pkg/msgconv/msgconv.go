@@ -35,13 +35,13 @@ type MessageConverter struct {
 	MaxFileSize           int64
 	HTMLParser            *format.HTMLParser
 	AnimatedStickerConfig AnimatedStickerConfig
+	FetchURLPreviews      bool
 }
 
-func New(br *bridgev2.Bridge, asc AnimatedStickerConfig) *MessageConverter {
+func New(br *bridgev2.Bridge) *MessageConverter {
 	mc := &MessageConverter{
-		Bridge:                br,
-		MaxFileSize:           50 * 1024 * 1024,
-		AnimatedStickerConfig: asc,
+		Bridge:      br,
+		MaxFileSize: 50 * 1024 * 1024,
 	}
 	mc.HTMLParser = &format.HTMLParser{
 		PillConverter: mc.convertPill,

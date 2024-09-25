@@ -44,7 +44,9 @@ func (wa *WhatsAppConnector) GetName() bridgev2.BridgeName {
 
 func (wa *WhatsAppConnector) Init(bridge *bridgev2.Bridge) {
 	wa.Bridge = bridge
-	wa.MsgConv = msgconv.New(bridge, wa.Config.AnimatedSticker)
+	wa.MsgConv = msgconv.New(bridge)
+	wa.MsgConv.AnimatedStickerConfig = wa.Config.AnimatedSticker
+	wa.MsgConv.FetchURLPreviews = wa.Config.URLPreviews
 	wa.DB = wadb.New(bridge.ID, bridge.DB.Database, bridge.Log.With().Str("db_section", "whatsapp").Logger())
 
 	wa.DeviceStore = sqlstore.NewWithDB(

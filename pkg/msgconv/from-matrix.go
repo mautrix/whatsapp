@@ -1,8 +1,25 @@
+// mautrix-whatsapp - A Matrix-WhatsApp puppeting bridge.
+// Copyright (C) 2024 Tulir Asokan
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Affero General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU Affero General Public License for more details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
 package msgconv
 
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"image"
 	"image/color"
@@ -68,11 +85,11 @@ func (mc *MessageConverter) ToWhatsApp(
 	case event.MsgText, event.MsgNotice, event.MsgEmote:
 		message = mc.constructTextMessage(ctx, content, portal, contextInfo)
 	case event.MessageType(event.EventSticker.Type), event.MsgImage, event.MsgVideo, event.MsgAudio, event.MsgFile:
-		uploaded, mime, err := mc.reuploadFileToWhatsApp(ctx, client, content)
+		uploaded, thumbnail, mime, err := mc.reuploadFileToWhatsApp(ctx, client, content)
 		if err != nil {
 			return nil, err
 		}
-		message = mc.constructMediaMessage(ctx, content, portal, uploaded, contextInfo, mime)
+		message = mc.constructMediaMessage(ctx, content, evt, portal, uploaded, thumbnail, contextInfo, mime)
 	case event.MsgLocation:
 		lat, long, err := parseGeoURI(content.GeoURI)
 		if err != nil {
@@ -93,8 +110,10 @@ func (mc *MessageConverter) ToWhatsApp(
 func (mc *MessageConverter) constructMediaMessage(
 	ctx context.Context,
 	content *event.MessageEventContent,
+	evt *event.Event,
 	portal *bridgev2.Portal,
 	uploaded *whatsmeow.UploadResponse,
+	thumbnail []byte,
 	contextInfo *waE2E.ContextInfo,
 	mime string,
 ) *waE2E.Message {
@@ -113,6 +132,7 @@ func (mc *MessageConverter) constructMediaMessage(
 				Height: &height,
 
 				ContextInfo:   contextInfo,
+				PngThumbnail:  thumbnail,
 				DirectPath:    proto.String(uploaded.DirectPath),
 				MediaKey:      uploaded.MediaKey,
 				Mimetype:      proto.String(mime),
@@ -151,6 +171,7 @@ func (mc *MessageConverter) constructMediaMessage(
 				Height: &height,
 
 				Caption:       proto.String(caption),
+				JPEGThumbnail: thumbnail,
 				URL:           proto.String(uploaded.URL),
 				DirectPath:    proto.String(uploaded.DirectPath),
 				MediaKey:      uploaded.MediaKey,
@@ -164,6 +185,8 @@ func (mc *MessageConverter) constructMediaMessage(
 	case event.MsgVideo:
 		isGif := false
 		if mime == "video/mp4" && content.Info.MimeType == "image/gif" {
+			isGif = true
+		} else if rawInfo, ok := evt.Content.Raw["info"].(map[string]any); ok && rawInfo["fi.mau.gif"] == true {
 			isGif = true
 		}
 
@@ -179,6 +202,7 @@ func (mc *MessageConverter) constructMediaMessage(
 				Seconds:     &seconds,
 
 				Caption:       proto.String(caption),
+				JPEGThumbnail: thumbnail,
 				URL:           proto.String(uploaded.URL),
 				DirectPath:    proto.String(uploaded.DirectPath),
 				MediaKey:      uploaded.MediaKey,
@@ -190,11 +214,12 @@ func (mc *MessageConverter) constructMediaMessage(
 			},
 		}
 	case event.MsgFile:
-		return &waE2E.Message{
+		msg := &waE2E.Message{
 			DocumentMessage: &waE2E.DocumentMessage{
 				FileName: proto.String(content.FileName),
 
 				Caption:       proto.String(caption),
+				JPEGThumbnail: thumbnail,
 				URL:           proto.String(uploaded.URL),
 				DirectPath:    proto.String(uploaded.DirectPath),
 				MediaKey:      uploaded.MediaKey,
@@ -205,6 +230,15 @@ func (mc *MessageConverter) constructMediaMessage(
 				ContextInfo:   contextInfo,
 			},
 		}
+		if msg.GetDocumentMessage().GetCaption() != "" {
+			msg.DocumentWithCaptionMessage = &waE2E.FutureProofMessage{
+				Message: &waE2E.Message{
+					DocumentMessage: msg.DocumentMessage,
+				},
+			}
+			msg.DocumentMessage = nil
+		}
+		return msg
 	default:
 		return nil
 	}
@@ -229,13 +263,13 @@ func (mc *MessageConverter) constructTextMessage(ctx context.Context, content *e
 	if len(mentions) > 0 {
 		contextInfo.MentionedJID = mentions
 	}
-
-	return &waE2E.Message{
-		ExtendedTextMessage: &waE2E.ExtendedTextMessage{
-			Text:        proto.String(text),
-			ContextInfo: contextInfo,
-		},
+	etm := &waE2E.ExtendedTextMessage{
+		Text:        proto.String(text),
+		ContextInfo: contextInfo,
 	}
+	mc.convertURLPreviewToWhatsApp(ctx, content, etm)
+
+	return &waE2E.Message{ExtendedTextMessage: etm}
 }
 
 func (mc *MessageConverter) convertPill(displayname, mxid, eventID string, ctx format.Context) string {
@@ -328,7 +362,9 @@ func (mc *MessageConverter) convertToWebP(img []byte) ([]byte, error) {
 	return webpBuffer.Bytes(), nil
 }
 
-func (mc *MessageConverter) reuploadFileToWhatsApp(ctx context.Context, client *whatsmeow.Client, content *event.MessageEventContent) (*whatsmeow.UploadResponse, string, error) {
+func (mc *MessageConverter) reuploadFileToWhatsApp(
+	ctx context.Context, client *whatsmeow.Client, content *event.MessageEventContent,
+) (*whatsmeow.UploadResponse, []byte, string, error) {
 	mime := content.Info.MimeType
 	fileName := content.Body
 	if content.FileName != "" {
@@ -336,7 +372,7 @@ func (mc *MessageConverter) reuploadFileToWhatsApp(ctx context.Context, client *
 	}
 	data, err := mc.Bridge.Bot.DownloadMedia(ctx, content.URL, content.File)
 	if err != nil {
-		return nil, "", fmt.Errorf("%w: %w", bridgev2.ErrMediaDownloadFailed, err)
+		return nil, nil, "", fmt.Errorf("%w: %w", bridgev2.ErrMediaDownloadFailed, err)
 	}
 
 	if mime == "" {
@@ -347,13 +383,15 @@ func (mc *MessageConverter) reuploadFileToWhatsApp(ctx context.Context, client *
 	}
 
 	var mediaType whatsmeow.MediaType
+	var isSticker bool
 	switch content.MsgType {
 	case event.MessageType(event.EventSticker.Type):
+		isSticker = true
 		mediaType = whatsmeow.MediaImage
 		if mime != "image/webp" || content.Info.Width != content.Info.Height {
 			data, err = mc.convertToWebP(data)
 			if err != nil {
-				return nil, "image/webp", fmt.Errorf("%w (to webp): %w", bridgev2.ErrMediaConvertFailed, err)
+				return nil, nil, "image/webp", fmt.Errorf("%w (to webp): %w", bridgev2.ErrMediaConvertFailed, err)
 			}
 			mime = "image/webp"
 		}
@@ -365,11 +403,11 @@ func (mc *MessageConverter) reuploadFileToWhatsApp(ctx context.Context, client *
 		case "image/webp":
 			data, err = mc.convertWebPtoPNG(data)
 			if err != nil {
-				return nil, "image/webp", fmt.Errorf("%w (webp to png): %s", bridgev2.ErrMediaConvertFailed, err)
+				return nil, nil, "image/webp", fmt.Errorf("%w (webp to png): %s", bridgev2.ErrMediaConvertFailed, err)
 			}
 			mime = "image/png"
 		default:
-			return nil, mime, fmt.Errorf("%w %s in image message", bridgev2.ErrUnsupportedMediaType, mime)
+			return nil, nil, mime, fmt.Errorf("%w %s in image message", bridgev2.ErrUnsupportedMediaType, mime)
 		}
 	case event.MsgVideo:
 		switch mime {
@@ -381,7 +419,7 @@ func (mc *MessageConverter) reuploadFileToWhatsApp(ctx context.Context, client *
 				"-filter:v", "crop='floor(in_w/2)*2:floor(in_h/2)*2'",
 			}, mime)
 			if err != nil {
-				return nil, "video/webm", fmt.Errorf("%w (webm to mp4): %w", bridgev2.ErrMediaConvertFailed, err)
+				return nil, nil, "video/webm", fmt.Errorf("%w (webm to mp4): %w", bridgev2.ErrMediaConvertFailed, err)
 			}
 			mime = "video/mp4"
 		case "image/gif":
@@ -390,11 +428,11 @@ func (mc *MessageConverter) reuploadFileToWhatsApp(ctx context.Context, client *
 				"-filter:v", "crop='floor(in_w/2)*2:floor(in_h/2)*2'",
 			}, mime)
 			if err != nil {
-				return nil, "image/gif", fmt.Errorf("%w (gif to mp4): %w", bridgev2.ErrMediaConvertFailed, err)
+				return nil, nil, "image/gif", fmt.Errorf("%w (gif to mp4): %w", bridgev2.ErrMediaConvertFailed, err)
 			}
 			mime = "video/mp4"
 		default:
-			return nil, mime, fmt.Errorf("%w %s in video message", bridgev2.ErrUnsupportedMediaType, mime)
+			return nil, nil, mime, fmt.Errorf("%w %s in video message", bridgev2.ErrUnsupportedMediaType, mime)
 		}
 		mediaType = whatsmeow.MediaVideo
 	case event.MsgAudio:
@@ -405,7 +443,7 @@ func (mc *MessageConverter) reuploadFileToWhatsApp(ctx context.Context, client *
 			// Hopefully it's opus already
 			mime = "audio/ogg; codecs=opus"
 		default:
-			return nil, mime, fmt.Errorf("%w %qs in audio message", bridgev2.ErrUnsupportedMediaType, mime)
+			return nil, nil, mime, fmt.Errorf("%w %s in audio message", bridgev2.ErrUnsupportedMediaType, mime)
 		}
 		mediaType = whatsmeow.MediaAudio
 	case event.MsgFile:
@@ -421,9 +459,18 @@ func (mc *MessageConverter) reuploadFileToWhatsApp(ctx context.Context, client *
 			Str("mime_type", mime).
 			Bool("is_voice_clip", content.MSC3245Voice != nil).
 			Msg("Failed upload media")
-		return nil, "", fmt.Errorf("%w: %w", bridgev2.ErrMediaReuploadFailed, err)
+		return nil, nil, "", fmt.Errorf("%w: %w", bridgev2.ErrMediaReuploadFailed, err)
 	}
-	return &uploaded, mime, nil
+	var thumbnail []byte
+	// Audio doesn't have thumbnails
+	if mediaType != whatsmeow.MediaAudio {
+		thumbnail, err = mc.downloadThumbnail(ctx, data, content.GetInfo().ThumbnailURL, content.GetInfo().ThumbnailFile, isSticker)
+		// Ignore format errors for non-image files, we don't care about those thumbnails
+		if err != nil && (!errors.Is(err, image.ErrFormat) || mediaType == whatsmeow.MediaImage) {
+			zerolog.Ctx(ctx).Warn().Err(err).Msg("Failed to generate thumbnail for image message")
+		}
+	}
+	return &uploaded, thumbnail, mime, nil
 }
 
 func parseGeoURI(uri string) (lat, long float64, err error) {
