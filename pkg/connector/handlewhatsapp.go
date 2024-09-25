@@ -2,6 +2,7 @@ package connector
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"go.mau.fi/whatsmeow/appstate"
@@ -229,7 +230,7 @@ func (wa *WhatsAppClient) handleWAMessage(evt *events.Message) {
 		return
 	}
 	parsedMessageType := getMessageType(evt.Message)
-	if parsedMessageType == "ignore" {
+	if parsedMessageType == "ignore" || strings.HasPrefix(parsedMessageType, "unknown_protocol_") {
 		return
 	}
 	wa.Main.Bridge.QueueRemoteEvent(wa.UserLogin, &WAMessageEvent{
