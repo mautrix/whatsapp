@@ -156,7 +156,7 @@ func (mc *MessageConverter) convertEventMessage(ctx context.Context, msg *waE2E.
 		Name:            msg.GetName(),
 		JoinLink:        msg.GetJoinLink(),
 		Location:        msg.GetLocation().GetName(),
-		DescriptionHTML: template.HTML(mc.parseFormattingToHTML(ctx, msg.GetDescription(), false)),
+		DescriptionHTML: template.HTML(parseWAFormattingToHTML(msg.GetDescription(), false)),
 	}
 	if msg.StartTime != nil {
 		startTS := time.Unix(msg.GetStartTime(), 0)

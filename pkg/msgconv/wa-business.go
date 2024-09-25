@@ -90,7 +90,7 @@ func (mc *MessageConverter) convertTemplateMessage(ctx context.Context, info *ty
 		}
 		converted.Content.Body += extraText
 	}
-	mc.parseFormatting(ctx, converted.Content, true, false)
+	mc.parseFormatting(converted.Content, true, false)
 	if converted.Extra == nil {
 		converted.Extra = make(map[string]any)
 	}
@@ -136,7 +136,7 @@ func (mc *MessageConverter) convertListMessage(ctx context.Context, msg *waE2E.L
 		body = fmt.Sprintf("%s\n\n%s", body, msg.GetFooterText())
 	}
 	converted.Content.Body = body
-	mc.parseFormatting(ctx, converted.Content, false, true)
+	mc.parseFormatting(converted.Content, false, true)
 
 	var optionsMarkdown strings.Builder
 	_, _ = fmt.Fprintf(&optionsMarkdown, "#### %s\n", msg.GetButtonText())
