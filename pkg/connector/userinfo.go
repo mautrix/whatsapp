@@ -28,7 +28,7 @@ func (wa *WhatsAppClient) contactToUserInfo(ctx context.Context, jid types.JID, 
 	ui := &bridgev2.UserInfo{
 		Name:        ptr.Ptr(wa.Main.Config.FormatDisplayname(jid, contact)),
 		IsBot:       ptr.Ptr(jid.IsBot()),
-		Identifiers: []string{fmt.Sprintf("tel:%s", jid.User)},
+		Identifiers: []string{fmt.Sprintf("tel:+%s", jid.User)},
 	}
 	if getAvatar {
 		ui.ExtraUpdates = bridgev2.MergeExtraUpdaters(ui.ExtraUpdates, markAvatarFetchAttempted)
