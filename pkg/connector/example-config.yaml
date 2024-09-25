@@ -50,6 +50,21 @@ url_previews: false
 # receipts when it's in the foreground.
 force_active_delivery_receipts: false
 
+# Settings for converting animated stickers.
+animated_sticker:
+    # Format to which animated stickers should be converted.
+    # disable - No conversion, just unzip and send raw lottie JSON
+    # png - converts to non-animated png (fastest)
+    # gif - converts to animated gif
+    # webm - converts to webm video, requires ffmpeg executable with vp9 codec and webm container support
+    # webp - converts to animated webp, requires ffmpeg executable with webp codec/container support
+    target: webp
+    # Arguments for converter. All converters take width and height.
+    args:
+        width: 320
+        height: 320
+        fps: 25 # only for webm, webp and gif (2, 5, 10, 20 or 25 recommended)
+
 # Settings for handling history sync payloads.
 history_sync:
     # How many conversations should the bridge create after login?

@@ -9,6 +9,8 @@ import (
 	"go.mau.fi/whatsmeow/types"
 	"gopkg.in/yaml.v3"
 	"maunium.net/go/mautrix/event"
+
+	"maunium.net/go/mautrix-whatsapp/pkg/msgconv"
 )
 
 type MediaRequestMethod string
@@ -40,6 +42,8 @@ type Config struct {
 	WhatsappThumbnail           bool          `yaml:"whatsapp_thumbnail"`
 	URLPreviews                 bool          `yaml:"url_previews"`
 	ForceActiveDeliveryReceipts bool          `yaml:"force_active_delivery_receipts"`
+
+	AnimatedSticker msgconv.AnimatedStickerConfig `yaml:"animated_sticker"`
 
 	HistorySync struct {
 		MaxInitialConversations int  `yaml:"max_initial_conversations"`
@@ -94,6 +98,12 @@ func upgradeConfig(helper up.Helper) {
 	helper.Copy(up.Str, "status_broadcast_tag")
 	helper.Copy(up.Bool, "whatsapp_thumbnail")
 	helper.Copy(up.Bool, "url_previews")
+	helper.Copy(up.Bool, "force_active_delivery_receipts")
+
+	helper.Copy(up.Str, "animated_sticker", "target")
+	helper.Copy(up.Int, "animated_sticker", "args", "width")
+	helper.Copy(up.Int, "animated_sticker", "args", "height")
+	helper.Copy(up.Int, "animated_sticker", "args", "fps")
 
 	helper.Copy(up.Int, "history_sync", "max_initial_conversations")
 	helper.Copy(up.Bool, "history_sync", "request_full_sync")

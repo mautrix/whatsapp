@@ -21,16 +21,27 @@ import (
 	"maunium.net/go/mautrix/format"
 )
 
-type MessageConverter struct {
-	Bridge      *bridgev2.Bridge
-	MaxFileSize int64
-	HTMLParser  *format.HTMLParser
+type AnimatedStickerConfig struct {
+	Target string `yaml:"target"`
+	Args   struct {
+		Width  int `yaml:"width"`
+		Height int `yaml:"height"`
+		FPS    int `yaml:"fps"`
+	} `yaml:"args"`
 }
 
-func New(br *bridgev2.Bridge) *MessageConverter {
+type MessageConverter struct {
+	Bridge                *bridgev2.Bridge
+	MaxFileSize           int64
+	HTMLParser            *format.HTMLParser
+	AnimatedStickerConfig AnimatedStickerConfig
+}
+
+func New(br *bridgev2.Bridge, asc AnimatedStickerConfig) *MessageConverter {
 	mc := &MessageConverter{
-		Bridge:      br,
-		MaxFileSize: 50 * 1024 * 1024,
+		Bridge:                br,
+		MaxFileSize:           50 * 1024 * 1024,
+		AnimatedStickerConfig: asc,
 	}
 	mc.HTMLParser = &format.HTMLParser{
 		PillConverter: mc.convertPill,
