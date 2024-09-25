@@ -45,6 +45,8 @@ func New(br *bridgev2.Bridge) *MessageConverter {
 	}
 	mc.HTMLParser = &format.HTMLParser{
 		PillConverter: mc.convertPill,
+		Newline:       "\n",
+		TabsToSpaces:  4,
 		BoldConverter: func(text string, ctx format.Context) string {
 			return "*" + text + "*"
 		},
