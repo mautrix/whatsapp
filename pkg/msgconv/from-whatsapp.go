@@ -109,7 +109,7 @@ func (mc *MessageConverter) ToMatrix(
 	var part *bridgev2.ConvertedMessagePart
 	var contextInfo *waE2E.ContextInfo
 	switch {
-	case waMsg.Conversation != nil:
+	case waMsg.Conversation != nil, waMsg.ExtendedTextMessage != nil:
 		part, contextInfo = mc.convertTextMessage(ctx, waMsg)
 	case waMsg.TemplateMessage != nil:
 		part, contextInfo = mc.convertTemplateMessage(ctx, info, waMsg.TemplateMessage)
