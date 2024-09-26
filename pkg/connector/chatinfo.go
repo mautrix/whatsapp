@@ -9,6 +9,7 @@ import (
 	"go.mau.fi/util/ptr"
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/types"
+	"go.mau.fi/whatsmeow/types/events"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
@@ -232,6 +233,92 @@ func (wa *WhatsAppClient) wrapGroupInfo(info *types.GroupInfo) *bridgev2.ChatInf
 		wrapped.Type = ptr.Ptr(database.RoomTypeDefault)
 	}
 	return wrapped
+}
+
+func (wa *WhatsAppClient) wrapGroupInfoChange(evt *events.GroupInfo) *bridgev2.ChatInfoChange {
+	var changes *bridgev2.ChatInfo
+	if evt.Name != nil || evt.Topic != nil || evt.Ephemeral != nil || evt.Unlink != nil || evt.Link != nil {
+		changes = &bridgev2.ChatInfo{}
+		if evt.Name != nil {
+			changes.Name = &evt.Name.Name
+		}
+		if evt.Topic != nil {
+			changes.Topic = &evt.Topic.Topic
+		}
+		if evt.Ephemeral != nil {
+			changes.Disappear = &database.DisappearingSetting{
+				Type:  database.DisappearingTypeAfterRead,
+				Timer: time.Duration(evt.Ephemeral.DisappearingTimer) * time.Second,
+			}
+			if !evt.Ephemeral.IsEphemeral {
+				changes.Disappear = &database.DisappearingSetting{}
+			}
+		}
+		if evt.Unlink != nil {
+			// TODO ensure this doesn't race with link to a new group?
+			changes.ParentID = ptr.Ptr(networkid.PortalID(""))
+		}
+		if evt.Link != nil && evt.Link.Type == types.GroupLinkChangeTypeParent {
+			changes.ParentID = ptr.Ptr(waid.MakePortalID(evt.Link.Group.JID))
+		}
+	}
+	var memberChanges *bridgev2.ChatMemberList
+	if evt.Join != nil || evt.Leave != nil || evt.Promote != nil || evt.Demote != nil {
+		memberChanges = &bridgev2.ChatMemberList{
+			MemberMap: make(map[networkid.UserID]bridgev2.ChatMember),
+		}
+		for _, userID := range evt.Join {
+			memberChanges.MemberMap[waid.MakeUserID(userID)] = bridgev2.ChatMember{
+				EventSender: wa.makeEventSender(userID),
+			}
+		}
+		for _, userID := range evt.Promote {
+			memberChanges.MemberMap[waid.MakeUserID(userID)] = bridgev2.ChatMember{
+				EventSender: wa.makeEventSender(userID),
+				PowerLevel:  ptr.Ptr(adminPL),
+			}
+		}
+		for _, userID := range evt.Demote {
+			memberChanges.MemberMap[waid.MakeUserID(userID)] = bridgev2.ChatMember{
+				EventSender: wa.makeEventSender(userID),
+				PowerLevel:  ptr.Ptr(defaultPL),
+			}
+		}
+		for _, userID := range evt.Leave {
+			memberChanges.MemberMap[waid.MakeUserID(userID)] = bridgev2.ChatMember{
+				EventSender: wa.makeEventSender(userID),
+				Membership:  event.MembershipLeave,
+			}
+		}
+	}
+	if evt.Announce != nil || evt.Locked != nil {
+		if memberChanges == nil {
+			memberChanges = &bridgev2.ChatMemberList{}
+		}
+		memberChanges.PowerLevels = &bridgev2.PowerLevelOverrides{}
+		if evt.Announce != nil {
+			if evt.Announce.IsAnnounce {
+				memberChanges.PowerLevels.EventsDefault = ptr.Ptr(adminPL)
+			} else {
+				memberChanges.PowerLevels.EventsDefault = ptr.Ptr(defaultPL)
+			}
+		}
+		if evt.Locked != nil {
+			metaChangePL := defaultPL
+			if evt.Locked.IsLocked {
+				metaChangePL = adminPL
+			}
+			memberChanges.PowerLevels.Events = map[event.Type]int{
+				event.StateRoomName:   metaChangePL,
+				event.StateRoomAvatar: metaChangePL,
+				event.StateTopic:      metaChangePL,
+			}
+		}
+	}
+	return &bridgev2.ChatInfoChange{
+		ChatInfo:      changes,
+		MemberChanges: memberChanges,
+	}
 }
 
 func (wa *WhatsAppClient) makePortalAvatarFetcher(avatarID string, sender types.JID, ts time.Time) func(context.Context, *bridgev2.Portal) bool {

@@ -96,7 +96,7 @@ func (wa *WhatsAppClient) handleWAEvent(rawEvt any) {
 		// TODO
 
 	case *events.GroupInfo:
-		// TODO
+		wa.handleWAGroupInfoChange(evt)
 	case *events.JoinedGroup:
 		// TODO
 	case *events.NewsletterJoin:
@@ -487,6 +487,28 @@ func (wa *WhatsAppClient) handleWAPictureUpdate(evt *events.Picture) {
 			ChatInfoChange: &bridgev2.ChatInfoChange{
 				ChatInfo: &changes,
 			},
+		})
+	}
+}
+
+func (wa *WhatsAppClient) handleWAGroupInfoChange(evt *events.GroupInfo) {
+	eventMeta := simplevent.EventMeta{
+		Type:         bridgev2.RemoteEventChatInfoChange,
+		LogContext:   nil,
+		PortalKey:    wa.makeWAPortalKey(evt.JID),
+		CreatePortal: true,
+		Timestamp:    evt.Timestamp,
+	}
+	if evt.Sender != nil {
+		eventMeta.Sender = wa.makeEventSender(*evt.Sender)
+	}
+	if evt.Delete != nil {
+		eventMeta.Type = bridgev2.RemoteEventChatDelete
+		wa.UserLogin.QueueRemoteEvent(&simplevent.ChatDelete{EventMeta: eventMeta})
+	} else {
+		wa.UserLogin.QueueRemoteEvent(&simplevent.ChatInfoChange{
+			EventMeta:      eventMeta,
+			ChatInfoChange: wa.wrapGroupInfoChange(evt),
 		})
 	}
 }
