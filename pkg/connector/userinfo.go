@@ -16,45 +16,50 @@ import (
 
 func (wa *WhatsAppClient) GetUserInfo(ctx context.Context, ghost *bridgev2.Ghost) (*bridgev2.UserInfo, error) {
 	jid := waid.ParseUserID(ghost.ID)
+	fetchAvatar := !ghost.Metadata.(*waid.GhostMetadata).AvatarFetchAttempted
+	return wa.getUserInfo(ctx, jid, fetchAvatar)
+}
+
+func (wa *WhatsAppClient) getUserInfo(ctx context.Context, jid types.JID, fetchAvatar bool) (*bridgev2.UserInfo, error) {
 	contact, err := wa.Client.Store.Contacts.GetContact(jid)
 	if err != nil {
 		return nil, err
 	}
-	fetchAvatar := !ghost.Metadata.(*waid.GhostMetadata).AvatarFetchAttempted
-	return wa.contactToUserInfo(ctx, jid, contact, fetchAvatar), nil
+	return wa.contactToUserInfo(jid, contact, fetchAvatar), nil
 }
 
-func (wa *WhatsAppClient) contactToUserInfo(ctx context.Context, jid types.JID, contact types.ContactInfo, getAvatar bool) *bridgev2.UserInfo {
+func (wa *WhatsAppClient) contactToUserInfo(jid types.JID, contact types.ContactInfo, getAvatar bool) *bridgev2.UserInfo {
 	ui := &bridgev2.UserInfo{
 		Name:        ptr.Ptr(wa.Main.Config.FormatDisplayname(jid, contact)),
 		IsBot:       ptr.Ptr(jid.IsBot()),
 		Identifiers: []string{fmt.Sprintf("tel:+%s", jid.User)},
 	}
 	if getAvatar {
-		ui.ExtraUpdates = bridgev2.MergeExtraUpdaters(ui.ExtraUpdates, markAvatarFetchAttempted)
-		avatar, err := wa.Client.GetProfilePictureInfo(jid, &whatsmeow.GetProfilePictureParams{
-			Preview:     false,
-			IsCommunity: false,
-		})
-		if err != nil {
-			zerolog.Ctx(ctx).Err(err).Msg("Failed to get avatar info")
-		} else if avatar != nil {
-			ui.Avatar = &bridgev2.Avatar{
-				ID: networkid.AvatarID(avatar.ID),
-				Get: func(ctx context.Context) ([]byte, error) {
-					return wa.Client.DownloadMediaWithPath(avatar.DirectPath, nil, nil, nil, 0, "", "")
-				},
-			}
-		}
+		ui.ExtraUpdates = bridgev2.MergeExtraUpdaters(ui.ExtraUpdates, wa.fetchGhostAvatar)
 	}
 	return ui
 }
 
-func markAvatarFetchAttempted(_ context.Context, ghost *bridgev2.Ghost) bool {
+func (wa *WhatsAppClient) fetchGhostAvatar(ctx context.Context, ghost *bridgev2.Ghost) bool {
+	jid := waid.ParseUserID(ghost.ID)
 	meta := ghost.Metadata.(*waid.GhostMetadata)
-	if !meta.AvatarFetchAttempted {
-		meta.AvatarFetchAttempted = true
-		return true
+	existingID := string(ghost.AvatarID)
+	if existingID == "remove" || existingID == "unauthorized" {
+		existingID = ""
 	}
-	return false
+	wasAttempted := meta.AvatarFetchAttempted
+	meta.AvatarFetchAttempted = true
+	avatar, err := wa.Client.GetProfilePictureInfo(jid, &whatsmeow.GetProfilePictureParams{ExistingID: existingID})
+	if err != nil {
+		zerolog.Ctx(ctx).Err(err).Msg("Failed to get avatar info")
+		return !wasAttempted
+	} else if avatar == nil {
+		return !wasAttempted
+	}
+	return ghost.UpdateAvatar(ctx, &bridgev2.Avatar{
+		ID: networkid.AvatarID(avatar.ID),
+		Get: func(ctx context.Context) ([]byte, error) {
+			return wa.Client.DownloadMediaWithPath(avatar.DirectPath, nil, nil, nil, 0, "", "")
+		},
+	}) || !wasAttempted
 }

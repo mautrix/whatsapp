@@ -7,6 +7,7 @@ import (
 
 	"github.com/rs/zerolog"
 	"go.mau.fi/util/ptr"
+	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/types"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
@@ -202,6 +203,7 @@ func (wa *WhatsAppClient) wrapGroupInfo(info *types.GroupInfo) *bridgev2.ChatInf
 			Type:  database.DisappearingTypeAfterRead,
 			Timer: time.Duration(info.DisappearingTimer) * time.Second,
 		},
+		ExtraUpdates: wa.makePortalAvatarFetcher("", types.EmptyJID, time.Time{}),
 	}
 	for _, pcp := range info.Participants {
 		if pcp.JID.Server != types.DefaultUserServer {
@@ -230,6 +232,41 @@ func (wa *WhatsAppClient) wrapGroupInfo(info *types.GroupInfo) *bridgev2.ChatInf
 		wrapped.Type = ptr.Ptr(database.RoomTypeDefault)
 	}
 	return wrapped
+}
+
+func (wa *WhatsAppClient) makePortalAvatarFetcher(avatarID string, sender types.JID, ts time.Time) func(context.Context, *bridgev2.Portal) bool {
+	return func(ctx context.Context, portal *bridgev2.Portal) bool {
+		jid, _ := waid.ParsePortalID(portal.ID)
+		existingID := string(portal.AvatarID)
+		if avatarID == existingID {
+			return false
+		}
+		if existingID == "remove" || existingID == "unauthorized" {
+			existingID = ""
+		}
+		avatar, err := wa.Client.GetProfilePictureInfo(jid, &whatsmeow.GetProfilePictureParams{
+			ExistingID:  existingID,
+			IsCommunity: portal.RoomType == database.RoomTypeSpace,
+		})
+		if err != nil {
+			zerolog.Ctx(ctx).Err(err).Msg("Failed to get avatar info")
+			return false
+		} else if avatar == nil {
+			return false
+		}
+		var evtSender bridgev2.EventSender
+		if !sender.IsEmpty() {
+			evtSender = wa.makeEventSender(sender)
+		}
+		senderIntent := portal.GetIntentFor(ctx, evtSender, wa.UserLogin, bridgev2.RemoteEventChatInfoChange)
+		//lint:ignore SA1019 TODO invent a cleaner way to fetch avatar metadata before updating?
+		return portal.Internal().UpdateAvatar(ctx, &bridgev2.Avatar{
+			ID: networkid.AvatarID(avatar.ID),
+			Get: func(ctx context.Context) ([]byte, error) {
+				return wa.Client.DownloadMediaWithPath(avatar.DirectPath, nil, nil, nil, 0, "", "")
+			},
+		}, senderIntent, ts)
+	}
 }
 
 func (wa *WhatsAppClient) wrapNewsletterInfo(info *types.NewsletterMetadata) *bridgev2.ChatInfo {

@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/rs/zerolog"
 	"go.mau.fi/whatsmeow/appstate"
 	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
@@ -103,7 +104,7 @@ func (wa *WhatsAppClient) handleWAEvent(rawEvt any) {
 	case *events.NewsletterLeave:
 		// TODO
 	case *events.Picture:
-		// TODO
+		go wa.handleWAPictureUpdate(evt)
 
 	case *events.AppStateSyncComplete:
 		if len(wa.Client.Store.PushName) > 0 && evt.Name == appstate.WAPatchCriticalBlock {
@@ -133,13 +134,13 @@ func (wa *WhatsAppClient) handleWAEvent(rawEvt any) {
 		if err != nil {
 			log.Err(err).Msg("Failed to update push name in store")
 		}
-		go wa.syncGhost(wa.JID.ToNonAD(), "push name setting")
+		go wa.syncGhost(wa.JID.ToNonAD(), "push name setting", "")
 	case *events.Contact:
-		go wa.syncGhost(evt.JID, "contact event")
+		go wa.syncGhost(evt.JID, "contact event", "")
 	case *events.PushName:
-		go wa.syncGhost(evt.JID, "push name event")
+		go wa.syncGhost(evt.JID, "push name event", "")
 	case *events.BusinessName:
-		go wa.syncGhost(evt.JID, "business name event")
+		go wa.syncGhost(evt.JID, "business name event", "")
 
 	case *events.Connected:
 		log.Debug().Msg("Connected to WhatsApp socket")
@@ -434,10 +435,11 @@ func (wa *WhatsAppClient) handleWAMarkChatAsRead(evt *events.MarkChatAsRead) {
 	})
 }
 
-func (wa *WhatsAppClient) syncGhost(jid types.JID, reason string) {
+func (wa *WhatsAppClient) syncGhost(jid types.JID, reason, pictureID string) {
 	log := wa.UserLogin.Log.With().
 		Str("action", "sync ghost").
 		Str("reason", reason).
+		Str("picture_id", pictureID).
 		Stringer("jid", jid).
 		Logger()
 	ctx := log.WithContext(context.Background())
@@ -446,11 +448,45 @@ func (wa *WhatsAppClient) syncGhost(jid types.JID, reason string) {
 		log.Err(err).Msg("Failed to get ghost")
 		return
 	}
-	userInfo, err := wa.GetUserInfo(ctx, ghost)
+	if pictureID != "" && ghost.AvatarID == networkid.AvatarID(pictureID) {
+		return
+	}
+	userInfo, err := wa.getUserInfo(ctx, jid, pictureID != "")
 	if err != nil {
 		log.Err(err).Msg("Failed to get user info")
 	} else {
 		ghost.UpdateInfo(ctx, userInfo)
 		log.Debug().Msg("Synced ghost info")
+	}
+}
+
+func (wa *WhatsAppClient) handleWAPictureUpdate(evt *events.Picture) {
+	if evt.JID.Server == types.DefaultUserServer {
+		wa.syncGhost(evt.JID, "picture event", evt.PictureID)
+	} else {
+		var changes bridgev2.ChatInfo
+		if evt.Remove {
+			changes.Avatar = &bridgev2.Avatar{Remove: true, ID: "remove"}
+		} else {
+			changes.ExtraUpdates = wa.makePortalAvatarFetcher(evt.PictureID, evt.JID, evt.Timestamp)
+		}
+		wa.UserLogin.QueueRemoteEvent(&simplevent.ChatInfoChange{
+			EventMeta: simplevent.EventMeta{
+				Type: bridgev2.RemoteEventChatInfoChange,
+				LogContext: func(c zerolog.Context) zerolog.Context {
+					return c.
+						Str("wa_event_type", "picture").
+						Stringer("picture_author", evt.Author).
+						Str("new_picture_id", evt.PictureID).
+						Bool("remove_picture", evt.Remove)
+				},
+				PortalKey: wa.makeWAPortalKey(evt.JID),
+				Sender:    wa.makeEventSender(evt.Author),
+				Timestamp: evt.Timestamp,
+			},
+			ChatInfoChange: &bridgev2.ChatInfoChange{
+				ChatInfo: &changes,
+			},
+		})
 	}
 }

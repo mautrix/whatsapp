@@ -81,7 +81,7 @@ func (wa *WhatsAppClient) GetContactList(ctx context.Context) ([]*bridgev2.Resol
 		resp[i] = &bridgev2.ResolveIdentifierResponse{
 			Ghost:    ghost,
 			UserID:   waid.MakeUserID(jid),
-			UserInfo: wa.contactToUserInfo(ctx, jid, contactInfo, false),
+			UserInfo: wa.contactToUserInfo(jid, contactInfo, false),
 			Chat:     &bridgev2.CreateChatResponse{PortalKey: wa.makeWAPortalKey(jid)},
 		}
 		i++
