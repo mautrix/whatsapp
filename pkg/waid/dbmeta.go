@@ -60,6 +60,5 @@ type PortalMetadata struct {
 }
 
 type GhostMetadata struct {
-	AvatarFetchAttempted bool          `json:"avatar_fetch_attempted,omitempty"`
-	LastSync             jsontime.Unix `json:"last_sync,omitempty"`
+	LastSync jsontime.Unix `json:"last_sync,omitempty"`
 }

@@ -46,8 +46,7 @@ SELECT
     -- only: sqlite (line commented)
 --  json_object
     (
-        'last_sync', last_sync,
-        'avatar_fetch_attempted', CASE WHEN avatar<>'' THEN json('true') ELSE json('false') END
+        'last_sync', last_sync
         -- TODO name quality
     ) -- metadata
 FROM puppet_old;

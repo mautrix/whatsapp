@@ -113,13 +113,7 @@ func (wa *WhatsAppClient) handleWAEvent(rawEvt any) {
 				log.Warn().Err(err).Msg("Failed to send presence after app state sync")
 			}
 		} else if evt.Name == appstate.WAPatchCriticalUnblockLow {
-			go func() {
-				// TODO resync contacts
-				//err := user.ResyncContacts(false)
-				//if err != nil {
-				//	user.zlog.Err(err).Msg("Failed to resync contacts after app state sync")
-				//}
-			}()
+			go wa.resyncContacts(false)
 		}
 	case *events.AppState:
 		// Intentionally ignored

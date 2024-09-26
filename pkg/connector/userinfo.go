@@ -161,8 +161,7 @@ func (wa *WhatsAppClient) GetUserInfo(ctx context.Context, ghost *bridgev2.Ghost
 		return nil, nil
 	}
 	jid := waid.ParseUserID(ghost.ID)
-	fetchAvatar := !ghost.Metadata.(*waid.GhostMetadata).AvatarFetchAttempted
-	return wa.getUserInfo(ctx, jid, fetchAvatar)
+	return wa.getUserInfo(ctx, jid, ghost.AvatarID == "")
 }
 
 func (wa *WhatsAppClient) getUserInfo(ctx context.Context, jid types.JID, fetchAvatar bool) (*bridgev2.UserInfo, error) {
@@ -175,16 +174,17 @@ func (wa *WhatsAppClient) getUserInfo(ctx context.Context, jid types.JID, fetchA
 
 func (wa *WhatsAppClient) contactToUserInfo(jid types.JID, contact types.ContactInfo, getAvatar bool) *bridgev2.UserInfo {
 	ui := &bridgev2.UserInfo{
-		Name:        ptr.Ptr(wa.Main.Config.FormatDisplayname(jid, contact)),
-		IsBot:       ptr.Ptr(jid.IsBot()),
-		Identifiers: []string{fmt.Sprintf("tel:+%s", jid.User)},
+		Name:         ptr.Ptr(wa.Main.Config.FormatDisplayname(jid, contact)),
+		IsBot:        ptr.Ptr(jid.IsBot()),
+		Identifiers:  []string{fmt.Sprintf("tel:+%s", jid.User)},
+		ExtraUpdates: updateGhostLastSyncAt,
 	}
 	if getAvatar {
 		ui.ExtraUpdates = bridgev2.MergeExtraUpdaters(ui.ExtraUpdates, wa.fetchGhostAvatar)
 	}
-	ui.ExtraUpdates = bridgev2.MergeExtraUpdaters(ui.ExtraUpdates, updateGhostLastSyncAt)
 	return ui
 }
+
 func updateGhostLastSyncAt(_ context.Context, ghost *bridgev2.Ghost) bool {
 	meta := ghost.Metadata.(*waid.GhostMetadata)
 	forceSave := time.Since(meta.LastSync.Time) > 24*time.Hour
@@ -194,13 +194,10 @@ func updateGhostLastSyncAt(_ context.Context, ghost *bridgev2.Ghost) bool {
 
 func (wa *WhatsAppClient) fetchGhostAvatar(ctx context.Context, ghost *bridgev2.Ghost) bool {
 	jid := waid.ParseUserID(ghost.ID)
-	meta := ghost.Metadata.(*waid.GhostMetadata)
 	existingID := string(ghost.AvatarID)
 	if existingID == "remove" || existingID == "unauthorized" {
 		existingID = ""
 	}
-	wasAttempted := meta.AvatarFetchAttempted
-	meta.AvatarFetchAttempted = true
 	var wrappedAvatar *bridgev2.Avatar
 	avatar, err := wa.Client.GetProfilePictureInfo(jid, &whatsmeow.GetProfilePictureParams{ExistingID: existingID})
 	if errors.Is(err, whatsmeow.ErrProfilePictureNotSet) {
@@ -215,9 +212,9 @@ func (wa *WhatsAppClient) fetchGhostAvatar(ctx context.Context, ghost *bridgev2.
 		}
 	} else if err != nil {
 		zerolog.Ctx(ctx).Err(err).Msg("Failed to get avatar info")
-		return !wasAttempted
+		return false
 	} else if avatar == nil {
-		return !wasAttempted
+		return false
 	} else {
 		wrappedAvatar = &bridgev2.Avatar{
 			ID: networkid.AvatarID(avatar.ID),
@@ -226,5 +223,24 @@ func (wa *WhatsAppClient) fetchGhostAvatar(ctx context.Context, ghost *bridgev2.
 			},
 		}
 	}
-	return ghost.UpdateAvatar(ctx, wrappedAvatar) || !wasAttempted
+	return ghost.UpdateAvatar(ctx, wrappedAvatar)
+}
+
+func (wa *WhatsAppClient) resyncContacts(forceAvatarSync bool) {
+	log := wa.UserLogin.Log.With().Str("action", "resync contacts").Logger()
+	ctx := log.WithContext(context.Background())
+	contacts, err := wa.Device.Contacts.GetAllContacts()
+	if err != nil {
+		log.Err(err).Msg("Failed to get cached contacts")
+		return
+	}
+	log.Info().Int("contact_count", len(contacts)).Msg("Resyncing displaynames with contact info")
+	for jid, contact := range contacts {
+		ghost, err := wa.Main.Bridge.GetGhostByID(ctx, waid.MakeUserID(jid))
+		if err != nil {
+			log.Err(err).Msg("Failed to get ghost")
+		} else if ghost != nil {
+			ghost.UpdateInfo(ctx, wa.contactToUserInfo(jid, contact, forceAvatarSync || ghost.AvatarID == ""))
+		}
+	}
 }
