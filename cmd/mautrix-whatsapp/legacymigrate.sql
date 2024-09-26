@@ -87,7 +87,13 @@ SELECT
     END, -- room_type
     CASE WHEN expiration_time>0 THEN 'after_read' END, -- disappear_type
     CASE WHEN expiration_time > 0 THEN expiration_time * 1000000000 END, -- disappear_timer TODO check multiplier
-    '{}' -- metadata
+    -- only: postgres
+    jsonb_build_object
+    -- only: sqlite (line commented)
+--  json_object
+        (
+        'last_sync', last_sync,
+    ) -- metadata
 FROM portal_old;
 
 INSERT INTO user_portal (bridge_id, user_mxid, login_id, portal_id, portal_receiver, in_space, preferred, last_read)

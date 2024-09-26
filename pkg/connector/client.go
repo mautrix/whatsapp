@@ -3,7 +3,9 @@ package connector
 import (
 	"context"
 	"fmt"
+	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/rs/zerolog"
 	"go.mau.fi/whatsmeow"
@@ -24,6 +26,7 @@ func (wa *WhatsAppConnector) LoadUserLogin(_ context.Context, login *bridgev2.Us
 		UserLogin: login,
 
 		historySyncs: make(chan *waHistorySync.HistorySync, 64),
+		resyncQueue:  make(map[types.JID]resyncQueueItem),
 	}
 	login.Client = w
 
@@ -52,6 +55,11 @@ func (wa *WhatsAppConnector) LoadUserLogin(_ context.Context, login *bridgev2.Us
 	return nil
 }
 
+type resyncQueueItem struct {
+	portal *bridgev2.Portal
+	ghost  *bridgev2.Ghost
+}
+
 type WhatsAppClient struct {
 	Main      *WhatsAppConnector
 	UserLogin *bridgev2.UserLogin
@@ -59,8 +67,11 @@ type WhatsAppClient struct {
 	Device    *store.Device
 	JID       types.JID
 
-	historySyncs        chan *waHistorySync.HistorySync
-	stopHistorySyncLoop atomic.Pointer[context.CancelFunc]
+	historySyncs    chan *waHistorySync.HistorySync
+	stopLoops       atomic.Pointer[context.CancelFunc]
+	resyncQueue     map[types.JID]resyncQueueItem
+	resyncQueueLock sync.Mutex
+	nextResync      time.Time
 }
 
 var _ bridgev2.NetworkAPI = (*WhatsAppClient)(nil)
@@ -103,12 +114,22 @@ func (wa *WhatsAppClient) Connect(ctx context.Context) error {
 	if err := wa.Main.updateProxy(ctx, wa.Client, false); err != nil {
 		zerolog.Ctx(ctx).Err(err).Msg("Failed to update proxy")
 	}
-	go wa.historySyncLoop()
+	wa.startLoops()
 	return wa.Client.Connect()
 }
 
+func (wa *WhatsAppClient) startLoops() {
+	ctx, cancel := context.WithCancel(context.Background())
+	oldStop := wa.stopLoops.Swap(&cancel)
+	if oldStop != nil {
+		(*oldStop)()
+	}
+	go wa.historySyncLoop(ctx)
+	go wa.ghostResyncLoop(ctx)
+}
+
 func (wa *WhatsAppClient) Disconnect() {
-	if stopHistorySyncLoop := wa.stopHistorySyncLoop.Swap(nil); stopHistorySyncLoop != nil {
+	if stopHistorySyncLoop := wa.stopLoops.Swap(nil); stopHistorySyncLoop != nil {
 		(*stopHistorySyncLoop)()
 	}
 	if cli := wa.Client; cli != nil {

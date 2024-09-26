@@ -10,7 +10,7 @@ import (
 
 var WhatsAppGeneralCaps = &bridgev2.NetworkGeneralCapabilities{
 	DisappearingMessages: true,
-	AggressiveUpdateInfo: false,
+	AggressiveUpdateInfo: true,
 }
 
 func (wa *WhatsAppConnector) GetCapabilities() *bridgev2.NetworkGeneralCapabilities {

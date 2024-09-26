@@ -27,13 +27,7 @@ var _ bridgev2.BackfillingNetworkAPI = (*WhatsAppClient)(nil)
 
 const historySyncDispatchWait = 30 * time.Second
 
-func (wa *WhatsAppClient) historySyncLoop() {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	oldStop := wa.stopHistorySyncLoop.Swap(&cancel)
-	if oldStop != nil {
-		(*oldStop)()
-	}
+func (wa *WhatsAppClient) historySyncLoop(ctx context.Context) {
 	dispatchTimer := time.NewTimer(historySyncDispatchWait)
 	dispatchTimer.Stop()
 	wa.UserLogin.Log.Debug().Msg("Starting history sync loop")

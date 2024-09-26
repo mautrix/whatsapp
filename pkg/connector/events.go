@@ -182,6 +182,7 @@ func (evt *WAMessageEvent) HandleExisting(ctx context.Context, portal *bridgev2.
 }
 
 func (evt *WAMessageEvent) ConvertMessage(ctx context.Context, portal *bridgev2.Portal, intent bridgev2.MatrixAPI) (*bridgev2.ConvertedMessage, error) {
+	evt.wa.EnqueuePortalResync(portal)
 	converted := evt.wa.Main.MsgConv.ToMatrix(ctx, portal, evt.wa.Client, intent, evt.Message, &evt.Info)
 	return converted, nil
 }

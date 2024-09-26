@@ -2,10 +2,12 @@ package connector
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
 	"github.com/rs/zerolog"
+	"go.mau.fi/util/jsontime"
 	"go.mau.fi/util/ptr"
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/types"
@@ -43,6 +45,7 @@ func (wa *WhatsAppClient) getChatInfo(ctx context.Context, portalJID types.JID, 
 			return nil, err
 		}
 		wrapped = wa.wrapGroupInfo(info)
+		wrapped.ExtraUpdates = bridgev2.MergeExtraUpdaters(wrapped.ExtraUpdates, updatePortalLastSyncAt)
 	case types.NewsletterServer:
 		info, err := wa.Client.GetNewsletterInfo(portalJID)
 		if err != nil {
@@ -63,6 +66,13 @@ func (wa *WhatsAppClient) getChatInfo(ctx context.Context, portalJID types.JID, 
 	}
 	wa.applyChatSettings(ctx, portalJID, wrapped)
 	return wrapped, nil
+}
+
+func updatePortalLastSyncAt(_ context.Context, portal *bridgev2.Portal) bool {
+	meta := portal.Metadata.(*waid.PortalMetadata)
+	forceSave := time.Since(meta.LastSync.Time) > 24*time.Hour
+	meta.LastSync = jsontime.UnixNow()
+	return forceSave
 }
 
 func updateDisappearingTimerSetAt(ts int64) bridgev2.ExtraUpdater[*bridgev2.Portal] {
@@ -331,15 +341,33 @@ func (wa *WhatsAppClient) makePortalAvatarFetcher(avatarID string, sender types.
 		if existingID == "remove" || existingID == "unauthorized" {
 			existingID = ""
 		}
+		var wrappedAvatar *bridgev2.Avatar
 		avatar, err := wa.Client.GetProfilePictureInfo(jid, &whatsmeow.GetProfilePictureParams{
 			ExistingID:  existingID,
 			IsCommunity: portal.RoomType == database.RoomTypeSpace,
 		})
-		if err != nil {
+		if errors.Is(err, whatsmeow.ErrProfilePictureNotSet) {
+			wrappedAvatar = &bridgev2.Avatar{
+				ID:     "remove",
+				Remove: true,
+			}
+		} else if errors.Is(err, whatsmeow.ErrProfilePictureUnauthorized) {
+			wrappedAvatar = &bridgev2.Avatar{
+				ID:     "unauthorized",
+				Remove: true,
+			}
+		} else if err != nil {
 			zerolog.Ctx(ctx).Err(err).Msg("Failed to get avatar info")
 			return false
 		} else if avatar == nil {
 			return false
+		} else {
+			wrappedAvatar = &bridgev2.Avatar{
+				ID: networkid.AvatarID(avatar.ID),
+				Get: func(ctx context.Context) ([]byte, error) {
+					return wa.Client.DownloadMediaWithPath(avatar.DirectPath, nil, nil, nil, 0, "", "")
+				},
+			}
 		}
 		var evtSender bridgev2.EventSender
 		if !sender.IsEmpty() {
@@ -347,12 +375,7 @@ func (wa *WhatsAppClient) makePortalAvatarFetcher(avatarID string, sender types.
 		}
 		senderIntent := portal.GetIntentFor(ctx, evtSender, wa.UserLogin, bridgev2.RemoteEventChatInfoChange)
 		//lint:ignore SA1019 TODO invent a cleaner way to fetch avatar metadata before updating?
-		return portal.Internal().UpdateAvatar(ctx, &bridgev2.Avatar{
-			ID: networkid.AvatarID(avatar.ID),
-			Get: func(ctx context.Context) ([]byte, error) {
-				return wa.Client.DownloadMediaWithPath(avatar.DirectPath, nil, nil, nil, 0, "", "")
-			},
-		}, senderIntent, ts)
+		return portal.Internal().UpdateAvatar(ctx, wrappedAvatar, senderIntent, ts)
 	}
 }
 
