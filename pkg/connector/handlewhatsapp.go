@@ -133,17 +133,13 @@ func (wa *WhatsAppClient) handleWAEvent(rawEvt any) {
 		if err != nil {
 			log.Err(err).Msg("Failed to update push name in store")
 		}
-		// TODO update own ghost info
-		//go user.syncPuppet(user.JID.ToNonAD(), "push name setting")
+		go wa.syncGhost(wa.JID.ToNonAD(), "push name setting")
 	case *events.Contact:
-		// TODO
-		//go user.syncPuppet(v.JID, "contact event")
+		go wa.syncGhost(evt.JID, "contact event")
 	case *events.PushName:
-		// TODO
-		//go user.syncPuppet(v.JID, "push name event")
+		go wa.syncGhost(evt.JID, "push name event")
 	case *events.BusinessName:
-		// TODO
-		//go user.syncPuppet(v.JID, "business name event")
+		go wa.syncGhost(evt.JID, "business name event")
 
 	case *events.Connected:
 		log.Debug().Msg("Connected to WhatsApp socket")
@@ -436,4 +432,25 @@ func (wa *WhatsAppClient) handleWAMarkChatAsRead(evt *events.MarkChatAsRead) {
 		},
 		ReadUpTo: evt.Timestamp,
 	})
+}
+
+func (wa *WhatsAppClient) syncGhost(jid types.JID, reason string) {
+	log := wa.UserLogin.Log.With().
+		Str("action", "sync ghost").
+		Str("reason", reason).
+		Stringer("jid", jid).
+		Logger()
+	ctx := log.WithContext(context.Background())
+	ghost, err := wa.Main.Bridge.GetGhostByID(ctx, waid.MakeUserID(jid))
+	if err != nil {
+		log.Err(err).Msg("Failed to get ghost")
+		return
+	}
+	userInfo, err := wa.GetUserInfo(ctx, ghost)
+	if err != nil {
+		log.Err(err).Msg("Failed to get user info")
+	} else {
+		ghost.UpdateInfo(ctx, userInfo)
+		log.Debug().Msg("Synced ghost info")
+	}
 }
