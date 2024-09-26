@@ -11,6 +11,7 @@ import (
 	waLog "go.mau.fi/whatsmeow/util/log"
 	"google.golang.org/protobuf/proto"
 	"maunium.net/go/mautrix/bridgev2"
+	"maunium.net/go/mautrix/bridgev2/commands"
 
 	"maunium.net/go/mautrix-whatsapp/pkg/connector/wadb"
 	"maunium.net/go/mautrix-whatsapp/pkg/msgconv"
@@ -48,6 +49,9 @@ func (wa *WhatsAppConnector) Init(bridge *bridgev2.Bridge) {
 	wa.MsgConv.AnimatedStickerConfig = wa.Config.AnimatedSticker
 	wa.MsgConv.FetchURLPreviews = wa.Config.URLPreviews
 	wa.DB = wadb.New(bridge.ID, bridge.DB.Database, bridge.Log.With().Str("db_section", "whatsapp").Logger())
+	wa.Bridge.Commands.(*commands.Processor).AddHandlers(
+		cmdAccept,
+	)
 
 	wa.DeviceStore = sqlstore.NewWithDB(
 		bridge.DB.RawDB,
