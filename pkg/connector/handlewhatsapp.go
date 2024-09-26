@@ -98,7 +98,7 @@ func (wa *WhatsAppClient) handleWAEvent(rawEvt any) {
 	case *events.GroupInfo:
 		wa.handleWAGroupInfoChange(evt)
 	case *events.JoinedGroup:
-		// TODO
+		wa.handleWAJoinedGroup(evt)
 	case *events.NewsletterJoin:
 		// TODO
 	case *events.NewsletterLeave:
@@ -511,4 +511,16 @@ func (wa *WhatsAppClient) handleWAGroupInfoChange(evt *events.GroupInfo) {
 			ChatInfoChange: wa.wrapGroupInfoChange(evt),
 		})
 	}
+}
+
+func (wa *WhatsAppClient) handleWAJoinedGroup(evt *events.JoinedGroup) {
+	wa.Main.Bridge.QueueRemoteEvent(wa.UserLogin, &simplevent.ChatResync{
+		EventMeta: simplevent.EventMeta{
+			Type:         bridgev2.RemoteEventChatResync,
+			LogContext:   nil,
+			PortalKey:    wa.makeWAPortalKey(evt.JID),
+			CreatePortal: true,
+		},
+		ChatInfo: wa.wrapGroupInfo(&evt.GroupInfo),
+	})
 }
