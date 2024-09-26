@@ -34,6 +34,7 @@ type Config struct {
 	DisplaynameTemplate string `yaml:"displayname_template"`
 
 	CallStartNotices            bool          `yaml:"call_start_notices"`
+	IdentityChangeNotices       bool          `yaml:"identity_change_notices"`
 	SendPresenceOnTyping        bool          `yaml:"send_presence_on_typing"`
 	EnableStatusBroadcast       bool          `yaml:"enable_status_broadcast"`
 	DisableStatusBroadcastSend  bool          `yaml:"disable_status_broadcast_send"`
@@ -91,6 +92,7 @@ func upgradeConfig(helper up.Helper) {
 	helper.Copy(up.Str, "displayname_template")
 
 	helper.Copy(up.Bool, "call_start_notices")
+	helper.Copy(up.Bool, "identity_change_notices")
 	helper.Copy(up.Bool, "send_presence_on_typing")
 	helper.Copy(up.Bool, "enable_status_broadcast")
 	helper.Copy(up.Bool, "disable_status_broadcast_send")

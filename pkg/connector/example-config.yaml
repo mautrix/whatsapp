@@ -21,6 +21,8 @@ displayname_template: "{{or .FullName .BusinessName .PushName .Phone}} (WA)"
 
 # Should incoming calls send a message to the Matrix room?
 call_start_notices: true
+# Should another user's cryptographic identity changing send a message to Matrix?
+identity_change_notices: false
 # Send the presence as "available" to whatsapp when users start typing on a portal.
 # This works as a workaround for homeservers that do not support presence, and allows
 # users to see when the whatsapp user on the other side is typing during a conversation.

@@ -1,7 +1,9 @@
 package connector
 
 import (
+	"context"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -12,6 +14,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/bridgev2/simplevent"
+	"maunium.net/go/mautrix/event"
 
 	"maunium.net/go/mautrix-whatsapp/pkg/waid"
 )
@@ -72,14 +75,11 @@ func (wa *WhatsAppClient) handleWAEvent(rawEvt any) {
 	case *events.IdentityChange:
 		wa.handleWAIdentityChange(evt)
 	case *events.MarkChatAsRead:
-		// TODO
-		//wa.handleWAMarkChatAsRead(evt)
+		wa.handleWAMarkChatAsRead(evt)
 	case *events.DeleteForMe:
-		// TODO
-		//wa.handleWADeleteForMe(evt)
+		wa.handleWADeleteForMe(evt)
 	case *events.DeleteChat:
-		// TODO
-		//wa.handleWADeleteChat(evt)
+		wa.handleWADeleteChat(evt)
 	case *events.Mute:
 		// TODO
 	case *events.Archive:
@@ -330,9 +330,110 @@ func (wa *WhatsAppClient) handleWALogout(reason events.ConnectFailureReason, onC
 }
 
 func (wa *WhatsAppClient) handleWACallStart(sender types.JID, id, callType string, ts time.Time) {
-	// TODO
+	if !wa.Main.Config.CallStartNotices {
+		return
+	}
+	wa.UserLogin.QueueRemoteEvent(&simplevent.Message[string]{
+		EventMeta: simplevent.EventMeta{
+			Type:         bridgev2.RemoteEventMessage,
+			LogContext:   nil,
+			PortalKey:    wa.makeWAPortalKey(sender),
+			Sender:       wa.makeEventSender(sender),
+			CreatePortal: true,
+			Timestamp:    ts,
+		},
+		Data:               callType,
+		ID:                 waid.MakeFakeMessageID(sender, sender, "call-"+id),
+		ConvertMessageFunc: convertCallStart,
+	})
+}
+
+func convertCallStart(ctx context.Context, portal *bridgev2.Portal, intent bridgev2.MatrixAPI, callType string) (*bridgev2.ConvertedMessage, error) {
+	text := "Incoming call. Use the WhatsApp app to answer."
+	if callType != "" {
+		text = fmt.Sprintf("Incoming %s call. Use the WhatsApp app to answer.", callType)
+	}
+	return &bridgev2.ConvertedMessage{
+		Parts: []*bridgev2.ConvertedMessagePart{{
+			Type: event.EventMessage,
+			Content: &event.MessageEventContent{
+				MsgType: event.MsgText,
+				Body:    text,
+			},
+		}},
+	}, nil
 }
 
 func (wa *WhatsAppClient) handleWAIdentityChange(evt *events.IdentityChange) {
-	// TODO
+	if !wa.Main.Config.IdentityChangeNotices {
+		return
+	}
+	wa.UserLogin.QueueRemoteEvent(&simplevent.Message[*events.IdentityChange]{
+		EventMeta: simplevent.EventMeta{
+			Type:         bridgev2.RemoteEventMessage,
+			LogContext:   nil,
+			PortalKey:    wa.makeWAPortalKey(evt.JID),
+			Sender:       wa.makeEventSender(evt.JID),
+			CreatePortal: false,
+			Timestamp:    evt.Timestamp,
+		},
+		Data:               evt,
+		ID:                 waid.MakeFakeMessageID(evt.JID, evt.JID, "idchange-"+strconv.FormatInt(evt.Timestamp.UnixMilli(), 10)),
+		ConvertMessageFunc: convertIdentityChange,
+	})
+}
+
+func convertIdentityChange(ctx context.Context, portal *bridgev2.Portal, intent bridgev2.MatrixAPI, data *events.IdentityChange) (*bridgev2.ConvertedMessage, error) {
+	ghost, err := portal.Bridge.GetGhostByID(ctx, waid.MakeUserID(data.JID))
+	if err != nil {
+		return nil, err
+	}
+	text := fmt.Sprintf("Your security code with %s changed.", ghost.Name)
+	if data.Implicit {
+		text = fmt.Sprintf("Your security code with %s (device #%d) changed.", ghost.Name, data.JID.Device)
+	}
+	return &bridgev2.ConvertedMessage{
+		Parts: []*bridgev2.ConvertedMessagePart{{
+			Type: event.EventMessage,
+			Content: &event.MessageEventContent{
+				MsgType: event.MsgNotice,
+				Body:    text,
+			},
+		}},
+	}, nil
+}
+
+func (wa *WhatsAppClient) handleWADeleteChat(evt *events.DeleteChat) {
+	wa.UserLogin.QueueRemoteEvent(&simplevent.ChatDelete{
+		EventMeta: simplevent.EventMeta{
+			Type:      bridgev2.RemoteEventChatDelete,
+			PortalKey: wa.makeWAPortalKey(evt.JID),
+			Timestamp: evt.Timestamp,
+		},
+		OnlyForMe: true,
+	})
+}
+
+func (wa *WhatsAppClient) handleWADeleteForMe(evt *events.DeleteForMe) {
+	wa.UserLogin.QueueRemoteEvent(&simplevent.MessageRemove{
+		EventMeta: simplevent.EventMeta{
+			Type:      bridgev2.RemoteEventMessageRemove,
+			PortalKey: wa.makeWAPortalKey(evt.ChatJID),
+			Timestamp: evt.Timestamp,
+		},
+		TargetMessage: waid.MakeMessageID(evt.ChatJID, evt.SenderJID, evt.MessageID),
+		OnlyForMe:     true,
+	})
+}
+
+func (wa *WhatsAppClient) handleWAMarkChatAsRead(evt *events.MarkChatAsRead) {
+	wa.UserLogin.QueueRemoteEvent(&simplevent.Receipt{
+		EventMeta: simplevent.EventMeta{
+			Type:      bridgev2.RemoteEventReadReceipt,
+			PortalKey: wa.makeWAPortalKey(evt.JID),
+			Sender:    wa.makeEventSender(wa.JID),
+			Timestamp: evt.Timestamp,
+		},
+		ReadUpTo: evt.Timestamp,
+	})
 }

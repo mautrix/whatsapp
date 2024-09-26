@@ -103,7 +103,7 @@ func applyHistoryInfo(info *bridgev2.ChatInfo, conv *wadb.Conversation) {
 	} else if ptr.Val(conv.Archived) {
 		info.UserLocal.Tag = ptr.Ptr(event.RoomTagLowPriority)
 	}
-	if ptr.Val(conv.EphemeralExpiration) > 0 {
+	if info.Disappear == nil && ptr.Val(conv.EphemeralExpiration) > 0 {
 		info.Disappear = &database.DisappearingSetting{
 			Type:  database.DisappearingTypeAfterRead,
 			Timer: time.Duration(*conv.EphemeralExpiration) * time.Second,

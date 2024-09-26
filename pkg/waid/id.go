@@ -60,6 +60,10 @@ func MakeMessageID(chat, sender types.JID, id types.MessageID) networkid.Message
 	return networkid.MessageID(fmt.Sprintf("%s:%s:%s", chat.ToNonAD().String(), sender.ToNonAD().String(), id))
 }
 
+func MakeFakeMessageID(chat, sender types.JID, data string) networkid.MessageID {
+	return networkid.MessageID(fmt.Sprintf("fake:%s:%s:%s", chat.ToNonAD().String(), sender.ToNonAD().String(), data))
+}
+
 type ParsedMessageID struct {
 	Chat   types.JID
 	Sender types.JID
@@ -69,6 +73,9 @@ type ParsedMessageID struct {
 func ParseMessageID(messageID networkid.MessageID) (*ParsedMessageID, error) {
 	parts := strings.SplitN(string(messageID), ":", 3)
 	if len(parts) == 3 {
+		if parts[0] == "fake" || strings.HasPrefix(parts[2], "FAKE::") {
+			return nil, fmt.Errorf("fake message ID")
+		}
 		chat, err := types.ParseJID(parts[0])
 		if err != nil {
 			return nil, err
@@ -79,6 +86,6 @@ func ParseMessageID(messageID networkid.MessageID) (*ParsedMessageID, error) {
 		}
 		return &ParsedMessageID{Chat: chat, Sender: sender, ID: parts[2]}, nil
 	} else {
-		return nil, fmt.Errorf("invalid message id")
+		return nil, fmt.Errorf("invalid message ID")
 	}
 }
