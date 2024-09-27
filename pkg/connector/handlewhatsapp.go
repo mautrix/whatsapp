@@ -100,9 +100,9 @@ func (wa *WhatsAppClient) handleWAEvent(rawEvt any) {
 	case *events.JoinedGroup:
 		wa.handleWAJoinedGroup(evt)
 	case *events.NewsletterJoin:
-		// TODO
+		wa.handleWANewsletterJoin(evt)
 	case *events.NewsletterLeave:
-		// TODO
+		wa.handleWANewsletterLeave(evt)
 	case *events.Picture:
 		go wa.handleWAPictureUpdate(evt)
 
@@ -516,6 +516,29 @@ func (wa *WhatsAppClient) handleWAJoinedGroup(evt *events.JoinedGroup) {
 			CreatePortal: true,
 		},
 		ChatInfo: wa.wrapGroupInfo(&evt.GroupInfo),
+	})
+}
+
+func (wa *WhatsAppClient) handleWANewsletterJoin(evt *events.NewsletterJoin) {
+	wa.Main.Bridge.QueueRemoteEvent(wa.UserLogin, &simplevent.ChatResync{
+		EventMeta: simplevent.EventMeta{
+			Type:         bridgev2.RemoteEventChatResync,
+			LogContext:   nil,
+			PortalKey:    wa.makeWAPortalKey(evt.ID),
+			CreatePortal: true,
+		},
+		ChatInfo: wa.wrapNewsletterInfo(&evt.NewsletterMetadata),
+	})
+}
+
+func (wa *WhatsAppClient) handleWANewsletterLeave(evt *events.NewsletterLeave) {
+	wa.Main.Bridge.QueueRemoteEvent(wa.UserLogin, &simplevent.ChatDelete{
+		EventMeta: simplevent.EventMeta{
+			Type:       bridgev2.RemoteEventChatDelete,
+			LogContext: nil,
+			PortalKey:  wa.makeWAPortalKey(evt.ID),
+		},
+		OnlyForMe: true,
 	})
 }
 
