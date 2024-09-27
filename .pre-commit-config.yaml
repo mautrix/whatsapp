@@ -17,21 +17,10 @@ repos:
           - "maunium.net/go/mautrix-whatsapp"
           - "-w"
       - id: go-vet-repo-mod
-      # TODO switch to standard staticcheck after deleting old bridge
-      #- id: go-staticcheck-repo-mod
-
-  - repo: local
-    hooks:
-      - id: go-staticcheck-custom
-        name: go-staticcheck-custom
-        language: system
-        types: [go]
-        pass_filenames: false
-        entry: sh -c 'staticcheck $(go list ./cmd/... ./pkg/...)'
+      - id: go-staticcheck-repo-mod
 
   - repo: https://github.com/beeper/pre-commit-go
     rev: v0.3.1
     hooks:
       - id: zerolog-ban-msgf
-      # TODO enable after deleting old bridge
-      #- id: zerolog-use-stringer
+      - id: zerolog-use-stringer

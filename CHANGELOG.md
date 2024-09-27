@@ -1,3 +1,14 @@
+# v0.11.0 (unreleased)
+
+* Bumped minimum Go version to 1.22.
+* Dropped support for unauthenticated media on Matrix.
+* Rewrote bridge using bridgev2 architecture.
+  * It is recommended to check the config file after upgrading. If you have
+    prevented the bridge from writing to the config, you should update it
+    manually.
+  * Group management features and commands are not yet available.
+  * Polls are not yet supported.
+
 # v0.10.9 (2024-07-16)
 
 * Added support for receiving Meta AI messages.

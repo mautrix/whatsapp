@@ -46,19 +46,19 @@
   * [x] Typing notifications
   * [x] Read receipts
   * [x] Admin/superadmin status
-  * [ ] Membership actions
-    * [ ] Invite
-    * [ ] Join
-    * [ ] Leave
-    * [ ] Kick
-  * [ ] Group metadata changes
-    * [ ] Title
-    * [ ] Avatar
-    * [ ] Description
-  * [ ] Initial group metadata
-  * [ ] User metadata changes
-    * [ ] Display name
-    * [ ] Avatar
+  * [x] Membership actions
+    * [x] Invite
+    * [x] Join
+    * [x] Leave
+    * [x] Kick
+  * [x] Group metadata changes
+    * [x] Title
+    * [x] Avatar
+    * [x] Description
+  * [x] Initial group metadata
+  * [x] User metadata changes
+    * [x] Display name
+    * [x] Avatar
   * [x] Initial user metadata
     * [x] Display name
     * [x] Avatar

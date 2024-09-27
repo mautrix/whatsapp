@@ -1,6 +1,3 @@
 include:
 - project: 'mautrix/ci'
-  file: '/gov2.yml'
-
-variables:
-  BINARY_NAME_V2: mautrix-whatsapp
+  file: '/gov2-as-default.yml'

@@ -87,10 +87,10 @@ func (wa *WhatsAppClient) handleWAHistorySync(ctx context.Context, evt *waHistor
 				Msg("Failed to parse chat JID in history sync")
 			continue
 		} else if jid.Server == types.BroadcastServer {
-			log.Debug().Str("chat_jid", jid.String()).Msg("Skipping broadcast list in history sync")
+			log.Debug().Stringer("chat_jid", jid).Msg("Skipping broadcast list in history sync")
 			continue
 		} else if jid.Server == types.HiddenUserServer {
-			log.Debug().Str("chat_jid", jid.String()).Msg("Skipping hidden user JID chat in history sync")
+			log.Debug().Stringer("chat_jid", jid).Msg("Skipping hidden user JID chat in history sync")
 			continue
 		}
 		totalMessageCount += len(conv.GetMessages())

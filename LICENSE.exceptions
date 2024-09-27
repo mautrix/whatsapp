@@ -10,6 +10,3 @@ The mautrix-whatsapp developers grant the following special exceptions:
 All exceptions are only valid under the condition that any modifications to
 the source code of mautrix-whatsapp remain publicly available under the terms
 of the GNU AGPL version 3 or later.
-
-These exceptions are only valid for the rewritten bridge under the `pkg` and
-`cmd` directories, not the old bridge at the top level of the repository.
