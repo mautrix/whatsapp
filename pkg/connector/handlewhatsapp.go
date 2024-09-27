@@ -337,8 +337,10 @@ func (wa *WhatsAppClient) handleWALogout(reason events.ConnectFailureReason, onC
 	})
 }
 
+const callEventMaxAge = 15 * time.Minute
+
 func (wa *WhatsAppClient) handleWACallStart(sender types.JID, id, callType string, ts time.Time) {
-	if !wa.Main.Config.CallStartNotices {
+	if !wa.Main.Config.CallStartNotices || time.Since(ts) > callEventMaxAge {
 		return
 	}
 	wa.UserLogin.QueueRemoteEvent(&simplevent.Message[string]{
