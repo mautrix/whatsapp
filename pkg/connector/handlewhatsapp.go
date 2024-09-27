@@ -82,11 +82,11 @@ func (wa *WhatsAppClient) handleWAEvent(rawEvt any) {
 	case *events.DeleteChat:
 		wa.handleWADeleteChat(evt)
 	case *events.Mute:
-		// TODO
+		wa.handleWAMute(evt)
 	case *events.Archive:
-		// TODO
+		wa.handleWAArchive(evt)
 	case *events.Pin:
-		// TODO
+		wa.handleWAPin(evt)
 
 	case *events.HistorySync:
 		if wa.Main.Bridge.Config.Backfill.Enabled {
@@ -516,5 +516,55 @@ func (wa *WhatsAppClient) handleWAJoinedGroup(evt *events.JoinedGroup) {
 			CreatePortal: true,
 		},
 		ChatInfo: wa.wrapGroupInfo(&evt.GroupInfo),
+	})
+}
+
+func (wa *WhatsAppClient) handleWAUserLocalPortalInfo(chatJID types.JID, ts time.Time, info *bridgev2.UserLocalPortalInfo) {
+	wa.UserLogin.QueueRemoteEvent(&simplevent.ChatInfoChange{
+		EventMeta: simplevent.EventMeta{
+			Type:      bridgev2.RemoteEventChatInfoChange,
+			PortalKey: wa.makeWAPortalKey(chatJID),
+			Timestamp: ts,
+		},
+		ChatInfoChange: &bridgev2.ChatInfoChange{
+			ChatInfo: &bridgev2.ChatInfo{
+				UserLocal: info,
+			},
+		},
+	})
+}
+
+func (wa *WhatsAppClient) handleWAMute(evt *events.Mute) {
+	var mutedUntil time.Time
+	if evt.Action.GetMuted() {
+		mutedUntil = event.MutedForever
+		if evt.Action.GetMuteEndTimestamp() != 0 {
+			mutedUntil = time.Unix(evt.Action.GetMuteEndTimestamp(), 0)
+		}
+	} else {
+		mutedUntil = bridgev2.Unmuted
+	}
+	wa.handleWAUserLocalPortalInfo(evt.JID, evt.Timestamp, &bridgev2.UserLocalPortalInfo{
+		MutedUntil: &mutedUntil,
+	})
+}
+
+func (wa *WhatsAppClient) handleWAArchive(evt *events.Archive) {
+	var tag event.RoomTag
+	if evt.Action.GetArchived() {
+		tag = event.RoomTagLowPriority
+	}
+	wa.handleWAUserLocalPortalInfo(evt.JID, evt.Timestamp, &bridgev2.UserLocalPortalInfo{
+		Tag: &tag,
+	})
+}
+
+func (wa *WhatsAppClient) handleWAPin(evt *events.Pin) {
+	var tag event.RoomTag
+	if evt.Action.GetPinned() {
+		tag = event.RoomTagFavourite
+	}
+	wa.handleWAUserLocalPortalInfo(evt.JID, evt.Timestamp, &bridgev2.UserLocalPortalInfo{
+		Tag: &tag,
 	})
 }
