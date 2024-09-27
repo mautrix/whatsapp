@@ -287,8 +287,12 @@ func (wa *WhatsAppClient) handleWAReceipt(evt *events.Receipt) {
 		return
 	}
 	targets := make([]networkid.MessageID, len(evt.MessageIDs))
+	messageSender := wa.JID
+	if !evt.MessageSender.IsEmpty() {
+		messageSender = evt.MessageSender
+	}
 	for i, id := range evt.MessageIDs {
-		targets[i] = waid.MakeMessageID(evt.Chat, *wa.Device.ID, id)
+		targets[i] = waid.MakeMessageID(evt.Chat, messageSender, id)
 	}
 	wa.Main.Bridge.QueueRemoteEvent(wa.UserLogin, &simplevent.Receipt{
 		EventMeta: simplevent.EventMeta{
