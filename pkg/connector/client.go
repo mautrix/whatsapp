@@ -90,6 +90,8 @@ type WhatsAppClient struct {
 	resyncQueue     map[types.JID]resyncQueueItem
 	resyncQueueLock sync.Mutex
 	nextResync      time.Time
+
+	lastPhoneOfflineWarning time.Time
 }
 
 var _ bridgev2.NetworkAPI = (*WhatsAppClient)(nil)
@@ -144,6 +146,7 @@ func (wa *WhatsAppClient) startLoops() {
 	}
 	go wa.historySyncLoop(ctx)
 	go wa.ghostResyncLoop(ctx)
+	go wa.disconnectWarningLoop(ctx)
 }
 
 func (wa *WhatsAppClient) Disconnect() {

@@ -109,6 +109,7 @@ func (wa *WhatsAppClient) handleWAEvent(rawEvt any) {
 			wa.historySyncs <- evt.Data
 		}
 	case *events.MediaRetry:
+		wa.phoneSeen(evt.Timestamp)
 		// TODO
 
 	case *events.GroupInfo:
@@ -271,6 +272,9 @@ func (wa *WhatsAppClient) handleWAUndecryptableMessage(evt *events.Undecryptable
 }
 
 func (wa *WhatsAppClient) handleWAReceipt(evt *events.Receipt) {
+	if evt.IsFromMe && evt.Sender.Device == 0 {
+		wa.phoneSeen(evt.Timestamp)
+	}
 	var evtType bridgev2.RemoteEventType
 	switch evt.Type {
 	case types.ReceiptTypeRead, types.ReceiptTypeReadSelf:
