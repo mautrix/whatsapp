@@ -105,7 +105,7 @@ SELECT
     in_space,
     false, -- preferred
     last_read_ts * 1000000000 -- last_read TODO check multiplier
-FROM user_portal_old;
+FROM user_portal_old WHERE EXISTS(SELECT 1 FROM user_login WHERE user_login.user_mxid=user_portal_old.user_mxid);
 
 ALTER TABLE message_old ADD COLUMN combined_id TEXT;
 DELETE FROM message_old WHERE sender IS NULL;
