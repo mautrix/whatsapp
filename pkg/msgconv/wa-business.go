@@ -42,7 +42,7 @@ func (mc *MessageConverter) convertTemplateMessage(ctx context.Context, info *ty
 	if tpl == nil {
 		return converted, tplMsg.GetContextInfo()
 	}
-	extraText := tpl.GetHydratedContentText()
+	content := tpl.GetHydratedContentText()
 	if buttons := tpl.GetHydratedButtons(); len(buttons) > 0 {
 		addButtonText := false
 		descriptions := make([]string, len(buttons))
@@ -61,10 +61,10 @@ func (mc *MessageConverter) convertTemplateMessage(ctx context.Context, info *ty
 		if addButtonText {
 			description += "\nUse the WhatsApp app to click buttons"
 		}
-		extraText = fmt.Sprintf("%s\n\n%s", extraText, description)
+		content = fmt.Sprintf("%s\n\n%s", content, description)
 	}
 	if footer := tpl.GetHydratedFooterText(); footer != "" {
-		extraText = fmt.Sprintf("%s\n\n%s", extraText, footer)
+		content = fmt.Sprintf("%s\n\n%s", content, footer)
 	}
 
 	var convertedTitle *bridgev2.ConvertedMessagePart
@@ -76,21 +76,36 @@ func (mc *MessageConverter) convertTemplateMessage(ctx context.Context, info *ty
 	case *waE2E.TemplateMessage_HydratedFourRowTemplate_VideoMessage:
 		convertedTitle, _ = mc.convertMediaMessage(ctx, title.VideoMessage, "video attachment")
 	case *waE2E.TemplateMessage_HydratedFourRowTemplate_LocationMessage:
-		extraText = fmt.Sprintf("Unsupported location message\n\n%s", extraText)
+		content = fmt.Sprintf("Unsupported location message\n\n%s", content)
 	case *waE2E.TemplateMessage_HydratedFourRowTemplate_HydratedTitleText:
-		extraText = fmt.Sprintf("%s\n\n%s", title.HydratedTitleText, extraText)
+		content = fmt.Sprintf("%s\n\n%s", title.HydratedTitleText, content)
 	}
 
+	converted.Content.Body = content
+	mc.parseFormatting(converted.Content, true, false)
 	if convertedTitle != nil {
 		converted.Content = convertedTitle.Content
 		converted.Extra = convertedTitle.Extra
-		if converted.Content.FileName == "" || converted.Content.FileName == converted.Content.Body {
-			converted.Content.FileName = converted.Content.Body
-			converted.Content.Body = ""
+		converted.DBMetadata = convertedTitle.DBMetadata
+		if content != "" {
+			if converted.Content.FileName == "" || converted.Content.FileName == converted.Content.Body {
+				converted.Content.FileName = converted.Content.Body
+				converted.Content.Body = ""
+			}
+			if converted.Content.Body != "" {
+				converted.Content.Body += "\n\n"
+			}
+			converted.Content.Body += content
+			contentHTML := parseWAFormattingToHTML(content, true)
+			if contentHTML != event.TextToHTML(content) || converted.Content.FormattedBody != "" {
+				converted.Content.EnsureHasHTML()
+				if converted.Content.FormattedBody != "" {
+					converted.Content.FormattedBody += "<br><br>"
+				}
+				converted.Content.FormattedBody += contentHTML
+			}
 		}
-		converted.Content.Body += extraText
 	}
-	mc.parseFormatting(converted.Content, true, false)
 	if converted.Extra == nil {
 		converted.Extra = make(map[string]any)
 	}

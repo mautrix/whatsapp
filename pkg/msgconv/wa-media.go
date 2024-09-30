@@ -46,6 +46,9 @@ import (
 
 func (mc *MessageConverter) convertMediaMessage(ctx context.Context, msg MediaMessage, typeName string) (part *bridgev2.ConvertedMessagePart, contextInfo *waE2E.ContextInfo) {
 	preparedMedia := prepareMediaMessage(msg)
+	if preparedMedia.FileName != "" && preparedMedia.Body != preparedMedia.FileName {
+		mc.parseFormatting(preparedMedia.MessageEventContent, false, false)
+	}
 	contextInfo = preparedMedia.ContextInfo
 	err := mc.reuploadWhatsAppAttachment(ctx, msg, preparedMedia)
 	if err != nil {
