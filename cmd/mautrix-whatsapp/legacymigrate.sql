@@ -90,8 +90,8 @@ SELECT
     jsonb_build_object
     -- only: sqlite (line commented)
 --  json_object
-        (
-        'last_sync', last_sync,
+    (
+        'last_sync', last_sync
     ) -- metadata
 FROM portal_old;
 
