@@ -20,6 +20,8 @@ import (
 	"archive/zip"
 	"bytes"
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -35,58 +37,52 @@ import (
 	"go.mau.fi/util/random"
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/proto/waE2E"
+
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/event"
-	"maunium.net/go/mautrix/id"
+
+	"maunium.net/go/mautrix-whatsapp/pkg/waid"
 )
 
 func (mc *MessageConverter) convertMediaMessage(ctx context.Context, msg MediaMessage, typeName string) (part *bridgev2.ConvertedMessagePart, contextInfo *waE2E.ContextInfo) {
-	mediaInfo := getMediaMessageFileInfo(msg)
-	contextInfo = mediaInfo.ContextInfo
-	var err error
-	part, err = mc.reuploadWhatsAppAttachment(ctx, msg, mediaInfo)
+	preparedMedia := prepareMediaMessage(msg)
+	contextInfo = preparedMedia.ContextInfo
+	err := mc.reuploadWhatsAppAttachment(ctx, msg, preparedMedia)
 	if err != nil {
-		zerolog.Ctx(ctx).Err(err).Msg("Failed to reupload WhatsApp attachment")
-		part = makeMediaFailure(typeName)
-		return
-	}
-	part.Content.MsgType = mediaInfo.MsgType
-	if mediaInfo.IsSticker {
-		part.Type = event.EventSticker
-	}
-
-	if mediaInfo.Waveform != nil {
-		part.Content.MSC3245Voice = &event.MSC3245Voice{}
-		part.Content.MSC1767Audio = &event.MSC1767Audio{
-			Duration: mediaInfo.Duration,
-			Waveform: mediaInfo.Waveform,
-		}
-	}
-	if mediaInfo.Caption != "" {
-		part.Content.Body = mediaInfo.Caption
-	}
-	if mediaInfo.IsGif {
-		part.Extra["info"] = map[string]any{
-			"fi.mau.gif":           true,
-			"fi.mau.loop":          true,
-			"fi.mau.autoplay":      true,
-			"fi.mau.hide_controls": true,
-			"fi.mau.no_audio":      true,
+		part = mc.makeMediaFailure(ctx, typeName, preparedMedia, &FailedMediaKeys{
+			Key:       msg.GetMediaKey(),
+			Length:    msg.GetFileLength(),
+			Type:      whatsmeow.GetMediaType(msg),
+			SHA256:    msg.GetFileSHA256(),
+			EncSHA256: msg.GetFileEncSHA256(),
+		}, err)
+	} else {
+		part = &bridgev2.ConvertedMessagePart{
+			Type:    event.EventMessage,
+			Content: preparedMedia.MessageEventContent,
+			Extra:   preparedMedia.Extra,
 		}
 	}
 	return
 }
 
-type MediaInfo struct {
-	event.FileInfo
-	FileName    string
-	Waveform    []int
-	IsGif       bool
-	IsSticker   bool
-	IsLottie    bool
-	Caption     string
-	MsgType     event.MessageType
-	ContextInfo *waE2E.ContextInfo
+const failedMediaField = "fi.mau.whatsapp.failed_media"
+
+type FailedMediaKeys struct {
+	Key       []byte              `json:"key"`
+	Length    uint64              `json:"length"`
+	Type      whatsmeow.MediaType `json:"type"`
+	SHA256    []byte              `json:"sha256"`
+	EncSHA256 []byte              `json:"enc_sha256"`
+}
+
+type PreparedMedia struct {
+	Type                       event.Type `json:"type"`
+	*event.MessageEventContent `json:"content"`
+	Extra                      map[string]any     `json:"extra"`
+	FailedKeys                 *FailedMediaKeys   `json:"whatsapp_media"`          // only for failed media
+	MentionedJID               []string           `json:"mentioned_jid,omitempty"` // only for failed media
+	ContextInfo                *waE2E.ContextInfo `json:"-"`
 }
 
 type MediaMessage interface {
@@ -122,39 +118,68 @@ type MediaMessageWithDuration interface {
 	GetSeconds() uint32
 }
 
-func getMediaMessageFileInfo(rawMsg MediaMessage) *MediaInfo {
-	info := &MediaInfo{}
+func prepareMediaMessage(rawMsg MediaMessage) *PreparedMedia {
+	extraInfo := map[string]any{}
+	data := &PreparedMedia{
+		Type: event.EventMessage,
+		MessageEventContent: &event.MessageEventContent{
+			Info: &event.FileInfo{},
+		},
+		Extra: map[string]any{
+			"info": extraInfo,
+		},
+	}
 	switch msg := rawMsg.(type) {
 	case *waE2E.ImageMessage:
-		info.MsgType = event.MsgImage
+		data.MsgType = event.MsgImage
+		data.FileName = "image" + exmime.ExtensionFromMimetype(msg.GetMimetype())
 	case *waE2E.DocumentMessage:
-		info.MsgType = event.MsgFile
-		info.FileName = msg.GetFileName()
+		data.MsgType = event.MsgFile
+		data.FileName = msg.GetFileName()
 	case *waE2E.AudioMessage:
-		info.MsgType = event.MsgAudio
-		info.Waveform = exslices.CastFunc(msg.Waveform, func(from byte) int { return int(from) })
+		data.MsgType = event.MsgAudio
+		data.MSC1767Audio = &event.MSC1767Audio{
+			Duration: int(msg.GetSeconds() * 1000),
+			Waveform: exslices.CastFunc(msg.Waveform, func(from byte) int { return int(from) }),
+		}
+		data.FileName = "audio" + exmime.ExtensionFromMimetype(msg.GetMimetype())
+		if msg.GetPTT() {
+			data.MSC3245Voice = &event.MSC3245Voice{}
+			data.FileName = "Voice message" + exmime.ExtensionFromMimetype(msg.GetMimetype())
+		}
 	case *waE2E.StickerMessage:
-		info.IsSticker = true
-		info.IsLottie = msg.GetIsLottie()
+		data.Type = event.EventSticker
+		data.FileName = "sticker" + exmime.ExtensionFromMimetype(msg.GetMimetype())
 	case *waE2E.VideoMessage:
-		info.MsgType = event.MsgVideo
-		info.IsGif = msg.GetGifPlayback()
+		data.MsgType = event.MsgVideo
+		if msg.GetGifPlayback() {
+			extraInfo["fi.mau.gif"] = true
+			extraInfo["fi.mau.loop"] = true
+			extraInfo["fi.mau.autoplay"] = true
+			extraInfo["fi.mau.hide_controls"] = true
+			extraInfo["fi.mau.no_audio"] = true
+		}
+		data.FileName = "video" + exmime.ExtensionFromMimetype(msg.GetMimetype())
+	default:
+		panic(fmt.Errorf("unknown media message type %T", rawMsg))
 	}
 	if durationMsg, ok := rawMsg.(MediaMessageWithDuration); ok {
-		info.Duration = int(durationMsg.GetSeconds() * 1000)
+		data.Info.Duration = int(durationMsg.GetSeconds() * 1000)
 	}
 	if dimensionMsg, ok := rawMsg.(MediaMessageWithDimensions); ok {
-		info.Width = int(dimensionMsg.GetWidth())
-		info.Height = int(dimensionMsg.GetHeight())
+		data.Info.Width = int(dimensionMsg.GetWidth())
+		data.Info.Height = int(dimensionMsg.GetHeight())
 	}
-	if captionMsg, ok := rawMsg.(MediaMessageWithCaption); ok {
-		info.Caption = captionMsg.GetCaption()
+	if captionMsg, ok := rawMsg.(MediaMessageWithCaption); ok && captionMsg.GetCaption() != "" {
+		data.Body = captionMsg.GetCaption()
+	} else {
+		data.Body = data.FileName
 	}
 
-	info.Size = int(rawMsg.GetFileLength())
-	info.MimeType = rawMsg.GetMimetype()
-	info.ContextInfo = rawMsg.GetContextInfo()
-	return info
+	data.Info.Size = int(rawMsg.GetFileLength())
+	data.Info.MimeType = rawMsg.GetMimetype()
+	data.ContextInfo = rawMsg.GetContextInfo()
+	return data
 }
 
 // TODO read this from config?
@@ -163,63 +188,61 @@ const uploadFileThreshold = 5 * 1024 * 1024
 func (mc *MessageConverter) reuploadWhatsAppAttachment(
 	ctx context.Context,
 	message MediaMessage,
-	fileInfo *MediaInfo,
-) (*bridgev2.ConvertedMessagePart, error) {
+	part *PreparedMedia,
+) error {
 	client := getClient(ctx)
 	intent := getIntent(ctx)
 	portal := getPortal(ctx)
-	var mxc id.ContentURIString
-	var file *event.EncryptedFileInfo
 	var thumbnailData []byte
 	var thumbnailInfo *event.FileInfo
-	if fileInfo.Size > uploadFileThreshold {
+	if part.Info.Size > uploadFileThreshold {
 		var err error
-		mxc, file, err = intent.UploadMediaStream(ctx, portal.MXID, -1, true, func(file io.Writer) (*bridgev2.FileStreamResult, error) {
+		part.URL, part.File, err = intent.UploadMediaStream(ctx, portal.MXID, -1, true, func(file io.Writer) (*bridgev2.FileStreamResult, error) {
 			err := client.DownloadToFile(message, file.(*os.File))
 			if err != nil {
 				return nil, fmt.Errorf("%w: %w", bridgev2.ErrMediaDownloadFailed, err)
 			}
-			if fileInfo.MimeType == "" {
+			if part.Info.MimeType == "" {
 				header := make([]byte, 512)
 				n, _ := file.(*os.File).ReadAt(header, 0)
-				fileInfo.MimeType = http.DetectContentType(header[:n])
+				part.Info.MimeType = http.DetectContentType(header[:n])
 			}
-			if fileInfo.FileName == "" {
-				fileInfo.FileName = strings.TrimPrefix(string(fileInfo.MsgType), "m.") + exmime.ExtensionFromMimetype(fileInfo.MimeType)
+			if part.FileName == "" {
+				part.FileName = strings.TrimPrefix(string(part.MsgType), "m.") + exmime.ExtensionFromMimetype(part.Info.MimeType)
 			}
 			return &bridgev2.FileStreamResult{
-				FileName: fileInfo.FileName,
-				MimeType: fileInfo.MimeType,
+				FileName: part.FileName,
+				MimeType: part.Info.MimeType,
 			}, nil
 		})
 		if err != nil {
-			return nil, err
+			return err
 		}
 	} else {
 		data, err := client.Download(message)
 		if err != nil {
-			return nil, fmt.Errorf("%w: %w", bridgev2.ErrMediaDownloadFailed, err)
+			return fmt.Errorf("%w: %w", bridgev2.ErrMediaDownloadFailed, err)
 		}
-		if fileInfo.IsSticker && fileInfo.IsLottie && fileInfo.MimeType == "application/was" {
-			data, thumbnailData, thumbnailInfo, err = mc.convertAnimatedSticker(ctx, fileInfo, data)
+		if part.Type == event.EventSticker && part.Info.MimeType == "application/was" {
+			data, thumbnailData, thumbnailInfo, err = mc.convertAnimatedSticker(ctx, part, data)
 			if err != nil {
-				return nil, err
+				return err
 			}
 		}
-		if fileInfo.MimeType == "" {
-			fileInfo.MimeType = http.DetectContentType(data)
+		if part.Info.MimeType == "" {
+			part.Info.MimeType = http.DetectContentType(data)
 		}
-		if fileInfo.FileName == "" {
-			fileInfo.FileName = strings.TrimPrefix(string(fileInfo.MsgType), "m.") + exmime.ExtensionFromMimetype(fileInfo.MimeType)
+		if part.FileName == "" {
+			part.FileName = strings.TrimPrefix(string(part.MsgType), "m.") + exmime.ExtensionFromMimetype(part.Info.MimeType)
 		}
-		mxc, file, err = intent.UploadMedia(ctx, portal.MXID, data, fileInfo.FileName, fileInfo.MimeType)
+		part.URL, part.File, err = intent.UploadMedia(ctx, portal.MXID, data, part.FileName, part.Info.MimeType)
 		if err != nil {
-			return nil, fmt.Errorf("%w: %w", bridgev2.ErrMediaReuploadFailed, err)
+			return fmt.Errorf("%w: %w", bridgev2.ErrMediaReuploadFailed, err)
 		}
 	}
 	if thumbnailData != nil && thumbnailInfo != nil {
 		var err error
-		fileInfo.ThumbnailURL, fileInfo.ThumbnailFile, err = intent.UploadMedia(
+		part.Info.ThumbnailURL, part.Info.ThumbnailFile, err = intent.UploadMedia(
 			ctx,
 			portal.MXID,
 			thumbnailData,
@@ -229,24 +252,13 @@ func (mc *MessageConverter) reuploadWhatsAppAttachment(
 		if err != nil {
 			zerolog.Ctx(ctx).Err(err).Msg("Failed to reupload thumbnail")
 		} else {
-			fileInfo.ThumbnailInfo = thumbnailInfo
+			part.Info.ThumbnailInfo = thumbnailInfo
 		}
 	}
-
-	return &bridgev2.ConvertedMessagePart{
-		Type: event.EventMessage,
-		Content: &event.MessageEventContent{
-			Body:     fileInfo.FileName,
-			FileName: fileInfo.FileName,
-			Info:     &fileInfo.FileInfo,
-			URL:      mxc,
-			File:     file,
-		},
-		Extra: make(map[string]any),
-	}, nil
+	return nil
 }
 
-func (mc *MessageConverter) extractAnimatedSticker(fileInfo *MediaInfo, data []byte) ([]byte, error) {
+func (mc *MessageConverter) extractAnimatedSticker(fileInfo *PreparedMedia, data []byte) ([]byte, error) {
 	zipReader, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
 	if err != nil {
 		return nil, fmt.Errorf("failed to read sticker zip: %w", err)
@@ -268,12 +280,12 @@ func (mc *MessageConverter) extractAnimatedSticker(fileInfo *MediaInfo, data []b
 	if err != nil {
 		return nil, fmt.Errorf("failed to read animation.json: %w", err)
 	}
-	fileInfo.MimeType = "image/lottie+json"
+	fileInfo.Info.MimeType = "image/lottie+json"
 	fileInfo.FileName = "sticker.json"
 	return data, nil
 }
 
-func (mc *MessageConverter) convertAnimatedSticker(ctx context.Context, fileInfo *MediaInfo, data []byte) ([]byte, []byte, *event.FileInfo, error) {
+func (mc *MessageConverter) convertAnimatedSticker(ctx context.Context, fileInfo *PreparedMedia, data []byte) ([]byte, []byte, *event.FileInfo, error) {
 	data, err := mc.extractAnimatedSticker(fileInfo, data)
 	if err != nil {
 		return nil, nil, nil, err
@@ -286,7 +298,7 @@ func (mc *MessageConverter) convertAnimatedSticker(ctx context.Context, fileInfo
 		return data, nil, nil, nil
 	}
 	input := bytes.NewReader(data)
-	fileInfo.MimeType = "image/" + c.Target
+	fileInfo.Info.MimeType = "image/" + c.Target
 	fileInfo.FileName = "sticker." + c.Target
 	switch c.Target {
 	case "png":
@@ -325,12 +337,41 @@ func (mc *MessageConverter) convertAnimatedSticker(ctx context.Context, fileInfo
 	}
 }
 
-func makeMediaFailure(mediaType string) *bridgev2.ConvertedMessagePart {
-	return &bridgev2.ConvertedMessagePart{
+func (mc *MessageConverter) makeMediaFailure(ctx context.Context, mediaType string, mediaInfo *PreparedMedia, keys *FailedMediaKeys, err error) *bridgev2.ConvertedMessagePart {
+	logLevel := zerolog.ErrorLevel
+	var extra map[string]any
+	var dbMeta *waid.MessageMetadata
+	errorMsg := fmt.Sprintf("Failed to bridge %s, please view it on the WhatsApp app", mediaType)
+	if errors.Is(err, whatsmeow.ErrMediaDownloadFailedWith403) || errors.Is(err, whatsmeow.ErrMediaDownloadFailedWith404) || errors.Is(err, whatsmeow.ErrMediaDownloadFailedWith410) {
+		logLevel = zerolog.DebugLevel
+		mediaInfo.FailedKeys = keys
+		mediaInfo.MentionedJID = mediaInfo.ContextInfo.GetMentionedJID()
+		serializedMedia, serializerErr := json.Marshal(mediaInfo)
+		if serializerErr != nil {
+			zerolog.Ctx(ctx).Err(serializerErr).Msg("Failed to serialize media info")
+		}
+		extra = map[string]any{
+			failedMediaField: mediaInfo,
+		}
+		dbMeta = &waid.MessageMetadata{
+			Error:     waid.MsgErrMediaNotFound,
+			MediaMeta: serializedMedia,
+		}
+		errorMsg = fmt.Sprintf("Old %s. Viewing old media is not currently supported.", mediaType)
+	}
+	zerolog.Ctx(ctx).WithLevel(logLevel).Err(err).Str("media_type", mediaType).
+		Msg("Failed to reupload WhatsApp attachment")
+	part := &bridgev2.ConvertedMessagePart{
 		Type: event.EventMessage,
 		Content: &event.MessageEventContent{
 			MsgType: event.MsgNotice,
-			Body:    fmt.Sprintf("Failed to bridge %s, please view it on the WhatsApp app", mediaType),
+			Body:    errorMsg,
 		},
+		Extra:      extra,
+		DBMetadata: dbMeta,
 	}
+	if mediaInfo.Body != "" && mediaInfo.FileName != "" && mediaInfo.Body != mediaInfo.FileName {
+		part.Content.Body += "\n\n" + mediaInfo.Body
+	}
+	return part
 }

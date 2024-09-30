@@ -35,7 +35,13 @@ func (mc *MessageConverter) convertContactMessage(ctx context.Context, msg *waE2
 	mxc, file, err := getIntent(ctx).UploadMedia(ctx, getPortal(ctx).MXID, data, fileName, mimeType)
 	if err != nil {
 		zerolog.Ctx(ctx).Err(err).Msg("Failed to reupload WhatsApp contact message")
-		part = makeMediaFailure("contact message")
+		part = &bridgev2.ConvertedMessagePart{
+			Type: event.EventMessage,
+			Content: &event.MessageEventContent{
+				MsgType: event.MsgNotice,
+				Body:    "Failed to reupload vcard",
+			},
+		}
 		return
 	}
 

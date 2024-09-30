@@ -17,6 +17,8 @@
 package waid
 
 import (
+	"encoding/json"
+
 	"go.mau.fi/util/jsontime"
 	"go.mau.fi/whatsmeow/types"
 )
@@ -48,6 +50,7 @@ type MessageMetadata struct {
 	Error            MessageErrorType `json:"error,omitempty"`
 	BroadcastListJID *types.JID       `json:"broadcast_list_jid,omitempty"`
 	GroupInvite      *GroupInviteMeta `json:"group_invite,omitempty"`
+	MediaMeta        json.RawMessage  `json:"media_meta,omitempty"`
 }
 
 type ReactionMetadata struct {
