@@ -66,7 +66,6 @@ func (mc *MessageConverter) ToWhatsApp(
 		msgID, err := waid.ParseMessageID(replyTo.ID)
 		if err == nil {
 			contextInfo.StanzaID = proto.String(msgID.ID)
-			contextInfo.RemoteJID = proto.String(msgID.Chat.String())
 			contextInfo.Participant = proto.String(msgID.Sender.String())
 			contextInfo.QuotedMessage = &waE2E.Message{Conversation: proto.String("")}
 		} else {
