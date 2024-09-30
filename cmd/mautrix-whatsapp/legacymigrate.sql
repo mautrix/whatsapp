@@ -64,7 +64,7 @@ SELECT
     jid, -- id
     CASE WHEN receiver LIKE '%@s.whatsapp.net' THEN replace(receiver, '@s.whatsapp.net', '') ELSE '' END, -- receiver
     mxid,
-    parent_group, -- parent_id
+    CASE WHEN EXISTS(SELECT 1 FROM portal_old WHERE jid=parent_group) THEN parent_group ELSE NULL END, -- parent_id
     '', -- parent_receiver
     CASE WHEN relay_user_id<>'' THEN '' END, -- relay_bridge_id
     (SELECT id FROM user_login WHERE user_mxid=relay_user_id), -- relay_login_id
@@ -198,7 +198,7 @@ SELECT
     NULL, -- completed_at
     1 -- next_dispatch_min_ts
 FROM backfill_queue_old
-WHERE type IN (0, 200)
+WHERE type IN (0, 200) AND EXISTS(SELECT 1 FROM user_login WHERE user_login.user_mxid=backfill_queue_old.user_mxid)
 GROUP BY user_mxid, portal_jid, portal_receiver;
 
 INSERT INTO whatsapp_poll_option_id (bridge_id, msg_mxid, opt_id, opt_hash)
