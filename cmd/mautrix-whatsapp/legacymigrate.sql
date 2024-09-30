@@ -265,10 +265,10 @@ SELECT
     event_id,
     media_key,
     status,
-    error
+    COALESCE(error, '')
 FROM media_backfill_requests_old
 LEFT JOIN user_login ON user_login.user_mxid = media_backfill_requests_old.user_mxid
-WHERE user_login.id IS NOT NULL;
+WHERE user_login.id IS NOT NULL AND media_key IS NOT NULL AND status IS NOT NULL;
 
 DROP TABLE backfill_queue_old;
 DROP TABLE backfill_state_old;
