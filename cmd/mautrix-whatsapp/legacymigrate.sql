@@ -116,6 +116,9 @@ UPDATE message_old SET combined_id = chat_jid || ':' || (
     END
 ) || ':' || jid;
 DELETE FROM message_old WHERE timestamp<0;
+-- only: sqlite for next 2 lines
+DELETE FROM message WHERE rowid IN (SELECT rowid FROM pragma_foreign_key_check('message'));
+DELETE FROM reaction WHERE rowid IN (SELECT rowid FROM pragma_foreign_key_check('reaction'));
 
 INSERT INTO message (
     bridge_id, id, part_id, mxid, room_id, room_receiver, sender_id, sender_mxid, timestamp, edit_count, metadata
