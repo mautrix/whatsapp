@@ -55,6 +55,8 @@ func (mc *MessageConverter) ToWhatsApp(
 	replyTo *database.Message,
 	portal *bridgev2.Portal,
 ) (*waE2E.Message, error) {
+	ctx = context.WithValue(ctx, contextKeyClient, client)
+	ctx = context.WithValue(ctx, contextKeyPortal, portal)
 	if evt.Type == event.EventSticker {
 		content.MsgType = event.MsgImage
 	}
@@ -82,13 +84,13 @@ func (mc *MessageConverter) ToWhatsApp(
 
 	switch content.MsgType {
 	case event.MsgText, event.MsgNotice, event.MsgEmote:
-		message = mc.constructTextMessage(ctx, content, portal, contextInfo)
+		message = mc.constructTextMessage(ctx, content, contextInfo)
 	case event.MessageType(event.EventSticker.Type), event.MsgImage, event.MsgVideo, event.MsgAudio, event.MsgFile:
-		uploaded, thumbnail, mime, err := mc.reuploadFileToWhatsApp(ctx, client, content)
+		uploaded, thumbnail, mime, err := mc.reuploadFileToWhatsApp(ctx, content)
 		if err != nil {
 			return nil, err
 		}
-		message = mc.constructMediaMessage(ctx, content, evt, portal, uploaded, thumbnail, contextInfo, mime)
+		message = mc.constructMediaMessage(ctx, content, evt, uploaded, thumbnail, contextInfo, mime)
 	case event.MsgLocation:
 		lat, long, err := parseGeoURI(content.GeoURI)
 		if err != nil {
@@ -110,7 +112,6 @@ func (mc *MessageConverter) constructMediaMessage(
 	ctx context.Context,
 	content *event.MessageEventContent,
 	evt *event.Event,
-	portal *bridgev2.Portal,
 	uploaded *whatsmeow.UploadResponse,
 	thumbnail []byte,
 	contextInfo *waE2E.ContextInfo,
@@ -118,7 +119,7 @@ func (mc *MessageConverter) constructMediaMessage(
 ) *waE2E.Message {
 	var caption string
 	if content.FileName != "" && content.Body != content.FileName {
-		caption, contextInfo.MentionedJID = mc.parseText(ctx, content, portal)
+		caption, contextInfo.MentionedJID = mc.parseText(ctx, content)
 	}
 	switch content.MsgType {
 	case event.MessageType(event.EventSticker.Type):
@@ -243,12 +244,11 @@ func (mc *MessageConverter) constructMediaMessage(
 	}
 }
 
-func (mc *MessageConverter) parseText(ctx context.Context, content *event.MessageEventContent, portal *bridgev2.Portal) (text string, mentions []string) {
+func (mc *MessageConverter) parseText(ctx context.Context, content *event.MessageEventContent) (text string, mentions []string) {
 	mentions = make([]string, 0)
 
 	parseCtx := format.NewContext(ctx)
 	parseCtx.ReturnData["mentions"] = &mentions
-	parseCtx.ReturnData["portal"] = portal
 	if content.Format == event.FormatHTML {
 		text = mc.HTMLParser.Parse(content.FormattedBody, parseCtx)
 	} else {
@@ -257,8 +257,8 @@ func (mc *MessageConverter) parseText(ctx context.Context, content *event.Messag
 	return
 }
 
-func (mc *MessageConverter) constructTextMessage(ctx context.Context, content *event.MessageEventContent, portal *bridgev2.Portal, contextInfo *waE2E.ContextInfo) *waE2E.Message {
-	text, mentions := mc.parseText(ctx, content, portal)
+func (mc *MessageConverter) constructTextMessage(ctx context.Context, content *event.MessageEventContent, contextInfo *waE2E.ContextInfo) *waE2E.Message {
+	text, mentions := mc.parseText(ctx, content)
 	if len(mentions) > 0 {
 		contextInfo.MentionedJID = mentions
 	}
@@ -286,7 +286,7 @@ func (mc *MessageConverter) convertPill(displayname, mxid, eventID string, ctx f
 		zerolog.Ctx(ctx.Ctx).Err(err).Str("mxid", mxid).Msg("Failed to get user for mention")
 		return displayname
 	} else if user != nil {
-		portal := ctx.ReturnData["portal"].(*bridgev2.Portal)
+		portal := getPortal(ctx.Ctx)
 		login, _, _ := portal.FindPreferredLogin(ctx.Ctx, user, false)
 		if login == nil {
 			return displayname
@@ -362,7 +362,7 @@ func (mc *MessageConverter) convertToWebP(img []byte) ([]byte, error) {
 }
 
 func (mc *MessageConverter) reuploadFileToWhatsApp(
-	ctx context.Context, client *whatsmeow.Client, content *event.MessageEventContent,
+	ctx context.Context, content *event.MessageEventContent,
 ) (*whatsmeow.UploadResponse, []byte, string, error) {
 	mime := content.Info.MimeType
 	fileName := content.Body
@@ -451,7 +451,7 @@ func (mc *MessageConverter) reuploadFileToWhatsApp(
 		mediaType = whatsmeow.MediaDocument
 	}
 
-	uploaded, err := client.Upload(ctx, data, mediaType)
+	uploaded, err := getClient(ctx).Upload(ctx, data, mediaType)
 	if err != nil {
 		zerolog.Ctx(ctx).Debug().
 			Str("file_name", fileName).
