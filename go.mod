@@ -11,13 +11,14 @@ require (
 	github.com/rs/zerolog v1.33.0
 	go.mau.fi/util v0.8.1-0.20240927174413-000d30f9a02a
 	go.mau.fi/webp v0.1.0
-	go.mau.fi/whatsmeow v0.0.0-20240930130510-b12cf9c9deda
+	go.mau.fi/whatsmeow v0.0.0-20241001110941-382edde94d9f
 	golang.org/x/exp v0.0.0-20240909161429-701f63a606c0
 	golang.org/x/image v0.20.0
 	golang.org/x/net v0.29.0
+	golang.org/x/sync v0.8.0
 	google.golang.org/protobuf v1.34.2
 	gopkg.in/yaml.v3 v3.0.1
-	maunium.net/go/mautrix v0.21.1-0.20240930142122-741b4e823ffb
+	maunium.net/go/mautrix v0.21.1-0.20241001105237-37af19a01a61
 )
 
 require (
@@ -40,7 +41,6 @@ require (
 	go.mau.fi/libsignal v0.1.1 // indirect
 	go.mau.fi/zeroconfig v0.1.3 // indirect
 	golang.org/x/crypto v0.27.0 // indirect
-	golang.org/x/sync v0.8.0 // indirect
 	golang.org/x/sys v0.25.0 // indirect
 	golang.org/x/text v0.18.0 // indirect
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c // indirect

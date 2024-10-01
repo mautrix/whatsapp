@@ -10,9 +10,10 @@ import (
 type MediaBackfillRequestStatus int
 
 const (
-	MediaBackfillRequestStatusNotRequested  MediaBackfillRequestStatus = 0
-	MediaBackfillRequestStatusRequested     MediaBackfillRequestStatus = 1
-	MediaBackfillRequestStatusRequestFailed MediaBackfillRequestStatus = 2
+	MediaBackfillRequestStatusNotRequested   MediaBackfillRequestStatus = 0
+	MediaBackfillRequestStatusRequested      MediaBackfillRequestStatus = 1
+	MediaBackfillRequestStatusRequestFailed  MediaBackfillRequestStatus = 2
+	MediaBackfillRequestStatusRequestSkipped MediaBackfillRequestStatus = 3
 )
 
 type MediaRequestQuery struct {

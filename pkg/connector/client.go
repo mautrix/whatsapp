@@ -29,6 +29,7 @@ import (
 	"go.mau.fi/whatsmeow/store"
 	"go.mau.fi/whatsmeow/types"
 	waLog "go.mau.fi/whatsmeow/util/log"
+	"golang.org/x/sync/semaphore"
 	"maunium.net/go/mautrix/bridge/status"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
@@ -41,8 +42,9 @@ func (wa *WhatsAppConnector) LoadUserLogin(_ context.Context, login *bridgev2.Us
 		Main:      wa,
 		UserLogin: login,
 
-		historySyncs: make(chan *waHistorySync.HistorySync, 64),
-		resyncQueue:  make(map[types.JID]resyncQueueItem),
+		historySyncs:   make(chan *waHistorySync.HistorySync, 64),
+		resyncQueue:    make(map[types.JID]resyncQueueItem),
+		mediaRetryLock: semaphore.NewWeighted(wa.Config.HistorySync.MediaRequests.MaxAsyncHandle),
 	}
 	login.Client = w
 
@@ -90,6 +92,7 @@ type WhatsAppClient struct {
 	resyncQueue     map[types.JID]resyncQueueItem
 	resyncQueueLock sync.Mutex
 	nextResync      time.Time
+	mediaRetryLock  *semaphore.Weighted
 
 	lastPhoneOfflineWarning time.Time
 }
@@ -147,6 +150,9 @@ func (wa *WhatsAppClient) startLoops() {
 	go wa.historySyncLoop(ctx)
 	go wa.ghostResyncLoop(ctx)
 	go wa.disconnectWarningLoop(ctx)
+	if mrc := wa.Main.Config.HistorySync.MediaRequests; mrc.AutoRequestMedia && mrc.RequestMethod == MediaRequestMethodLocalTime {
+		go wa.mediaRequestLoop(ctx)
+	}
 }
 
 func (wa *WhatsAppClient) Disconnect() {

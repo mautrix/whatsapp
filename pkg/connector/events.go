@@ -18,10 +18,14 @@ package connector
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"time"
 
 	"github.com/rs/zerolog"
+	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/proto/waE2E"
+	"go.mau.fi/whatsmeow/proto/waMmsRetry"
 	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
 	"maunium.net/go/mautrix/bridgev2"
@@ -30,6 +34,7 @@ import (
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/format"
 
+	"maunium.net/go/mautrix-whatsapp/pkg/msgconv"
 	"maunium.net/go/mautrix-whatsapp/pkg/waid"
 )
 
@@ -85,6 +90,7 @@ type WAMessageEvent struct {
 
 	parsedMessageType             string
 	isUndecryptableUpsertSubEvent bool
+	postHandle                    func()
 }
 
 var (
@@ -98,10 +104,18 @@ var (
 	_ bridgev2.RemoteReactionWithMeta         = (*WAMessageEvent)(nil)
 	_ bridgev2.RemoteEdit                     = (*WAMessageEvent)(nil)
 	_ bridgev2.RemoteMessageRemove            = (*WAMessageEvent)(nil)
+	_ bridgev2.RemotePostHandler              = (*WAMessageEvent)(nil)
 )
 
 func (evt *WAMessageEvent) AddLogContext(c zerolog.Context) zerolog.Context {
 	return evt.MessageInfoWrapper.AddLogContext(c).Str("parsed_message_type", evt.parsedMessageType)
+}
+
+func (evt *WAMessageEvent) PostHandle(ctx context.Context, portal *bridgev2.Portal) {
+	if ph := evt.postHandle; ph != nil {
+		evt.postHandle = nil
+		ph()
+	}
 }
 
 func (evt *WAMessageEvent) ConvertEdit(ctx context.Context, portal *bridgev2.Portal, intent bridgev2.MatrixAPI, existing []*database.Message) (*bridgev2.ConvertedEdit, error) {
@@ -118,6 +132,11 @@ func (evt *WAMessageEvent) ConvertEdit(ctx context.Context, portal *bridgev2.Por
 
 	// TODO edits to media captions may not contain the media
 	cm := evt.wa.Main.MsgConv.ToMatrix(ctx, portal, evt.wa.Client, intent, editedMsg, &evt.Info)
+	if evt.isUndecryptableUpsertSubEvent && isFailedMedia(cm) {
+		evt.postHandle = func() {
+			evt.wa.processFailedMedia(ctx, portal.PortalKey, evt.GetID(), cm, false)
+		}
+	}
 	return &bridgev2.ConvertedEdit{
 		ModifiedParts: []*bridgev2.ConvertedEditPart{cm.Parts[0].ToEditPart(existing[0])},
 	}, nil
@@ -201,6 +220,11 @@ func (evt *WAMessageEvent) HandleExisting(ctx context.Context, portal *bridgev2.
 func (evt *WAMessageEvent) ConvertMessage(ctx context.Context, portal *bridgev2.Portal, intent bridgev2.MatrixAPI) (*bridgev2.ConvertedMessage, error) {
 	evt.wa.EnqueuePortalResync(portal)
 	converted := evt.wa.Main.MsgConv.ToMatrix(ctx, portal, evt.wa.Client, intent, evt.Message, &evt.Info)
+	if isFailedMedia(converted) {
+		evt.postHandle = func() {
+			evt.wa.processFailedMedia(ctx, portal.PortalKey, evt.GetID(), converted, false)
+		}
+	}
 	return converted, nil
 }
 
@@ -278,3 +302,113 @@ func (evt *WAUndecryptableMessage) ConvertMessage(ctx context.Context, portal *b
 		Disappear: portal.Disappear,
 	}, nil
 }
+
+type WAMediaRetry struct {
+	*events.MediaRetry
+	wa *WhatsAppClient
+}
+
+func (evt *WAMediaRetry) GetType() bridgev2.RemoteEventType {
+	return bridgev2.RemoteEventEdit
+}
+
+func (evt *WAMediaRetry) GetPortalKey() networkid.PortalKey {
+	return evt.wa.makeWAPortalKey(evt.ChatID)
+}
+
+func (evt *WAMediaRetry) AddLogContext(c zerolog.Context) zerolog.Context {
+	return c.
+		Str("message_id", evt.MessageID).
+		Stringer("sender_id", evt.SenderID).
+		Stringer("chat_id", evt.ChatID).
+		Bool("from_me", evt.FromMe).
+		Str("wa_event_type", "media retry")
+}
+
+func (evt *WAMediaRetry) getRealSender() types.JID {
+	sender := evt.SenderID
+	if evt.FromMe {
+		sender = evt.wa.JID.ToNonAD()
+	} else if sender.IsEmpty() && evt.ChatID.Server == types.DefaultUserServer {
+		sender = evt.ChatID.ToNonAD()
+	}
+	return sender
+}
+
+func (evt *WAMediaRetry) GetSender() bridgev2.EventSender {
+	return evt.wa.makeEventSender(evt.getRealSender())
+}
+
+func (evt *WAMediaRetry) GetTargetMessage() networkid.MessageID {
+	return waid.MakeMessageID(evt.ChatID, evt.getRealSender(), evt.MessageID)
+}
+
+func (evt *WAMediaRetry) GetTimestamp() time.Time {
+	return evt.Timestamp
+}
+
+func (evt *WAMediaRetry) makeErrorEdit(part *database.Message, meta *msgconv.PreparedMedia, err error) *bridgev2.ConvertedEdit {
+	content := &event.MessageEventContent{
+		MsgType: event.MsgNotice,
+		Body:    fmt.Sprintf("Failed to bridge media after re-requesting it from your phone: %v", err),
+	}
+	if meta.FormattedBody != "" {
+		content.EnsureHasHTML()
+		content.Body += "\n\n" + meta.Body
+		content.FormattedBody += "<br><br>" + meta.FormattedBody
+	} else if meta.Body != meta.FileName && meta.FileName != "" {
+		content.Body += "\n\n" + meta.Body
+	}
+	return &bridgev2.ConvertedEdit{
+		ModifiedParts: []*bridgev2.ConvertedEditPart{{
+			Part:    part,
+			Type:    event.EventMessage,
+			Content: content,
+		}},
+	}
+}
+
+func (evt *WAMediaRetry) ConvertEdit(ctx context.Context, portal *bridgev2.Portal, intent bridgev2.MatrixAPI, existing []*database.Message) (*bridgev2.ConvertedEdit, error) {
+	meta := existing[0].Metadata.(*waid.MessageMetadata)
+	if meta.Error != waid.MsgErrMediaNotFound {
+		return nil, fmt.Errorf("%w: message doesn't have media error", bridgev2.ErrIgnoringRemoteEvent)
+	} else if meta.MediaMeta == nil {
+		return nil, fmt.Errorf("%w: message doesn't have media metadata", bridgev2.ErrIgnoringRemoteEvent)
+	}
+	var mediaMeta msgconv.PreparedMedia
+	err := json.Unmarshal(meta.MediaMeta, &mediaMeta)
+	if err != nil {
+		return nil, fmt.Errorf("failed to unmarshal media metadata: %w", err)
+	}
+	log := zerolog.Ctx(ctx)
+	retryData, err := whatsmeow.DecryptMediaRetryNotification(evt.MediaRetry, mediaMeta.FailedKeys.Key)
+	if err != nil {
+		log.Warn().Err(err).Msg("Failed to decrypt media retry notification")
+		return evt.makeErrorEdit(existing[0], &mediaMeta, err), nil
+	} else if retryData.GetResult() != waMmsRetry.MediaRetryNotification_SUCCESS {
+		errorName := waMmsRetry.MediaRetryNotification_ResultType_name[int32(retryData.GetResult())]
+		if retryData.GetDirectPath() == "" {
+			log.Warn().Str("error_name", errorName).Msg("Got error response in media retry notification")
+			log.Debug().Any("error_content", retryData).Msg("Full error response content")
+			if retryData.GetResult() == waMmsRetry.MediaRetryNotification_NOT_FOUND {
+				return evt.makeErrorEdit(existing[0], &mediaMeta, whatsmeow.ErrMediaNotAvailableOnPhone), nil
+			}
+			return evt.makeErrorEdit(existing[0], &mediaMeta, fmt.Errorf("phone sent error response: %s", errorName)), nil
+		} else {
+			log.Debug().Msg("Got error response in media retry notification, but response also contains a new download URL - trying to download")
+		}
+	}
+	err = evt.wa.mediaRetryLock.Acquire(ctx, 1)
+	if err != nil {
+		return nil, fmt.Errorf("failed to acquire media retry lock: %w", err)
+	}
+	defer evt.wa.mediaRetryLock.Release(1)
+
+	mediaMeta.FailedKeys.DirectPath = retryData.GetDirectPath()
+	return evt.wa.Main.MsgConv.MediaRetryToMatrix(ctx, &mediaMeta, evt.wa.Client, intent, portal, existing[0]), nil
+}
+
+var (
+	_ bridgev2.RemoteEdit               = (*WAMediaRetry)(nil)
+	_ bridgev2.RemoteEventWithTimestamp = (*WAMediaRetry)(nil)
+)

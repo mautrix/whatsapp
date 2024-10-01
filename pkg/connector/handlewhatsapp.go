@@ -110,7 +110,7 @@ func (wa *WhatsAppClient) handleWAEvent(rawEvt any) {
 		}
 	case *events.MediaRetry:
 		wa.phoneSeen(evt.Timestamp)
-		// TODO
+		wa.UserLogin.QueueRemoteEvent(&WAMediaRetry{MediaRetry: evt, wa: wa})
 
 	case *events.GroupInfo:
 		wa.handleWAGroupInfoChange(evt)

@@ -269,13 +269,18 @@ func (wa *WhatsAppClient) FetchMessages(ctx context.Context, params bridgev2.Fet
 		}
 	}
 	convertedMessages := make([]*bridgev2.BackfillMessage, len(messages))
+	var mediaRequests []*wadb.MediaRequest
 	for i, msg := range messages {
 		evt, err := wa.Client.ParseWebMessage(portalJID, msg)
 		if err != nil {
 			// This should never happen because the info is already parsed once before being stored in the database
 			return nil, fmt.Errorf("failed to parse info of message %s: %w", msg.GetKey().GetID(), err)
 		}
-		convertedMessages[i] = wa.convertHistorySyncMessage(ctx, params.Portal, &evt.Info, msg)
+		var mediaReq *wadb.MediaRequest
+		convertedMessages[i], mediaReq = wa.convertHistorySyncMessage(ctx, params.Portal, &evt.Info, msg)
+		if mediaReq != nil {
+			mediaRequests = append(mediaRequests, mediaReq)
+		}
 	}
 	return &bridgev2.FetchMessagesResponse{
 		Messages: convertedMessages,
@@ -298,13 +303,20 @@ func (wa *WhatsAppClient) FetchMessages(ctx context.Context, params bridgev2.Fet
 			if err != nil {
 				zerolog.Ctx(ctx).Warn().Err(err).Msg("Failed to delete messages from database after backfill")
 			}
+			if len(mediaRequests) > 0 {
+				go func(ctx context.Context) {
+					for _, req := range mediaRequests {
+						wa.sendMediaRequest(ctx, req)
+					}
+				}(context.WithoutCancel(ctx))
+			}
 		},
 	}, nil
 }
 
 func (wa *WhatsAppClient) convertHistorySyncMessage(
 	ctx context.Context, portal *bridgev2.Portal, info *types.MessageInfo, msg *waWeb.WebMessageInfo,
-) *bridgev2.BackfillMessage {
+) (*bridgev2.BackfillMessage, *wadb.MediaRequest) {
 	// TODO use proper intent
 	intent := wa.Main.Bridge.Bot
 	wrapped := &bridgev2.BackfillMessage{
@@ -315,6 +327,7 @@ func (wa *WhatsAppClient) convertHistorySyncMessage(
 		Timestamp:        info.Timestamp,
 		Reactions:        make([]*bridgev2.BackfillReaction, len(msg.Reactions)),
 	}
+	mediaReq := wa.processFailedMedia(ctx, portal.PortalKey, wrapped.ID, wrapped.ConvertedMessage, true)
 	for i, reaction := range msg.Reactions {
 		var sender types.JID
 		if reaction.GetKey().GetFromMe() {
@@ -334,5 +347,5 @@ func (wa *WhatsAppClient) convertHistorySyncMessage(
 			Emoji:      reaction.GetText(),
 		}
 	}
-	return wrapped
+	return wrapped, mediaReq
 }
