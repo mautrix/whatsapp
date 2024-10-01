@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -11,6 +12,7 @@ import (
 	"github.com/rs/zerolog"
 	"go.mau.fi/util/ptr"
 	"go.mau.fi/whatsmeow"
+	"go.mau.fi/whatsmeow/proto/waE2E"
 	"go.mau.fi/whatsmeow/proto/waHistorySync"
 	"go.mau.fi/whatsmeow/proto/waWeb"
 	"go.mau.fi/whatsmeow/types"
@@ -277,11 +279,12 @@ func (wa *WhatsAppClient) FetchMessages(ctx context.Context, params bridgev2.Fet
 			return nil, fmt.Errorf("failed to parse info of message %s: %w", msg.GetKey().GetID(), err)
 		}
 		var mediaReq *wadb.MediaRequest
-		convertedMessages[i], mediaReq = wa.convertHistorySyncMessage(ctx, params.Portal, &evt.Info, msg)
+		convertedMessages[i], mediaReq = wa.convertHistorySyncMessage(ctx, params.Portal, &evt.Info, evt.Message, msg.Reactions)
 		if mediaReq != nil {
 			mediaRequests = append(mediaRequests, mediaReq)
 		}
 	}
+	slices.Reverse(convertedMessages)
 	return &bridgev2.FetchMessagesResponse{
 		Messages: convertedMessages,
 		Cursor:   networkid.PaginationCursor(strconv.FormatUint(messages[0].GetMessageTimestamp(), 10)),
@@ -306,7 +309,13 @@ func (wa *WhatsAppClient) FetchMessages(ctx context.Context, params bridgev2.Fet
 			if len(mediaRequests) > 0 {
 				go func(ctx context.Context) {
 					for _, req := range mediaRequests {
-						wa.sendMediaRequest(ctx, req)
+						err := wa.Main.DB.MediaRequest.Put(ctx, req)
+						if err != nil {
+							zerolog.Ctx(ctx).Err(err).Msg("Failed to save media request to database")
+						}
+						if wa.Main.Config.HistorySync.MediaRequests.AutoRequestMedia && wa.Main.Config.HistorySync.MediaRequests.RequestMethod == MediaRequestMethodImmediate {
+							wa.sendMediaRequest(ctx, req)
+						}
 					}
 				}(context.WithoutCancel(ctx))
 			}
@@ -315,20 +324,20 @@ func (wa *WhatsAppClient) FetchMessages(ctx context.Context, params bridgev2.Fet
 }
 
 func (wa *WhatsAppClient) convertHistorySyncMessage(
-	ctx context.Context, portal *bridgev2.Portal, info *types.MessageInfo, msg *waWeb.WebMessageInfo,
+	ctx context.Context, portal *bridgev2.Portal, info *types.MessageInfo, msg *waE2E.Message, reactions []*waWeb.Reaction,
 ) (*bridgev2.BackfillMessage, *wadb.MediaRequest) {
 	// TODO use proper intent
 	intent := wa.Main.Bridge.Bot
 	wrapped := &bridgev2.BackfillMessage{
-		ConvertedMessage: wa.Main.MsgConv.ToMatrix(ctx, portal, wa.Client, intent, msg.Message, info),
+		ConvertedMessage: wa.Main.MsgConv.ToMatrix(ctx, portal, wa.Client, intent, msg, info),
 		Sender:           wa.makeEventSender(info.Sender),
 		ID:               waid.MakeMessageID(info.Chat, info.Sender, info.ID),
 		TxnID:            networkid.TransactionID(waid.MakeMessageID(info.Chat, info.Sender, info.ID)),
 		Timestamp:        info.Timestamp,
-		Reactions:        make([]*bridgev2.BackfillReaction, len(msg.Reactions)),
+		Reactions:        make([]*bridgev2.BackfillReaction, len(reactions)),
 	}
 	mediaReq := wa.processFailedMedia(ctx, portal.PortalKey, wrapped.ID, wrapped.ConvertedMessage, true)
-	for i, reaction := range msg.Reactions {
+	for i, reaction := range reactions {
 		var sender types.JID
 		if reaction.GetKey().GetFromMe() {
 			sender = wa.JID

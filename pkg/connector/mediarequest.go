@@ -53,14 +53,14 @@ func (wa *WhatsAppClient) processFailedMedia(ctx context.Context, portalKey netw
 		MediaKey:    field.FailedKeys.Key,
 		Status:      wadb.MediaBackfillRequestStatusNotRequested,
 	}
+	if isBackfill {
+		return req
+	}
 	err := wa.Main.DB.MediaRequest.Put(ctx, req)
 	if err != nil {
 		zerolog.Ctx(ctx).Err(err).Msg("Failed to save failed media request")
 	}
 	if wa.Main.Config.HistorySync.MediaRequests.AutoRequestMedia && wa.Main.Config.HistorySync.MediaRequests.RequestMethod == MediaRequestMethodImmediate {
-		if isBackfill {
-			return req
-		}
 		go wa.sendMediaRequest(context.WithoutCancel(ctx), req)
 	}
 	return nil

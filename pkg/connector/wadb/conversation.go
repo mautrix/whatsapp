@@ -2,6 +2,7 @@ package wadb
 
 import (
 	"context"
+	"database/sql"
 	"time"
 
 	"go.mau.fi/util/dbutil"
@@ -132,12 +133,12 @@ func (cq *ConversationQuery) Delete(ctx context.Context, loginID networkid.UserL
 }
 
 func (c *Conversation) sqlVariables() []any {
-	var lastMessageTS, muteEndTime int64
+	var lastMessageTS, muteEndTime *int64
 	if !c.LastMessageTimestamp.IsZero() {
-		lastMessageTS = c.LastMessageTimestamp.Unix()
+		lastMessageTS = ptr.Ptr(c.LastMessageTimestamp.Unix())
 	}
 	if !c.MuteEndTime.IsZero() {
-		muteEndTime = c.MuteEndTime.Unix()
+		muteEndTime = ptr.Ptr(c.MuteEndTime.Unix())
 	}
 	return []any{
 		c.BridgeID,
@@ -156,7 +157,7 @@ func (c *Conversation) sqlVariables() []any {
 }
 
 func (c *Conversation) Scan(row dbutil.Scannable) (*Conversation, error) {
-	var lastMessageTS, muteEndTime int64
+	var lastMessageTS, muteEndTime sql.NullInt64
 	err := row.Scan(
 		&c.BridgeID,
 		&c.UserLoginID,
@@ -174,11 +175,11 @@ func (c *Conversation) Scan(row dbutil.Scannable) (*Conversation, error) {
 	if err != nil {
 		return nil, err
 	}
-	if lastMessageTS != 0 {
-		c.LastMessageTimestamp = time.Unix(lastMessageTS, 0)
+	if lastMessageTS.Int64 != 0 {
+		c.LastMessageTimestamp = time.Unix(lastMessageTS.Int64, 0)
 	}
-	if muteEndTime != 0 {
-		c.MuteEndTime = time.Unix(muteEndTime, 0)
+	if muteEndTime.Int64 != 0 {
+		c.MuteEndTime = time.Unix(muteEndTime.Int64, 0)
 	}
 	return c, nil
 }

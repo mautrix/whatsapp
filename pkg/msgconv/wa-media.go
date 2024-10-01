@@ -62,7 +62,7 @@ func (mc *MessageConverter) convertMediaMessage(ctx context.Context, msg MediaMe
 		}, err)
 	} else {
 		part = &bridgev2.ConvertedMessagePart{
-			Type:    event.EventMessage,
+			Type:    preparedMedia.Type,
 			Content: preparedMedia.MessageEventContent,
 			Extra:   preparedMedia.Extra,
 		}
@@ -185,6 +185,9 @@ func prepareMediaMessage(rawMsg MediaMessage) *PreparedMedia {
 	case *waE2E.StickerMessage:
 		data.Type = event.EventSticker
 		data.FileName = "sticker" + exmime.ExtensionFromMimetype(msg.GetMimetype())
+		if msg.GetMimetype() == "application/was" && data.FileName == "sticker" {
+			data.FileName = "sticker.json"
+		}
 	case *waE2E.VideoMessage:
 		data.MsgType = event.MsgVideo
 		if msg.GetGifPlayback() {
@@ -236,6 +239,10 @@ func (mc *MessageConverter) MediaRetryToMatrix(
 	if err != nil {
 		updatedPart = mc.makeMediaFailure(ctx, part, nil, err)
 	} else {
+		// Event type can't be changed when editing, so turn stickers into images
+		if part.Type == event.EventSticker {
+			part.MsgType = event.MsgImage
+		}
 		updatedPart = &bridgev2.ConvertedMessagePart{
 			Type:    event.EventMessage,
 			Content: part.MessageEventContent,
@@ -402,7 +409,7 @@ func (mc *MessageConverter) convertAnimatedSticker(ctx context.Context, fileInfo
 func (mc *MessageConverter) makeMediaFailure(ctx context.Context, mediaInfo *PreparedMedia, keys *FailedMediaKeys, err error) *bridgev2.ConvertedMessagePart {
 	logLevel := zerolog.ErrorLevel
 	var extra map[string]any
-	var dbMeta *waid.MessageMetadata
+	var dbMeta any
 	errorMsg := fmt.Sprintf("Failed to bridge %s, please view it on the WhatsApp app", mediaInfo.TypeDescription)
 	if keys != nil && (errors.Is(err, whatsmeow.ErrMediaDownloadFailedWith403) || errors.Is(err, whatsmeow.ErrMediaDownloadFailedWith404) || errors.Is(err, whatsmeow.ErrMediaDownloadFailedWith410)) {
 		logLevel = zerolog.DebugLevel
