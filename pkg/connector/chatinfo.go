@@ -335,7 +335,7 @@ func (wa *WhatsAppClient) makePortalAvatarFetcher(avatarID string, sender types.
 	return func(ctx context.Context, portal *bridgev2.Portal) bool {
 		jid, _ := waid.ParsePortalID(portal.ID)
 		existingID := string(portal.AvatarID)
-		if avatarID == existingID {
+		if avatarID != "" && avatarID == existingID {
 			return false
 		}
 		if existingID == "remove" || existingID == "unauthorized" {
