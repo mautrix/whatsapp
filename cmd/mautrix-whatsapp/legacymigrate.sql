@@ -115,6 +115,7 @@ UPDATE message_old SET combined_id = chat_jid || ':' || (
         ELSE sender
     END
 ) || ':' || jid;
+DELETE FROM message_old WHERE timestamp<0;
 
 INSERT INTO message (
     bridge_id, id, part_id, mxid, room_id, room_receiver, sender_id, sender_mxid, timestamp, edit_count, metadata
