@@ -1,4 +1,4 @@
--- v0 -> v2 (compatible with v2+): Latest revision
+-- v0 -> v3 (compatible with v3+): Latest revision
 
 CREATE TABLE whatsapp_poll_option_id (
     bridge_id TEXT  NOT NULL,
@@ -52,17 +52,23 @@ CREATE TABLE whatsapp_history_sync_message (
 CREATE TABLE whatsapp_media_backfill_request (
     bridge_id       TEXT    NOT NULL,
     user_login_id   TEXT    NOT NULL,
+    message_id      TEXT    NOT NULL,
+    _part_id        TEXT    NOT NULL DEFAULT '',
+
     portal_id       TEXT    NOT NULL,
     portal_receiver TEXT    NOT NULL,
 
-    event_id        TEXT    NOT NULL,
-    media_key       bytea   NOT NULL,
+    media_key       bytea,
     status          INTEGER NOT NULL,
     error           TEXT    NOT NULL,
 
-    PRIMARY KEY (bridge_id, user_login_id, portal_id, portal_receiver, event_id),
+    PRIMARY KEY (bridge_id, user_login_id, message_id),
     CONSTRAINT whatsapp_media_backfill_request_user_login_fkey FOREIGN KEY (bridge_id, user_login_id)
         REFERENCES user_login (bridge_id, id) ON UPDATE CASCADE ON DELETE CASCADE,
     CONSTRAINT whatsapp_media_backfill_request_portal_fkey FOREIGN KEY (bridge_id, portal_id, portal_receiver)
-        REFERENCES portal (bridge_id, id, receiver) ON UPDATE CASCADE ON DELETE CASCADE
+        REFERENCES portal (bridge_id, id, receiver) ON UPDATE CASCADE ON DELETE CASCADE,
+    CONSTRAINT whatsapp_media_backfill_request_message_fkey FOREIGN KEY (bridge_id, portal_receiver, message_id, _part_id)
+        REFERENCES message (bridge_id, room_receiver, id, part_id) ON UPDATE CASCADE ON DELETE CASCADE
 );
+CREATE INDEX whatsapp_media_backfill_request_portal_idx ON whatsapp_media_backfill_request (bridge_id, portal_id, portal_receiver);
+CREATE INDEX whatsapp_media_backfill_request_message_idx ON whatsapp_media_backfill_request (bridge_id, portal_receiver, message_id, _part_id);

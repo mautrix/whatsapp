@@ -255,20 +255,20 @@ LEFT JOIN user_login ON user_login.user_mxid = history_sync_message_old.user_mxi
 WHERE user_login.id IS NOT NULL;
 
 INSERT INTO whatsapp_media_backfill_request (
-    bridge_id, user_login_id, portal_id, portal_receiver, event_id, media_key, status, error
+    bridge_id, user_login_id, message_id, portal_id, portal_receiver, media_key, status, error
 )
 SELECT
     '',
     user_login.id,
+    (SELECT id FROM message WHERE mxid=event_id),
     portal_jid,
     CASE WHEN portal_receiver LIKE '%@s.whatsapp.net' THEN replace(portal_receiver, '@s.whatsapp.net', '') ELSE '' END,
-    event_id,
     media_key,
     status,
     COALESCE(error, '')
 FROM media_backfill_requests_old
 LEFT JOIN user_login ON user_login.user_mxid = media_backfill_requests_old.user_mxid
-WHERE user_login.id IS NOT NULL AND media_key IS NOT NULL AND status IS NOT NULL;
+WHERE user_login.id IS NOT NULL AND status IS NOT NULL AND EXISTS (SELECT 1 FROM message WHERE mxid=event_id);
 
 DROP TABLE backfill_queue_old;
 DROP TABLE backfill_state_old;
