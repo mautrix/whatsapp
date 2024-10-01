@@ -426,7 +426,7 @@ func (mc *MessageConverter) makeMediaFailure(ctx context.Context, mediaInfo *Pre
 			Error:     waid.MsgErrMediaNotFound,
 			MediaMeta: serializedMedia,
 		}
-		errorMsg = fmt.Sprintf("Old %s. Viewing old media is not currently supported.", mediaInfo.TypeDescription)
+		errorMsg = fmt.Sprintf("Old %s. %s", mediaInfo.TypeDescription, mc.OldMediaSuffix)
 	}
 	zerolog.Ctx(ctx).WithLevel(logLevel).Err(err).
 		Str("media_type", mediaInfo.TypeDescription).

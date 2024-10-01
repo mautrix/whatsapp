@@ -36,6 +36,7 @@ type MessageConverter struct {
 	HTMLParser            *format.HTMLParser
 	AnimatedStickerConfig AnimatedStickerConfig
 	FetchURLPreviews      bool
+	OldMediaSuffix        string
 }
 
 func New(br *bridgev2.Bridge) *MessageConverter {

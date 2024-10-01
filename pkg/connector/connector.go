@@ -48,6 +48,14 @@ func (wa *WhatsAppConnector) Init(bridge *bridgev2.Bridge) {
 	wa.MsgConv = msgconv.New(bridge)
 	wa.MsgConv.AnimatedStickerConfig = wa.Config.AnimatedSticker
 	wa.MsgConv.FetchURLPreviews = wa.Config.URLPreviews
+	wa.MsgConv.OldMediaSuffix = "Requesting old media is not enabled on this bridge."
+	if wa.Config.HistorySync.MediaRequests.AutoRequestMedia {
+		if wa.Config.HistorySync.MediaRequests.RequestMethod == MediaRequestMethodImmediate {
+			wa.MsgConv.OldMediaSuffix = "Media will be requested from your phone automatically soon."
+		} else if wa.Config.HistorySync.MediaRequests.RequestMethod == MediaRequestMethodLocalTime {
+			wa.MsgConv.OldMediaSuffix = "Media will be requested from your phone automatically overnight."
+		}
+	}
 	wa.DB = wadb.New(bridge.ID, bridge.DB.Database, bridge.Log.With().Str("db_section", "whatsapp").Logger())
 	wa.Bridge.Commands.(*commands.Processor).AddHandlers(
 		cmdAccept,
