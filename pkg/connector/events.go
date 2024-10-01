@@ -93,12 +93,17 @@ type WAMessageEvent struct {
 	postHandle                    func()
 }
 
+func (evt *WAMessageEvent) GetStreamOrder() int64 {
+	return evt.Info.Timestamp.Unix()
+}
+
 var (
 	_ bridgev2.RemoteMessage                  = (*WAMessageEvent)(nil)
 	_ bridgev2.RemoteMessageUpsert            = (*WAMessageEvent)(nil)
 	_ bridgev2.RemoteMessageWithTransactionID = (*WAMessageEvent)(nil)
 	_ bridgev2.RemoteEventWithTimestamp       = (*WAMessageEvent)(nil)
 	_ bridgev2.RemoteEventThatMayCreatePortal = (*WAMessageEvent)(nil)
+	_ bridgev2.RemoteEventWithStreamOrder     = (*WAMessageEvent)(nil)
 	_ bridgev2.RemoteReaction                 = (*WAMessageEvent)(nil)
 	_ bridgev2.RemoteReactionRemove           = (*WAMessageEvent)(nil)
 	_ bridgev2.RemoteReactionWithMeta         = (*WAMessageEvent)(nil)
@@ -301,6 +306,10 @@ func (evt *WAUndecryptableMessage) ConvertMessage(ctx context.Context, portal *b
 		}},
 		Disappear: portal.Disappear,
 	}, nil
+}
+
+func (evt *WAUndecryptableMessage) GetStreamOrder() int64 {
+	return evt.Info.Timestamp.Unix()
 }
 
 type WAMediaRetry struct {

@@ -53,6 +53,7 @@ func (wa *WhatsAppClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2
 				SenderDeviceID: wa.JID.Device,
 			},
 		},
+		StreamOrder:   resp.Timestamp.Unix(),
 		RemovePending: networkid.TransactionID(wrappedMsgID),
 	}, nil
 }
