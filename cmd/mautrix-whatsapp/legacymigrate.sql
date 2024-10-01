@@ -126,7 +126,10 @@ SELECT
     mxid,
     chat_jid, -- room_id
     CASE WHEN chat_receiver LIKE '%@s.whatsapp.net' THEN replace(chat_receiver, '@s.whatsapp.net', '') ELSE '' END, -- room_receiver
-    CASE WHEN sender=chat_jid THEN '' ELSE split_part(replace(sender, '@s.whatsapp.net', ''), ':', 1) END, -- sender_id
+    CASE WHEN sender=chat_jid AND sender NOT LIKE '%@s.whatsapp.net'
+        THEN ''
+        ELSE split_part(split_part(replace(sender, '@s.whatsapp.net', ''), ':', 1), '.', 1)
+    END, -- sender_id
     sender_mxid, -- sender_mxid
     timestamp * 1000000000, -- timestamp TODO check multiplier
     0, -- edit_count
