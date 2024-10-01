@@ -146,13 +146,6 @@ func (mc *MessageConverter) convertURLPreviewToWhatsApp(ctx context.Context, con
 			log.Err(err).Str("image_url", string(preview.ImageURL)).Msg("Failed to download URL preview image")
 			return true
 		}
-		if preview.ImageEncryption != nil {
-			err = preview.ImageEncryption.DecryptInPlace(data)
-			if err != nil {
-				log.Err(err).Msg("Failed to decrypt URL preview image")
-				return true
-			}
-		}
 		dest.MediaKeyTimestamp = proto.Int64(time.Now().Unix())
 		uploadResp, err := getClient(ctx).Upload(ctx, data, whatsmeow.MediaLinkThumbnail)
 		if err != nil {
