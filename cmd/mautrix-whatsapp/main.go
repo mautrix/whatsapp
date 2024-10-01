@@ -36,7 +36,7 @@ func main() {
 			"v0.11.0",
 			m.LegacyMigrateWithAnotherUpgrader(
 				legacyMigrateRenameTables, legacyMigrateCopyData, 17,
-				upgrades.Table, "whatsapp_version", 2,
+				upgrades.Table, "whatsapp_version", 3,
 			),
 			true,
 		)
