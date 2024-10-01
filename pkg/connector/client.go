@@ -18,6 +18,7 @@ package connector
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"sync"
 	"sync/atomic"
@@ -97,28 +98,40 @@ type WhatsAppClient struct {
 	lastPhoneOfflineWarning time.Time
 }
 
-var _ bridgev2.NetworkAPI = (*WhatsAppClient)(nil)
+var (
+	_ bridgev2.NetworkAPI         = (*WhatsAppClient)(nil)
+	_ bridgev2.PushableNetworkAPI = (*WhatsAppClient)(nil)
+)
 
 var pushCfg = &bridgev2.PushConfig{
-	Web: &bridgev2.WebPushConfig{},
+	// TODO web push config might have to be fetched from server
+	//Web: &bridgev2.WebPushConfig{},
+	FCM: &bridgev2.FCMPushConfig{SenderID: "293955441834"},
 }
 
 func (wa *WhatsAppClient) GetPushConfigs() *bridgev2.PushConfig {
-	// implement get application server key (to be added to whatsmeow)
-	//pushCfg.Web.VapidKey = applicationServerKey
 	return pushCfg
 }
 
-func (wa *WhatsAppClient) RegisterPushNotifications(_ context.Context, pushType bridgev2.PushType, _ string) error {
+func (wa *WhatsAppClient) RegisterPushNotifications(ctx context.Context, pushType bridgev2.PushType, token string) error {
 	if wa.Client == nil {
 		return bridgev2.ErrNotLoggedIn
 	}
-	if pushType != bridgev2.PushTypeWeb {
-		return fmt.Errorf("unsupported push type: %s", pushType)
+	var pc whatsmeow.PushConfig
+	switch pushType {
+	case bridgev2.PushTypeFCM:
+		pc = &whatsmeow.FCMPushConfig{Token: token}
+	case bridgev2.PushTypeWeb:
+		var webPC whatsmeow.WebPushConfig
+		err := json.Unmarshal([]byte(token), &webPC)
+		if err != nil {
+			return err
+		}
+		pc = &webPC
+	default:
+		return fmt.Errorf("unsupported push type %s", pushType)
 	}
-
-	//wa.Client.RegisterWebPush(ctx, token) (to be added to whatsmeow)
-	return nil
+	return wa.Client.RegisterForPushNotifications(ctx, pc)
 }
 
 func (wa *WhatsAppClient) IsThisUser(_ context.Context, userID networkid.UserID) bool {
