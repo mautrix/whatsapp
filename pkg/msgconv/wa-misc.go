@@ -18,6 +18,7 @@ package msgconv
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"html/template"
 	"strings"
@@ -27,6 +28,7 @@ import (
 	"go.mau.fi/util/exerrors"
 	"go.mau.fi/whatsmeow/proto/waE2E"
 	"go.mau.fi/whatsmeow/types"
+	"google.golang.org/protobuf/proto"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/event"
@@ -36,12 +38,19 @@ import (
 )
 
 func (mc *MessageConverter) convertUnknownMessage(ctx context.Context, msg *waE2E.Message) (*bridgev2.ConvertedMessagePart, *waE2E.ContextInfo) {
+	data, _ := proto.Marshal(msg)
+	encodedMsg := base64.StdEncoding.EncodeToString(data)
+	extra := make(map[string]any)
+	if len(encodedMsg) < 16*1024 {
+		extra["fi.mau.whatsapp.unsupported_message_data"] = encodedMsg
+	}
 	return &bridgev2.ConvertedMessagePart{
 		Type: event.EventMessage,
 		Content: &event.MessageEventContent{
 			MsgType: event.MsgNotice,
 			Body:    "Unknown message type, please view it on the WhatsApp app",
 		},
+		Extra: extra,
 	}, nil
 }
 
