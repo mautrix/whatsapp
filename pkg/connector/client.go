@@ -18,7 +18,6 @@ package connector
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"sync"
 	"sync/atomic"
@@ -104,8 +103,8 @@ var (
 )
 
 var pushCfg = &bridgev2.PushConfig{
-	// TODO web push config might have to be fetched from server
-	//Web: &bridgev2.WebPushConfig{},
+	// TODO fetch this from server instead of hardcoding?
+	Web: &bridgev2.WebPushConfig{VapidKey: "BIt4eFAVqVxe4yOA5_VLbZTbOlV-2y1FYJ_R4RlxWoyYazAq4glIxI7fh_xLbob1SNv7ZtTWn9mmZCsk2YNXYeY"},
 	FCM: &bridgev2.FCMPushConfig{SenderID: "293955441834"},
 }
 
@@ -122,12 +121,19 @@ func (wa *WhatsAppClient) RegisterPushNotifications(ctx context.Context, pushTyp
 	case bridgev2.PushTypeFCM:
 		pc = &whatsmeow.FCMPushConfig{Token: token}
 	case bridgev2.PushTypeWeb:
-		var webPC whatsmeow.WebPushConfig
-		err := json.Unmarshal([]byte(token), &webPC)
-		if err != nil {
-			return err
+		meta := wa.UserLogin.Metadata.(*waid.UserLoginMetadata)
+		if meta.PushKeys == nil {
+			meta.GeneratePushKeys()
+			err := wa.UserLogin.Save(ctx)
+			if err != nil {
+				return fmt.Errorf("failed to save push key: %w", err)
+			}
 		}
-		pc = &webPC
+		pc = &whatsmeow.WebPushConfig{
+			Endpoint: token,
+			Auth:     meta.PushKeys.Auth,
+			P256DH:   meta.PushKeys.P256DH,
+		}
 	default:
 		return fmt.Errorf("unsupported push type %s", pushType)
 	}
