@@ -85,7 +85,7 @@ SELECT
         ELSE ''
     END, -- room_type
     CASE WHEN expiration_time>0 THEN 'after_read' END, -- disappear_type
-    CASE WHEN expiration_time > 0 THEN expiration_time * 1000000000 END, -- disappear_timer TODO check multiplier
+    CASE WHEN expiration_time > 0 THEN expiration_time * 1000000000 END, -- disappear_timer
     -- only: postgres
     jsonb_build_object
     -- only: sqlite (line commented)
@@ -104,7 +104,7 @@ SELECT
     CASE WHEN portal_receiver LIKE '%@s.whatsapp.net' THEN replace(portal_receiver, '@s.whatsapp.net', '') ELSE '' END, -- portal_receiver
     in_space,
     false, -- preferred
-    last_read_ts * 1000000000 -- last_read TODO check multiplier
+    last_read_ts * 1000000000 -- last_read
 FROM user_portal_old WHERE EXISTS(SELECT 1 FROM user_login WHERE user_login.user_mxid=user_portal_old.user_mxid);
 
 ALTER TABLE message_old ADD COLUMN combined_id TEXT;
@@ -135,7 +135,7 @@ SELECT
         ELSE split_part(split_part(replace(sender, '@s.whatsapp.net', ''), ':', 1), '.', 1)
     END, -- sender_id
     sender_mxid, -- sender_mxid
-    timestamp * 1000000000, -- timestamp TODO check multiplier
+    timestamp * 1000000000, -- timestamp
     0, -- edit_count
     -- only: postgres
     jsonb_build_object
@@ -181,8 +181,8 @@ SELECT
     room_id,
     event_id,
     'after_read',
-    expire_in * 1000000000, -- timer TODO check multiplier
-    expire_at * 1000000000 -- disappear_at TODO check multiplier
+    expire_in * 1000000, -- timer
+    expire_at * 1000000 -- disappear_at
 FROM disappearing_message_old;
 
 INSERT INTO backfill_task (
