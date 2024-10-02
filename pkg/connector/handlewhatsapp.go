@@ -489,7 +489,7 @@ func (wa *WhatsAppClient) handleWAPictureUpdate(evt *events.Picture) {
 		if evt.Remove {
 			changes.Avatar = &bridgev2.Avatar{Remove: true, ID: "remove"}
 		} else {
-			changes.ExtraUpdates = wa.makePortalAvatarFetcher(evt.PictureID, evt.JID, evt.Timestamp)
+			changes.ExtraUpdates = wa.makePortalAvatarFetcher(evt.PictureID, evt.Author, evt.Timestamp)
 		}
 		wa.UserLogin.QueueRemoteEvent(&simplevent.ChatInfoChange{
 			EventMeta: simplevent.EventMeta{
