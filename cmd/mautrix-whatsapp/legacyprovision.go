@@ -116,16 +116,6 @@ func legacyProvLogin(w http.ResponseWriter, r *http.Request) {
 		return nil
 	})
 
-	//if userTimezone := r.URL.Query().Get("tz"); userTimezone != "" {
-	//	log.Debug().Str("timezone", userTimezone).Msg("Updating user timezone")
-	//	user.Timezone = userTimezone
-	//	err = user.Update(r.Context())
-	//	if err != nil {
-	//		log.Err(err).Msg("Failed to save user after updating timezone")
-	//	}
-	//} else {
-	//	log.Debug().Msg("No timezone provided in request")
-	//}
 	user := m.Matrix.Provisioning.GetUser(r)
 	loginFlowID := connector.LoginFlowIDQR
 	phoneNum := r.URL.Query().Get("phone_number")
@@ -151,6 +141,7 @@ func legacyProvLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	waLogin := login.(*connector.WALogin)
+	waLogin.Timezone = r.URL.Query().Get("tz")
 	step, err := waLogin.Start(ctx)
 	if err != nil {
 		log.Err(err).Msg("Failed to start login")
