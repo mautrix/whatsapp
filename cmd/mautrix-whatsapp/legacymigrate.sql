@@ -51,8 +51,10 @@ SELECT
     ) -- metadata
 FROM puppet_old;
 
+-- Some messages don't have senders, so insert an empty ghost to match the foreign key constraint.
 INSERT INTO ghost (bridge_id, id, name, avatar_id, avatar_hash, avatar_mxc, name_set, avatar_set, contact_info_set, is_bot, identifiers, metadata)
-VALUES ('', '', '', '', '', '', false, false, false, false, '[]', '{}');
+VALUES ('', '', '', '', '', '', false, false, false, false, '[]', '{}')
+ON CONFLICT (bridge_id, id) DO NOTHING;
 
 INSERT INTO portal (
     bridge_id, id, receiver, mxid, parent_id, parent_receiver, relay_bridge_id, relay_login_id, other_user_id,
