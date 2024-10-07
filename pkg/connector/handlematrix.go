@@ -24,13 +24,45 @@ var (
 	_ bridgev2.ReactionHandlingNetworkAPI    = (*WhatsAppClient)(nil)
 	_ bridgev2.RedactionHandlingNetworkAPI   = (*WhatsAppClient)(nil)
 	_ bridgev2.ReadReceiptHandlingNetworkAPI = (*WhatsAppClient)(nil)
+	_ bridgev2.PollHandlingNetworkAPI        = (*WhatsAppClient)(nil)
 )
+
+func (wa *WhatsAppClient) HandleMatrixPollStart(ctx context.Context, msg *bridgev2.MatrixPollStart) (*bridgev2.MatrixMessageResponse, error) {
+	waMsg, optionMap, err := wa.Main.MsgConv.PollStartToWhatsApp(ctx, msg.Content, msg.ReplyTo, msg.Portal)
+	if err != nil {
+		return nil, fmt.Errorf("failed to convert poll vote: %w", err)
+	}
+	resp, err := wa.handleConvertedMatrixMessage(ctx, &msg.MatrixMessage, waMsg)
+	if err != nil {
+		return nil, err
+	}
+	resp.DB.Metadata.(*waid.MessageMetadata).IsMatrixPoll = true
+	resp.PostSave = func(ctx context.Context, message *database.Message) {
+		err := wa.Main.DB.PollOption.Put(ctx, message.MXID, optionMap)
+		if err != nil {
+			zerolog.Ctx(ctx).Err(err).Msg("Failed to save poll options")
+		}
+	}
+	return resp, nil
+}
+
+func (wa *WhatsAppClient) HandleMatrixPollVote(ctx context.Context, msg *bridgev2.MatrixPollVote) (*bridgev2.MatrixMessageResponse, error) {
+	waMsg, err := wa.Main.MsgConv.PollVoteToWhatsApp(ctx, wa.Client, msg.Content, msg.VoteTo)
+	if err != nil {
+		return nil, fmt.Errorf("failed to convert poll vote: %w", err)
+	}
+	return wa.handleConvertedMatrixMessage(ctx, &msg.MatrixMessage, waMsg)
+}
 
 func (wa *WhatsAppClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.MatrixMessage) (*bridgev2.MatrixMessageResponse, error) {
 	waMsg, err := wa.Main.MsgConv.ToWhatsApp(ctx, wa.Client, msg.Event, msg.Content, msg.ReplyTo, msg.Portal)
 	if err != nil {
 		return nil, fmt.Errorf("failed to convert message: %w", err)
 	}
+	return wa.handleConvertedMatrixMessage(ctx, msg, waMsg)
+}
+
+func (wa *WhatsAppClient) handleConvertedMatrixMessage(ctx context.Context, msg *bridgev2.MatrixMessage, waMsg *waE2E.Message) (*bridgev2.MatrixMessageResponse, error) {
 	messageID := wa.Client.GenerateMessageID()
 	chatJID, err := waid.ParsePortalID(msg.Portal.ID)
 	if err != nil {

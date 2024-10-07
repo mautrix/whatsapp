@@ -60,7 +60,7 @@ func (mc *MessageConverter) convertPollCreationMessage(ctx context.Context, msg 
 	}
 	evtType := event.EventMessage
 	if mc.ExtEvPolls {
-		evtType = TypeMSC3381PollStart
+		evtType = event.EventUnstablePollStart
 	}
 
 	return &bridgev2.ConvertedMessagePart{
@@ -130,7 +130,7 @@ func (mc *MessageConverter) keyToMessageID(ctx context.Context, chat, sender typ
 }
 
 var failedPollUpdatePart = &bridgev2.ConvertedMessagePart{
-	Type:       TypeMSC3381PollResponse,
+	Type:       event.EventUnstablePollResponse,
 	Content:    &event.MessageEventContent{},
 	DontBridge: true,
 }
@@ -176,7 +176,7 @@ func (mc *MessageConverter) convertPollUpdateMessage(ctx context.Context, info *
 		}
 	}
 	return &bridgev2.ConvertedMessagePart{
-		Type: TypeMSC3381PollResponse,
+		Type: event.EventUnstablePollResponse,
 		Content: &event.MessageEventContent{
 			RelatesTo: &event.RelatesTo{
 				Type:    event.RelReference,

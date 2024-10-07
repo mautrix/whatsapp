@@ -47,23 +47,8 @@ import (
 	"maunium.net/go/mautrix-whatsapp/pkg/waid"
 )
 
-func (mc *MessageConverter) ToWhatsApp(
-	ctx context.Context,
-	client *whatsmeow.Client,
-	evt *event.Event,
-	content *event.MessageEventContent,
-	replyTo *database.Message,
-	portal *bridgev2.Portal,
-) (*waE2E.Message, error) {
-	ctx = context.WithValue(ctx, contextKeyClient, client)
-	ctx = context.WithValue(ctx, contextKeyPortal, portal)
-	if evt.Type == event.EventSticker {
-		content.MsgType = event.MsgImage
-	}
-
-	message := &waE2E.Message{}
+func (mc *MessageConverter) generateContextInfo(replyTo *database.Message, portal *bridgev2.Portal) (*waE2E.ContextInfo, error) {
 	contextInfo := &waE2E.ContextInfo{}
-
 	if replyTo != nil {
 		msgID, err := waid.ParseMessageID(replyTo.ID)
 		if err == nil {
@@ -80,6 +65,28 @@ func (mc *MessageConverter) ToWhatsApp(
 		if setAt > 0 {
 			contextInfo.EphemeralSettingTimestamp = ptr.Ptr(setAt)
 		}
+	}
+	return contextInfo, nil
+}
+
+func (mc *MessageConverter) ToWhatsApp(
+	ctx context.Context,
+	client *whatsmeow.Client,
+	evt *event.Event,
+	content *event.MessageEventContent,
+	replyTo *database.Message,
+	portal *bridgev2.Portal,
+) (*waE2E.Message, error) {
+	ctx = context.WithValue(ctx, contextKeyClient, client)
+	ctx = context.WithValue(ctx, contextKeyPortal, portal)
+	if evt.Type == event.EventSticker {
+		content.MsgType = event.MsgImage
+	}
+
+	message := &waE2E.Message{}
+	contextInfo, err := mc.generateContextInfo(replyTo, portal)
+	if err != nil {
+		return nil, err
 	}
 
 	switch content.MsgType {
@@ -248,7 +255,8 @@ func (mc *MessageConverter) parseText(ctx context.Context, content *event.Messag
 	mentions = make([]string, 0)
 
 	parseCtx := format.NewContext(ctx)
-	parseCtx.ReturnData["mentions"] = &mentions
+	parseCtx.ReturnData["allowed_mentions"] = content.Mentions
+	parseCtx.ReturnData["output_mentions"] = &mentions
 	if content.Format == event.FormatHTML {
 		text = mc.HTMLParser.Parse(content.FormattedBody, parseCtx)
 	} else {
@@ -275,6 +283,10 @@ func (mc *MessageConverter) convertPill(displayname, mxid, eventID string, ctx f
 	if len(mxid) == 0 || mxid[0] != '@' {
 		return format.DefaultPillConverter(displayname, mxid, eventID, ctx)
 	}
+	allowedMentions, _ := ctx.ReturnData["allowed_mentions"].(*event.Mentions)
+	if allowedMentions != nil && !allowedMentions.Has(id.UserID(mxid)) {
+		return displayname
+	}
 	var jid types.JID
 	ghost, err := mc.Bridge.GetGhostByMXID(ctx.Ctx, id.UserID(mxid))
 	if err != nil {
@@ -295,7 +307,7 @@ func (mc *MessageConverter) convertPill(displayname, mxid, eventID string, ctx f
 	} else {
 		return displayname
 	}
-	mentions := ctx.ReturnData["mentions"].(*[]string)
+	mentions := ctx.ReturnData["output_mentions"].(*[]string)
 	*mentions = append(*mentions, jid.String())
 	return fmt.Sprintf("@%s", jid.User)
 }

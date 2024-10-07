@@ -7,7 +7,6 @@
     prevented the bridge from writing to the config, you should update it
     manually.
   * Group management features and commands are not yet available.
-  * Polls are not yet supported.
 
 # v0.10.9 (2024-07-16)
 

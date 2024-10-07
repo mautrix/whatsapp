@@ -17,50 +17,28 @@
 package msgconv
 
 import (
-	"reflect"
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"errors"
+	"fmt"
 
+	"github.com/rs/zerolog"
+	"go.mau.fi/util/ptr"
+	"go.mau.fi/util/random"
+	"go.mau.fi/whatsmeow"
+	"go.mau.fi/whatsmeow/proto/waE2E"
+	"go.mau.fi/whatsmeow/types"
+
+	"maunium.net/go/mautrix/bridgev2"
+	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/event"
+	"maunium.net/go/mautrix/format"
+
+	"maunium.net/go/mautrix-whatsapp/pkg/waid"
 )
 
-var (
-	TypeMSC3381PollStart    = event.Type{Class: event.MessageEventType, Type: "org.matrix.msc3381.poll.start"}
-	TypeMSC3381PollResponse = event.Type{Class: event.MessageEventType, Type: "org.matrix.msc3381.poll.response"}
-)
-
-type PollResponseContent struct {
-	RelatesTo  event.RelatesTo `json:"m.relates_to"`
-	V1Response struct {
-		Answers []string `json:"answers"`
-	} `json:"org.matrix.msc3381.poll.response"`
-	V2Selections []string `json:"org.matrix.msc3381.v2.selections"`
-}
-
-func (content *PollResponseContent) GetRelatesTo() *event.RelatesTo {
-	return &content.RelatesTo
-}
-
-func (content *PollResponseContent) OptionalGetRelatesTo() *event.RelatesTo {
-	if content.RelatesTo.Type == "" {
-		return nil
-	}
-	return &content.RelatesTo
-}
-
-func (content *PollResponseContent) SetRelatesTo(rel *event.RelatesTo) {
-	content.RelatesTo = *rel
-}
-
-type MSC1767Message struct {
-	Text    string `json:"org.matrix.msc1767.text,omitempty"`
-	HTML    string `json:"org.matrix.msc1767.html,omitempty"`
-	Message []struct {
-		MimeType string `json:"mimetype"`
-		Body     string `json:"body"`
-	} `json:"org.matrix.msc1767.message,omitempty"`
-}
-
-//lint:ignore U1000 Unused function
-func msc1767ToWhatsApp(msg MSC1767Message) string {
+func (mc *MessageConverter) msc1767ToWhatsApp(ctx context.Context, msg event.MSC1767Message, allowedMentions *event.Mentions) (string, []string) {
 	for _, part := range msg.Message {
 		if part.MimeType == "text/html" && msg.HTML == "" {
 			msg.HTML = part.Body
@@ -68,41 +46,113 @@ func msc1767ToWhatsApp(msg MSC1767Message) string {
 			msg.Text = part.Body
 		}
 	}
+	mentions := make([]string, 0)
 	if msg.HTML != "" {
-		return parseWAFormattingToHTML(msg.HTML, false)
+		parseCtx := format.NewContext(ctx)
+		parseCtx.ReturnData["allowed_mentions"] = allowedMentions
+		parseCtx.ReturnData["output_mentions"] = &mentions
+		return mc.HTMLParser.Parse(msg.HTML, parseCtx), mentions
 	}
-	return msg.Text
+	return msg.Text, mentions
 }
 
-type PollStartContent struct {
-	RelatesTo *event.RelatesTo `json:"m.relates_to"`
-	PollStart struct {
-		Kind          string         `json:"kind"`
-		MaxSelections int            `json:"max_selections"`
-		Question      MSC1767Message `json:"question"`
-		Answers       []struct {
-			ID string `json:"id"`
-			MSC1767Message
-		} `json:"answers"`
-	} `json:"org.matrix.msc3381.poll.start"`
-}
+var (
+	errPollMissingQuestion = bridgev2.WrapErrorInStatus(errors.New("poll message is missing question")).WithIsCertain(true).WithErrorAsMessage().WithSendNotice(true).WithErrorReason(event.MessageStatusUnsupported)
+	errPollDuplicateOption = bridgev2.WrapErrorInStatus(errors.New("poll options must be unique")).WithIsCertain(true).WithErrorAsMessage().WithSendNotice(true).WithErrorReason(event.MessageStatusUnsupported)
+)
 
-func (content *PollStartContent) GetRelatesTo() *event.RelatesTo {
-	if content.RelatesTo == nil {
-		content.RelatesTo = &event.RelatesTo{}
+func (mc *MessageConverter) PollStartToWhatsApp(
+	ctx context.Context,
+	content *event.PollStartEventContent,
+	replyTo *database.Message,
+	portal *bridgev2.Portal,
+) (*waE2E.Message, map[[32]byte]string, error) {
+	maxAnswers := content.PollStart.MaxSelections
+	if maxAnswers >= len(content.PollStart.Answers) || maxAnswers < 0 {
+		maxAnswers = 0
 	}
-	return content.RelatesTo
+	contextInfo, err := mc.generateContextInfo(replyTo, portal)
+	if err != nil {
+		return nil, nil, err
+	}
+	var question string
+	question, contextInfo.MentionedJID = mc.msc1767ToWhatsApp(ctx, content.PollStart.Question, content.Mentions)
+	if len(question) == 0 {
+		return nil, nil, errPollMissingQuestion
+	}
+	options := make([]*waE2E.PollCreationMessage_Option, len(content.PollStart.Answers))
+	optionMap := make(map[[32]byte]string, len(options))
+	for i, opt := range content.PollStart.Answers {
+		body, _ := mc.msc1767ToWhatsApp(ctx, opt.MSC1767Message, &event.Mentions{})
+		hash := sha256.Sum256([]byte(body))
+		if _, alreadyExists := optionMap[hash]; alreadyExists {
+			zerolog.Ctx(ctx).Warn().Str("option", body).Msg("Poll has duplicate options, rejecting")
+			return nil, nil, errPollDuplicateOption
+		}
+		optionMap[hash] = opt.ID
+		options[i] = &waE2E.PollCreationMessage_Option{
+			OptionName: ptr.Ptr(body),
+		}
+	}
+	return &waE2E.Message{
+		PollCreationMessage: &waE2E.PollCreationMessage{
+			Name:                   ptr.Ptr(question),
+			Options:                options,
+			SelectableOptionsCount: ptr.Ptr(uint32(maxAnswers)),
+			ContextInfo:            contextInfo,
+		},
+		MessageContextInfo: &waE2E.MessageContextInfo{
+			MessageSecret: random.Bytes(32),
+		},
+	}, optionMap, nil
 }
 
-func (content *PollStartContent) OptionalGetRelatesTo() *event.RelatesTo {
-	return content.RelatesTo
-}
-
-func (content *PollStartContent) SetRelatesTo(rel *event.RelatesTo) {
-	content.RelatesTo = rel
-}
-
-func init() {
-	event.TypeMap[TypeMSC3381PollResponse] = reflect.TypeOf(PollResponseContent{})
-	event.TypeMap[TypeMSC3381PollStart] = reflect.TypeOf(PollStartContent{})
+func (mc *MessageConverter) PollVoteToWhatsApp(
+	ctx context.Context,
+	client *whatsmeow.Client,
+	content *event.PollResponseEventContent,
+	pollMsg *database.Message,
+) (*waE2E.Message, error) {
+	parsedMsgID, err := waid.ParseMessageID(pollMsg.ID)
+	if err != nil {
+		zerolog.Ctx(ctx).Err(err).Msg("Failed to parse message ID")
+		return nil, fmt.Errorf("failed to parse message ID")
+	}
+	pollMsgInfo := &types.MessageInfo{
+		MessageSource: types.MessageSource{
+			Chat:     parsedMsgID.Chat,
+			Sender:   parsedMsgID.Sender,
+			IsFromMe: parsedMsgID.Sender.User == client.Store.ID.User,
+			IsGroup:  parsedMsgID.Chat.Server == types.GroupServer,
+		},
+		ID:   parsedMsgID.ID,
+		Type: "poll",
+	}
+	optionHashes := make([][]byte, 0, len(content.Response.Answers))
+	if pollMsg.Metadata.(*waid.MessageMetadata).IsMatrixPoll {
+		mappedAnswers, err := mc.DB.PollOption.GetHashes(ctx, pollMsg.MXID, content.Response.Answers)
+		if err != nil {
+			zerolog.Ctx(ctx).Err(err).Msg("Failed to get poll option hashes from database")
+			return nil, fmt.Errorf("failed to get poll option hashes")
+		}
+		for _, selection := range content.Response.Answers {
+			hash, ok := mappedAnswers[selection]
+			if ok {
+				optionHashes = append(optionHashes, hash[:])
+			} else {
+				zerolog.Ctx(ctx).Warn().Str("option", selection).Msg("Didn't find hash for selected option")
+			}
+		}
+	} else {
+		for _, selection := range content.Response.Answers {
+			hash, _ := hex.DecodeString(selection)
+			if len(hash) == 32 {
+				optionHashes = append(optionHashes, hash)
+			}
+		}
+	}
+	pollUpdate, err := client.EncryptPollVote(pollMsgInfo, &waE2E.PollVoteMessage{
+		SelectedOptions: optionHashes,
+	})
+	return &waE2E.Message{PollUpdateMessage: pollUpdate}, err
 }

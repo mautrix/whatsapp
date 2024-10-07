@@ -25,6 +25,7 @@ var whatsappCaps = &bridgev2.NetworkRoomCapabilities{
 	LocationMessages: true,
 	Captions:         true,
 	Replies:          true,
+	Polls:            true,
 	Edits:            true,
 	EditMaxCount:     10,
 	EditMaxAge:       15 * time.Minute,
