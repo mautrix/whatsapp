@@ -288,7 +288,7 @@ func (wa *WhatsAppClient) FetchMessages(ctx context.Context, params bridgev2.Fet
 	slices.Reverse(convertedMessages)
 	return &bridgev2.FetchMessagesResponse{
 		Messages: convertedMessages,
-		Cursor:   networkid.PaginationCursor(strconv.FormatUint(messages[0].GetMessageTimestamp(), 10)),
+		Cursor:   networkid.PaginationCursor(strconv.FormatUint(oldestTS, 10)),
 		HasMore:  hasMore,
 		Forward:  endTime == nil,
 		MarkRead: markRead,
