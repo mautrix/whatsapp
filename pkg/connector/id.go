@@ -50,39 +50,3 @@ func (wa *WhatsAppClient) messageIDToKey(id *waid.ParsedMessageID) *waCommon.Mes
 	}
 	return key
 }
-
-//lint:ignore U1000 - TODO use this function
-func (wa *WhatsAppClient) keyToMessageID(chat, sender types.JID, key *waCommon.MessageKey) networkid.MessageID {
-	sender = sender.ToNonAD()
-	var err error
-	if !key.GetFromMe() {
-		if key.GetParticipant() != "" {
-			sender, err = types.ParseJID(key.GetParticipant())
-			if err != nil {
-				// TODO log somehow?
-				return ""
-			}
-			if sender.Server == types.LegacyUserServer {
-				sender.Server = types.DefaultUserServer
-			}
-		} else if chat.Server == types.DefaultUserServer {
-			ownID := ptr.Val(wa.Device.ID).ToNonAD()
-			if sender.User == ownID.User {
-				sender = chat
-			} else {
-				sender = ownID
-			}
-		} else {
-			// TODO log somehow?
-			return ""
-		}
-	}
-	remoteJID, err := types.ParseJID(key.GetRemoteJID())
-	if err == nil && !remoteJID.IsEmpty() {
-		// TODO use remote jid in other cases?
-		if remoteJID.Server == types.GroupServer {
-			chat = remoteJID
-		}
-	}
-	return waid.MakeMessageID(chat, sender, key.GetID())
-}

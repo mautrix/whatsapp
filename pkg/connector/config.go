@@ -42,6 +42,7 @@ type Config struct {
 	StatusBroadcastTag          event.RoomTag `yaml:"status_broadcast_tag"`
 	WhatsappThumbnail           bool          `yaml:"whatsapp_thumbnail"`
 	URLPreviews                 bool          `yaml:"url_previews"`
+	ExtEvPolls                  bool          `yaml:"extev_polls"`
 	ForceActiveDeliveryReceipts bool          `yaml:"force_active_delivery_receipts"`
 
 	AnimatedSticker msgconv.AnimatedStickerConfig `yaml:"animated_sticker"`
@@ -100,6 +101,7 @@ func upgradeConfig(helper up.Helper) {
 	helper.Copy(up.Str, "status_broadcast_tag")
 	helper.Copy(up.Bool, "whatsapp_thumbnail")
 	helper.Copy(up.Bool, "url_previews")
+	helper.Copy(up.Bool, "extev_polls")
 	helper.Copy(up.Bool, "force_active_delivery_receipts")
 
 	helper.Copy(up.Str, "animated_sticker", "target")

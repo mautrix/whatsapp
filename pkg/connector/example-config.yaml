@@ -45,6 +45,8 @@ whatsapp_thumbnail: false
 # and send it to WhatsApp? URL previews can always be sent using the `com.beeper.linkpreviews`
 # key in the event content even if this is disabled.
 url_previews: false
+# Should polls be sent using unstable MSC3381 event types?
+extev_polls: false
 # Should the bridge always send "active" delivery receipts (two gray ticks on WhatsApp)
 # even if the user isn't marked as online (e.g. when presence bridging isn't enabled)?
 #

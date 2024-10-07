@@ -56,6 +56,7 @@ func migrateLegacyConfig(helper up.Helper) {
 	bridgeconfig.CopyToOtherLocation(helper, up.Str, []string{"bridge", "status_broadcast_tag"}, []string{"network", "status_broadcast_tag"})
 	bridgeconfig.CopyToOtherLocation(helper, up.Bool, []string{"bridge", "whatsapp_thumbnail"}, []string{"network", "whatsapp_thumbnail"})
 	bridgeconfig.CopyToOtherLocation(helper, up.Bool, []string{"bridge", "url_previews"}, []string{"network", "url_previews"})
+	bridgeconfig.CopyToOtherLocation(helper, up.Bool, []string{"bridge", "extev_polls"}, []string{"network", "extev_polls"})
 	bridgeconfig.CopyToOtherLocation(helper, up.Bool, []string{"bridge", "force_active_delivery_receipts"}, []string{"network", "force_active_delivery_receipts"})
 	bridgeconfig.CopyToOtherLocation(helper, up.Int, []string{"bridge", "history_sync", "max_initial_conversations"}, []string{"network", "history_sync", "max_initial_conversations"})
 	bridgeconfig.CopyToOtherLocation(helper, up.Bool, []string{"bridge", "history_sync", "request_full_sync"}, []string{"network", "history_sync", "request_full_sync"})

@@ -31,8 +31,8 @@
     * [x] Location messages
     * [x] Contact messages
     * [x] Replies
-    * [ ] Polls
-    * [ ] Poll votes
+    * [x] Polls
+    * [x] Poll votes
   * [ ] Chat types
     * [x] Private chat
     * [x] Group chat

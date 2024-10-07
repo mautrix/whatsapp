@@ -71,6 +71,7 @@ type MessageMetadata struct {
 	BroadcastListJID *types.JID       `json:"broadcast_list_jid,omitempty"`
 	GroupInvite      *GroupInviteMeta `json:"group_invite,omitempty"`
 	MediaMeta        json.RawMessage  `json:"media_meta,omitempty"`
+	IsMatrixPoll     bool             `json:"is_matrix_poll,omitempty"`
 }
 
 type ReactionMetadata struct {

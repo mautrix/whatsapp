@@ -19,6 +19,8 @@ package msgconv
 import (
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/format"
+
+	"maunium.net/go/mautrix-whatsapp/pkg/connector/wadb"
 )
 
 type AnimatedStickerConfig struct {
@@ -32,10 +34,12 @@ type AnimatedStickerConfig struct {
 
 type MessageConverter struct {
 	Bridge                *bridgev2.Bridge
+	DB                    *wadb.Database
 	MaxFileSize           int64
 	HTMLParser            *format.HTMLParser
 	AnimatedStickerConfig AnimatedStickerConfig
 	FetchURLPreviews      bool
+	ExtEvPolls            bool
 	OldMediaSuffix        string
 }
 
