@@ -508,7 +508,7 @@ func getAudioInfo(content *event.MessageEventContent) (output []byte, Duration u
 		return nil, uint32(content.Info.Duration / 1000)
 	}
 	waveform := audioInfo.Waveform
-	if waveform != nil {
+	if len(waveform) == 0 {
 		return nil, uint32(audioInfo.Duration / 1000)
 	}
 
