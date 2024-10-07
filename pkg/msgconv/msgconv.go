@@ -40,6 +40,7 @@ type MessageConverter struct {
 	AnimatedStickerConfig AnimatedStickerConfig
 	FetchURLPreviews      bool
 	ExtEvPolls            bool
+	DisableViewOnce       bool
 	OldMediaSuffix        string
 }
 

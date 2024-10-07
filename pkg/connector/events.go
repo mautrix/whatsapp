@@ -93,10 +93,6 @@ type WAMessageEvent struct {
 	postHandle                    func()
 }
 
-func (evt *WAMessageEvent) GetStreamOrder() int64 {
-	return evt.Info.Timestamp.Unix()
-}
-
 var (
 	_ bridgev2.RemoteMessage                  = (*WAMessageEvent)(nil)
 	_ bridgev2.RemoteMessageUpsert            = (*WAMessageEvent)(nil)
@@ -111,6 +107,14 @@ var (
 	_ bridgev2.RemoteMessageRemove            = (*WAMessageEvent)(nil)
 	_ bridgev2.RemotePostHandler              = (*WAMessageEvent)(nil)
 )
+
+func (evt *WAMessageEvent) GetStreamOrder() int64 {
+	return evt.Info.Timestamp.Unix()
+}
+
+func (evt *WAMessageEvent) isViewOnce() bool {
+	return evt.MsgEvent.IsViewOnce || evt.MsgEvent.IsViewOnceV2 || evt.MsgEvent.IsViewOnceV2Extension
+}
 
 func (evt *WAMessageEvent) AddLogContext(c zerolog.Context) zerolog.Context {
 	return evt.MessageInfoWrapper.AddLogContext(c).Str("parsed_message_type", evt.parsedMessageType)
@@ -136,7 +140,7 @@ func (evt *WAMessageEvent) ConvertEdit(ctx context.Context, portal *bridgev2.Por
 	}
 
 	// TODO edits to media captions may not contain the media
-	cm := evt.wa.Main.MsgConv.ToMatrix(ctx, portal, evt.wa.Client, intent, editedMsg, &evt.Info)
+	cm := evt.wa.Main.MsgConv.ToMatrix(ctx, portal, evt.wa.Client, intent, editedMsg, &evt.Info, evt.isViewOnce())
 	if evt.isUndecryptableUpsertSubEvent && isFailedMedia(cm) {
 		evt.postHandle = func() {
 			evt.wa.processFailedMedia(ctx, portal.PortalKey, evt.GetID(), cm, false)
@@ -224,7 +228,7 @@ func (evt *WAMessageEvent) HandleExisting(ctx context.Context, portal *bridgev2.
 
 func (evt *WAMessageEvent) ConvertMessage(ctx context.Context, portal *bridgev2.Portal, intent bridgev2.MatrixAPI) (*bridgev2.ConvertedMessage, error) {
 	evt.wa.EnqueuePortalResync(portal)
-	converted := evt.wa.Main.MsgConv.ToMatrix(ctx, portal, evt.wa.Client, intent, evt.Message, &evt.Info)
+	converted := evt.wa.Main.MsgConv.ToMatrix(ctx, portal, evt.wa.Client, intent, evt.Message, &evt.Info, evt.isViewOnce())
 	if isFailedMedia(converted) {
 		evt.postHandle = func() {
 			evt.wa.processFailedMedia(ctx, portal.PortalKey, evt.GetID(), converted, false)

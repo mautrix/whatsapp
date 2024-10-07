@@ -44,7 +44,16 @@ import (
 	"maunium.net/go/mautrix-whatsapp/pkg/waid"
 )
 
-func (mc *MessageConverter) convertMediaMessage(ctx context.Context, msg MediaMessage, typeName string) (part *bridgev2.ConvertedMessagePart, contextInfo *waE2E.ContextInfo) {
+func (mc *MessageConverter) convertMediaMessage(ctx context.Context, msg MediaMessage, typeName string, isViewOnce bool) (part *bridgev2.ConvertedMessagePart, contextInfo *waE2E.ContextInfo) {
+	if mc.DisableViewOnce && isViewOnce {
+		return &bridgev2.ConvertedMessagePart{
+			Type: event.EventMessage,
+			Content: &event.MessageEventContent{
+				MsgType: event.MsgNotice,
+				Body:    fmt.Sprintf("You received a view once %s. For added privacy, you can only open it on the WhatsApp app.", typeName),
+			},
+		}, nil
+	}
 	preparedMedia := prepareMediaMessage(msg)
 	preparedMedia.TypeDescription = typeName
 	if preparedMedia.FileName != "" && preparedMedia.Body != preparedMedia.FileName {

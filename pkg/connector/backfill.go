@@ -279,7 +279,8 @@ func (wa *WhatsAppClient) FetchMessages(ctx context.Context, params bridgev2.Fet
 			return nil, fmt.Errorf("failed to parse info of message %s: %w", msg.GetKey().GetID(), err)
 		}
 		var mediaReq *wadb.MediaRequest
-		convertedMessages[i], mediaReq = wa.convertHistorySyncMessage(ctx, params.Portal, &evt.Info, evt.Message, msg.Reactions)
+		isViewOnce := evt.IsViewOnce || evt.IsViewOnceV2 || evt.IsViewOnceV2Extension
+		convertedMessages[i], mediaReq = wa.convertHistorySyncMessage(ctx, params.Portal, &evt.Info, evt.Message, isViewOnce, msg.Reactions)
 		if mediaReq != nil {
 			mediaRequests = append(mediaRequests, mediaReq)
 		}
@@ -324,12 +325,12 @@ func (wa *WhatsAppClient) FetchMessages(ctx context.Context, params bridgev2.Fet
 }
 
 func (wa *WhatsAppClient) convertHistorySyncMessage(
-	ctx context.Context, portal *bridgev2.Portal, info *types.MessageInfo, msg *waE2E.Message, reactions []*waWeb.Reaction,
+	ctx context.Context, portal *bridgev2.Portal, info *types.MessageInfo, msg *waE2E.Message, isViewOnce bool, reactions []*waWeb.Reaction,
 ) (*bridgev2.BackfillMessage, *wadb.MediaRequest) {
 	// TODO use proper intent
 	intent := wa.Main.Bridge.Bot
 	wrapped := &bridgev2.BackfillMessage{
-		ConvertedMessage: wa.Main.MsgConv.ToMatrix(ctx, portal, wa.Client, intent, msg, info),
+		ConvertedMessage: wa.Main.MsgConv.ToMatrix(ctx, portal, wa.Client, intent, msg, info, isViewOnce),
 		Sender:           wa.makeEventSender(info.Sender),
 		ID:               waid.MakeMessageID(info.Chat, info.Sender, info.ID),
 		TxnID:            networkid.TransactionID(waid.MakeMessageID(info.Chat, info.Sender, info.ID)),

@@ -102,6 +102,7 @@ func (mc *MessageConverter) ToMatrix(
 	intent bridgev2.MatrixAPI,
 	waMsg *waE2E.Message,
 	info *types.MessageInfo,
+	isViewOnce bool,
 ) *bridgev2.ConvertedMessage {
 	ctx = context.WithValue(ctx, contextKeyClient, client)
 	ctx = context.WithValue(ctx, contextKeyIntent, intent)
@@ -132,21 +133,21 @@ func (mc *MessageConverter) ToMatrix(
 	case waMsg.EventMessage != nil:
 		part, contextInfo = mc.convertEventMessage(ctx, waMsg.EventMessage)
 	case waMsg.ImageMessage != nil:
-		part, contextInfo = mc.convertMediaMessage(ctx, waMsg.ImageMessage, "photo")
+		part, contextInfo = mc.convertMediaMessage(ctx, waMsg.ImageMessage, "photo", isViewOnce)
 	case waMsg.StickerMessage != nil:
-		part, contextInfo = mc.convertMediaMessage(ctx, waMsg.StickerMessage, "sticker")
+		part, contextInfo = mc.convertMediaMessage(ctx, waMsg.StickerMessage, "sticker", isViewOnce)
 	case waMsg.VideoMessage != nil:
-		part, contextInfo = mc.convertMediaMessage(ctx, waMsg.VideoMessage, "video attachment")
+		part, contextInfo = mc.convertMediaMessage(ctx, waMsg.VideoMessage, "video attachment", isViewOnce)
 	case waMsg.PtvMessage != nil:
-		part, contextInfo = mc.convertMediaMessage(ctx, waMsg.PtvMessage, "video message")
+		part, contextInfo = mc.convertMediaMessage(ctx, waMsg.PtvMessage, "video message", isViewOnce)
 	case waMsg.AudioMessage != nil:
 		typeName := "audio attachment"
 		if waMsg.AudioMessage.GetPTT() {
 			typeName = "voice message"
 		}
-		part, contextInfo = mc.convertMediaMessage(ctx, waMsg.AudioMessage, typeName)
+		part, contextInfo = mc.convertMediaMessage(ctx, waMsg.AudioMessage, typeName, isViewOnce)
 	case waMsg.DocumentMessage != nil:
-		part, contextInfo = mc.convertMediaMessage(ctx, waMsg.DocumentMessage, "file attachment")
+		part, contextInfo = mc.convertMediaMessage(ctx, waMsg.DocumentMessage, "file attachment", isViewOnce)
 	case waMsg.LocationMessage != nil:
 		part, contextInfo = mc.convertLocationMessage(ctx, waMsg.LocationMessage)
 	case waMsg.LiveLocationMessage != nil:

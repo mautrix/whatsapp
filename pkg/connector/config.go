@@ -43,6 +43,7 @@ type Config struct {
 	WhatsappThumbnail           bool          `yaml:"whatsapp_thumbnail"`
 	URLPreviews                 bool          `yaml:"url_previews"`
 	ExtEvPolls                  bool          `yaml:"extev_polls"`
+	DisableViewOnce             bool          `yaml:"disable_view_once"`
 	ForceActiveDeliveryReceipts bool          `yaml:"force_active_delivery_receipts"`
 
 	AnimatedSticker msgconv.AnimatedStickerConfig `yaml:"animated_sticker"`
@@ -102,6 +103,7 @@ func upgradeConfig(helper up.Helper) {
 	helper.Copy(up.Bool, "whatsapp_thumbnail")
 	helper.Copy(up.Bool, "url_previews")
 	helper.Copy(up.Bool, "extev_polls")
+	helper.Copy(up.Bool, "disable_view_once")
 	helper.Copy(up.Bool, "force_active_delivery_receipts")
 
 	helper.Copy(up.Str, "animated_sticker", "target")
