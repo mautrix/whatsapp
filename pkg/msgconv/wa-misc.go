@@ -106,6 +106,7 @@ func (mc *MessageConverter) convertEphemeralSettingMessage(ctx context.Context, 
 	if disappear.Timer == 0 {
 		disappear.Type = ""
 	}
+	dontBridge := portal.Disappear == disappear
 	content := bridgev2.DisappearingMessageNotice(disappear.Timer, false)
 	if msg.EphemeralSettingTimestamp == nil || portalMeta.DisappearingTimerSetAt < msg.GetEphemeralSettingTimestamp() {
 		portal.Disappear = disappear
@@ -118,8 +119,9 @@ func (mc *MessageConverter) convertEphemeralSettingMessage(ctx context.Context, 
 		content.Body += ", but the change was ignored."
 	}
 	return &bridgev2.ConvertedMessagePart{
-		Type:    event.EventMessage,
-		Content: content,
+		Type:       event.EventMessage,
+		Content:    content,
+		DontBridge: dontBridge,
 	}, nil
 }
 
