@@ -50,6 +50,12 @@ func getMessageType(waMsg *waE2E.Message) string {
 		return "live location start"
 	case waMsg.GroupInviteMessage != nil:
 		return "group invite"
+	case waMsg.GroupMentionedMessage != nil:
+		return "group mention"
+	case waMsg.ScheduledCallCreationMessage != nil:
+		return "scheduled call create"
+	case waMsg.ScheduledCallEditMessage != nil:
+		return "scheduled call edit"
 	case waMsg.ReactionMessage != nil:
 		if waMsg.ReactionMessage.GetText() == "" {
 			return "reaction remove"
@@ -101,8 +107,35 @@ func getMessageType(waMsg *waE2E.Message) string {
 		return "order"
 	case waMsg.InvoiceMessage != nil:
 		return "invoice"
+	case waMsg.BotInvokeMessage != nil:
+		return "bot invoke"
 	case waMsg.EventMessage != nil:
 		return "event"
+	case waMsg.EventCoverImage != nil:
+		return "event cover image"
+	case waMsg.EncEventResponseMessage != nil:
+		return "ignore" // these are ignored for now as they're not meant to be shown as new messages
+		//return "encrypted event response"
+	case waMsg.CommentMessage != nil:
+		return "comment"
+	case waMsg.EncCommentMessage != nil:
+		return "encrypted comment"
+	case waMsg.NewsletterAdminInviteMessage != nil:
+		return "newsletter admin invite"
+	case waMsg.SecretEncryptedMessage != nil:
+		return "secret encrypted"
+	case waMsg.PollResultSnapshotMessage != nil:
+		return "poll result snapshot"
+	case waMsg.MessageHistoryBundle != nil:
+		return "message history bundle"
+	case waMsg.RequestPhoneNumberMessage != nil:
+		return "request phone number"
+	case waMsg.KeepInChatMessage != nil:
+		return "keep in chat"
+	case waMsg.StatusMentionMessage != nil:
+		return "status mention"
+	case waMsg.StickerPackMessage != nil:
+		return "sticker pack"
 	case waMsg.AlbumMessage != nil:
 		return "album" // or maybe these should be ignored?
 	case waMsg.SendPaymentMessage != nil, waMsg.RequestPaymentMessage != nil,
@@ -113,6 +146,8 @@ func getMessageType(waMsg *waE2E.Message) string {
 		return "call"
 	case waMsg.Chat != nil:
 		return "chat"
+	case waMsg.PlaceholderMessage != nil:
+		return "placeholder"
 	case waMsg.SenderKeyDistributionMessage != nil, waMsg.StickerSyncRmrMessage != nil:
 		return "ignore"
 	default:
