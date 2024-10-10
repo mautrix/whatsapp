@@ -56,6 +56,8 @@ INSERT INTO ghost (bridge_id, id, name, avatar_id, avatar_hash, avatar_mxc, name
 VALUES ('', '', '', '', '', '', false, false, false, false, '[]', '{}')
 ON CONFLICT (bridge_id, id) DO NOTHING;
 
+DELETE FROM portal_old WHERE jid LIKE '%@s.whatsapp.net' AND (receiver='' OR receiver IS NULL) and mxid IS NULL;
+
 INSERT INTO portal (
     bridge_id, id, receiver, mxid, parent_id, parent_receiver, relay_bridge_id, relay_login_id, other_user_id,
     name, topic, avatar_id, avatar_hash, avatar_mxc, name_set, avatar_set, topic_set,
@@ -121,8 +123,8 @@ DELETE FROM message_old WHERE timestamp<0;
 -- only: sqlite for next 2 lines
 DELETE FROM message_old WHERE rowid IN (SELECT rowid FROM pragma_foreign_key_check('message_old'));
 DELETE FROM reaction_old WHERE rowid IN (SELECT rowid FROM pragma_foreign_key_check('reaction_old'));
-DELETE FROM message_old WHERE sender LIKE '%@lid';
-DELETE FROM reaction_old WHERE sender LIKE '%@lid';
+DELETE FROM message_old WHERE sender NOT LIKE '%@s.whatsapp.net';
+DELETE FROM reaction_old WHERE sender NOT LIKE '%@s.whatsapp.net';
 
 INSERT INTO message (
     bridge_id, id, part_id, mxid, room_id, room_receiver, sender_id, sender_mxid, timestamp, edit_count, metadata
@@ -279,7 +281,7 @@ SELECT
     COALESCE(error, '')
 FROM media_backfill_requests_old
 LEFT JOIN user_login ON user_login.user_mxid = media_backfill_requests_old.user_mxid
-WHERE user_login.id IS NOT NULL AND status IS NOT NULL AND EXISTS (SELECT 1 FROM message WHERE mxid=event_id);
+WHERE user_login.id IS NOT NULL AND status IS NOT NULL AND media_key IS NOT NULL AND EXISTS (SELECT 1 FROM message WHERE mxid=event_id);
 
 DROP TABLE backfill_queue_old;
 DROP TABLE backfill_state_old;
