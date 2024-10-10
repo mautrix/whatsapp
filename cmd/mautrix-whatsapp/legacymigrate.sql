@@ -121,6 +121,8 @@ DELETE FROM message_old WHERE timestamp<0;
 -- only: sqlite for next 2 lines
 DELETE FROM message_old WHERE rowid IN (SELECT rowid FROM pragma_foreign_key_check('message_old'));
 DELETE FROM reaction_old WHERE rowid IN (SELECT rowid FROM pragma_foreign_key_check('reaction_old'));
+DELETE FROM message_old WHERE sender LIKE '%@lid';
+DELETE FROM reaction_old WHERE sender LIKE '%@lid';
 
 INSERT INTO message (
     bridge_id, id, part_id, mxid, room_id, room_receiver, sender_id, sender_mxid, timestamp, edit_count, metadata
