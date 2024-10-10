@@ -212,7 +212,9 @@ SELECT
     NULL, -- completed_at
     1 -- next_dispatch_min_ts
 FROM backfill_queue_old
-WHERE type IN (0, 200) AND EXISTS(SELECT 1 FROM user_login WHERE user_login.user_mxid=backfill_queue_old.user_mxid)
+WHERE type IN (0, 200)
+  AND EXISTS(SELECT 1 FROM user_login WHERE user_login.user_mxid=backfill_queue_old.user_mxid)
+  AND portal_receiver IS NOT NULL
 GROUP BY user_mxid, portal_jid, portal_receiver;
 
 INSERT INTO whatsapp_poll_option_id (bridge_id, msg_mxid, opt_id, opt_hash)
