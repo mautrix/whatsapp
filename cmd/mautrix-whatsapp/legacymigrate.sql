@@ -123,8 +123,9 @@ DELETE FROM message_old WHERE timestamp<0;
 -- only: sqlite for next 2 lines
 DELETE FROM message_old WHERE rowid IN (SELECT rowid FROM pragma_foreign_key_check('message_old'));
 DELETE FROM reaction_old WHERE rowid IN (SELECT rowid FROM pragma_foreign_key_check('reaction_old'));
-DELETE FROM message_old WHERE sender NOT LIKE '%@s.whatsapp.net';
+DELETE FROM message_old WHERE sender NOT LIKE '%@s.whatsapp.net' AND sender<>chat_jid;
 DELETE FROM reaction_old WHERE sender NOT LIKE '%@s.whatsapp.net';
+DELETE FROM reaction_old WHERE NOT EXISTS(SELECT 1 FROM puppet_old WHERE username=replace(sender, '@s.whatsapp.net', ''));
 
 INSERT INTO message (
     bridge_id, id, part_id, mxid, room_id, room_receiver, sender_id, sender_mxid, timestamp, edit_count, metadata
@@ -281,7 +282,8 @@ SELECT
     COALESCE(error, '')
 FROM media_backfill_requests_old
 LEFT JOIN user_login ON user_login.user_mxid = media_backfill_requests_old.user_mxid
-WHERE user_login.id IS NOT NULL AND status IS NOT NULL AND media_key IS NOT NULL AND EXISTS (SELECT 1 FROM message WHERE mxid=event_id);
+WHERE user_login.id IS NOT NULL AND status IS NOT NULL AND media_key IS NOT NULL AND EXISTS (SELECT 1 FROM message WHERE mxid=event_id)
+ON CONFLICT DO NOTHING;
 
 DROP TABLE backfill_queue_old;
 DROP TABLE backfill_state_old;
