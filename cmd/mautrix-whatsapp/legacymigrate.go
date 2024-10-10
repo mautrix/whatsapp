@@ -31,7 +31,7 @@ var legacyMigrateCopyData string
 func init() {
 	litestream.Functions["split_part"] = func(input, delimiter string, partNum int) string {
 		// split_part is 1-indexed
-		partNum++
+		partNum--
 		parts := strings.Split(input, delimiter)
 		if len(parts) <= partNum {
 			return ""
