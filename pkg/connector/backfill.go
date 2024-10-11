@@ -127,7 +127,7 @@ func (wa *WhatsAppClient) handleWAHistorySync(ctx context.Context, evt *waHistor
 			}
 
 			msgType := getMessageType(msgEvt.Message)
-			if msgType == "ignore" || msgType == "edit" || strings.HasPrefix(msgType, "unknown_protocol_") {
+			if msgType == "ignore" || strings.HasPrefix(msgType, "unknown_protocol_") {
 				ignoredTypes++
 				continue
 			}
