@@ -173,6 +173,9 @@ func (wa *WhatsAppClient) getUserInfo(ctx context.Context, jid types.JID, fetchA
 }
 
 func (wa *WhatsAppClient) contactToUserInfo(jid types.JID, contact types.ContactInfo, getAvatar bool) *bridgev2.UserInfo {
+	if jid == types.MetaAIJID && contact.PushName == jid.User {
+		contact.PushName = "Meta AI"
+	}
 	ui := &bridgev2.UserInfo{
 		Name:         ptr.Ptr(wa.Main.Config.FormatDisplayname(jid, contact)),
 		IsBot:        ptr.Ptr(jid.IsBot()),
