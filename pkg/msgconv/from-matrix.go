@@ -80,7 +80,7 @@ func (mc *MessageConverter) ToWhatsApp(
 	ctx = context.WithValue(ctx, contextKeyClient, client)
 	ctx = context.WithValue(ctx, contextKeyPortal, portal)
 	if evt.Type == event.EventSticker {
-		content.MsgType = event.MsgImage
+		content.MsgType = event.MessageType(event.EventSticker.Type)
 	}
 
 	message := &waE2E.Message{}
