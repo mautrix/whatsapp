@@ -132,15 +132,16 @@ func (evt *WAMessageEvent) ConvertEdit(ctx context.Context, portal *bridgev2.Por
 		zerolog.Ctx(ctx).Warn().Msg("Got edit to message with multiple parts")
 	}
 	var editedMsg *waE2E.Message
+	var previouslyConvertedPart *bridgev2.ConvertedMessagePart
 	if evt.isUndecryptableUpsertSubEvent {
 		// TODO db metadata needs to be updated in this case to remove the error
 		editedMsg = evt.Message
 	} else {
 		editedMsg = evt.Message.GetProtocolMessage().GetEditedMessage()
+		previouslyConvertedPart = evt.wa.Main.GetMediaEditCache(portal, evt.GetTargetMessage())
 	}
 
-	// TODO edits to media captions may not contain the media
-	cm := evt.wa.Main.MsgConv.ToMatrix(ctx, portal, evt.wa.Client, intent, editedMsg, &evt.Info, evt.isViewOnce())
+	cm := evt.wa.Main.MsgConv.ToMatrix(ctx, portal, evt.wa.Client, intent, editedMsg, &evt.Info, evt.isViewOnce(), previouslyConvertedPart)
 	if evt.isUndecryptableUpsertSubEvent && isFailedMedia(cm) {
 		evt.postHandle = func() {
 			evt.wa.processFailedMedia(ctx, portal.PortalKey, evt.GetID(), cm, false)
@@ -228,11 +229,13 @@ func (evt *WAMessageEvent) HandleExisting(ctx context.Context, portal *bridgev2.
 
 func (evt *WAMessageEvent) ConvertMessage(ctx context.Context, portal *bridgev2.Portal, intent bridgev2.MatrixAPI) (*bridgev2.ConvertedMessage, error) {
 	evt.wa.EnqueuePortalResync(portal)
-	converted := evt.wa.Main.MsgConv.ToMatrix(ctx, portal, evt.wa.Client, intent, evt.Message, &evt.Info, evt.isViewOnce())
+	converted := evt.wa.Main.MsgConv.ToMatrix(ctx, portal, evt.wa.Client, intent, evt.Message, &evt.Info, evt.isViewOnce(), nil)
 	if isFailedMedia(converted) {
 		evt.postHandle = func() {
 			evt.wa.processFailedMedia(ctx, portal.PortalKey, evt.GetID(), converted, false)
 		}
+	} else if len(converted.Parts) > 0 {
+		evt.wa.Main.AddMediaEditCache(portal, evt.GetID(), converted.Parts[0])
 	}
 	return converted, nil
 }

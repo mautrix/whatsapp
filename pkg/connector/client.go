@@ -153,6 +153,7 @@ func (wa *WhatsAppClient) Connect(ctx context.Context) error {
 		wa.UserLogin.BridgeState.Send(state)
 		return nil
 	}
+	wa.Main.firstClientConnectOnce.Do(wa.Main.onFirstClientConnect)
 	if err := wa.Main.updateProxy(ctx, wa.Client, false); err != nil {
 		zerolog.Ctx(ctx).Err(err).Msg("Failed to update proxy")
 	}

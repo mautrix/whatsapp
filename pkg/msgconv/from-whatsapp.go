@@ -103,6 +103,7 @@ func (mc *MessageConverter) ToMatrix(
 	waMsg *waE2E.Message,
 	info *types.MessageInfo,
 	isViewOnce bool,
+	previouslyConvertedPart *bridgev2.ConvertedMessagePart,
 ) *bridgev2.ConvertedMessage {
 	ctx = context.WithValue(ctx, contextKeyClient, client)
 	ctx = context.WithValue(ctx, contextKeyIntent, intent)
@@ -133,21 +134,21 @@ func (mc *MessageConverter) ToMatrix(
 	case waMsg.EventMessage != nil:
 		part, contextInfo = mc.convertEventMessage(ctx, waMsg.EventMessage)
 	case waMsg.ImageMessage != nil:
-		part, contextInfo = mc.convertMediaMessage(ctx, waMsg.ImageMessage, "photo", isViewOnce)
+		part, contextInfo = mc.convertMediaMessage(ctx, waMsg.ImageMessage, "photo", isViewOnce, previouslyConvertedPart)
 	case waMsg.StickerMessage != nil:
-		part, contextInfo = mc.convertMediaMessage(ctx, waMsg.StickerMessage, "sticker", isViewOnce)
+		part, contextInfo = mc.convertMediaMessage(ctx, waMsg.StickerMessage, "sticker", isViewOnce, previouslyConvertedPart)
 	case waMsg.VideoMessage != nil:
-		part, contextInfo = mc.convertMediaMessage(ctx, waMsg.VideoMessage, "video attachment", isViewOnce)
+		part, contextInfo = mc.convertMediaMessage(ctx, waMsg.VideoMessage, "video attachment", isViewOnce, previouslyConvertedPart)
 	case waMsg.PtvMessage != nil:
-		part, contextInfo = mc.convertMediaMessage(ctx, waMsg.PtvMessage, "video message", isViewOnce)
+		part, contextInfo = mc.convertMediaMessage(ctx, waMsg.PtvMessage, "video message", isViewOnce, previouslyConvertedPart)
 	case waMsg.AudioMessage != nil:
 		typeName := "audio attachment"
 		if waMsg.AudioMessage.GetPTT() {
 			typeName = "voice message"
 		}
-		part, contextInfo = mc.convertMediaMessage(ctx, waMsg.AudioMessage, typeName, isViewOnce)
+		part, contextInfo = mc.convertMediaMessage(ctx, waMsg.AudioMessage, typeName, isViewOnce, previouslyConvertedPart)
 	case waMsg.DocumentMessage != nil:
-		part, contextInfo = mc.convertMediaMessage(ctx, waMsg.DocumentMessage, "file attachment", isViewOnce)
+		part, contextInfo = mc.convertMediaMessage(ctx, waMsg.DocumentMessage, "file attachment", isViewOnce, previouslyConvertedPart)
 	case waMsg.LocationMessage != nil:
 		part, contextInfo = mc.convertLocationMessage(ctx, waMsg.LocationMessage)
 	case waMsg.LiveLocationMessage != nil:

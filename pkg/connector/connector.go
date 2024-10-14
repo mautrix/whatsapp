@@ -1,8 +1,26 @@
+// mautrix-whatsapp - A Matrix-WhatsApp puppeting bridge.
+// Copyright (C) 2024 Tulir Asokan
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Affero General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU Affero General Public License for more details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
 package connector
 
 import (
 	"context"
 	"strings"
+	"sync"
+	"sync/atomic"
 
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/proto/waCompanionReg"
@@ -23,10 +41,19 @@ type WhatsAppConnector struct {
 	DeviceStore *sqlstore.Container
 	MsgConv     *msgconv.MessageConverter
 	DB          *wadb.Database
+
+	firstClientConnectOnce sync.Once
+
+	mediaEditCache         MediaEditCache
+	mediaEditCacheLock     sync.RWMutex
+	stopMediaEditCacheLoop atomic.Pointer[context.CancelFunc]
 }
 
-var _ bridgev2.NetworkConnector = (*WhatsAppConnector)(nil)
-var _ bridgev2.MaxFileSizeingNetwork = (*WhatsAppConnector)(nil)
+var (
+	_ bridgev2.NetworkConnector      = (*WhatsAppConnector)(nil)
+	_ bridgev2.MaxFileSizeingNetwork = (*WhatsAppConnector)(nil)
+	_ bridgev2.StoppableNetwork      = (*WhatsAppConnector)(nil)
+)
 
 func (wa *WhatsAppConnector) SetMaxFileSize(maxSize int64) {
 	wa.MsgConv.MaxFileSize = maxSize
@@ -63,6 +90,7 @@ func (wa *WhatsAppConnector) Init(bridge *bridgev2.Bridge) {
 	wa.Bridge.Commands.(*commands.Processor).AddHandlers(
 		cmdAccept,
 	)
+	wa.mediaEditCache = make(MediaEditCache)
 
 	wa.DeviceStore = sqlstore.NewWithDB(
 		bridge.DB.RawDB,
@@ -95,6 +123,16 @@ func (wa *WhatsAppConnector) Start(ctx context.Context) error {
 		return bridgev2.DBUpgradeError{Err: err, Section: "whatsapp"}
 	}
 
+	return nil
+}
+
+func (wa *WhatsAppConnector) Stop() {
+	if stop := wa.stopMediaEditCacheLoop.Load(); stop != nil {
+		(*stop)()
+	}
+}
+
+func (wa *WhatsAppConnector) onFirstClientConnect() {
 	ver, err := whatsmeow.GetLatestVersion(nil)
 	if err != nil {
 		wa.Bridge.Log.Err(err).Msg("Failed to get latest WhatsApp web version number")
@@ -105,5 +143,7 @@ func (wa *WhatsAppConnector) Start(ctx context.Context) error {
 			Msg("Got latest WhatsApp web version number")
 		store.SetWAVersion(*ver)
 	}
-	return nil
+	meclCtx, cancel := context.WithCancel(context.Background())
+	wa.stopMediaEditCacheLoop.Store(&cancel)
+	go wa.mediaEditCacheExpireLoop(meclCtx)
 }

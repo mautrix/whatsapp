@@ -18,6 +18,7 @@ func (wa *WhatsAppConnector) GetCapabilities() *bridgev2.NetworkGeneralCapabilit
 }
 
 const WAMaxFileSize = 2000 * 1024 * 1024
+const EditMaxAge = 15 * time.Minute
 
 var whatsappCaps = &bridgev2.NetworkRoomCapabilities{
 	FormattedText:    true,
@@ -28,7 +29,7 @@ var whatsappCaps = &bridgev2.NetworkRoomCapabilities{
 	Polls:            true,
 	Edits:            true,
 	EditMaxCount:     10,
-	EditMaxAge:       15 * time.Minute,
+	EditMaxAge:       EditMaxAge,
 	Deletes:          true,
 	DeleteMaxAge:     48 * time.Hour,
 	DefaultFileRestriction: &bridgev2.FileRestriction{

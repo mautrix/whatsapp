@@ -109,6 +109,7 @@ var (
 const LoginConnectWait = 15 * time.Second
 
 func (wl *WALogin) Start(ctx context.Context) (*bridgev2.LoginStep, error) {
+	wl.Main.firstClientConnectOnce.Do(wl.Main.onFirstClientConnect)
 	device := wl.Main.DeviceStore.NewDevice()
 	wl.Client = whatsmeow.NewClient(device, waLog.Zerolog(wl.Log))
 	wl.Client.EnableAutoReconnect = false

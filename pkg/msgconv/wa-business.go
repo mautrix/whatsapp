@@ -70,11 +70,11 @@ func (mc *MessageConverter) convertTemplateMessage(ctx context.Context, info *ty
 	var convertedTitle *bridgev2.ConvertedMessagePart
 	switch title := tpl.GetTitle().(type) {
 	case *waE2E.TemplateMessage_HydratedFourRowTemplate_DocumentMessage:
-		convertedTitle, _ = mc.convertMediaMessage(ctx, title.DocumentMessage, "file attachment", false)
+		convertedTitle, _ = mc.convertMediaMessage(ctx, title.DocumentMessage, "file attachment", false, nil)
 	case *waE2E.TemplateMessage_HydratedFourRowTemplate_ImageMessage:
-		convertedTitle, _ = mc.convertMediaMessage(ctx, title.ImageMessage, "photo", false)
+		convertedTitle, _ = mc.convertMediaMessage(ctx, title.ImageMessage, "photo", false, nil)
 	case *waE2E.TemplateMessage_HydratedFourRowTemplate_VideoMessage:
-		convertedTitle, _ = mc.convertMediaMessage(ctx, title.VideoMessage, "video attachment", false)
+		convertedTitle, _ = mc.convertMediaMessage(ctx, title.VideoMessage, "video attachment", false, nil)
 	case *waE2E.TemplateMessage_HydratedFourRowTemplate_LocationMessage:
 		content = fmt.Sprintf("Unsupported location message\n\n%s", content)
 	case *waE2E.TemplateMessage_HydratedFourRowTemplate_HydratedTitleText:

@@ -44,7 +44,13 @@ import (
 	"maunium.net/go/mautrix-whatsapp/pkg/waid"
 )
 
-func (mc *MessageConverter) convertMediaMessage(ctx context.Context, msg MediaMessage, typeName string, isViewOnce bool) (part *bridgev2.ConvertedMessagePart, contextInfo *waE2E.ContextInfo) {
+func (mc *MessageConverter) convertMediaMessage(
+	ctx context.Context,
+	msg MediaMessage,
+	typeName string,
+	isViewOnce bool,
+	cachedPart *bridgev2.ConvertedMessagePart,
+) (part *bridgev2.ConvertedMessagePart, contextInfo *waE2E.ContextInfo) {
 	if mc.DisableViewOnce && isViewOnce {
 		return &bridgev2.ConvertedMessagePart{
 			Type: event.EventMessage,
@@ -60,6 +66,12 @@ func (mc *MessageConverter) convertMediaMessage(ctx context.Context, msg MediaMe
 		mc.parseFormatting(preparedMedia.MessageEventContent, false, false)
 	}
 	contextInfo = preparedMedia.ContextInfo
+	if cachedPart != nil && msg.GetDirectPath() == "" {
+		cachedPart.Content.Body = preparedMedia.Body
+		cachedPart.Content.Format = preparedMedia.Format
+		cachedPart.Content.FormattedBody = preparedMedia.FormattedBody
+		return cachedPart, contextInfo
+	}
 	err := mc.reuploadWhatsAppAttachment(ctx, msg, preparedMedia)
 	if err != nil {
 		part = mc.makeMediaFailure(ctx, preparedMedia, &FailedMediaKeys{
