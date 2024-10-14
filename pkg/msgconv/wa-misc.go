@@ -26,6 +26,7 @@ import (
 
 	"github.com/rs/zerolog"
 	"go.mau.fi/util/exerrors"
+	"go.mau.fi/util/ptr"
 	"go.mau.fi/whatsmeow/proto/waE2E"
 	"go.mau.fi/whatsmeow/types"
 	"google.golang.org/protobuf/proto"
@@ -52,6 +53,23 @@ func (mc *MessageConverter) convertUnknownMessage(ctx context.Context, msg *waE2
 		},
 		Extra: extra,
 	}, nil
+}
+
+var otpContent = format.RenderMarkdown("You received a one-time passcode. For added security, you can only see it on your primary device for WhatsApp. [Learn more](https://faq.whatsapp.com/372839278914311)", true, false)
+
+func init() {
+	otpContent.MsgType = event.MsgNotice
+}
+
+func (mc *MessageConverter) convertPlaceholderMessage(ctx context.Context, rawMsg *waE2E.Message) (*bridgev2.ConvertedMessagePart, *waE2E.ContextInfo) {
+	if rawMsg.GetPlaceholderMessage().GetType() == waE2E.PlaceholderMessage_MASK_LINKED_DEVICES {
+		return &bridgev2.ConvertedMessagePart{
+			Type:    event.EventMessage,
+			Content: ptr.Clone(&otpContent),
+		}, nil
+	} else {
+		return mc.convertUnknownMessage(ctx, rawMsg)
+	}
 }
 
 const inviteMsg = `%s<hr/>This invitation to join "%s" expires at %s. Reply to this message with <code>%s accept</code> to accept the invite.`

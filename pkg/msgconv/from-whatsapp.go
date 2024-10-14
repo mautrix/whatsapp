@@ -157,6 +157,8 @@ func (mc *MessageConverter) ToMatrix(
 		part, contextInfo = mc.convertContactMessage(ctx, waMsg.ContactMessage)
 	case waMsg.ContactsArrayMessage != nil:
 		part, contextInfo = mc.convertContactsArrayMessage(ctx, waMsg.ContactsArrayMessage)
+	case waMsg.PlaceholderMessage != nil:
+		part, contextInfo = mc.convertPlaceholderMessage(ctx, waMsg)
 	case waMsg.GroupInviteMessage != nil:
 		part, contextInfo = mc.convertGroupInviteMessage(ctx, info, waMsg.GroupInviteMessage)
 	case waMsg.ProtocolMessage != nil && waMsg.ProtocolMessage.GetType() == waE2E.ProtocolMessage_EPHEMERAL_SETTING:
