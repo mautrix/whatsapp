@@ -6,8 +6,8 @@ import (
 	"maunium.net/go/mautrix/bridgev2/bridgeconfig"
 	"maunium.net/go/mautrix/bridgev2/matrix/mxmain"
 
-	"maunium.net/go/mautrix-whatsapp/pkg/connector"
-	"maunium.net/go/mautrix-whatsapp/pkg/connector/wadb/upgrades"
+	"go.mau.fi/mautrix-whatsapp/pkg/connector"
+	"go.mau.fi/mautrix-whatsapp/pkg/connector/wadb/upgrades"
 )
 
 // Information to find out exactly which commit the bridge was built from.

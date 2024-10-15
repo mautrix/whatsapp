@@ -1,4 +1,4 @@
-module maunium.net/go/mautrix-whatsapp
+module go.mau.fi/mautrix-whatsapp
 
 go 1.22.0
 

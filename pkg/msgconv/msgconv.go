@@ -20,7 +20,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/format"
 
-	"maunium.net/go/mautrix-whatsapp/pkg/connector/wadb"
+	"go.mau.fi/mautrix-whatsapp/pkg/connector/wadb"
 )
 
 type AnimatedStickerConfig struct {

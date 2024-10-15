@@ -5,7 +5,7 @@ import (
 	"go.mau.fi/util/dbutil"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 
-	"maunium.net/go/mautrix-whatsapp/pkg/connector/wadb/upgrades"
+	"go.mau.fi/mautrix-whatsapp/pkg/connector/wadb/upgrades"
 )
 
 type Database struct {

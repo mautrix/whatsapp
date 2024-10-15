@@ -41,7 +41,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/event"
 
-	"maunium.net/go/mautrix-whatsapp/pkg/waid"
+	"go.mau.fi/mautrix-whatsapp/pkg/waid"
 )
 
 func (mc *MessageConverter) convertMediaMessage(

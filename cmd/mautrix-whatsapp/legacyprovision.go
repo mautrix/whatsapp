@@ -18,8 +18,8 @@ import (
 	"maunium.net/go/mautrix/bridgev2/matrix"
 	"maunium.net/go/mautrix/id"
 
-	"maunium.net/go/mautrix-whatsapp/pkg/connector"
-	"maunium.net/go/mautrix-whatsapp/pkg/waid"
+	"go.mau.fi/mautrix-whatsapp/pkg/connector"
+	"go.mau.fi/mautrix-whatsapp/pkg/waid"
 )
 
 var upgrader = websocket.Upgrader{

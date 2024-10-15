@@ -37,7 +37,7 @@ import (
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 
-	"maunium.net/go/mautrix-whatsapp/pkg/waid"
+	"go.mau.fi/mautrix-whatsapp/pkg/waid"
 )
 
 type contextKey int

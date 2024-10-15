@@ -28,7 +28,7 @@ import (
 	"maunium.net/go/mautrix/bridge/status"
 	"maunium.net/go/mautrix/event"
 
-	"maunium.net/go/mautrix-whatsapp/pkg/waid"
+	"go.mau.fi/mautrix-whatsapp/pkg/waid"
 )
 
 func (wa *WhatsAppClient) disconnectWarningLoop(ctx context.Context) {

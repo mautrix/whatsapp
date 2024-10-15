@@ -7,7 +7,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 
-	"maunium.net/go/mautrix-whatsapp/pkg/waid"
+	"go.mau.fi/mautrix-whatsapp/pkg/waid"
 )
 
 func (wa *WhatsAppClient) makeWAPortalKey(chatJID types.JID) networkid.PortalKey {

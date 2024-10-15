@@ -44,7 +44,7 @@ import (
 	"maunium.net/go/mautrix/format"
 	"maunium.net/go/mautrix/id"
 
-	"maunium.net/go/mautrix-whatsapp/pkg/waid"
+	"go.mau.fi/mautrix-whatsapp/pkg/waid"
 )
 
 func (mc *MessageConverter) generateContextInfo(replyTo *database.Message, portal *bridgev2.Portal) (*waE2E.ContextInfo, error) {

@@ -21,8 +21,8 @@ import (
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/bridgev2/simplevent"
 
-	"maunium.net/go/mautrix-whatsapp/pkg/connector/wadb"
-	"maunium.net/go/mautrix-whatsapp/pkg/waid"
+	"go.mau.fi/mautrix-whatsapp/pkg/connector/wadb"
+	"go.mau.fi/mautrix-whatsapp/pkg/waid"
 )
 
 var _ bridgev2.BackfillingNetworkAPI = (*WhatsAppClient)(nil)

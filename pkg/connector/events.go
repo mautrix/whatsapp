@@ -34,8 +34,8 @@ import (
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/format"
 
-	"maunium.net/go/mautrix-whatsapp/pkg/msgconv"
-	"maunium.net/go/mautrix-whatsapp/pkg/waid"
+	"go.mau.fi/mautrix-whatsapp/pkg/msgconv"
+	"go.mau.fi/mautrix-whatsapp/pkg/waid"
 )
 
 func (wa *WhatsAppClient) getPortalKeyByMessageSource(ms types.MessageSource) networkid.PortalKey {

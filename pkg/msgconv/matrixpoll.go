@@ -35,7 +35,7 @@ import (
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/format"
 
-	"maunium.net/go/mautrix-whatsapp/pkg/waid"
+	"go.mau.fi/mautrix-whatsapp/pkg/waid"
 )
 
 func (mc *MessageConverter) msc1767ToWhatsApp(ctx context.Context, msg event.MSC1767Message, allowedMentions *event.Mentions) (string, []string) {

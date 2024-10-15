@@ -17,8 +17,8 @@ import (
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/event"
 
-	"maunium.net/go/mautrix-whatsapp/pkg/connector/wadb"
-	"maunium.net/go/mautrix-whatsapp/pkg/waid"
+	"go.mau.fi/mautrix-whatsapp/pkg/connector/wadb"
+	"go.mau.fi/mautrix-whatsapp/pkg/waid"
 )
 
 func (wa *WhatsAppClient) GetChatInfo(ctx context.Context, portal *bridgev2.Portal) (*bridgev2.ChatInfo, error) {

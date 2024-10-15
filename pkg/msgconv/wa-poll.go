@@ -33,7 +33,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/event"
 
-	"maunium.net/go/mautrix-whatsapp/pkg/waid"
+	"go.mau.fi/mautrix-whatsapp/pkg/waid"
 )
 
 func (mc *MessageConverter) convertPollCreationMessage(ctx context.Context, msg *waE2E.PollCreationMessage) (*bridgev2.ConvertedMessagePart, *waE2E.ContextInfo) {

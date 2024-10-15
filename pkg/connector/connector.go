@@ -31,8 +31,8 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/commands"
 
-	"maunium.net/go/mautrix-whatsapp/pkg/connector/wadb"
-	"maunium.net/go/mautrix-whatsapp/pkg/msgconv"
+	"go.mau.fi/mautrix-whatsapp/pkg/connector/wadb"
+	"go.mau.fi/mautrix-whatsapp/pkg/msgconv"
 )
 
 type WhatsAppConnector struct {

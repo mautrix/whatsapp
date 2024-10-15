@@ -35,7 +35,7 @@ import (
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/format"
 
-	"maunium.net/go/mautrix-whatsapp/pkg/waid"
+	"go.mau.fi/mautrix-whatsapp/pkg/waid"
 )
 
 func (mc *MessageConverter) convertUnknownMessage(ctx context.Context, msg *waE2E.Message) (*bridgev2.ConvertedMessagePart, *waE2E.ContextInfo) {

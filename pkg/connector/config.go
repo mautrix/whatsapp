@@ -10,7 +10,7 @@ import (
 	"gopkg.in/yaml.v3"
 	"maunium.net/go/mautrix/event"
 
-	"maunium.net/go/mautrix-whatsapp/pkg/msgconv"
+	"go.mau.fi/mautrix-whatsapp/pkg/msgconv"
 )
 
 type MediaRequestMethod string

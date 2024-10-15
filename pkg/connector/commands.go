@@ -19,7 +19,7 @@ package connector
 import (
 	"maunium.net/go/mautrix/bridgev2/commands"
 
-	"maunium.net/go/mautrix-whatsapp/pkg/waid"
+	"go.mau.fi/mautrix-whatsapp/pkg/waid"
 )
 
 var (
