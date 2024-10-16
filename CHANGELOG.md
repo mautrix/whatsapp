@@ -2,11 +2,13 @@
 
 * Bumped minimum Go version to 1.22.
 * Dropped support for unauthenticated media on Matrix.
+* Changed import path to `go.mau.fi/mautrix-whatsapp`.
 * Rewrote bridge using bridgev2 architecture.
   * It is recommended to check the config file after upgrading. If you have
     prevented the bridge from writing to the config, you should update it
     manually.
   * Group management features and commands are not yet available.
+    If you rely on those, it may be better to wait for the next release.
 
 # v0.10.9 (2024-07-16)
 

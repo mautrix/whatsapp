@@ -9,7 +9,7 @@ require (
 	github.com/gorilla/websocket v1.5.0
 	github.com/lib/pq v1.10.9
 	github.com/rs/zerolog v1.33.0
-	go.mau.fi/util v0.8.1-0.20241015132414-c3f7e22b3de9
+	go.mau.fi/util v0.8.1
 	go.mau.fi/webp v0.1.0
 	go.mau.fi/whatsmeow v0.0.0-20241015144315-3fa42c3d6a28
 	golang.org/x/exp v0.0.0-20241009180824-f66d83c29e7c
@@ -18,7 +18,7 @@ require (
 	golang.org/x/sync v0.8.0
 	google.golang.org/protobuf v1.35.1
 	gopkg.in/yaml.v3 v3.0.1
-	maunium.net/go/mautrix v0.21.1-0.20241015140451-df65202dacf0
+	maunium.net/go/mautrix v0.21.1
 )
 
 require (
