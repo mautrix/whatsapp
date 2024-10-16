@@ -32,8 +32,5 @@ jobs:
           go install honnef.co/go/tools/cmd/staticcheck@latest
           export PATH="$HOME/go/bin:$PATH"
 
-      - name: Install pre-commit
-        run: pip install pre-commit
-
-      - name: Lint
-        run: pre-commit run -a
+      - name: Run pre-commit
+        uses: pre-commit/action@v3.0.1
