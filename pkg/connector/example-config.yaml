@@ -28,7 +28,6 @@ identity_change_notices: false
 # users to see when the whatsapp user on the other side is typing during a conversation.
 send_presence_on_typing: false
 # Should WhatsApp status messages be bridged into a Matrix room?
-# Disabling this won't affect already created status broadcast rooms.
 enable_status_broadcast: true
 # Should sending WhatsApp status messages be allowed?
 # This can cause issues if the user has lots of contacts, so it's disabled by default.

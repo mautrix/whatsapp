@@ -158,6 +158,13 @@ func (wa *WhatsAppClient) wrapDMInfo(jid types.JID) *bridgev2.ChatInfo {
 }
 
 func (wa *WhatsAppClient) wrapStatusBroadcastInfo() *bridgev2.ChatInfo {
+	userLocal := &bridgev2.UserLocalPortalInfo{}
+	if wa.Main.Config.MuteStatusBroadcast {
+		userLocal.MutedUntil = ptr.Ptr(event.MutedForever)
+	}
+	if wa.Main.Config.StatusBroadcastTag != "" {
+		userLocal.Tag = ptr.Ptr(wa.Main.Config.StatusBroadcastTag)
+	}
 	return &bridgev2.ChatInfo{
 		Name:  ptr.Ptr(StatusBroadcastName),
 		Topic: ptr.Ptr(StatusBroadcastTopic),
@@ -168,6 +175,7 @@ func (wa *WhatsAppClient) wrapStatusBroadcastInfo() *bridgev2.ChatInfo {
 			},
 		},
 		Type:        ptr.Ptr(database.RoomTypeDefault),
+		UserLocal:   userLocal,
 		CanBackfill: false,
 	}
 }

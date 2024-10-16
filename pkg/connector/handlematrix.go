@@ -2,6 +2,7 @@ package connector
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -14,6 +15,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
+	"maunium.net/go/mautrix/event"
 
 	"go.mau.fi/mautrix-whatsapp/pkg/waid"
 )
@@ -62,11 +64,17 @@ func (wa *WhatsAppClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2
 	return wa.handleConvertedMatrixMessage(ctx, msg, waMsg)
 }
 
+var ErrBroadcastSendDisabled = bridgev2.WrapErrorInStatus(errors.New("sending status messages is disabled")).WithErrorAsMessage().WithIsCertain(true).WithSendNotice(true).WithErrorReason(event.MessageStatusUnsupported)
+var ErrBroadcastReactionUnsupported = bridgev2.WrapErrorInStatus(errors.New("reacting to status messages is not currently supported")).WithErrorAsMessage().WithIsCertain(true).WithSendNotice(true).WithErrorReason(event.MessageStatusUnsupported)
+
 func (wa *WhatsAppClient) handleConvertedMatrixMessage(ctx context.Context, msg *bridgev2.MatrixMessage, waMsg *waE2E.Message) (*bridgev2.MatrixMessageResponse, error) {
 	messageID := wa.Client.GenerateMessageID()
 	chatJID, err := waid.ParsePortalID(msg.Portal.ID)
 	if err != nil {
 		return nil, err
+	}
+	if chatJID == types.StatusBroadcastJID && wa.Main.Config.DisableStatusBroadcastSend {
+		return nil, ErrBroadcastSendDisabled
 	}
 	wrappedMsgID := waid.MakeMessageID(chatJID, wa.JID, messageID)
 	msg.AddPendingToIgnore(networkid.TransactionID(wrappedMsgID))
@@ -91,6 +99,12 @@ func (wa *WhatsAppClient) handleConvertedMatrixMessage(ctx context.Context, msg 
 }
 
 func (wa *WhatsAppClient) PreHandleMatrixReaction(_ context.Context, msg *bridgev2.MatrixReaction) (bridgev2.MatrixReactionPreResponse, error) {
+	portalJID, err := waid.ParsePortalID(msg.Portal.ID)
+	if err != nil {
+		return bridgev2.MatrixReactionPreResponse{}, err
+	} else if portalJID == types.StatusBroadcastJID {
+		return bridgev2.MatrixReactionPreResponse{}, ErrBroadcastReactionUnsupported
+	}
 	return bridgev2.MatrixReactionPreResponse{
 		SenderID:     waid.MakeUserID(wa.JID),
 		Emoji:        variationselector.Remove(msg.Content.RelatesTo.Key),

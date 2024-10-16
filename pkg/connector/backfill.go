@@ -195,6 +195,9 @@ func (wa *WhatsAppClient) createPortalsFromHistorySync(ctx context.Context) {
 		return
 	}
 	for _, conv := range conversations {
+		if conv.ChatJID == types.StatusBroadcastJID && !wa.Main.Config.EnableStatusBroadcast {
+			continue
+		}
 		wrappedInfo, err := wa.getChatInfo(ctx, conv.ChatJID, conv)
 		if errors.Is(err, whatsmeow.ErrNotInGroup) {
 			log.Debug().Stringer("chat_jid", conv.ChatJID).
