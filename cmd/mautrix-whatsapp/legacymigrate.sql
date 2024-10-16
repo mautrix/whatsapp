@@ -120,9 +120,10 @@ UPDATE message_old SET combined_id = chat_jid || ':' || (
     END
 ) || ':' || jid;
 DELETE FROM message_old WHERE timestamp<0;
--- only: sqlite for next 2 lines
+-- only: sqlite for next 3 lines
 DELETE FROM message_old WHERE rowid IN (SELECT rowid FROM pragma_foreign_key_check('message_old'));
 DELETE FROM reaction_old WHERE rowid IN (SELECT rowid FROM pragma_foreign_key_check('reaction_old'));
+DELETE FROM user_portal_old WHERE rowid IN (SELECT rowid FROM pragma_foreign_key_check('user_portal_old'));
 DELETE FROM message_old WHERE sender NOT LIKE '%@s.whatsapp.net' AND sender<>chat_jid;
 DELETE FROM reaction_old WHERE sender NOT LIKE '%@s.whatsapp.net';
 DELETE FROM reaction_old WHERE NOT EXISTS(SELECT 1 FROM puppet_old WHERE username=replace(sender, '@s.whatsapp.net', ''));
