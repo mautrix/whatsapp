@@ -92,6 +92,10 @@ func (wa *WhatsAppClient) rotateResyncQueue() map[types.JID]resyncQueueItem {
 
 func (wa *WhatsAppClient) doGhostResync(ctx context.Context, queue map[types.JID]resyncQueueItem) {
 	log := zerolog.Ctx(ctx)
+	if !wa.IsLoggedIn() {
+		log.Warn().Msg("Not logged in, skipping background resyncs")
+		return
+	}
 	log.Debug().Msg("Starting background resyncs")
 	defer log.Debug().Msg("Background resyncs finished")
 	var ghostJIDs []types.JID
