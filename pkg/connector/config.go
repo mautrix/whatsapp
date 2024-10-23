@@ -75,12 +75,13 @@ func (c *Config) UnmarshalYAML(node *yaml.Node) error {
 	if err != nil {
 		return err
 	}
+	return c.PostProcess()
+}
 
+func (c *Config) PostProcess() error {
+	var err error
 	c.displaynameTemplate, err = template.New("displayname").Parse(c.DisplaynameTemplate)
-	if err != nil {
-		return err
-	}
-	return nil
+	return err
 }
 
 func upgradeConfig(helper up.Helper) {
