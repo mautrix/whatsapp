@@ -194,10 +194,15 @@ func (wa *WhatsAppClient) createPortalsFromHistorySync(ctx context.Context) {
 		log.Err(err).Msg("Failed to get recent conversations from database")
 		return
 	}
-	for _, conv := range conversations {
+	log.Info().Int("conversation_count", len(conversations)).Msg("Creating portals from history sync")
+	rateLimitErrors := 0
+	for i := 0; i < len(conversations); i++ {
+		conv := conversations[i]
 		if conv.ChatJID == types.StatusBroadcastJID && !wa.Main.Config.EnableStatusBroadcast {
 			continue
 		}
+		// TODO can the chat info fetch be avoided entirely?
+		time.Sleep(time.Duration(rateLimitErrors) * time.Second)
 		wrappedInfo, err := wa.getChatInfo(ctx, conv.ChatJID, conv)
 		if errors.Is(err, whatsmeow.ErrNotInGroup) {
 			log.Debug().Stringer("chat_jid", conv.ChatJID).
@@ -206,6 +211,14 @@ func (wa *WhatsAppClient) createPortalsFromHistorySync(ctx context.Context) {
 			if err != nil {
 				log.Err(err).Msg("Failed to delete historical messages for portal")
 			}
+			continue
+		} else if errors.Is(err, whatsmeow.ErrIQRateOverLimit) {
+			rateLimitErrors++
+			i--
+			log.Err(err).Stringer("chat_jid", conv.ChatJID).
+				Int("error_count", rateLimitErrors).
+				Msg("Ratelimit error getting chat info, retrying after sleep")
+			time.Sleep(time.Duration(rateLimitErrors) * time.Minute)
 			continue
 		} else if err != nil {
 			log.Err(err).Stringer("chat_jid", conv.ChatJID).Msg("Failed to get chat info")
@@ -222,6 +235,7 @@ func (wa *WhatsAppClient) createPortalsFromHistorySync(ctx context.Context) {
 			LatestMessageTS: conv.LastMessageTimestamp,
 		})
 	}
+	log.Info().Int("conversation_count", len(conversations)).Msg("Finished creating portals from history sync")
 }
 
 func (wa *WhatsAppClient) FetchMessages(ctx context.Context, params bridgev2.FetchMessagesParams) (*bridgev2.FetchMessagesResponse, error) {
