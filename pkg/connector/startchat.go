@@ -1,3 +1,19 @@
+// mautrix-whatsapp - A Matrix-WhatsApp puppeting bridge.
+// Copyright (C) 2024 Tulir Asokan
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Affero General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU Affero General Public License for more details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
 package connector
 
 import (
@@ -16,6 +32,7 @@ import (
 var (
 	_ bridgev2.IdentifierResolvingNetworkAPI = (*WhatsAppClient)(nil)
 	_ bridgev2.ContactListingNetworkAPI      = (*WhatsAppClient)(nil)
+	_ bridgev2.UserSearchingNetworkAPI       = (*WhatsAppClient)(nil)
 )
 
 var (
@@ -70,21 +87,37 @@ func (wa *WhatsAppClient) ResolveIdentifier(ctx context.Context, identifier stri
 }
 
 func (wa *WhatsAppClient) GetContactList(ctx context.Context) ([]*bridgev2.ResolveIdentifierResponse, error) {
+	return wa.getContactList(ctx, "")
+}
+
+func (wa *WhatsAppClient) SearchUsers(ctx context.Context, query string) ([]*bridgev2.ResolveIdentifierResponse, error) {
+	return wa.getContactList(ctx, strings.ToLower(query))
+}
+
+func matchesQuery(str string, query string) bool {
+	if query == "" {
+		return true
+	}
+	return strings.Contains(strings.ToLower(str), query)
+}
+
+func (wa *WhatsAppClient) getContactList(ctx context.Context, filter string) ([]*bridgev2.ResolveIdentifierResponse, error) {
 	contacts, err := wa.Client.Store.Contacts.GetAllContacts()
 	if err != nil {
 		return nil, err
 	}
-	resp := make([]*bridgev2.ResolveIdentifierResponse, len(contacts))
-	i := 0
+	resp := make([]*bridgev2.ResolveIdentifierResponse, 0, len(contacts))
 	for jid, contactInfo := range contacts {
+		if !matchesQuery(contactInfo.PushName, filter) && !matchesQuery(contactInfo.FullName, filter) && !matchesQuery(jid.User, filter) {
+			continue
+		}
 		ghost, _ := wa.Main.Bridge.GetGhostByID(ctx, waid.MakeUserID(jid))
-		resp[i] = &bridgev2.ResolveIdentifierResponse{
+		resp = append(resp, &bridgev2.ResolveIdentifierResponse{
 			Ghost:    ghost,
 			UserID:   waid.MakeUserID(jid),
 			UserInfo: wa.contactToUserInfo(jid, contactInfo, false),
 			Chat:     &bridgev2.CreateChatResponse{PortalKey: wa.makeWAPortalKey(jid)},
-		}
-		i++
+		})
 	}
 	return resp, nil
 }
