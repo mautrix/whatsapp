@@ -1,6 +1,6 @@
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v4.6.0
+    rev: v5.0.0
     hooks:
       - id: trailing-whitespace
         exclude_types: [markdown]
@@ -21,7 +21,9 @@ repos:
       - id: go-mod-tidy
 
   - repo: https://github.com/beeper/pre-commit-go
-    rev: v0.3.1
+    rev: v0.4.2
     hooks:
       - id: zerolog-ban-msgf
       - id: zerolog-use-stringer
+      - id: prevent-literal-http-methods
+      - id: zerolog-ban-global-log
