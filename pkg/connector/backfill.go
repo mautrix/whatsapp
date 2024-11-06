@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -31,7 +32,12 @@ const historySyncDispatchWait = 30 * time.Second
 
 func (wa *WhatsAppClient) historySyncLoop(ctx context.Context) {
 	dispatchTimer := time.NewTimer(historySyncDispatchWait)
-	dispatchTimer.Stop()
+
+	if !wa.isNewLogin && wa.UserLogin.Metadata.(*waid.UserLoginMetadata).HistorySyncPortalsNeedCreating {
+		dispatchTimer.Reset(5 * time.Second)
+	} else {
+		dispatchTimer.Stop()
+	}
 	wa.UserLogin.Log.Debug().Msg("Starting history sync loop")
 	for {
 		select {
@@ -196,9 +202,12 @@ func (wa *WhatsAppClient) createPortalsFromHistorySync(ctx context.Context) {
 	}
 	log.Info().Int("conversation_count", len(conversations)).Msg("Creating portals from history sync")
 	rateLimitErrors := 0
+	var wg sync.WaitGroup
+	wg.Add(len(conversations))
 	for i := 0; i < len(conversations); i++ {
 		conv := conversations[i]
 		if conv.ChatJID == types.StatusBroadcastJID && !wa.Main.Config.EnableStatusBroadcast {
+			wg.Done()
 			continue
 		}
 		// TODO can the chat info fetch be avoided entirely?
@@ -207,10 +216,15 @@ func (wa *WhatsAppClient) createPortalsFromHistorySync(ctx context.Context) {
 		if errors.Is(err, whatsmeow.ErrNotInGroup) {
 			log.Debug().Stringer("chat_jid", conv.ChatJID).
 				Msg("Skipping creating room because the user is not a participant")
-			err = wa.Main.DB.Message.DeleteAllInChat(ctx, wa.UserLogin.ID, conv.ChatJID)
+			//err = wa.Main.DB.Message.DeleteAllInChat(ctx, wa.UserLogin.ID, conv.ChatJID)
+			//if err != nil {
+			//	log.Err(err).Msg("Failed to delete historical messages for portal")
+			//}
+			err = wa.Main.DB.Conversation.Delete(ctx, wa.UserLogin.ID, conv.ChatJID)
 			if err != nil {
-				log.Err(err).Msg("Failed to delete historical messages for portal")
+				log.Err(err).Msg("Failed to delete conversation user is not in")
 			}
+			wg.Done()
 			continue
 		} else if errors.Is(err, whatsmeow.ErrIQRateOverLimit) {
 			rateLimitErrors++
@@ -222,6 +236,7 @@ func (wa *WhatsAppClient) createPortalsFromHistorySync(ctx context.Context) {
 			continue
 		} else if err != nil {
 			log.Err(err).Stringer("chat_jid", conv.ChatJID).Msg("Failed to get chat info")
+			wg.Done()
 			continue
 		}
 		wa.Main.Bridge.QueueRemoteEvent(wa.UserLogin, &simplevent.ChatResync{
@@ -230,12 +245,28 @@ func (wa *WhatsAppClient) createPortalsFromHistorySync(ctx context.Context) {
 				LogContext:   nil,
 				PortalKey:    wa.makeWAPortalKey(conv.ChatJID),
 				CreatePortal: true,
+				PostHandleFunc: func(ctx context.Context, portal *bridgev2.Portal) {
+					err := wa.Main.DB.Conversation.MarkBridged(ctx, wa.UserLogin.ID, conv.ChatJID)
+					if err != nil {
+						zerolog.Ctx(ctx).Err(err).Msg("Failed to mark conversation as bridged")
+					}
+					wg.Done()
+				},
 			},
 			ChatInfo:        wrappedInfo,
 			LatestMessageTS: conv.LastMessageTimestamp,
 		})
 	}
 	log.Info().Int("conversation_count", len(conversations)).Msg("Finished creating portals from history sync")
+	go func() {
+		wg.Wait()
+		wa.UserLogin.Metadata.(*waid.UserLoginMetadata).HistorySyncPortalsNeedCreating = false
+		err = wa.UserLogin.Save(ctx)
+		if err != nil {
+			log.Err(err).Msg("Failed to save user login history sync portals created flag")
+		}
+		log.Info().Msg("Finished processing all history sync chat resync events")
+	}()
 }
 
 func (wa *WhatsAppClient) FetchMessages(ctx context.Context, params bridgev2.FetchMessagesParams) (*bridgev2.FetchMessagesResponse, error) {

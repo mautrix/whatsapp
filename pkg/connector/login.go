@@ -308,6 +308,8 @@ func (wl *WALogin) Wait(ctx context.Context) (*bridgev2.LoginStep, error) {
 		Metadata: &waid.UserLoginMetadata{
 			WADeviceID: wl.LoginSuccess.ID.Device,
 			Timezone:   wl.Timezone,
+
+			HistorySyncPortalsNeedCreating: true,
 		},
 	}, &bridgev2.NewLoginParams{
 		DeleteOnConflict: true,
@@ -316,6 +318,7 @@ func (wl *WALogin) Wait(ctx context.Context) (*bridgev2.LoginStep, error) {
 		return nil, fmt.Errorf("failed to create user login: %w", err)
 	}
 
+	ul.Client.(*WhatsAppClient).isNewLogin = true
 	err = ul.Client.Connect(ul.Log.WithContext(context.Background()))
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect after login: %w", err)

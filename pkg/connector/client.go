@@ -98,6 +98,7 @@ type WhatsAppClient struct {
 	mediaRetryLock     *semaphore.Weighted
 
 	lastPhoneOfflineWarning time.Time
+	isNewLogin              bool
 }
 
 var (

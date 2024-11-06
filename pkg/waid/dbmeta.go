@@ -33,6 +33,8 @@ type UserLoginMetadata struct {
 	PhoneLastPinged jsontime.Unix `json:"phone_last_pinged"`
 	Timezone        string        `json:"timezone"`
 	PushKeys        *PushKeys     `json:"push_keys,omitempty"`
+
+	HistorySyncPortalsNeedCreating bool `json:"history_sync_portals_need_creating,omitempty"`
 }
 
 type PushKeys struct {
