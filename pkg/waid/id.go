@@ -49,6 +49,9 @@ func MakeUserLoginID(user types.JID) networkid.UserLoginID {
 }
 
 func ParseUserLoginID(user networkid.UserLoginID, deviceID uint16) types.JID {
+	if user == "" {
+		return types.EmptyJID
+	}
 	return types.JID{
 		Server: types.DefaultUserServer,
 		User:   string(user),
