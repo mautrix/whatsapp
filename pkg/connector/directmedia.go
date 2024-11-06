@@ -58,6 +58,8 @@ func (wa *WhatsAppConnector) Download(ctx context.Context, mediaID networkid.Med
 	if err != nil {
 		return nil, err
 	}
+	log := zerolog.Ctx(ctx).With().Any("message_id", parsedID).Logger()
+	ctx = log.WithContext(ctx)
 	msg, err := wa.Bridge.DB.Message.GetFirstPartByID(ctx, receiverID, parsedID.String())
 	if err != nil {
 		return nil, fmt.Errorf("failed to get message: %w", err)
@@ -99,13 +101,17 @@ func (wa *WhatsAppConnector) Download(ctx context.Context, mediaID networkid.Med
 		Callback: func(f *os.File) error {
 			err := waClient.Client.DownloadToFile(keys, f)
 			if errors.Is(err, whatsmeow.ErrMediaDownloadFailedWith403) || errors.Is(err, whatsmeow.ErrMediaDownloadFailedWith404) || errors.Is(err, whatsmeow.ErrMediaDownloadFailedWith410) {
-				if _, noReload := params["fi.mau.whatsapp.no_reload_media"]; noReload {
+				val := params["fi.mau.whatsapp.reload_media"]
+				if val == "false" || (!wa.Config.DirectMediaAutoRequest && val != "true") {
 					return ErrReloadNeeded
 				}
+				log.Trace().Msg("Media not found for direct download, requesting and waiting")
 				err = waClient.requestAndWaitDirectMedia(ctx, msg.ID, keys)
 				if err != nil {
+					log.Trace().Err(err).Msg("Failed to wait for media for direct download")
 					return err
 				}
+				log.Trace().Msg("Retrying download after successful retry")
 				err = waClient.Client.DownloadToFile(keys, f)
 			}
 			if errors.Is(err, whatsmeow.ErrFileLengthMismatch) || errors.Is(err, whatsmeow.ErrInvalidMediaSHA256) {
@@ -142,7 +148,7 @@ func (wa *WhatsAppClient) getDirectMediaRetryState(msgID networkid.MessageID, cr
 }
 
 func (wa *WhatsAppClient) requestAndWaitDirectMedia(ctx context.Context, rawMsgID networkid.MessageID, keys *msgconv.FailedMediaKeys) error {
-	state, err := wa.requestDirectMedia(rawMsgID, keys.Key)
+	state, err := wa.requestDirectMedia(ctx, rawMsgID, keys.Key)
 	if err != nil {
 		return err
 	}
@@ -165,16 +171,19 @@ func (wa *WhatsAppClient) requestAndWaitDirectMedia(ctx context.Context, rawMsgI
 	}
 }
 
-func (wa *WhatsAppClient) requestDirectMedia(rawMsgID networkid.MessageID, key []byte) (*directMediaRetry, error) {
+func (wa *WhatsAppClient) requestDirectMedia(ctx context.Context, rawMsgID networkid.MessageID, key []byte) (*directMediaRetry, error) {
 	state := wa.getDirectMediaRetryState(rawMsgID, true)
 	state.Lock()
 	defer state.Unlock()
 	if !state.requested {
+		zerolog.Ctx(ctx).Debug().Msg("Sending request for missing media in direct download")
 		err := wa.sendMediaRequestDirect(rawMsgID, key)
 		if err != nil {
 			return nil, fmt.Errorf("failed to send media retry request: %w", err)
 		}
 		state.requested = true
+	} else {
+		zerolog.Ctx(ctx).Debug().Msg("Media retry request already sent previously, just waiting for response")
 	}
 	return state, nil
 }
