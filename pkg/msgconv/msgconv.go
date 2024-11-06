@@ -41,6 +41,7 @@ type MessageConverter struct {
 	FetchURLPreviews      bool
 	ExtEvPolls            bool
 	DisableViewOnce       bool
+	DirectMedia           bool
 	OldMediaSuffix        string
 }
 

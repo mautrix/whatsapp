@@ -37,6 +37,7 @@ import (
 	"go.mau.fi/util/random"
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/proto/waE2E"
+	"go.mau.fi/whatsmeow/types"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/event"
@@ -48,6 +49,7 @@ func (mc *MessageConverter) convertMediaMessage(
 	ctx context.Context,
 	msg MediaMessage,
 	typeName string,
+	messageInfo *types.MessageInfo,
 	isViewOnce bool,
 	cachedPart *bridgev2.ConvertedMessagePart,
 ) (part *bridgev2.ConvertedMessagePart, contextInfo *waE2E.ContextInfo) {
@@ -72,15 +74,36 @@ func (mc *MessageConverter) convertMediaMessage(
 		cachedPart.Content.FormattedBody = preparedMedia.FormattedBody
 		return cachedPart, contextInfo
 	}
-	err := mc.reuploadWhatsAppAttachment(ctx, msg, preparedMedia)
-	if err != nil {
-		part = mc.makeMediaFailure(ctx, preparedMedia, &FailedMediaKeys{
-			Key:       msg.GetMediaKey(),
-			Length:    msg.GetFileLength(),
-			Type:      whatsmeow.GetMediaType(msg),
-			SHA256:    msg.GetFileSHA256(),
-			EncSHA256: msg.GetFileEncSHA256(),
-		}, err)
+	mediaKeys := &FailedMediaKeys{
+		Key:       msg.GetMediaKey(),
+		Length:    msg.GetFileLength(),
+		Type:      whatsmeow.GetMediaType(msg),
+		SHA256:    msg.GetFileSHA256(),
+		EncSHA256: msg.GetFileEncSHA256(),
+	}
+	if mc.DirectMedia {
+		preparedMedia.FillFileName()
+		var err error
+		portal := getPortal(ctx)
+		preparedMedia.URL, err = portal.Bridge.Matrix.GenerateContentURI(ctx, waid.MakeMediaID(messageInfo, portal.Receiver))
+		if err != nil {
+			panic(fmt.Errorf("failed to generate content URI: %w", err))
+		}
+		mediaKeys.DirectPath = msg.GetDirectPath()
+		directMediaMeta, err := json.Marshal(mediaKeys)
+		if err != nil {
+			panic(err)
+		}
+		part = &bridgev2.ConvertedMessagePart{
+			Type:    preparedMedia.Type,
+			Content: preparedMedia.MessageEventContent,
+			Extra:   preparedMedia.Extra,
+			DBMetadata: &waid.MessageMetadata{
+				DirectMediaMeta: directMediaMeta,
+			},
+		}
+	} else if err := mc.reuploadWhatsAppAttachment(ctx, msg, preparedMedia); err != nil {
+		part = mc.makeMediaFailure(ctx, preparedMedia, mediaKeys, err)
 	} else {
 		part = &bridgev2.ConvertedMessagePart{
 			Type:    preparedMedia.Type,
@@ -99,7 +122,7 @@ type FailedMediaKeys struct {
 	Type       whatsmeow.MediaType `json:"type"`
 	SHA256     []byte              `json:"sha256"`
 	EncSHA256  []byte              `json:"enc_sha256"`
-	DirectPath string              `json:"-"`
+	DirectPath string              `json:"direct_path,omitempty"`
 }
 
 func (f *FailedMediaKeys) GetDirectPath() string {
@@ -139,6 +162,13 @@ type PreparedMedia struct {
 	MentionedJID               []string           `json:"mentioned_jid,omitempty"` // only for failed media
 	TypeDescription            string             `json:"type_description"`
 	ContextInfo                *waE2E.ContextInfo `json:"-"`
+}
+
+func (pm *PreparedMedia) FillFileName() *PreparedMedia {
+	if pm.FileName == "" {
+		pm.FileName = strings.TrimPrefix(string(pm.MsgType), "m.") + exmime.ExtensionFromMimetype(pm.Info.MimeType)
+	}
+	return pm
 }
 
 type MediaMessage interface {
@@ -289,7 +319,9 @@ func (mc *MessageConverter) reuploadWhatsAppAttachment(
 		var err error
 		part.URL, part.File, err = intent.UploadMediaStream(ctx, portal.MXID, -1, true, func(file io.Writer) (*bridgev2.FileStreamResult, error) {
 			err := client.DownloadToFile(message, file.(*os.File))
-			if err != nil {
+			if errors.Is(err, whatsmeow.ErrFileLengthMismatch) || errors.Is(err, whatsmeow.ErrInvalidMediaSHA256) {
+				zerolog.Ctx(ctx).Warn().Err(err).Msg("Mismatching media checksums in message. Ignoring because WhatsApp seems to ignore them too")
+			} else if err != nil {
 				return nil, fmt.Errorf("%w: %w", bridgev2.ErrMediaDownloadFailed, err)
 			}
 			if part.Info.MimeType == "" {
@@ -297,9 +329,7 @@ func (mc *MessageConverter) reuploadWhatsAppAttachment(
 				n, _ := file.(*os.File).ReadAt(header, 0)
 				part.Info.MimeType = http.DetectContentType(header[:n])
 			}
-			if part.FileName == "" {
-				part.FileName = strings.TrimPrefix(string(part.MsgType), "m.") + exmime.ExtensionFromMimetype(part.Info.MimeType)
-			}
+			part.FillFileName()
 			return &bridgev2.FileStreamResult{
 				FileName: part.FileName,
 				MimeType: part.Info.MimeType,
@@ -310,7 +340,9 @@ func (mc *MessageConverter) reuploadWhatsAppAttachment(
 		}
 	} else {
 		data, err := client.Download(message)
-		if err != nil {
+		if errors.Is(err, whatsmeow.ErrFileLengthMismatch) || errors.Is(err, whatsmeow.ErrInvalidMediaSHA256) {
+			zerolog.Ctx(ctx).Warn().Err(err).Msg("Mismatching media checksums in message. Ignoring because WhatsApp seems to ignore them too")
+		} else if err != nil {
 			return fmt.Errorf("%w: %w", bridgev2.ErrMediaDownloadFailed, err)
 		}
 		if part.Type == event.EventSticker && part.Info.MimeType == "application/was" {
@@ -322,9 +354,7 @@ func (mc *MessageConverter) reuploadWhatsAppAttachment(
 		if part.Info.MimeType == "" {
 			part.Info.MimeType = http.DetectContentType(data)
 		}
-		if part.FileName == "" {
-			part.FileName = strings.TrimPrefix(string(part.MsgType), "m.") + exmime.ExtensionFromMimetype(part.Info.MimeType)
-		}
+		part.FillFileName()
 		part.URL, part.File, err = intent.UploadMedia(ctx, portal.MXID, data, part.FileName, part.Info.MimeType)
 		if err != nil {
 			return fmt.Errorf("%w: %w", bridgev2.ErrMediaReuploadFailed, err)
@@ -434,6 +464,7 @@ func (mc *MessageConverter) makeMediaFailure(ctx context.Context, mediaInfo *Pre
 	errorMsg := fmt.Sprintf("Failed to bridge %s, please view it on the WhatsApp app", mediaInfo.TypeDescription)
 	if keys != nil && (errors.Is(err, whatsmeow.ErrMediaDownloadFailedWith403) || errors.Is(err, whatsmeow.ErrMediaDownloadFailedWith404) || errors.Is(err, whatsmeow.ErrMediaDownloadFailedWith410)) {
 		logLevel = zerolog.DebugLevel
+		keys.DirectPath = ""
 		mediaInfo.FailedKeys = keys
 		mediaInfo.MentionedJID = mediaInfo.ContextInfo.GetMentionedJID()
 		serializedMedia, serializerErr := json.Marshal(mediaInfo)
@@ -444,8 +475,8 @@ func (mc *MessageConverter) makeMediaFailure(ctx context.Context, mediaInfo *Pre
 			FailedMediaField: mediaInfo,
 		}
 		dbMeta = &waid.MessageMetadata{
-			Error:     waid.MsgErrMediaNotFound,
-			MediaMeta: serializedMedia,
+			Error:           waid.MsgErrMediaNotFound,
+			FailedMediaMeta: serializedMedia,
 		}
 		errorMsg = fmt.Sprintf("Old %s. %s", mediaInfo.TypeDescription, mc.OldMediaSuffix)
 	}

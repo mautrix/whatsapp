@@ -70,6 +70,10 @@ type ParsedMessageID struct {
 	ID     types.MessageID
 }
 
+func (pmi *ParsedMessageID) String() networkid.MessageID {
+	return MakeMessageID(pmi.Chat, pmi.Sender, pmi.ID)
+}
+
 func ParseMessageID(messageID networkid.MessageID) (*ParsedMessageID, error) {
 	parts := strings.SplitN(string(messageID), ":", 3)
 	if len(parts) == 3 {

@@ -70,7 +70,8 @@ type MessageMetadata struct {
 	Error            MessageErrorType `json:"error,omitempty"`
 	BroadcastListJID *types.JID       `json:"broadcast_list_jid,omitempty"`
 	GroupInvite      *GroupInviteMeta `json:"group_invite,omitempty"`
-	MediaMeta        json.RawMessage  `json:"media_meta,omitempty"`
+	FailedMediaMeta  json.RawMessage  `json:"media_meta,omitempty"`
+	DirectMediaMeta  json.RawMessage  `json:"direct_media_meta,omitempty"`
 	IsMatrixPoll     bool             `json:"is_matrix_poll,omitempty"`
 }
 

@@ -134,21 +134,21 @@ func (mc *MessageConverter) ToMatrix(
 	case waMsg.EventMessage != nil:
 		part, contextInfo = mc.convertEventMessage(ctx, waMsg.EventMessage)
 	case waMsg.ImageMessage != nil:
-		part, contextInfo = mc.convertMediaMessage(ctx, waMsg.ImageMessage, "photo", isViewOnce, previouslyConvertedPart)
+		part, contextInfo = mc.convertMediaMessage(ctx, waMsg.ImageMessage, "photo", info, isViewOnce, previouslyConvertedPart)
 	case waMsg.StickerMessage != nil:
-		part, contextInfo = mc.convertMediaMessage(ctx, waMsg.StickerMessage, "sticker", isViewOnce, previouslyConvertedPart)
+		part, contextInfo = mc.convertMediaMessage(ctx, waMsg.StickerMessage, "sticker", info, isViewOnce, previouslyConvertedPart)
 	case waMsg.VideoMessage != nil:
-		part, contextInfo = mc.convertMediaMessage(ctx, waMsg.VideoMessage, "video attachment", isViewOnce, previouslyConvertedPart)
+		part, contextInfo = mc.convertMediaMessage(ctx, waMsg.VideoMessage, "video attachment", info, isViewOnce, previouslyConvertedPart)
 	case waMsg.PtvMessage != nil:
-		part, contextInfo = mc.convertMediaMessage(ctx, waMsg.PtvMessage, "video message", isViewOnce, previouslyConvertedPart)
+		part, contextInfo = mc.convertMediaMessage(ctx, waMsg.PtvMessage, "video message", info, isViewOnce, previouslyConvertedPart)
 	case waMsg.AudioMessage != nil:
 		typeName := "audio attachment"
 		if waMsg.AudioMessage.GetPTT() {
 			typeName = "voice message"
 		}
-		part, contextInfo = mc.convertMediaMessage(ctx, waMsg.AudioMessage, typeName, isViewOnce, previouslyConvertedPart)
+		part, contextInfo = mc.convertMediaMessage(ctx, waMsg.AudioMessage, typeName, info, isViewOnce, previouslyConvertedPart)
 	case waMsg.DocumentMessage != nil:
-		part, contextInfo = mc.convertMediaMessage(ctx, waMsg.DocumentMessage, "file attachment", isViewOnce, previouslyConvertedPart)
+		part, contextInfo = mc.convertMediaMessage(ctx, waMsg.DocumentMessage, "file attachment", info, isViewOnce, previouslyConvertedPart)
 	case waMsg.LocationMessage != nil:
 		part, contextInfo = mc.convertLocationMessage(ctx, waMsg.LocationMessage)
 	case waMsg.LiveLocationMessage != nil:

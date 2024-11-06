@@ -9,16 +9,16 @@ require (
 	github.com/gorilla/websocket v1.5.0
 	github.com/lib/pq v1.10.9
 	github.com/rs/zerolog v1.33.0
-	go.mau.fi/util v0.8.1
+	go.mau.fi/util v0.8.2-0.20241106111346-576742786fe9
 	go.mau.fi/webp v0.1.0
-	go.mau.fi/whatsmeow v0.0.0-20241030164414-f98aea1881f6
+	go.mau.fi/whatsmeow v0.0.0-20241106153717-65ee2390b147
 	golang.org/x/exp v0.0.0-20241009180824-f66d83c29e7c
 	golang.org/x/image v0.21.0
 	golang.org/x/net v0.30.0
 	golang.org/x/sync v0.8.0
 	google.golang.org/protobuf v1.35.1
 	gopkg.in/yaml.v3 v3.0.1
-	maunium.net/go/mautrix v0.21.1
+	maunium.net/go/mautrix v0.21.2-0.20241106145856-449de115ffad
 )
 
 require (
@@ -37,7 +37,7 @@ require (
 	github.com/tidwall/match v1.1.1 // indirect
 	github.com/tidwall/pretty v1.2.1 // indirect
 	github.com/tidwall/sjson v1.2.5 // indirect
-	github.com/yuin/goldmark v1.7.7 // indirect
+	github.com/yuin/goldmark v1.7.8 // indirect
 	go.mau.fi/libsignal v0.1.1 // indirect
 	go.mau.fi/zeroconfig v0.1.3 // indirect
 	golang.org/x/crypto v0.28.0 // indirect

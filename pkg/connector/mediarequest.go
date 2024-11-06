@@ -18,6 +18,7 @@ package connector
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -115,17 +116,9 @@ func (wa *WhatsAppClient) sendMediaRequests(ctx context.Context) {
 }
 
 func (wa *WhatsAppClient) sendMediaRequest(ctx context.Context, req *wadb.MediaRequest) {
-	msgID, err := waid.ParseMessageID(req.MessageID)
-	if err != nil {
-		err = wa.Main.DB.MediaRequest.Delete(ctx, wa.UserLogin.ID, req.MessageID)
-		if err != nil {
-			zerolog.Ctx(ctx).Err(err).Str("message_id", string(req.MessageID)).Msg("Failed to delete invalid media request")
-		}
-		return
-	}
 	log := zerolog.Ctx(ctx).With().Str("action", "send media request").Str("message_id", string(req.MessageID)).Logger()
 	defer func() {
-		err = wa.Main.DB.MediaRequest.Put(ctx, req)
+		err := wa.Main.DB.MediaRequest.Put(ctx, req)
 		if err != nil {
 			log.Err(err).Msg("Failed to save media request status")
 		}
@@ -144,15 +137,7 @@ func (wa *WhatsAppClient) sendMediaRequest(ctx context.Context, req *wadb.MediaR
 		req.Status = wadb.MediaBackfillRequestStatusRequestSkipped
 		return
 	}
-	err = wa.Client.SendMediaRetryReceipt(&types.MessageInfo{
-		ID: msgID.ID,
-		MessageSource: types.MessageSource{
-			IsFromMe: msgID.Sender.User == wa.JID.User,
-			IsGroup:  msgID.Chat.Server != types.DefaultUserServer,
-			Sender:   msgID.Sender,
-			Chat:     msgID.Chat,
-		},
-	}, req.MediaKey)
+	err = wa.sendMediaRequestDirect(req.MessageID, req.MediaKey)
 	if err != nil {
 		log.Err(err).Msg("Failed to send media retry request")
 		req.Status = wadb.MediaBackfillRequestStatusRequestFailed
@@ -161,4 +146,20 @@ func (wa *WhatsAppClient) sendMediaRequest(ctx context.Context, req *wadb.MediaR
 		log.Debug().Msg("Sent media retry request")
 		req.Status = wadb.MediaBackfillRequestStatusRequested
 	}
+}
+
+func (wa *WhatsAppClient) sendMediaRequestDirect(rawMsgID networkid.MessageID, key []byte) error {
+	msgID, err := waid.ParseMessageID(rawMsgID)
+	if err != nil {
+		return fmt.Errorf("failed to parse message ID: %w", err)
+	}
+	return wa.Client.SendMediaRetryReceipt(&types.MessageInfo{
+		ID: msgID.ID,
+		MessageSource: types.MessageSource{
+			IsFromMe: msgID.Sender.User == wa.JID.User,
+			IsGroup:  msgID.Chat.Server != types.DefaultUserServer,
+			Sender:   msgID.Sender,
+			Chat:     msgID.Chat,
+		},
+	}, key)
 }

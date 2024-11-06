@@ -42,9 +42,10 @@ func (wa *WhatsAppConnector) LoadUserLogin(_ context.Context, login *bridgev2.Us
 		Main:      wa,
 		UserLogin: login,
 
-		historySyncs:   make(chan *waHistorySync.HistorySync, 64),
-		resyncQueue:    make(map[types.JID]resyncQueueItem),
-		mediaRetryLock: semaphore.NewWeighted(wa.Config.HistorySync.MediaRequests.MaxAsyncHandle),
+		historySyncs:       make(chan *waHistorySync.HistorySync, 64),
+		resyncQueue:        make(map[types.JID]resyncQueueItem),
+		directMediaRetries: make(map[networkid.MessageID]*directMediaRetry),
+		mediaRetryLock:     semaphore.NewWeighted(wa.Config.HistorySync.MediaRequests.MaxAsyncHandle),
 	}
 	login.Client = w
 
@@ -87,12 +88,14 @@ type WhatsAppClient struct {
 	Device    *store.Device
 	JID       types.JID
 
-	historySyncs    chan *waHistorySync.HistorySync
-	stopLoops       atomic.Pointer[context.CancelFunc]
-	resyncQueue     map[types.JID]resyncQueueItem
-	resyncQueueLock sync.Mutex
-	nextResync      time.Time
-	mediaRetryLock  *semaphore.Weighted
+	historySyncs       chan *waHistorySync.HistorySync
+	stopLoops          atomic.Pointer[context.CancelFunc]
+	resyncQueue        map[types.JID]resyncQueueItem
+	resyncQueueLock    sync.Mutex
+	nextResync         time.Time
+	directMediaRetries map[networkid.MessageID]*directMediaRetry
+	directMediaLock    sync.Mutex
+	mediaRetryLock     *semaphore.Weighted
 
 	lastPhoneOfflineWarning time.Time
 }

@@ -386,13 +386,16 @@ func (evt *WAMediaRetry) makeErrorEdit(part *database.Message, meta *msgconv.Pre
 
 func (evt *WAMediaRetry) ConvertEdit(ctx context.Context, portal *bridgev2.Portal, intent bridgev2.MatrixAPI, existing []*database.Message) (*bridgev2.ConvertedEdit, error) {
 	meta := existing[0].Metadata.(*waid.MessageMetadata)
-	if meta.Error != waid.MsgErrMediaNotFound {
+	if meta.DirectMediaMeta != nil {
+		evt.wa.receiveDirectMediaRetry(ctx, existing[0], evt.MediaRetry)
+		return nil, fmt.Errorf("%w: direct media retry", bridgev2.ErrIgnoringRemoteEvent)
+	} else if meta.Error != waid.MsgErrMediaNotFound {
 		return nil, fmt.Errorf("%w: message doesn't have media error", bridgev2.ErrIgnoringRemoteEvent)
-	} else if meta.MediaMeta == nil {
+	} else if meta.FailedMediaMeta == nil {
 		return nil, fmt.Errorf("%w: message doesn't have media metadata", bridgev2.ErrIgnoringRemoteEvent)
 	}
 	var mediaMeta msgconv.PreparedMedia
-	err := json.Unmarshal(meta.MediaMeta, &mediaMeta)
+	err := json.Unmarshal(meta.FailedMediaMeta, &mediaMeta)
 	if err != nil {
 		return nil, fmt.Errorf("failed to unmarshal media metadata: %w", err)
 	}
