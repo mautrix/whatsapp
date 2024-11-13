@@ -40,6 +40,8 @@ type Config struct {
 	DisableStatusBroadcastSend  bool          `yaml:"disable_status_broadcast_send"`
 	MuteStatusBroadcast         bool          `yaml:"mute_status_broadcast"`
 	StatusBroadcastTag          event.RoomTag `yaml:"status_broadcast_tag"`
+	PinnedTag                   event.RoomTag `yaml:"pinned_tag"`
+	ArchiveTag                  event.RoomTag `yaml:"archive_tag"`
 	WhatsappThumbnail           bool          `yaml:"whatsapp_thumbnail"`
 	URLPreviews                 bool          `yaml:"url_previews"`
 	ExtEvPolls                  bool          `yaml:"extev_polls"`
@@ -101,7 +103,9 @@ func upgradeConfig(helper up.Helper) {
 	helper.Copy(up.Bool, "enable_status_broadcast")
 	helper.Copy(up.Bool, "disable_status_broadcast_send")
 	helper.Copy(up.Bool, "mute_status_broadcast")
-	helper.Copy(up.Str, "status_broadcast_tag")
+	helper.Copy(up.Str|up.Null, "status_broadcast_tag")
+	helper.Copy(up.Str|up.Null, "pinned_tag")
+	helper.Copy(up.Str|up.Null, "archive_tag")
 	helper.Copy(up.Bool, "whatsapp_thumbnail")
 	helper.Copy(up.Bool, "url_previews")
 	helper.Copy(up.Bool, "extev_polls")

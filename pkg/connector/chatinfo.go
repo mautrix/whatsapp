@@ -62,7 +62,7 @@ func (wa *WhatsAppClient) getChatInfo(ctx context.Context, portalJID types.JID, 
 		}
 	}
 	if conv != nil {
-		applyHistoryInfo(wrapped, conv)
+		wa.applyHistoryInfo(wrapped, conv)
 	}
 	wa.applyChatSettings(ctx, portalJID, wrapped)
 	return wrapped, nil
@@ -96,13 +96,13 @@ func (wa *WhatsAppClient) applyChatSettings(ctx context.Context, chatID types.JI
 		MutedUntil: ptr.Ptr(chat.MutedUntil),
 	}
 	if chat.Pinned {
-		info.UserLocal.Tag = ptr.Ptr(event.RoomTagFavourite)
+		info.UserLocal.Tag = ptr.Ptr(wa.Main.Config.PinnedTag)
 	} else if chat.Archived {
-		info.UserLocal.Tag = ptr.Ptr(event.RoomTagLowPriority)
+		info.UserLocal.Tag = ptr.Ptr(wa.Main.Config.ArchiveTag)
 	}
 }
 
-func applyHistoryInfo(info *bridgev2.ChatInfo, conv *wadb.Conversation) {
+func (wa *WhatsAppClient) applyHistoryInfo(info *bridgev2.ChatInfo, conv *wadb.Conversation) {
 	if conv == nil {
 		return
 	}
@@ -111,9 +111,9 @@ func applyHistoryInfo(info *bridgev2.ChatInfo, conv *wadb.Conversation) {
 		MutedUntil: ptr.Ptr(conv.MuteEndTime),
 	}
 	if ptr.Val(conv.Pinned) {
-		info.UserLocal.Tag = ptr.Ptr(event.RoomTagFavourite)
+		info.UserLocal.Tag = ptr.Ptr(wa.Main.Config.PinnedTag)
 	} else if ptr.Val(conv.Archived) {
-		info.UserLocal.Tag = ptr.Ptr(event.RoomTagLowPriority)
+		info.UserLocal.Tag = ptr.Ptr(wa.Main.Config.ArchiveTag)
 	}
 	if info.Disappear == nil && ptr.Val(conv.EphemeralExpiration) > 0 {
 		info.Disappear = &database.DisappearingSetting{

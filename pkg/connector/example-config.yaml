@@ -35,6 +35,11 @@ disable_status_broadcast_send: true
 # Should the status broadcast room be muted and moved into low priority by default?
 # This is only applied when creating the room, the user can unmute it later.
 mute_status_broadcast: true
+# Tag to apply to pinned chats on WhatsApp.
+pinned_tag: m.favourite
+# Tag to apply to archived chats on WhatsApp.
+# Set to m.lowpriority to move them to low priority.
+archive_tag:
 # Tag to apply to the status broadcast room.
 status_broadcast_tag: m.lowpriority
 # Should the bridge use thumbnails from WhatsApp?

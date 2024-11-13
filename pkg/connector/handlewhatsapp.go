@@ -608,7 +608,7 @@ func (wa *WhatsAppClient) handleWAMute(evt *events.Mute) {
 func (wa *WhatsAppClient) handleWAArchive(evt *events.Archive) {
 	var tag event.RoomTag
 	if evt.Action.GetArchived() {
-		tag = event.RoomTagLowPriority
+		tag = wa.Main.Config.ArchiveTag
 	}
 	wa.handleWAUserLocalPortalInfo(evt.JID, evt.Timestamp, &bridgev2.UserLocalPortalInfo{
 		Tag: &tag,
@@ -618,7 +618,7 @@ func (wa *WhatsAppClient) handleWAArchive(evt *events.Archive) {
 func (wa *WhatsAppClient) handleWAPin(evt *events.Pin) {
 	var tag event.RoomTag
 	if evt.Action.GetPinned() {
-		tag = event.RoomTagFavourite
+		tag = wa.Main.Config.PinnedTag
 	}
 	wa.handleWAUserLocalPortalInfo(evt.JID, evt.Timestamp, &bridgev2.UserLocalPortalInfo{
 		Tag: &tag,
