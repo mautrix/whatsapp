@@ -25,6 +25,7 @@ import (
 
 	"github.com/rs/zerolog"
 	"go.mau.fi/util/ptr"
+	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/proto/waCommon"
 	"go.mau.fi/whatsmeow/proto/waE2E"
 	"go.mau.fi/whatsmeow/types"
@@ -94,7 +95,7 @@ func (mc *MessageConverter) convertPollCreationMessage(ctx context.Context, msg 
 	}, msg.GetContextInfo()
 }
 
-func (mc *MessageConverter) keyToMessageID(ctx context.Context, chat, sender types.JID, key *waCommon.MessageKey) networkid.MessageID {
+func KeyToMessageID(client *whatsmeow.Client, chat, sender types.JID, key *waCommon.MessageKey) networkid.MessageID {
 	sender = sender.ToNonAD()
 	var err error
 	if !key.GetFromMe() {
@@ -108,7 +109,7 @@ func (mc *MessageConverter) keyToMessageID(ctx context.Context, chat, sender typ
 				sender.Server = types.DefaultUserServer
 			}
 		} else if chat.Server == types.DefaultUserServer {
-			ownID := ptr.Val(getClient(ctx).Store.ID).ToNonAD()
+			ownID := ptr.Val(client.Store.ID).ToNonAD()
 			if sender.User == ownID.User {
 				sender = chat
 			} else {
@@ -137,7 +138,7 @@ var failedPollUpdatePart = &bridgev2.ConvertedMessagePart{
 
 func (mc *MessageConverter) convertPollUpdateMessage(ctx context.Context, info *types.MessageInfo, msg *waE2E.PollUpdateMessage) (*bridgev2.ConvertedMessagePart, *waE2E.ContextInfo) {
 	log := zerolog.Ctx(ctx)
-	pollMessageID := mc.keyToMessageID(ctx, info.Chat, info.Sender, msg.PollCreationMessageKey)
+	pollMessageID := KeyToMessageID(getClient(ctx), info.Chat, info.Sender, msg.PollCreationMessageKey)
 	pollMessage, err := mc.Bridge.DB.Message.GetPartByID(ctx, getPortal(ctx).Receiver, pollMessageID, "")
 	if err != nil {
 		log.Err(err).Msg("Failed to get poll update target message")

@@ -117,6 +117,9 @@ func (evt *WAMessageEvent) isViewOnce() bool {
 }
 
 func (evt *WAMessageEvent) AddLogContext(c zerolog.Context) zerolog.Context {
+	if targetMsg := evt.GetTargetMessage(); targetMsg != "" {
+		c = c.Str("target_message_id", string(targetMsg))
+	}
 	return evt.MessageInfoWrapper.AddLogContext(c).Str("parsed_message_type", evt.parsedMessageType)
 }
 
@@ -154,29 +157,9 @@ func (evt *WAMessageEvent) ConvertEdit(ctx context.Context, portal *bridgev2.Por
 
 func (evt *WAMessageEvent) GetTargetMessage() networkid.MessageID {
 	if reactionMsg := evt.Message.GetReactionMessage(); reactionMsg != nil {
-		key := reactionMsg.GetKey()
-		senderID := key.GetParticipant()
-		if senderID == "" {
-			if key.GetFromMe() {
-				senderID = evt.Info.Sender.ToNonAD().String()
-			} else {
-				senderID = evt.wa.Client.Store.ID.ToNonAD().String() // could be false in groups
-			}
-		}
-		senderJID, _ := types.ParseJID(senderID)
-		return waid.MakeMessageID(evt.Info.Chat, senderJID, *key.ID)
+		return msgconv.KeyToMessageID(evt.wa.Client, evt.Info.Chat, evt.Info.Sender, reactionMsg.GetKey())
 	} else if protocolMsg := evt.Message.GetProtocolMessage(); protocolMsg != nil {
-		key := protocolMsg.GetKey()
-		senderID := key.GetParticipant()
-		if senderID == "" {
-			if key.GetFromMe() {
-				senderID = evt.Info.Sender.ToNonAD().String()
-			} else {
-				senderID = evt.wa.Client.Store.ID.ToNonAD().String() // could be false in groups
-			}
-		}
-		senderJID, _ := types.ParseJID(senderID)
-		return waid.MakeMessageID(evt.Info.Chat, senderJID, *key.ID)
+		return msgconv.KeyToMessageID(evt.wa.Client, evt.Info.Chat, evt.Info.Sender, protocolMsg.GetKey())
 	}
 	return ""
 }
