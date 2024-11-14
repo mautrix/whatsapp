@@ -46,6 +46,7 @@ type Config struct {
 	DisableViewOnce             bool          `yaml:"disable_view_once"`
 	ForceActiveDeliveryReceipts bool          `yaml:"force_active_delivery_receipts"`
 	DirectMediaAutoRequest      bool          `yaml:"direct_media_auto_request"`
+	BridgeNotices               bool		  `yaml:"bridge_notices"`
 
 	AnimatedSticker msgconv.AnimatedStickerConfig `yaml:"animated_sticker"`
 
@@ -108,6 +109,7 @@ func upgradeConfig(helper up.Helper) {
 	helper.Copy(up.Bool, "disable_view_once")
 	helper.Copy(up.Bool, "force_active_delivery_receipts")
 	helper.Copy(up.Bool, "direct_media_auto_request")
+	helper.Copy(up.Bool, "bridge_notices")
 
 	helper.Copy(up.Str, "animated_sticker", "target")
 	helper.Copy(up.Int, "animated_sticker", "args", "width")

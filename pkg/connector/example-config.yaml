@@ -58,6 +58,9 @@ force_active_delivery_receipts: false
 # should it be automatically requested from the phone?
 direct_media_auto_request: true
 
+# Whether or not Matrix m.notice-type messages should be bridged.
+bridge_notices: true
+
 # Settings for converting animated stickers.
 animated_sticker:
     # Format to which animated stickers should be converted.
