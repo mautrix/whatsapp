@@ -121,9 +121,6 @@ func (mc *MessageConverter) convertEphemeralSettingMessage(ctx context.Context, 
 		Type:  database.DisappearingTypeAfterRead,
 		Timer: time.Duration(msg.GetEphemeralExpiration()) * time.Second,
 	}
-	if disappear.Timer == 0 {
-		disappear.Type = ""
-	}
 	dontBridge := portal.Disappear == disappear
 	content := bridgev2.DisappearingMessageNotice(disappear.Timer, false)
 	if msg.EphemeralSettingTimestamp == nil || portalMeta.DisappearingTimerSetAt < msg.GetEphemeralSettingTimestamp() {
