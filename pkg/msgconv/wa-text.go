@@ -25,6 +25,9 @@ import (
 	"strings"
 
 	"go.mau.fi/whatsmeow/proto/waE2E"
+	"go.mau.fi/util/exmime"
+	"go.mau.fi/whatsmeow/types"
+
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/event"
 )
@@ -44,6 +47,74 @@ func (mc *MessageConverter) convertTextMessage(ctx context.Context, msg *waE2E.M
 	mc.parseFormatting(part.Content, false, false)
 	part.Content.BeeperLinkPreviews = mc.convertURLPreviewToBeeper(ctx, msg.GetExtendedTextMessage())
 	return
+}
+
+func (mc *MessageConverter) convertExtendedMessage(
+	ctx context.Context,
+	info *types.MessageInfo,
+	msg *waE2E.Message,
+) (part *bridgev2.ConvertedMessagePart, media_part *bridgev2.ConvertedMessagePart, contextInfo *waE2E.ContextInfo) {
+
+	messageContextInfo := msg.GetExtendedTextMessage().ContextInfo
+
+	if messageContextInfo.RemoteJID == nil && messageContextInfo.DisappearingMode == nil{
+		return
+	}
+
+	quotedMessage := msg.ExtendedTextMessage.GetContextInfo().GetQuotedMessage()
+
+	part = &bridgev2.ConvertedMessagePart{
+		Type: event.EventMessage,
+		Content: &event.MessageEventContent{
+			MsgType: event.MsgText,
+			Body: msg.ExtendedTextMessage.GetText(),
+		},
+	}
+
+	mc.parseFormatting(part.Content, false, false)
+	part.Content.BeeperLinkPreviews = mc.convertURLPreviewToBeeper(ctx, msg.ExtendedTextMessage)
+	contextInfo = msg.ExtendedTextMessage.GetContextInfo()
+
+	if quotedMessage.GetVideoMessage() == nil && quotedMessage.GetImageMessage() == nil {
+		return
+	}
+
+	media_part = mc.convertExtendedMediaMessage(ctx, info, quotedMessage)
+	return
+}
+
+func (mc *MessageConverter) getMediaTypeData(
+	ctx context.Context,
+	quotedMessage *waE2E.Message,
+) *PreparedMedia {
+	var preparedMedia *PreparedMedia
+	var mediaMessage MediaMessage
+	var msgType event.MessageType
+	var fileName string
+
+	switch {
+	case quotedMessage.GetImageMessage() != nil:
+		mediaMessage = quotedMessage.GetImageMessage()
+		msgType = event.MsgImage
+		fileName = "image" + exmime.ExtensionFromMimetype(quotedMessage.GetImageMessage().GetMimetype())
+
+	case quotedMessage.GetVideoMessage() != nil:
+		mediaMessage = quotedMessage.GetVideoMessage()
+		msgType = event.MsgVideo
+		fileName = "video" + exmime.ExtensionFromMimetype(quotedMessage.GetVideoMessage().GetMimetype())
+
+	default: return nil
+	}
+
+	preparedMedia = prepareMediaMessage(mediaMessage)
+	preparedMedia.MsgType = msgType
+	preparedMedia.FileName = fileName
+	if err := mc.reuploadWhatsAppAttachment(ctx, mediaMessage, preparedMedia); err != nil {
+		panic(fmt.Errorf("failed to generate content URI: %w", err))
+		return nil
+	}
+
+	return preparedMedia
 }
 
 func (mc *MessageConverter) parseFormatting(content *event.MessageEventContent, allowInlineURL, forceHTML bool) {

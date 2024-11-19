@@ -52,7 +52,11 @@ func (mc *MessageConverter) convertMediaMessage(
 	messageInfo *types.MessageInfo,
 	isViewOnce bool,
 	cachedPart *bridgev2.ConvertedMessagePart,
-) (part *bridgev2.ConvertedMessagePart, contextInfo *waE2E.ContextInfo) {
+) (part *bridgev2.ConvertedMessagePart, part_media *bridgev2.ConvertedMessagePart, contextInfo *waE2E.ContextInfo) {
+	log := zerolog.Ctx(ctx)
+
+	log.Error().Any("msg: %w", msg).Msg("Message ----->")
+	log.Error().Any("messageInfo: %w", messageInfo).Msg("Message ----->")
 	if mc.DisableViewOnce && isViewOnce {
 		return &bridgev2.ConvertedMessagePart{
 			Type: event.EventMessage,
@@ -60,7 +64,7 @@ func (mc *MessageConverter) convertMediaMessage(
 				MsgType: event.MsgNotice,
 				Body:    fmt.Sprintf("You received a view once %s. For added privacy, you can only open it on the WhatsApp app.", typeName),
 			},
-		}, nil
+		}, nil, nil
 	}
 	preparedMedia := prepareMediaMessage(msg)
 	preparedMedia.TypeDescription = typeName
@@ -72,7 +76,7 @@ func (mc *MessageConverter) convertMediaMessage(
 		cachedPart.Content.Body = preparedMedia.Body
 		cachedPart.Content.Format = preparedMedia.Format
 		cachedPart.Content.FormattedBody = preparedMedia.FormattedBody
-		return cachedPart, contextInfo
+		return cachedPart, nil, contextInfo
 	}
 	mediaKeys := &FailedMediaKeys{
 		Key:       msg.GetMediaKey(),
@@ -110,8 +114,40 @@ func (mc *MessageConverter) convertMediaMessage(
 			Content: preparedMedia.MessageEventContent,
 			Extra:   preparedMedia.Extra,
 		}
+
+		if msg.GetContextInfo().QuotedMessage != nil {
+			part_media = mc.convertExtendedMediaMessage(ctx, messageInfo, msg.GetContextInfo().QuotedMessage)
+		}
 	}
 	return
+}
+
+func (mc *MessageConverter) convertExtendedMediaMessage(
+	ctx context.Context,
+	info *types.MessageInfo,
+	quotedMessage *waE2E.Message,
+) (part_media *bridgev2.ConvertedMessagePart) {
+
+	preparedMedia := mc.getMediaTypeData(ctx, quotedMessage)
+
+	if  preparedMedia == nil {
+		return
+	}
+
+	content := &event.MessageEventContent{
+		MsgType: preparedMedia.MsgType,
+		URL: preparedMedia.URL,
+		Body: preparedMedia.FileName,
+	}
+
+	part_media = &bridgev2.ConvertedMessagePart{
+		Type: event.EventMessage,
+		Content: content,
+	}
+
+	mc.parseFormatting(part_media.Content, true, false)
+
+	return part_media
 }
 
 const FailedMediaField = "fi.mau.whatsapp.failed_media"
