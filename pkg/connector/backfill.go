@@ -205,6 +205,13 @@ func (wa *WhatsAppClient) createPortalsFromHistorySync(ctx context.Context) {
 	var wg sync.WaitGroup
 	wg.Add(len(conversations))
 	for i := 0; i < len(conversations); i++ {
+		if ctx.Err() != nil {
+			log.Warn().Err(ctx.Err()).Msg("Context cancelled, stopping history sync portal creation")
+			return
+		} else if wa.Client == nil {
+			log.Warn().Msg("Client is nil, stopping history sync portal creation")
+			return
+		}
 		conv := conversations[i]
 		if conv.ChatJID == types.StatusBroadcastJID && !wa.Main.Config.EnableStatusBroadcast {
 			wg.Done()

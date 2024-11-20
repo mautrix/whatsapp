@@ -67,6 +67,8 @@ func getMessageType(waMsg *waE2E.Message) string {
 		return "encrypted reaction"
 	case waMsg.PollCreationMessage != nil || waMsg.PollCreationMessageV2 != nil || waMsg.PollCreationMessageV3 != nil:
 		return "poll create"
+	case waMsg.PollCreationMessageV4 != nil || waMsg.PollCreationMessageV5 != nil:
+		return "poll create (vNext)"
 	case waMsg.PollUpdateMessage != nil:
 		return "poll update"
 	case waMsg.ProtocolMessage != nil:
