@@ -52,7 +52,11 @@ func (mc *MessageConverter) convertMediaMessage(
 	messageInfo *types.MessageInfo,
 	isViewOnce bool,
 	cachedPart *bridgev2.ConvertedMessagePart,
-) (part *bridgev2.ConvertedMessagePart, part_media *bridgev2.ConvertedMessagePart, contextInfo *waE2E.ContextInfo) {
+) (
+	part *bridgev2.ConvertedMessagePart,
+	status_part *bridgev2.ConvertedMessagePart,
+	contextInfo *waE2E.ContextInfo,
+) {
 	log := zerolog.Ctx(ctx)
 
 	log.Error().Any("msg: %w", msg).Msg("Message ----->")
@@ -116,17 +120,17 @@ func (mc *MessageConverter) convertMediaMessage(
 		}
 
 		if msg.GetContextInfo().QuotedMessage != nil {
-			part_media = mc.convertExtendedMediaMessage(ctx, messageInfo, msg.GetContextInfo().QuotedMessage)
+			status_part = mc.convertExtendedStatusMessage(ctx, messageInfo, msg.GetContextInfo().QuotedMessage)
 		}
 	}
 	return
 }
 
-func (mc *MessageConverter) convertExtendedMediaMessage(
+func (mc *MessageConverter) convertExtendedStatusMessage(
 	ctx context.Context,
 	info *types.MessageInfo,
 	quotedMessage *waE2E.Message,
-) (part_media *bridgev2.ConvertedMessagePart) {
+) (status_part *bridgev2.ConvertedMessagePart) {
 
 	preparedMedia := mc.getMediaTypeData(ctx, quotedMessage)
 
@@ -134,20 +138,94 @@ func (mc *MessageConverter) convertExtendedMediaMessage(
 		return
 	}
 
-	content := &event.MessageEventContent{
-		MsgType: preparedMedia.MsgType,
-		URL: preparedMedia.URL,
-		Body: preparedMedia.FileName,
+	log := zerolog.Ctx(ctx)
+
+	log.Error().Any("preparedMedia: %w", preparedMedia).Msg("preparedMedia ----->")
+
+	var content *event.MessageEventContent
+
+	if preparedMedia.MsgType == event.MsgText {
+
+		log.Error().Any("preparedMedia.FormattedBody: %w", preparedMedia.FormattedBody).Msg("preparedMedia.FormattedBody ----->")
+		log.Error().Any("preparedMedia.MsgType: %w", preparedMedia.MsgType).Msg("preparedMedia.MsgType ----->")
+
+		content = preparedMedia.MessageEventContent
+	} else {
+		content = &event.MessageEventContent{
+			MsgType: preparedMedia.MsgType,
+			URL: preparedMedia.URL,
+			Body: preparedMedia.FileName,
+		}
 	}
 
-	part_media = &bridgev2.ConvertedMessagePart{
+	status_part = &bridgev2.ConvertedMessagePart{
 		Type: event.EventMessage,
 		Content: content,
 	}
 
-	mc.parseFormatting(part_media.Content, true, false)
+	mc.parseFormatting(status_part.Content, true, false)
 
-	return part_media
+	return status_part
+}
+
+func (mc *MessageConverter) getMediaTypeData(
+	ctx context.Context,
+	quotedMessage *waE2E.Message,
+) *PreparedMedia {
+	var preparedMedia *PreparedMedia
+	var mediaMessage MediaMessage
+	var textMessage string
+	var msgType event.MessageType
+	var fileName string
+
+
+	log := zerolog.Ctx(ctx)
+
+	log.Error().Any("quotedMessage: %w", quotedMessage).Msg("quotedMessage ----->")
+	log.Error().Any("quotedMessage.GetExtendedTextMessage(): %w", quotedMessage.GetExtendedTextMessage()).Msg("quotedMessage.GetExtendedTextMessage() ----->")
+	switch {
+	case quotedMessage.GetImageMessage() != nil:
+		mediaMessage = quotedMessage.GetImageMessage()
+		msgType = event.MsgImage
+		fileName = "image" + exmime.ExtensionFromMimetype(quotedMessage.GetImageMessage().GetMimetype())
+
+	case quotedMessage.GetVideoMessage() != nil:
+		mediaMessage = quotedMessage.GetVideoMessage()
+		msgType = event.MsgVideo
+		fileName = "video" + exmime.ExtensionFromMimetype(quotedMessage.GetVideoMessage().GetMimetype())
+
+	case quotedMessage.GetAudioMessage() != nil:
+		mediaMessage = quotedMessage.GetAudioMessage()
+		msgType = event.MsgAudio
+		fileName = "audio" + exmime.ExtensionFromMimetype(quotedMessage.GetAudioMessage().GetMimetype())
+
+	case quotedMessage.GetExtendedTextMessage() != nil:
+		textMessage = quotedMessage.GetExtendedTextMessage().GetText()
+		msgType = event.MsgText
+
+	default: return nil
+	}
+
+	if msgType == event.MsgText {
+		return &PreparedMedia{
+			Type: event.EventMessage,
+			MessageEventContent: &event.MessageEventContent{
+				MsgType: msgType,
+				Body: textMessage,
+			},
+		}
+	}
+
+	preparedMedia = prepareMediaMessage(mediaMessage)
+	preparedMedia.FileName = fileName
+	preparedMedia.MsgType = msgType
+
+	if err := mc.reuploadWhatsAppAttachment(ctx, mediaMessage, preparedMedia); err != nil {
+		panic(fmt.Errorf("failed to generate content URI: %w", err))
+		return nil
+	}
+
+	return preparedMedia
 }
 
 const FailedMediaField = "fi.mau.whatsapp.failed_media"

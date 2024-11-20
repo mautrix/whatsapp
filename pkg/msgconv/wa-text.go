@@ -25,7 +25,6 @@ import (
 	"strings"
 
 	"go.mau.fi/whatsmeow/proto/waE2E"
-	"go.mau.fi/util/exmime"
 	"go.mau.fi/whatsmeow/types"
 
 	"maunium.net/go/mautrix/bridgev2"
@@ -53,7 +52,11 @@ func (mc *MessageConverter) convertExtendedMessage(
 	ctx context.Context,
 	info *types.MessageInfo,
 	msg *waE2E.Message,
-) (part *bridgev2.ConvertedMessagePart, media_part *bridgev2.ConvertedMessagePart, contextInfo *waE2E.ContextInfo) {
+) (
+	part *bridgev2.ConvertedMessagePart,
+	status_part *bridgev2.ConvertedMessagePart,
+	contextInfo *waE2E.ContextInfo,
+) {
 
 	messageContextInfo := msg.GetExtendedTextMessage().ContextInfo
 
@@ -75,46 +78,19 @@ func (mc *MessageConverter) convertExtendedMessage(
 	part.Content.BeeperLinkPreviews = mc.convertURLPreviewToBeeper(ctx, msg.ExtendedTextMessage)
 	contextInfo = msg.ExtendedTextMessage.GetContextInfo()
 
-	if quotedMessage.GetVideoMessage() == nil && quotedMessage.GetImageMessage() == nil {
+	if quotedMessage.GetExtendedTextMessage() != nil {
+		part.Content.MsgType = event.MsgNotice
+		status_part = mc.convertExtendedStatusMessage(ctx, info, quotedMessage)
 		return
 	}
 
-	media_part = mc.convertExtendedMediaMessage(ctx, info, quotedMessage)
+	if quotedMessage.GetVideoMessage() == nil && quotedMessage.GetImageMessage() == nil && quotedMessage.GetAudioMessage() == nil {
+		return
+	}
+
+	part.Content.MsgType = event.MsgNotice
+	status_part = mc.convertExtendedStatusMessage(ctx, info, quotedMessage)
 	return
-}
-
-func (mc *MessageConverter) getMediaTypeData(
-	ctx context.Context,
-	quotedMessage *waE2E.Message,
-) *PreparedMedia {
-	var preparedMedia *PreparedMedia
-	var mediaMessage MediaMessage
-	var msgType event.MessageType
-	var fileName string
-
-	switch {
-	case quotedMessage.GetImageMessage() != nil:
-		mediaMessage = quotedMessage.GetImageMessage()
-		msgType = event.MsgImage
-		fileName = "image" + exmime.ExtensionFromMimetype(quotedMessage.GetImageMessage().GetMimetype())
-
-	case quotedMessage.GetVideoMessage() != nil:
-		mediaMessage = quotedMessage.GetVideoMessage()
-		msgType = event.MsgVideo
-		fileName = "video" + exmime.ExtensionFromMimetype(quotedMessage.GetVideoMessage().GetMimetype())
-
-	default: return nil
-	}
-
-	preparedMedia = prepareMediaMessage(mediaMessage)
-	preparedMedia.MsgType = msgType
-	preparedMedia.FileName = fileName
-	if err := mc.reuploadWhatsAppAttachment(ctx, mediaMessage, preparedMedia); err != nil {
-		panic(fmt.Errorf("failed to generate content URI: %w", err))
-		return nil
-	}
-
-	return preparedMedia
 }
 
 func (mc *MessageConverter) parseFormatting(content *event.MessageEventContent, allowInlineURL, forceHTML bool) {

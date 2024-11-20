@@ -113,13 +113,13 @@ func (mc *MessageConverter) ToMatrix(
 
 
 	var part *bridgev2.ConvertedMessagePart
-	var media_part *bridgev2.ConvertedMessagePart
+	var status_part *bridgev2.ConvertedMessagePart
 	var contextInfo *waE2E.ContextInfo
 	switch {
 	case waMsg.Conversation != nil:
 		part, contextInfo = mc.convertTextMessage(ctx, waMsg)
 	case waMsg.ExtendedTextMessage != nil:
-		part, media_part, contextInfo = mc.convertExtendedMessage(ctx, info, waMsg)
+		part, status_part, contextInfo = mc.convertExtendedMessage(ctx, info, waMsg)
 	case waMsg.TemplateMessage != nil:
 		part, contextInfo = mc.convertTemplateMessage(ctx, info, waMsg.TemplateMessage)
 	case waMsg.HighlyStructuredMessage != nil:
@@ -141,21 +141,21 @@ func (mc *MessageConverter) ToMatrix(
 	case waMsg.EventMessage != nil:
 		part, contextInfo = mc.convertEventMessage(ctx, waMsg.EventMessage)
 	case waMsg.ImageMessage != nil:
-		part, media_part, contextInfo = mc.convertMediaMessage(ctx, waMsg.ImageMessage, "photo", info, isViewOnce, previouslyConvertedPart)
+		part, status_part, contextInfo = mc.convertMediaMessage(ctx, waMsg.ImageMessage, "photo", info, isViewOnce, previouslyConvertedPart)
 	case waMsg.StickerMessage != nil:
-		part, media_part, contextInfo = mc.convertMediaMessage(ctx, waMsg.StickerMessage, "sticker", info, isViewOnce, previouslyConvertedPart)
+		part, status_part, contextInfo = mc.convertMediaMessage(ctx, waMsg.StickerMessage, "sticker", info, isViewOnce, previouslyConvertedPart)
 	case waMsg.VideoMessage != nil:
-		part, media_part, contextInfo = mc.convertMediaMessage(ctx, waMsg.VideoMessage, "video attachment", info, isViewOnce, previouslyConvertedPart)
+		part, status_part, contextInfo = mc.convertMediaMessage(ctx, waMsg.VideoMessage, "video attachment", info, isViewOnce, previouslyConvertedPart)
 	case waMsg.PtvMessage != nil:
-		part, media_part, contextInfo = mc.convertMediaMessage(ctx, waMsg.PtvMessage, "video message", info, isViewOnce, previouslyConvertedPart)
+		part, status_part, contextInfo = mc.convertMediaMessage(ctx, waMsg.PtvMessage, "video message", info, isViewOnce, previouslyConvertedPart)
 	case waMsg.AudioMessage != nil:
 		typeName := "audio attachment"
 		if waMsg.AudioMessage.GetPTT() {
 			typeName = "voice message"
 		}
-		part, media_part, contextInfo = mc.convertMediaMessage(ctx, waMsg.AudioMessage, typeName, info, isViewOnce, previouslyConvertedPart)
+		part, status_part, contextInfo = mc.convertMediaMessage(ctx, waMsg.AudioMessage, typeName, info, isViewOnce, previouslyConvertedPart)
 	case waMsg.DocumentMessage != nil:
-		part, media_part, contextInfo = mc.convertMediaMessage(ctx, waMsg.DocumentMessage, "file attachment", info, isViewOnce, previouslyConvertedPart)
+		part, status_part, contextInfo = mc.convertMediaMessage(ctx, waMsg.DocumentMessage, "file attachment", info, isViewOnce, previouslyConvertedPart)
 	case waMsg.LocationMessage != nil:
 		part, contextInfo = mc.convertLocationMessage(ctx, waMsg.LocationMessage)
 	case waMsg.LiveLocationMessage != nil:
@@ -190,15 +190,15 @@ func (mc *MessageConverter) ToMatrix(
 	mc.addMentions(ctx, contextInfo.GetMentionedJID(), part.Content)
 
 	parts_to_send := []*bridgev2.ConvertedMessagePart{part}
-	if media_part != nil {
-		parts_to_send = append([]*bridgev2.ConvertedMessagePart{media_part}, parts_to_send...)
+	if status_part != nil {
+		parts_to_send = append([]*bridgev2.ConvertedMessagePart{status_part}, parts_to_send...)
 	}
 
 	cm := &bridgev2.ConvertedMessage{
 		Parts: parts_to_send,
 	}
 
-	if contextInfo.GetStanzaID() != "" && media_part == nil {
+	if contextInfo.GetStanzaID() != "" && status_part == nil {
 		pcp, _ := types.ParseJID(contextInfo.GetParticipant())
 		chat, _ := types.ParseJID(contextInfo.GetRemoteJID())
 		if chat.IsEmpty() {
