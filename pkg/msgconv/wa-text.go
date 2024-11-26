@@ -60,11 +60,6 @@ func (mc *MessageConverter) convertExtendedMessage(
 
 	messageContextInfo := msg.GetExtendedTextMessage().ContextInfo
 
-	if messageContextInfo.RemoteJID == nil && messageContextInfo.DisappearingMode == nil{
-		return
-	}
-
-	quotedMessage := msg.ExtendedTextMessage.GetContextInfo().GetQuotedMessage()
 
 	part = &bridgev2.ConvertedMessagePart{
 		Type: event.EventMessage,
@@ -73,10 +68,33 @@ func (mc *MessageConverter) convertExtendedMessage(
 			Body: msg.ExtendedTextMessage.GetText(),
 		},
 	}
-
 	mc.parseFormatting(part.Content, false, false)
 	part.Content.BeeperLinkPreviews = mc.convertURLPreviewToBeeper(ctx, msg.ExtendedTextMessage)
 	contextInfo = msg.ExtendedTextMessage.GetContextInfo()
+
+	if messageContextInfo.RemoteJID == nil && messageContextInfo.DisappearingMode == nil && messageContextInfo.GetExternalAdReply() == nil{
+		return
+	}
+
+	if messageContextInfo.GetExternalAdReply() != nil {
+		part.Content.MsgType = event.MsgNotice
+		adUrl := ""
+
+		if messageContextInfo.GetExternalAdReply().GetSourceURL() != "" {
+			adUrl = messageContextInfo.GetExternalAdReply().GetSourceURL()
+		}
+
+		status_part = &bridgev2.ConvertedMessagePart{
+			Type: event.EventMessage,
+			Content: &event.MessageEventContent{
+				MsgType: event.MsgText,
+				Body: adUrl,
+			},
+		}
+		return
+	}
+
+	quotedMessage := messageContextInfo.GetQuotedMessage()
 
 	if quotedMessage.GetExtendedTextMessage() != nil {
 		part.Content.MsgType = event.MsgNotice

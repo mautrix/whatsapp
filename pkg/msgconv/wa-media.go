@@ -57,10 +57,6 @@ func (mc *MessageConverter) convertMediaMessage(
 	status_part *bridgev2.ConvertedMessagePart,
 	contextInfo *waE2E.ContextInfo,
 ) {
-	log := zerolog.Ctx(ctx)
-
-	log.Error().Any("msg: %w", msg).Msg("Message ----->")
-	log.Error().Any("messageInfo: %w", messageInfo).Msg("Message ----->")
 	if mc.DisableViewOnce && isViewOnce {
 		return &bridgev2.ConvertedMessagePart{
 			Type: event.EventMessage,
@@ -119,7 +115,7 @@ func (mc *MessageConverter) convertMediaMessage(
 			Extra:   preparedMedia.Extra,
 		}
 
-		if msg.GetContextInfo().QuotedMessage != nil {
+		if msg.GetContextInfo() != nil && msg.GetContextInfo().QuotedMessage != nil {
 			status_part = mc.convertExtendedStatusMessage(ctx, messageInfo, msg.GetContextInfo().QuotedMessage)
 		}
 	}
@@ -138,17 +134,9 @@ func (mc *MessageConverter) convertExtendedStatusMessage(
 		return
 	}
 
-	log := zerolog.Ctx(ctx)
-
-	log.Error().Any("preparedMedia: %w", preparedMedia).Msg("preparedMedia ----->")
-
 	var content *event.MessageEventContent
 
 	if preparedMedia.MsgType == event.MsgText {
-
-		log.Error().Any("preparedMedia.FormattedBody: %w", preparedMedia.FormattedBody).Msg("preparedMedia.FormattedBody ----->")
-		log.Error().Any("preparedMedia.MsgType: %w", preparedMedia.MsgType).Msg("preparedMedia.MsgType ----->")
-
 		content = preparedMedia.MessageEventContent
 	} else {
 		content = &event.MessageEventContent{
@@ -179,10 +167,6 @@ func (mc *MessageConverter) getMediaTypeData(
 	var fileName string
 
 
-	log := zerolog.Ctx(ctx)
-
-	log.Error().Any("quotedMessage: %w", quotedMessage).Msg("quotedMessage ----->")
-	log.Error().Any("quotedMessage.GetExtendedTextMessage(): %w", quotedMessage.GetExtendedTextMessage()).Msg("quotedMessage.GetExtendedTextMessage() ----->")
 	switch {
 	case quotedMessage.GetImageMessage() != nil:
 		mediaMessage = quotedMessage.GetImageMessage()

@@ -103,14 +103,9 @@ func (mc *MessageConverter) ToMatrix(
 	isViewOnce bool,
 	previouslyConvertedPart *bridgev2.ConvertedMessagePart,
 ) *bridgev2.ConvertedMessage {
-	log := zerolog.Ctx(ctx)
-
 	ctx = context.WithValue(ctx, contextKeyClient, client)
 	ctx = context.WithValue(ctx, contextKeyIntent, intent)
 	ctx = context.WithValue(ctx, contextKeyPortal, portal)
-
-	log.Error().Any("waMsg: %w", waMsg).Msg("---------->waMsg")
-
 
 	var part *bridgev2.ConvertedMessagePart
 	var status_part *bridgev2.ConvertedMessagePart
