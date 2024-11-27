@@ -206,7 +206,6 @@ func (mc *MessageConverter) getMediaTypeData(
 
 	if err := mc.reuploadWhatsAppAttachment(ctx, mediaMessage, preparedMedia); err != nil {
 		panic(fmt.Errorf("failed to generate content URI: %w", err))
-		return nil
 	}
 
 	return preparedMedia
