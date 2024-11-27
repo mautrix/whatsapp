@@ -48,7 +48,7 @@ type Config struct {
 	DisableViewOnce             bool          `yaml:"disable_view_once"`
 	ForceActiveDeliveryReceipts bool          `yaml:"force_active_delivery_receipts"`
 	DirectMediaAutoRequest      bool          `yaml:"direct_media_auto_request"`
-	BridgeNotices               bool		  `yaml:"bridge_notices"`
+	BridgeNotices               bool          `yaml:"bridge_notices"`
 
 	AnimatedSticker msgconv.AnimatedStickerConfig `yaml:"animated_sticker"`
 

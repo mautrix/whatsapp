@@ -60,19 +60,18 @@ func (mc *MessageConverter) convertExtendedMessage(
 
 	messageContextInfo := msg.GetExtendedTextMessage().ContextInfo
 
-
 	part = &bridgev2.ConvertedMessagePart{
 		Type: event.EventMessage,
 		Content: &event.MessageEventContent{
 			MsgType: event.MsgText,
-			Body: msg.ExtendedTextMessage.GetText(),
+			Body:    msg.ExtendedTextMessage.GetText(),
 		},
 	}
 	mc.parseFormatting(part.Content, false, false)
 	part.Content.BeeperLinkPreviews = mc.convertURLPreviewToBeeper(ctx, msg.ExtendedTextMessage)
 	contextInfo = msg.ExtendedTextMessage.GetContextInfo()
 
-	if messageContextInfo.RemoteJID == nil && messageContextInfo.DisappearingMode == nil && messageContextInfo.GetExternalAdReply() == nil{
+	if messageContextInfo.RemoteJID == nil && messageContextInfo.DisappearingMode == nil && messageContextInfo.GetExternalAdReply() == nil {
 		return
 	}
 
@@ -88,7 +87,7 @@ func (mc *MessageConverter) convertExtendedMessage(
 			Type: event.EventMessage,
 			Content: &event.MessageEventContent{
 				MsgType: event.MsgText,
-				Body: adUrl,
+				Body:    adUrl,
 			},
 		}
 		return

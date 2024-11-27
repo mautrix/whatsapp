@@ -130,7 +130,7 @@ func (mc *MessageConverter) convertExtendedStatusMessage(
 
 	preparedMedia := mc.getMediaTypeData(ctx, quotedMessage)
 
-	if  preparedMedia == nil {
+	if preparedMedia == nil {
 		return
 	}
 
@@ -141,13 +141,13 @@ func (mc *MessageConverter) convertExtendedStatusMessage(
 	} else {
 		content = &event.MessageEventContent{
 			MsgType: preparedMedia.MsgType,
-			URL: preparedMedia.URL,
-			Body: preparedMedia.FileName,
+			URL:     preparedMedia.URL,
+			Body:    preparedMedia.FileName,
 		}
 	}
 
 	status_part = &bridgev2.ConvertedMessagePart{
-		Type: event.EventMessage,
+		Type:    event.EventMessage,
 		Content: content,
 	}
 
@@ -165,7 +165,6 @@ func (mc *MessageConverter) getMediaTypeData(
 	var textMessage string
 	var msgType event.MessageType
 	var fileName string
-
 
 	switch {
 	case quotedMessage.GetImageMessage() != nil:
@@ -187,7 +186,8 @@ func (mc *MessageConverter) getMediaTypeData(
 		textMessage = quotedMessage.GetExtendedTextMessage().GetText()
 		msgType = event.MsgText
 
-	default: return nil
+	default:
+		return nil
 	}
 
 	if msgType == event.MsgText {
@@ -195,7 +195,7 @@ func (mc *MessageConverter) getMediaTypeData(
 			Type: event.EventMessage,
 			MessageEventContent: &event.MessageEventContent{
 				MsgType: msgType,
-				Body: textMessage,
+				Body:    textMessage,
 			},
 		}
 	}
