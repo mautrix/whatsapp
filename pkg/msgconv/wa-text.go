@@ -25,6 +25,8 @@ import (
 	"strings"
 
 	"go.mau.fi/whatsmeow/proto/waE2E"
+	"go.mau.fi/whatsmeow/types"
+
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/event"
 )
@@ -43,6 +45,68 @@ func (mc *MessageConverter) convertTextMessage(ctx context.Context, msg *waE2E.M
 	contextInfo = msg.GetExtendedTextMessage().GetContextInfo()
 	mc.parseFormatting(part.Content, false, false)
 	part.Content.BeeperLinkPreviews = mc.convertURLPreviewToBeeper(ctx, msg.GetExtendedTextMessage())
+	return
+}
+
+func (mc *MessageConverter) convertExtendedMessage(
+	ctx context.Context,
+	info *types.MessageInfo,
+	msg *waE2E.Message,
+) (
+	part *bridgev2.ConvertedMessagePart,
+	status_part *bridgev2.ConvertedMessagePart,
+	contextInfo *waE2E.ContextInfo,
+) {
+
+	messageContextInfo := msg.GetExtendedTextMessage().ContextInfo
+
+	part = &bridgev2.ConvertedMessagePart{
+		Type: event.EventMessage,
+		Content: &event.MessageEventContent{
+			MsgType: event.MsgText,
+			Body:    msg.ExtendedTextMessage.GetText(),
+		},
+	}
+	mc.parseFormatting(part.Content, false, false)
+	part.Content.BeeperLinkPreviews = mc.convertURLPreviewToBeeper(ctx, msg.ExtendedTextMessage)
+	contextInfo = msg.ExtendedTextMessage.GetContextInfo()
+
+	if messageContextInfo.RemoteJID == nil && messageContextInfo.DisappearingMode == nil && messageContextInfo.GetExternalAdReply() == nil {
+		return
+	}
+
+	if messageContextInfo.GetExternalAdReply() != nil {
+		part.Content.MsgType = event.MsgNotice
+		adUrl := ""
+
+		if messageContextInfo.GetExternalAdReply().GetSourceURL() != "" {
+			adUrl = messageContextInfo.GetExternalAdReply().GetSourceURL()
+		}
+
+		status_part = &bridgev2.ConvertedMessagePart{
+			Type: event.EventMessage,
+			Content: &event.MessageEventContent{
+				MsgType: event.MsgText,
+				Body:    adUrl,
+			},
+		}
+		return
+	}
+
+	quotedMessage := messageContextInfo.GetQuotedMessage()
+
+	if quotedMessage.GetExtendedTextMessage() != nil {
+		part.Content.MsgType = event.MsgNotice
+		status_part = mc.convertExtendedStatusMessage(ctx, info, quotedMessage)
+		return
+	}
+
+	if quotedMessage.GetVideoMessage() == nil && quotedMessage.GetImageMessage() == nil && quotedMessage.GetAudioMessage() == nil {
+		return
+	}
+
+	part.Content.MsgType = event.MsgNotice
+	status_part = mc.convertExtendedStatusMessage(ctx, info, quotedMessage)
 	return
 }
 

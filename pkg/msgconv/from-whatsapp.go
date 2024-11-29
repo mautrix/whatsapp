@@ -24,7 +24,6 @@ import (
 	_ "image/jpeg"
 	_ "image/png"
 	"strings"
-	"time"
 
 	"github.com/rs/zerolog"
 	"go.mau.fi/whatsmeow"
@@ -32,7 +31,6 @@ import (
 	"go.mau.fi/whatsmeow/types"
 	_ "golang.org/x/image/webp"
 	"maunium.net/go/mautrix/bridgev2"
-	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
@@ -108,11 +106,15 @@ func (mc *MessageConverter) ToMatrix(
 	ctx = context.WithValue(ctx, contextKeyClient, client)
 	ctx = context.WithValue(ctx, contextKeyIntent, intent)
 	ctx = context.WithValue(ctx, contextKeyPortal, portal)
+
 	var part *bridgev2.ConvertedMessagePart
+	var status_part *bridgev2.ConvertedMessagePart
 	var contextInfo *waE2E.ContextInfo
 	switch {
-	case waMsg.Conversation != nil, waMsg.ExtendedTextMessage != nil:
+	case waMsg.Conversation != nil:
 		part, contextInfo = mc.convertTextMessage(ctx, waMsg)
+	case waMsg.ExtendedTextMessage != nil:
+		part, status_part, contextInfo = mc.convertExtendedMessage(ctx, info, waMsg)
 	case waMsg.TemplateMessage != nil:
 		part, contextInfo = mc.convertTemplateMessage(ctx, info, waMsg.TemplateMessage)
 	case waMsg.HighlyStructuredMessage != nil:
@@ -134,21 +136,21 @@ func (mc *MessageConverter) ToMatrix(
 	case waMsg.EventMessage != nil:
 		part, contextInfo = mc.convertEventMessage(ctx, waMsg.EventMessage)
 	case waMsg.ImageMessage != nil:
-		part, contextInfo = mc.convertMediaMessage(ctx, waMsg.ImageMessage, "photo", info, isViewOnce, previouslyConvertedPart)
+		part, status_part, contextInfo = mc.convertMediaMessage(ctx, waMsg.ImageMessage, "photo", info, isViewOnce, previouslyConvertedPart)
 	case waMsg.StickerMessage != nil:
-		part, contextInfo = mc.convertMediaMessage(ctx, waMsg.StickerMessage, "sticker", info, isViewOnce, previouslyConvertedPart)
+		part, status_part, contextInfo = mc.convertMediaMessage(ctx, waMsg.StickerMessage, "sticker", info, isViewOnce, previouslyConvertedPart)
 	case waMsg.VideoMessage != nil:
-		part, contextInfo = mc.convertMediaMessage(ctx, waMsg.VideoMessage, "video attachment", info, isViewOnce, previouslyConvertedPart)
+		part, status_part, contextInfo = mc.convertMediaMessage(ctx, waMsg.VideoMessage, "video attachment", info, isViewOnce, previouslyConvertedPart)
 	case waMsg.PtvMessage != nil:
-		part, contextInfo = mc.convertMediaMessage(ctx, waMsg.PtvMessage, "video message", info, isViewOnce, previouslyConvertedPart)
+		part, status_part, contextInfo = mc.convertMediaMessage(ctx, waMsg.PtvMessage, "video message", info, isViewOnce, previouslyConvertedPart)
 	case waMsg.AudioMessage != nil:
 		typeName := "audio attachment"
 		if waMsg.AudioMessage.GetPTT() {
 			typeName = "voice message"
 		}
-		part, contextInfo = mc.convertMediaMessage(ctx, waMsg.AudioMessage, typeName, info, isViewOnce, previouslyConvertedPart)
+		part, status_part, contextInfo = mc.convertMediaMessage(ctx, waMsg.AudioMessage, typeName, info, isViewOnce, previouslyConvertedPart)
 	case waMsg.DocumentMessage != nil:
-		part, contextInfo = mc.convertMediaMessage(ctx, waMsg.DocumentMessage, "file attachment", info, isViewOnce, previouslyConvertedPart)
+		part, status_part, contextInfo = mc.convertMediaMessage(ctx, waMsg.DocumentMessage, "file attachment", info, isViewOnce, previouslyConvertedPart)
 	case waMsg.LocationMessage != nil:
 		part, contextInfo = mc.convertLocationMessage(ctx, waMsg.LocationMessage)
 	case waMsg.LiveLocationMessage != nil:
@@ -162,7 +164,7 @@ func (mc *MessageConverter) ToMatrix(
 	case waMsg.GroupInviteMessage != nil:
 		part, contextInfo = mc.convertGroupInviteMessage(ctx, info, waMsg.GroupInviteMessage)
 	case waMsg.ProtocolMessage != nil && waMsg.ProtocolMessage.GetType() == waE2E.ProtocolMessage_EPHEMERAL_SETTING:
-		part, contextInfo = mc.convertEphemeralSettingMessage(ctx, waMsg.ProtocolMessage)
+		return nil
 	default:
 		part, contextInfo = mc.convertUnknownMessage(ctx, waMsg)
 	}
@@ -182,17 +184,16 @@ func (mc *MessageConverter) ToMatrix(
 	}
 	mc.addMentions(ctx, contextInfo.GetMentionedJID(), part.Content)
 
+	parts_to_send := []*bridgev2.ConvertedMessagePart{part}
+	if status_part != nil {
+		parts_to_send = append([]*bridgev2.ConvertedMessagePart{status_part}, parts_to_send...)
+	}
+
 	cm := &bridgev2.ConvertedMessage{
-		Parts: []*bridgev2.ConvertedMessagePart{part},
+		Parts: parts_to_send,
 	}
-	if contextInfo.GetExpiration() > 0 {
-		cm.Disappear.Timer = time.Duration(contextInfo.GetExpiration()) * time.Second
-		cm.Disappear.Type = database.DisappearingTypeAfterRead
-		if portal.Disappear.Timer != cm.Disappear.Timer && portal.Metadata.(*waid.PortalMetadata).DisappearingTimerSetAt < contextInfo.GetEphemeralSettingTimestamp() {
-			portal.UpdateDisappearingSetting(ctx, cm.Disappear, intent, info.Timestamp, true, true)
-		}
-	}
-	if contextInfo.GetStanzaID() != "" {
+
+	if contextInfo.GetStanzaID() != "" && status_part == nil {
 		pcp, _ := types.ParseJID(contextInfo.GetParticipant())
 		chat, _ := types.ParseJID(contextInfo.GetRemoteJID())
 		if chat.IsEmpty() {

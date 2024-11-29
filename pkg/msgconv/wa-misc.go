@@ -31,7 +31,6 @@ import (
 	"go.mau.fi/whatsmeow/types"
 	"google.golang.org/protobuf/proto"
 	"maunium.net/go/mautrix/bridgev2"
-	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/format"
 
@@ -112,35 +111,6 @@ func (mc *MessageConverter) convertGroupInviteMessage(ctx context.Context, info 
 			GroupInvite: inviteMeta,
 		},
 	}, msg.GetContextInfo()
-}
-
-func (mc *MessageConverter) convertEphemeralSettingMessage(ctx context.Context, msg *waE2E.ProtocolMessage) (*bridgev2.ConvertedMessagePart, *waE2E.ContextInfo) {
-	portal := getPortal(ctx)
-	portalMeta := portal.Metadata.(*waid.PortalMetadata)
-	disappear := database.DisappearingSetting{
-		Type:  database.DisappearingTypeAfterRead,
-		Timer: time.Duration(msg.GetEphemeralExpiration()) * time.Second,
-	}
-	if disappear.Timer == 0 {
-		disappear.Type = ""
-	}
-	dontBridge := portal.Disappear == disappear
-	content := bridgev2.DisappearingMessageNotice(disappear.Timer, false)
-	if msg.EphemeralSettingTimestamp == nil || portalMeta.DisappearingTimerSetAt < msg.GetEphemeralSettingTimestamp() {
-		portal.Disappear = disappear
-		portalMeta.DisappearingTimerSetAt = msg.GetEphemeralSettingTimestamp()
-		err := portal.Save(ctx)
-		if err != nil {
-			zerolog.Ctx(ctx).Err(err).Msg("Failed to save portal after updating expiration timer")
-		}
-	} else {
-		content.Body += ", but the change was ignored."
-	}
-	return &bridgev2.ConvertedMessagePart{
-		Type:       event.EventMessage,
-		Content:    content,
-		DontBridge: dontBridge,
-	}, nil
 }
 
 const eventMessageTemplate = `

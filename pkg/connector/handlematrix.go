@@ -66,6 +66,7 @@ func (wa *WhatsAppClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2
 
 var ErrBroadcastSendDisabled = bridgev2.WrapErrorInStatus(errors.New("sending status messages is disabled")).WithErrorAsMessage().WithIsCertain(true).WithSendNotice(true).WithErrorReason(event.MessageStatusUnsupported)
 var ErrBroadcastReactionUnsupported = bridgev2.WrapErrorInStatus(errors.New("reacting to status messages is not currently supported")).WithErrorAsMessage().WithIsCertain(true).WithSendNotice(true).WithErrorReason(event.MessageStatusUnsupported)
+var ErrMNoticeDisabled = bridgev2.WrapErrorInStatus(errors.New("bridging m.notice messages is disabled")).WithErrorAsMessage().WithIsCertain(true).WithSendNotice(false).WithErrorReason(event.MessageStatusUnsupported)
 
 func (wa *WhatsAppClient) handleConvertedMatrixMessage(ctx context.Context, msg *bridgev2.MatrixMessage, waMsg *waE2E.Message) (*bridgev2.MatrixMessageResponse, error) {
 	messageID := wa.Client.GenerateMessageID()
@@ -78,6 +79,11 @@ func (wa *WhatsAppClient) handleConvertedMatrixMessage(ctx context.Context, msg 
 	}
 	wrappedMsgID := waid.MakeMessageID(chatJID, wa.JID, messageID)
 	msg.AddPendingToIgnore(networkid.TransactionID(wrappedMsgID))
+
+	if msg.Content.MsgType == event.MsgNotice && !wa.Main.Config.BridgeNotices {
+		return nil, ErrMNoticeDisabled
+	}
+
 	resp, err := wa.Client.SendMessage(ctx, chatJID, waMsg, whatsmeow.SendRequestExtra{
 		ID: messageID,
 	})

@@ -26,8 +26,10 @@ func getMessageType(waMsg *waE2E.Message) string {
 	switch {
 	case waMsg == nil:
 		return "ignore"
-	case waMsg.Conversation != nil, waMsg.ExtendedTextMessage != nil:
+	case waMsg.Conversation != nil:
 		return "text"
+	case waMsg.ExtendedTextMessage != nil:
+		return "extended text"
 	case waMsg.ImageMessage != nil:
 		return fmt.Sprintf("image %s", waMsg.GetImageMessage().GetMimetype())
 	case waMsg.StickerMessage != nil:
