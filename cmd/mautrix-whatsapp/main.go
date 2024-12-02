@@ -23,7 +23,7 @@ var m = mxmain.BridgeMain{
 	Name:        "mautrix-whatsapp",
 	URL:         "https://github.com/mautrix/whatsapp",
 	Description: "A Matrix-WhatsApp puppeting bridge.",
-	Version:     "0.11.0",
+	Version:     "0.11.1",
 	Connector:   c,
 }
 
@@ -45,7 +45,7 @@ func main() {
 		if m.Matrix.Provisioning != nil {
 			m.Matrix.Provisioning.Router.HandleFunc("/v1/login", legacyProvLogin).Methods(http.MethodGet)
 			m.Matrix.Provisioning.Router.HandleFunc("/v1/logout", legacyProvLogout).Methods(http.MethodPost)
-			m.Matrix.Provisioning.Router.HandleFunc("/v1/contacts", legacyProvContacts).Methods(http.MethodPost)
+			m.Matrix.Provisioning.Router.HandleFunc("/v1/contacts", legacyProvContacts).Methods(http.MethodGet)
 			m.Matrix.Provisioning.Router.HandleFunc("/v1/resolve_identifier/{number}", legacyProvResolveIdentifier).Methods(http.MethodGet)
 			m.Matrix.Provisioning.Router.HandleFunc("/v1/pm/{number}", legacyProvResolveIdentifier).Methods(http.MethodPost)
 			m.Matrix.Provisioning.Router.HandleFunc("/v1/ping", legacyProvPing).Methods(http.MethodGet)

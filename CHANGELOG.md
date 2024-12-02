@@ -1,4 +1,16 @@
-# v0.11.0 (unreleased)
+# v0.11.1 (2024-11-16)
+
+* Added experimental support for direct media. This is not recommended for most
+  users, as WhatsApp media is generally low volume and isn't stored permanently
+  on the server.
+* Re-added support for disabling status broadcasts.
+* Re-added config options for which tag to use for archive/pinned chat bridging.
+* Fixed own reactions sent from other clients in DMs not being bridged correctly.
+* Fixed some bugs with legacy database migration.
+* Fixed group chats not being bridged during initial login if the bridge hits
+  ratelimits.
+
+# v0.11.0 (2024-10-16)
 
 * Bumped minimum Go version to 1.22.
 * Dropped support for unauthenticated media on Matrix.

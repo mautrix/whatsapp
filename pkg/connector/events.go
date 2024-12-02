@@ -251,6 +251,7 @@ func (evt *WANowDecryptableMessage) GetType() bridgev2.RemoteEventType {
 
 type WAUndecryptableMessage struct {
 	*MessageInfoWrapper
+	Type events.UnavailableType
 }
 
 var (
@@ -283,10 +284,17 @@ func (evt *WAUndecryptableMessage) ConvertMessage(ctx context.Context, portal *b
 		broadcastListJID = &evt.Info.Chat
 		extra["fi.mau.whatsapp.source_broadcast_list"] = evt.Info.Chat.String()
 	}
+	content := &undecryptableMessageContent
+	if evt.Type == events.UnavailableTypeViewOnce {
+		content = &event.MessageEventContent{
+			MsgType: event.MsgNotice,
+			Body:    "You received a view once message. For added privacy, you can only open it on the WhatsApp app.",
+		}
+	}
 	return &bridgev2.ConvertedMessage{
 		Parts: []*bridgev2.ConvertedMessagePart{{
 			Type:    event.EventMessage,
-			Content: &undecryptableMessageContent,
+			Content: content,
 			Extra:   extra,
 			DBMetadata: &waid.MessageMetadata{
 				SenderDeviceID:   evt.Info.Sender.Device,

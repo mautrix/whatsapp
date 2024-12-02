@@ -23,9 +23,8 @@ displayname_template: "{{or .BusinessName .PushName .Phone}} (WA)"
 call_start_notices: true
 # Should another user's cryptographic identity changing send a message to Matrix?
 identity_change_notices: false
-# Send the presence as "available" to whatsapp when users start typing on a portal.
-# This works as a workaround for homeservers that do not support presence, and allows
-# users to see when the whatsapp user on the other side is typing during a conversation.
+# Should the bridge mark you as online on WhatsApp when you send typing notifications?
+# Full presence bridging is not supported.
 send_presence_on_typing: false
 # Should WhatsApp status messages be bridged into a Matrix room?
 enable_status_broadcast: true
