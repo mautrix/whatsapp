@@ -148,21 +148,27 @@ func (wa *WhatsAppClient) IsThisUser(_ context.Context, userID networkid.UserID)
 	return userID == waid.MakeUserID(wa.JID)
 }
 
-func (wa *WhatsAppClient) Connect(ctx context.Context) error {
+func (wa *WhatsAppClient) Connect(ctx context.Context) {
 	if wa.Client == nil {
 		state := status.BridgeState{
 			StateEvent: status.StateBadCredentials,
 			Error:      WANotLoggedIn,
 		}
 		wa.UserLogin.BridgeState.Send(state)
-		return nil
+		return
 	}
 	wa.Main.firstClientConnectOnce.Do(wa.Main.onFirstClientConnect)
 	if err := wa.Main.updateProxy(ctx, wa.Client, false); err != nil {
 		zerolog.Ctx(ctx).Err(err).Msg("Failed to update proxy")
 	}
 	wa.startLoops()
-	return wa.Client.Connect()
+	if err := wa.Client.Connect(); err != nil {
+		state := status.BridgeState{
+			StateEvent: status.StateUnknownError,
+			Error:      WAConnectionFailed,
+		}
+		wa.UserLogin.BridgeState.Send(state)
+	}
 }
 
 func (wa *WhatsAppClient) startLoops() {
