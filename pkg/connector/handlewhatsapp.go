@@ -274,6 +274,7 @@ func (wa *WhatsAppClient) handleWAUndecryptableMessage(evt *events.Undecryptable
 			Info: evt.Info,
 			wa:   wa,
 		},
+		Type: evt.UnavailableType,
 	})
 }
 
