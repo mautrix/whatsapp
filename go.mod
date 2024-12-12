@@ -48,5 +48,5 @@ require (
 	maunium.net/go/mauflag v1.0.0 // indirect
 )
 
-// Descoment this line to use the local version of golib
+// Remove this line to use the local version of golib
 //replace maunium.net/go/mautrix => ./golib
