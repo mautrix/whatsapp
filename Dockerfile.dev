@@ -10,7 +10,6 @@ RUN ./build.sh
 ENV UID=1337 \
     GID=1337
 
-COPY ./mautrix-whatsapp /usr/bin/mautrix-whatsapp
 COPY ./docker-run.sh /docker-run.sh
 
 RUN go install github.com/mitranim/gow@latest
