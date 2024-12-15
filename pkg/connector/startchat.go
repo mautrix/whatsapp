@@ -25,6 +25,7 @@ import (
 	"go.mau.fi/whatsmeow/types"
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/bridgev2"
+	"maunium.net/go/mautrix/bridgev2/networkid"
 
 	"go.mau.fi/mautrix-whatsapp/pkg/waid"
 )
@@ -33,6 +34,8 @@ var (
 	_ bridgev2.IdentifierResolvingNetworkAPI = (*WhatsAppClient)(nil)
 	_ bridgev2.ContactListingNetworkAPI      = (*WhatsAppClient)(nil)
 	_ bridgev2.UserSearchingNetworkAPI       = (*WhatsAppClient)(nil)
+	_ bridgev2.GhostDMCreatingNetworkAPI     = (*WhatsAppClient)(nil)
+	_ bridgev2.IdentifierValidatingNetwork   = (*WhatsAppConnector)(nil)
 )
 
 var (
@@ -67,6 +70,31 @@ func (wa *WhatsAppClient) validateIdentifer(number string) (types.JID, error) {
 	} else {
 		return resp[0].JID, nil
 	}
+}
+
+func isOnlyNumbers(user string) bool {
+	for _, char := range user {
+		if char < '0' || char > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+func (wa *WhatsAppConnector) ValidateUserID(id networkid.UserID) bool {
+	jid := waid.ParseUserID(id)
+	switch jid.Server {
+	case types.DefaultUserServer:
+		return len(jid.User) <= 13 && (jid.User == "0" || len(jid.User) >= 7) && isOnlyNumbers(jid.User)
+	case types.HiddenUserServer:
+		return true
+	default:
+		return false
+	}
+}
+
+func (wa *WhatsAppClient) CreateChatWithGhost(ctx context.Context, ghost *bridgev2.Ghost) (*bridgev2.CreateChatResponse, error) {
+	return &bridgev2.CreateChatResponse{PortalKey: wa.makeWAPortalKey(waid.ParseUserID(ghost.ID))}, nil
 }
 
 func (wa *WhatsAppClient) ResolveIdentifier(ctx context.Context, identifier string, startChat bool) (*bridgev2.ResolveIdentifierResponse, error) {
