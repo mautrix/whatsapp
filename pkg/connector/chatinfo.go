@@ -286,23 +286,35 @@ func (wa *WhatsAppClient) wrapGroupInfoChange(evt *events.GroupInfo) *bridgev2.C
 			MemberMap: make(map[networkid.UserID]bridgev2.ChatMember),
 		}
 		for _, userID := range evt.Join {
+			if userID.Server != types.DefaultUserServer {
+				continue
+			}
 			memberChanges.MemberMap[waid.MakeUserID(userID)] = bridgev2.ChatMember{
 				EventSender: wa.makeEventSender(userID),
 			}
 		}
 		for _, userID := range evt.Promote {
+			if userID.Server != types.DefaultUserServer {
+				continue
+			}
 			memberChanges.MemberMap[waid.MakeUserID(userID)] = bridgev2.ChatMember{
 				EventSender: wa.makeEventSender(userID),
 				PowerLevel:  ptr.Ptr(adminPL),
 			}
 		}
 		for _, userID := range evt.Demote {
+			if userID.Server != types.DefaultUserServer {
+				continue
+			}
 			memberChanges.MemberMap[waid.MakeUserID(userID)] = bridgev2.ChatMember{
 				EventSender: wa.makeEventSender(userID),
 				PowerLevel:  ptr.Ptr(defaultPL),
 			}
 		}
 		for _, userID := range evt.Leave {
+			if userID.Server != types.DefaultUserServer {
+				continue
+			}
 			memberChanges.MemberMap[waid.MakeUserID(userID)] = bridgev2.ChatMember{
 				EventSender: wa.makeEventSender(userID),
 				Membership:  event.MembershipLeave,
