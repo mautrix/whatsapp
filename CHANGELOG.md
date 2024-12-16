@@ -1,3 +1,10 @@
+# v0.11.2 (2024-12-16)
+
+* Added better notice when view-once messages are unavailable.
+* Fixed some cases of `@lid` user IDs being bridged incorrectly.
+* Fixed starting chats by inviting Matrix ghosts.
+* Updated Docker image to Alpine 3.21.
+
 # v0.11.1 (2024-11-16)
 
 * Added experimental support for direct media. This is not recommended for most
