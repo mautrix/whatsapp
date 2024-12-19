@@ -502,25 +502,29 @@ func parseGeoURI(uri string) (lat, long float64, err error) {
 	return
 }
 
-func getAudioInfo(content *event.MessageEventContent) (output []byte, Duration uint32) {
+func getAudioInfo(content *event.MessageEventContent) (output []byte, duration uint32) {
+	duration = uint32(content.Info.Duration / 1000)
 	audioInfo := content.MSC1767Audio
 	if audioInfo == nil {
-		return nil, uint32(content.Info.Duration / 1000)
+		return
+	}
+	if duration == 0 && audioInfo.Duration != 0 {
+		duration = uint32(audioInfo.Duration / 1000)
 	}
 	waveform := audioInfo.Waveform
 	if len(waveform) == 0 {
-		return nil, uint32(audioInfo.Duration / 1000)
+		return
 	}
 
 	maxVal := slices.Max(waveform)
 	output = make([]byte, len(waveform))
-	if maxVal < 256 {
+	if maxVal <= 256 {
 		for i, part := range waveform {
-			output[i] = byte(part)
+			output[i] = byte(min(part, 255))
 		}
 	} else {
 		for i, part := range waveform {
-			output[i] = min(byte(part/4), 255)
+			output[i] = byte(min(part/4, 255))
 		}
 	}
 	return
