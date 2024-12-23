@@ -376,7 +376,7 @@ func (mc *MessageConverter) convertToWebP(img []byte) ([]byte, error) {
 func (mc *MessageConverter) reuploadFileToWhatsApp(
 	ctx context.Context, content *event.MessageEventContent,
 ) (*whatsmeow.UploadResponse, []byte, string, error) {
-	mime := content.Info.MimeType
+	mime := content.GetInfo().MimeType
 	fileName := content.Body
 	if content.FileName != "" {
 		fileName = content.FileName
