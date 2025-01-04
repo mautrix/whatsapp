@@ -61,12 +61,13 @@ func (wa *WhatsAppConnector) SetMaxFileSize(maxSize int64) {
 
 func (wa *WhatsAppConnector) GetName() bridgev2.BridgeName {
 	return bridgev2.BridgeName{
-		DisplayName:      "WhatsApp",
-		NetworkURL:       "https://whatsapp.com",
-		NetworkIcon:      "mxc://maunium.net/NeXNQarUbrlYBiPCpprYsRqr",
-		NetworkID:        "whatsapp",
-		BeeperBridgeType: "whatsapp",
-		DefaultPort:      29318,
+		DisplayName:          "WhatsApp",
+		NetworkURL:           "https://whatsapp.com",
+		NetworkIcon:          "mxc://maunium.net/NeXNQarUbrlYBiPCpprYsRqr",
+		NetworkID:            "whatsapp",
+		BeeperBridgeType:     "whatsapp",
+		DefaultPort:          29318,
+		DefaultCommandPrefix: "!wa",
 	}
 }
 
