@@ -5,7 +5,7 @@
 !example-config.yaml
 
 *.json
-*.db
+*.db*
 *.log
 *.bak
 
