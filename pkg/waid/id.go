@@ -36,15 +36,30 @@ func ParsePortalID(portal networkid.PortalID) (types.JID, error) {
 	return parsed, nil
 }
 
+const LIDPrefix = "lid-"
+
 func MakeUserID(user types.JID) networkid.UserID {
-	return networkid.UserID(user.User)
+	switch user.Server {
+	case types.DefaultUserServer:
+		return networkid.UserID(user.User)
+	case types.HiddenUserServer:
+		return networkid.UserID(LIDPrefix + user.User)
+	default:
+		return ""
+	}
 }
 
 func ParseUserID(user networkid.UserID) types.JID {
+	if strings.HasPrefix(string(user), LIDPrefix) {
+		return types.NewJID(strings.TrimPrefix(string(user), LIDPrefix), types.HiddenUserServer)
+	}
 	return types.NewJID(string(user), types.DefaultUserServer)
 }
 
 func MakeUserLoginID(user types.JID) networkid.UserLoginID {
+	if user.Server != types.DefaultUserServer {
+		return ""
+	}
 	return networkid.UserLoginID(user.User)
 }
 
