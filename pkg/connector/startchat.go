@@ -130,6 +130,9 @@ func matchesQuery(str string, query string) bool {
 }
 
 func (wa *WhatsAppClient) getContactList(ctx context.Context, filter string) ([]*bridgev2.ResolveIdentifierResponse, error) {
+	if !wa.IsLoggedIn() {
+		return nil, mautrix.MForbidden.WithMessage("You must be logged in to list contacts")
+	}
 	contacts, err := wa.Client.Store.Contacts.GetAllContacts()
 	if err != nil {
 		return nil, err
