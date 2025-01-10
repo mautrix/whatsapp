@@ -4,6 +4,10 @@ import (
 	"context"
 	"time"
 
+	"go.mau.fi/util/ffmpeg"
+	"go.mau.fi/util/jsontime"
+	"go.mau.fi/util/ptr"
+
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/event"
 )
@@ -17,47 +21,132 @@ func (wa *WhatsAppConnector) GetCapabilities() *bridgev2.NetworkGeneralCapabilit
 	return WhatsAppGeneralCaps
 }
 
-const WAMaxFileSize = 2000 * 1024 * 1024
-const EditMaxAge = 15 * time.Minute
-
-var whatsappCaps = &bridgev2.NetworkRoomCapabilities{
-	FormattedText:    true,
-	UserMentions:     true,
-	LocationMessages: true,
-	Captions:         true,
-	Replies:          true,
-	Polls:            true,
-	Edits:            true,
-	EditMaxCount:     10,
-	EditMaxAge:       EditMaxAge,
-	Deletes:          true,
-	DeleteMaxAge:     48 * time.Hour,
-	DefaultFileRestriction: &bridgev2.FileRestriction{
-		MaxSize: WAMaxFileSize,
-	},
-	Files: map[event.MessageType]bridgev2.FileRestriction{
-		event.MsgImage: {
-			MaxSize: WAMaxFileSize,
-			// webp isn't actually allowed, but will be converted to png
-			MimeTypes: []string{"image/png", "image/jpeg", "image/webp"},
-		},
-		event.MsgAudio: {
-			MaxSize:   WAMaxFileSize,
-			MimeTypes: []string{"audio/mpeg", "audio/mp4", "audio/ogg", "audio/aac", "audio/amr"},
-		},
-		event.MsgVideo: {
-			MaxSize:   WAMaxFileSize,
-			MimeTypes: []string{"video/mp4", "video/3gpp"},
-		},
-		event.MsgFile: {
-			MaxSize: WAMaxFileSize,
-		},
-	},
-	ReadReceipts:  true,
-	Reactions:     true,
-	ReactionCount: 1,
+func (wa *WhatsAppConnector) GetBridgeInfoVersion() (info, caps int) {
+	return 1, 1
 }
 
-func (wa *WhatsAppClient) GetCapabilities(ctx context.Context, portal *bridgev2.Portal) *bridgev2.NetworkRoomCapabilities {
+const WAMaxFileSize = 2000 * 1024 * 1024
+const EditMaxAge = 15 * time.Minute
+const MaxTextLength = 65536
+
+func supportedIfFFmpeg() event.CapabilitySupportLevel {
+	if ffmpeg.Supported() {
+		return event.CapLevelPartialSupport
+	}
+	return event.CapLevelRejected
+}
+
+func capID() string {
+	base := "fi.mau.whatsapp.capabilities.2025_01_10"
+	if ffmpeg.Supported() {
+		return base + "+ffmpeg"
+	}
+	return base
+}
+
+var whatsappCaps = &event.RoomFeatures{
+	ID: capID(),
+
+	Formatting: map[event.FormattingFeature]event.CapabilitySupportLevel{
+		event.FmtBold:          event.CapLevelFullySupported,
+		event.FmtItalic:        event.CapLevelFullySupported,
+		event.FmtStrikethrough: event.CapLevelFullySupported,
+		event.FmtInlineCode:    event.CapLevelFullySupported,
+		event.FmtCodeBlock:     event.CapLevelFullySupported,
+		event.FmtUserLink:      event.CapLevelFullySupported,
+		event.FmtUnorderedList: event.CapLevelFullySupported,
+		event.FmtOrderedList:   event.CapLevelFullySupported,
+		event.FmtListStart:     event.CapLevelFullySupported,
+		event.FmtBlockquote:    event.CapLevelFullySupported,
+
+		event.FmtInlineLink: event.CapLevelPartialSupport,
+		event.FmtHeaders:    event.CapLevelPartialSupport,
+	},
+	File: map[event.CapabilityMsgType]*event.FileFeatures{
+		event.MsgImage: {
+			MimeTypes: map[string]event.CapabilitySupportLevel{
+				"image/png":  event.CapLevelFullySupported,
+				"image/jpeg": event.CapLevelFullySupported,
+				"image/webp": event.CapLevelPartialSupport,
+				"image/gif":  supportedIfFFmpeg(),
+			},
+			Caption:          event.CapLevelFullySupported,
+			MaxCaptionLength: MaxTextLength,
+			MaxSize:          WAMaxFileSize,
+		},
+		event.MsgAudio: {
+			MimeTypes: map[string]event.CapabilitySupportLevel{
+				"audio/mpeg": event.CapLevelFullySupported,
+				"audio/mp4":  event.CapLevelFullySupported,
+				"audio/ogg":  event.CapLevelFullySupported,
+				"audio/aac":  event.CapLevelFullySupported,
+				"audio/amr":  event.CapLevelFullySupported,
+			},
+			Caption: event.CapLevelDropped,
+			MaxSize: WAMaxFileSize,
+		},
+		event.CapMsgVoice: {
+			MimeTypes: map[string]event.CapabilitySupportLevel{
+				"audio/ogg; codecs=opus": event.CapLevelFullySupported,
+			},
+			Caption: event.CapLevelDropped,
+			MaxSize: WAMaxFileSize,
+		},
+		event.CapMsgSticker: {
+			MimeTypes: map[string]event.CapabilitySupportLevel{
+				"image/webp": event.CapLevelFullySupported,
+				// TODO see if sending lottie is possible
+				//"image/lottie+json": event.CapLevelFullySupported,
+				"image/png":  event.CapLevelPartialSupport,
+				"image/jpeg": event.CapLevelPartialSupport,
+			},
+			Caption: event.CapLevelDropped,
+			MaxSize: WAMaxFileSize,
+		},
+		event.CapMsgGIF: {
+			MimeTypes: map[string]event.CapabilitySupportLevel{
+				"video/mp4": event.CapLevelFullySupported,
+				"image/gif": supportedIfFFmpeg(),
+			},
+			Caption:          event.CapLevelFullySupported,
+			MaxCaptionLength: MaxTextLength,
+			MaxSize:          WAMaxFileSize,
+		},
+		event.MsgVideo: {
+			MimeTypes: map[string]event.CapabilitySupportLevel{
+				"video/mp4":  event.CapLevelFullySupported,
+				"video/3gpp": event.CapLevelFullySupported,
+				"video/webm": supportedIfFFmpeg(),
+			},
+			Caption:          event.CapLevelFullySupported,
+			MaxCaptionLength: MaxTextLength,
+			MaxSize:          WAMaxFileSize,
+		},
+		event.MsgFile: {
+			MimeTypes: map[string]event.CapabilitySupportLevel{
+				"*/*": event.CapLevelFullySupported,
+			},
+			Caption:          event.CapLevelFullySupported,
+			MaxCaptionLength: MaxTextLength,
+			MaxSize:          WAMaxFileSize,
+		},
+	},
+	MaxTextLength:       MaxTextLength,
+	LocationMessage:     event.CapLevelFullySupported,
+	Poll:                event.CapLevelFullySupported,
+	Reply:               event.CapLevelFullySupported,
+	Edit:                event.CapLevelFullySupported,
+	EditMaxCount:        10,
+	EditMaxAge:          ptr.Ptr(jsontime.S(EditMaxAge)),
+	Delete:              event.CapLevelFullySupported,
+	DeleteForMe:         false,
+	DeleteMaxAge:        ptr.Ptr(jsontime.S(2 * 24 * time.Hour)),
+	Reaction:            event.CapLevelFullySupported,
+	ReactionCount:       1,
+	ReadReceipts:        true,
+	TypingNotifications: true,
+}
+
+func (wa *WhatsAppClient) GetCapabilities(ctx context.Context, portal *bridgev2.Portal) *event.RoomFeatures {
 	return whatsappCaps
 }

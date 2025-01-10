@@ -25,6 +25,7 @@ import (
 	"image/color"
 	"image/png"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -35,7 +36,6 @@ import (
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/proto/waE2E"
 	"go.mau.fi/whatsmeow/types"
-	"golang.org/x/exp/slices"
 	"golang.org/x/image/webp"
 	"google.golang.org/protobuf/proto"
 	"maunium.net/go/mautrix/bridgev2"
@@ -190,12 +190,7 @@ func (mc *MessageConverter) constructMediaMessage(
 			},
 		}
 	case event.MsgVideo:
-		isGif := false
-		if mime == "video/mp4" && content.Info.MimeType == "image/gif" {
-			isGif = true
-		} else if rawInfo, ok := evt.Content.Raw["info"].(map[string]any); ok && rawInfo["fi.mau.gif"] == true {
-			isGif = true
-		}
+		isGIF := mime == "video/mp4" && (content.Info.MimeType == "image/gif" || content.Info.MauGIF)
 
 		width := uint32(content.Info.Width)
 		height := uint32(content.Info.Height)
@@ -203,7 +198,7 @@ func (mc *MessageConverter) constructMediaMessage(
 
 		return &waE2E.Message{
 			VideoMessage: &waE2E.VideoMessage{
-				GifPlayback: proto.Bool(isGif),
+				GifPlayback: proto.Bool(isGIF),
 				Width:       &width,
 				Height:      &height,
 				Seconds:     &seconds,
