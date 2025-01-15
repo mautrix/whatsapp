@@ -390,6 +390,7 @@ func (wa *WhatsAppClient) convertHistorySyncMessage(
 		ID:               waid.MakeMessageID(info.Chat, info.Sender, info.ID),
 		TxnID:            networkid.TransactionID(waid.MakeMessageID(info.Chat, info.Sender, info.ID)),
 		Timestamp:        info.Timestamp,
+		StreamOrder:      info.Timestamp.Unix(),
 		Reactions:        make([]*bridgev2.BackfillReaction, len(reactions)),
 	}
 	mediaReq := wa.processFailedMedia(ctx, portal.PortalKey, wrapped.ID, wrapped.ConvertedMessage, true)

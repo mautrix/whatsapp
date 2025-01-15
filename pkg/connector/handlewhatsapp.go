@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/rs/zerolog"
+	"go.mau.fi/util/ptr"
 	"go.mau.fi/whatsmeow/appstate"
 	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
@@ -145,13 +146,13 @@ func (wa *WhatsAppClient) handleWAEvent(rawEvt any) {
 		if err != nil {
 			log.Err(err).Msg("Failed to update push name in store")
 		}
-		go wa.syncGhost(wa.JID.ToNonAD(), "push name setting", "")
+		go wa.syncGhost(wa.JID.ToNonAD(), "push name setting", nil)
 	case *events.Contact:
-		go wa.syncGhost(evt.JID, "contact event", "")
+		go wa.syncGhost(evt.JID, "contact event", nil)
 	case *events.PushName:
-		go wa.syncGhost(evt.JID, "push name event", "")
+		go wa.syncGhost(evt.JID, "push name event", nil)
 	case *events.BusinessName:
-		go wa.syncGhost(evt.JID, "business name event", "")
+		go wa.syncGhost(evt.JID, "business name event", nil)
 
 	case *events.Connected:
 		log.Debug().Msg("Connected to WhatsApp socket")
@@ -180,14 +181,17 @@ func (wa *WhatsAppClient) handleWAEvent(rawEvt any) {
 		} else {
 			log.Info().Msg("Offline sync completed")
 		}
+		wa.notifyOfflineSyncWaiter(nil)
 	case *events.LoggedOut:
 		wa.handleWALogout(evt.Reason, evt.OnConnect)
+		wa.notifyOfflineSyncWaiter(fmt.Errorf("logged out: %s", evt.Reason))
 	case *events.Disconnected:
 		// Don't send the normal transient disconnect state if we're already in a different transient disconnect state.
 		// TODO remove this if/when the phone offline state is moved to a sub-state of CONNECTED
 		if wa.UserLogin.BridgeState.GetPrev().Error != WAPhoneOffline && wa.PhoneRecentlySeen(false) {
 			wa.UserLogin.BridgeState.Send(status.BridgeState{StateEvent: status.StateTransientDisconnect, Error: WADisconnected})
 		}
+		wa.notifyOfflineSyncWaiter(fmt.Errorf("disconnected"))
 	case *events.StreamError:
 		var message string
 		if evt.Code != "" {
@@ -202,8 +206,10 @@ func (wa *WhatsAppClient) handleWAEvent(rawEvt any) {
 			Error:      WAStreamError,
 			Message:    message,
 		})
+		wa.notifyOfflineSyncWaiter(fmt.Errorf("stream error: %s", message))
 	case *events.StreamReplaced:
 		wa.UserLogin.BridgeState.Send(status.BridgeState{StateEvent: status.StateUnknownError, Error: WAStreamReplaced})
+		wa.notifyOfflineSyncWaiter(fmt.Errorf("stream replaced"))
 	case *events.KeepAliveTimeout:
 		wa.UserLogin.BridgeState.Send(status.BridgeState{StateEvent: status.StateTransientDisconnect, Error: WAKeepaliveTimeout})
 	case *events.KeepAliveRestored:
@@ -215,15 +221,18 @@ func (wa *WhatsAppClient) handleWAEvent(rawEvt any) {
 			Error:      status.BridgeStateErrorCode(fmt.Sprintf("wa-connect-failure-%d", evt.Reason)),
 			Message:    fmt.Sprintf("Unknown connection failure: %s (%s)", evt.Reason, evt.Message),
 		})
+		wa.notifyOfflineSyncWaiter(fmt.Errorf("connection failure: %s (%s)", evt.Reason, evt.Message))
 	case *events.ClientOutdated:
 		wa.UserLogin.Log.Error().Msg("Got a client outdated connect failure. The bridge is likely out of date, please update immediately.")
 		wa.UserLogin.BridgeState.Send(status.BridgeState{StateEvent: status.StateUnknownError, Error: WAClientOutdated})
+		wa.notifyOfflineSyncWaiter(fmt.Errorf("client outdated"))
 	case *events.TemporaryBan:
 		wa.UserLogin.BridgeState.Send(status.BridgeState{
 			StateEvent: status.StateBadCredentials,
 			Error:      WATemporaryBan,
 			Message:    evt.String(),
 		})
+		wa.notifyOfflineSyncWaiter(fmt.Errorf("temporary ban: %s", evt.String()))
 	default:
 		log.Debug().Type("event_type", rawEvt).Msg("Unhandled WhatsApp event")
 	}
@@ -463,11 +472,11 @@ func (wa *WhatsAppClient) handleWAMarkChatAsRead(evt *events.MarkChatAsRead) {
 	})
 }
 
-func (wa *WhatsAppClient) syncGhost(jid types.JID, reason, pictureID string) {
+func (wa *WhatsAppClient) syncGhost(jid types.JID, reason string, pictureID *string) {
 	log := wa.UserLogin.Log.With().
 		Str("action", "sync ghost").
 		Str("reason", reason).
-		Str("picture_id", pictureID).
+		Str("picture_id", ptr.Val(pictureID)).
 		Stringer("jid", jid).
 		Logger()
 	ctx := log.WithContext(context.Background())
@@ -476,10 +485,10 @@ func (wa *WhatsAppClient) syncGhost(jid types.JID, reason, pictureID string) {
 		log.Err(err).Msg("Failed to get ghost")
 		return
 	}
-	if pictureID != "" && ghost.AvatarID == networkid.AvatarID(pictureID) {
+	if pictureID != nil && *pictureID != "" && ghost.AvatarID == networkid.AvatarID(*pictureID) {
 		return
 	}
-	userInfo, err := wa.getUserInfo(ctx, jid, pictureID != "")
+	userInfo, err := wa.getUserInfo(ctx, jid, pictureID != nil)
 	if err != nil {
 		log.Err(err).Msg("Failed to get user info")
 	} else {
@@ -490,7 +499,7 @@ func (wa *WhatsAppClient) syncGhost(jid types.JID, reason, pictureID string) {
 
 func (wa *WhatsAppClient) handleWAPictureUpdate(evt *events.Picture) {
 	if evt.JID.Server == types.DefaultUserServer {
-		wa.syncGhost(evt.JID, "picture event", evt.PictureID)
+		wa.syncGhost(evt.JID, "picture event", &evt.PictureID)
 	} else {
 		var changes bridgev2.ChatInfo
 		if evt.Remove {

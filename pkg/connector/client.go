@@ -96,14 +96,16 @@ type WhatsAppClient struct {
 	directMediaRetries map[networkid.MessageID]*directMediaRetry
 	directMediaLock    sync.Mutex
 	mediaRetryLock     *semaphore.Weighted
+	offlineSyncWaiter  chan error
 
 	lastPhoneOfflineWarning time.Time
 	isNewLogin              bool
 }
 
 var (
-	_ bridgev2.NetworkAPI         = (*WhatsAppClient)(nil)
-	_ bridgev2.PushableNetworkAPI = (*WhatsAppClient)(nil)
+	_ bridgev2.NetworkAPI                  = (*WhatsAppClient)(nil)
+	_ bridgev2.PushableNetworkAPI          = (*WhatsAppClient)(nil)
+	_ bridgev2.BackgroundSyncingNetworkAPI = (*WhatsAppClient)(nil)
 )
 
 var pushCfg = &bridgev2.PushConfig{
@@ -168,6 +170,34 @@ func (wa *WhatsAppClient) Connect(ctx context.Context) {
 			Error:      WAConnectionFailed,
 		}
 		wa.UserLogin.BridgeState.Send(state)
+	}
+}
+
+func (wa *WhatsAppClient) notifyOfflineSyncWaiter(err error) {
+	if wa.offlineSyncWaiter != nil {
+		wa.offlineSyncWaiter <- err
+	}
+}
+
+func (wa *WhatsAppClient) ConnectBackground(ctx context.Context) error {
+	if wa.Client == nil {
+		return bridgev2.ErrNotLoggedIn
+	}
+	wa.offlineSyncWaiter = make(chan error)
+	wa.Main.firstClientConnectOnce.Do(wa.Main.onFirstClientConnect)
+	if err := wa.Main.updateProxy(ctx, wa.Client, false); err != nil {
+		zerolog.Ctx(ctx).Err(err).Msg("Failed to update proxy")
+	}
+	err := wa.Client.Connect()
+	if err != nil {
+		return err
+	}
+	defer wa.Disconnect()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case err = <-wa.offlineSyncWaiter:
+		return err
 	}
 }
 
