@@ -88,6 +88,7 @@ var whatsappCaps = &event.RoomFeatures{
 		event.CapMsgVoice: {
 			MimeTypes: map[string]event.CapabilitySupportLevel{
 				"audio/ogg; codecs=opus": event.CapLevelFullySupported,
+				"audio/ogg":              event.CapLevelUnsupported,
 			},
 			Caption: event.CapLevelDropped,
 			MaxSize: WAMaxFileSize,
