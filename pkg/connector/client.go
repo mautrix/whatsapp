@@ -179,7 +179,7 @@ func (wa *WhatsAppClient) notifyOfflineSyncWaiter(err error) {
 	}
 }
 
-func (wa *WhatsAppClient) ConnectBackground(ctx context.Context) error {
+func (wa *WhatsAppClient) ConnectBackground(ctx context.Context, _ *bridgev2.ConnectBackgroundParams) error {
 	if wa.Client == nil {
 		return bridgev2.ErrNotLoggedIn
 	}
