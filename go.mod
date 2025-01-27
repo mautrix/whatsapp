@@ -2,7 +2,7 @@ module go.mau.fi/mautrix-whatsapp
 
 go 1.22.0
 
-toolchain go1.23.4
+toolchain go1.23.5
 
 require (
 	github.com/gorilla/mux v1.8.0
@@ -10,7 +10,7 @@ require (
 	github.com/lib/pq v1.10.9
 	github.com/rs/zerolog v1.33.0
 	go.mau.fi/util v0.8.4
-	go.mau.fi/webp v0.1.0
+	go.mau.fi/webp v0.2.0
 	go.mau.fi/whatsmeow v0.0.0-20250104105216-918c879fcd19
 	golang.org/x/image v0.23.0
 	golang.org/x/net v0.34.0
