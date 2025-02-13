@@ -43,6 +43,25 @@ func legacyProvAuth(r *http.Request) string {
 	return ""
 }
 
+type ConnInfo struct {
+	IsConnected bool `json:"is_connected"`
+	IsLoggedIn  bool `json:"is_logged_in"`
+}
+
+type ConnectionInfo struct {
+	HasSession     bool      `json:"has_session"`
+	ManagementRoom id.RoomID `json:"management_room"`
+	Conn           ConnInfo  `json:"conn"`
+	JID            string    `json:"jid"`
+	Phone          string    `json:"phone"`
+	Platform       string    `json:"platform"`
+}
+
+type PingInfo struct {
+	WhatsappConnectionInfo ConnectionInfo `json:"whatsapp"`
+	Mxid                   id.UserID      `json:"mxid"`
+}
+
 type OtherUserInfo struct {
 	MXID   id.UserID           `json:"mxid"`
 	JID    types.JID           `json:"jid"`
@@ -305,4 +324,51 @@ func legacyProvResolveIdentifier(w http.ResponseWriter, r *http.Request) {
 			Avatar: resp.Ghost.AvatarMXC,
 		},
 	})
+}
+
+func legacyProvPing(w http.ResponseWriter, r *http.Request) {
+	userLogin := m.Matrix.Provisioning.GetLoginForRequest(w, r)
+
+	if userLogin == nil {
+		return
+	}
+
+	whatsappClient := userLogin.Client.(*connector.WhatsAppClient)
+	managementRoom, err := userLogin.User.GetManagementRoom(r.Context())
+
+	if err != nil {
+		exhttp.WriteJSONResponse(w, http.StatusInternalServerError, Error{
+			Error:   "Error while fetching management room",
+			ErrCode: "failed to get management room",
+		})
+		return
+	}
+
+	whatsappConnectionInfo := ConnectionInfo{
+		HasSession:     whatsappClient.IsLoggedIn(),
+		ManagementRoom: managementRoom,
+	}
+
+	if !whatsappClient.JID.IsEmpty() {
+		whatsappConnectionInfo.JID = whatsappClient.JID.String()
+		whatsappConnectionInfo.Phone = "+" + whatsappClient.JID.User
+		if whatsappClient.Device != nil && whatsappClient.Device.Platform != "" {
+			whatsappConnectionInfo.Platform = whatsappClient.Device.Platform
+		}
+	}
+
+	if whatsappClient.Client != nil {
+		whatsappConnectionInfo.Conn = ConnInfo{
+			IsConnected: whatsappClient.Client.IsConnected(),
+			IsLoggedIn:  whatsappClient.Client.IsLoggedIn(),
+		}
+	}
+
+	resp := PingInfo{
+		WhatsappConnectionInfo: whatsappConnectionInfo,
+		Mxid:                   whatsappClient.UserLogin.User.MXID,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	exhttp.WriteJSONResponse(w, http.StatusOK, resp)
 }
