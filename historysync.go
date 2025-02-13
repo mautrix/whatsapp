@@ -172,13 +172,11 @@ func (user *User) backfillAll() {
 		if portal.MXID != "" {
 			log.Debug().
 				Str("portal_jid", portal.Key.JID.String()).
-				Msg("Chat already has a room, deleting messages from database")
-			err = user.bridge.DB.HistorySync.DeleteConversation(ctx, user.MXID, portal.Key.JID.String())
-			if err != nil {
-				log.Err(err).Str("portal_jid", portal.Key.JID.String()).
-					Msg("Failed to delete history sync conversation with existing portal from database")
-			}
+				Msg("Chat already has a room, backfilling the messages using legacyBackfill")
+
 			bridgedCount++
+			portal.latestEventBackfillLock.Lock()
+			go portal.legacyBackfill(context.WithoutCancel(ctx), user)
 		} else if hasMessages, err := user.bridge.DB.HistorySync.ConversationHasMessages(ctx, user.MXID, portal.Key); err != nil {
 			log.Err(err).Str("portal_jid", portal.Key.JID.String()).Msg("Failed to check if chat has messages in history sync")
 		} else if !hasMessages {
