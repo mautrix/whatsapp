@@ -1,4 +1,4 @@
-# v0.11.3 (unreleased)
+# v0.11.3 (2025-02-16)
 
 * Bumped minimum Go version to 1.23.
 * Added support for signaling supported features to clients using the
