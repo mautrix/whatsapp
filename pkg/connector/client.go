@@ -24,7 +24,9 @@ import (
 	"time"
 
 	"github.com/rs/zerolog"
+	"github.com/tidwall/gjson"
 	"go.mau.fi/whatsmeow"
+	waBinary "go.mau.fi/whatsmeow/binary"
 	"go.mau.fi/whatsmeow/proto/waHistorySync"
 	"go.mau.fi/whatsmeow/store"
 	"go.mau.fi/whatsmeow/types"
@@ -182,7 +184,7 @@ func (wa *WhatsAppClient) notifyOfflineSyncWaiter(err error) {
 	}
 }
 
-func (wa *WhatsAppClient) ConnectBackground(ctx context.Context, _ *bridgev2.ConnectBackgroundParams) error {
+func (wa *WhatsAppClient) ConnectBackground(ctx context.Context, params *bridgev2.ConnectBackgroundParams) error {
 	if wa.Client == nil {
 		return bridgev2.ErrNotLoggedIn
 	}
@@ -200,8 +202,56 @@ func (wa *WhatsAppClient) ConnectBackground(ctx context.Context, _ *bridgev2.Con
 	case <-ctx.Done():
 		return ctx.Err()
 	case err = <-wa.offlineSyncWaiter:
+		if err == nil {
+			pn := gjson.GetBytes(params.RawData, "data.pn").Str
+			if pn != "" {
+				err = wa.sendPNData(ctx, pn)
+				if err != nil {
+					zerolog.Ctx(ctx).Err(err).Msg("Failed to send PN data")
+				}
+			}
+		}
 		return err
 	}
+}
+
+func (wa *WhatsAppClient) sendPNData(ctx context.Context, pn string) error {
+	//lint:ignore SA1019 this is supposed to be dangerous
+	resp, err := wa.Client.DangerousInternals().SendIQ(whatsmeow.DangerousInfoQuery{
+		Namespace: "urn:xmpp:whatsapp:push",
+		Type:      "get",
+		To:        types.ServerJID,
+		Content: []waBinary.Node{{
+			Tag:     "pn",
+			Content: pn,
+		}},
+		Context: ctx,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to send pn: %w", err)
+	}
+	cat, ok := resp.GetOptionalChildByTag("cat")
+	if !ok {
+		return fmt.Errorf("cat element not found in response")
+	}
+	catContentBytes, ok := cat.Content.([]byte)
+	if !ok {
+		return fmt.Errorf("cat element content is not a byte slice")
+	}
+	zerolog.Ctx(ctx).Debug().Str("cat_data", string(catContentBytes)).Msg("Received cat response from sending pn data")
+	//lint:ignore SA1019 this is supposed to be dangerous
+	err = wa.Client.DangerousInternals().SendNode(waBinary.Node{
+		Tag: "ib",
+		Content: []waBinary.Node{{
+			Tag:     "cat",
+			Content: cat.Content,
+		}},
+	})
+	if err != nil {
+		return fmt.Errorf("failed to broadcast cat: %w", err)
+	}
+	zerolog.Ctx(ctx).Debug().Msg("Broadcasted cat from pn data")
+	return nil
 }
 
 func (wa *WhatsAppClient) startLoops() {
