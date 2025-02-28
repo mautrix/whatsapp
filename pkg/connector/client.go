@@ -205,9 +205,9 @@ func (wa *WhatsAppClient) ConnectBackground(ctx context.Context, params *bridgev
 		if err == nil {
 			pn := gjson.GetBytes(params.RawData, "data.pn").Str
 			if pn != "" {
-				err = wa.sendPNData(ctx, pn)
-				if err != nil {
-					zerolog.Ctx(ctx).Err(err).Msg("Failed to send PN data")
+				pnErr := wa.sendPNData(ctx, pn)
+				if pnErr != nil {
+					zerolog.Ctx(ctx).Err(pnErr).Msg("Failed to send PN data")
 				}
 			}
 		}
