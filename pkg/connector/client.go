@@ -283,7 +283,6 @@ func (wa *WhatsAppClient) Disconnect() {
 	}
 	if cli := wa.Client; cli != nil {
 		cli.Disconnect()
-		wa.Client = nil
 	}
 }
 
@@ -295,6 +294,7 @@ func (wa *WhatsAppClient) LogoutRemote(ctx context.Context) {
 		}
 	}
 	wa.Disconnect()
+	wa.Client = nil
 }
 
 func (wa *WhatsAppClient) IsLoggedIn() bool {
