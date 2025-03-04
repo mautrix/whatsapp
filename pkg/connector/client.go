@@ -28,6 +28,7 @@ import (
 	"go.mau.fi/whatsmeow"
 	waBinary "go.mau.fi/whatsmeow/binary"
 	"go.mau.fi/whatsmeow/proto/waHistorySync"
+	"go.mau.fi/whatsmeow/proto/waWa6"
 	"go.mau.fi/whatsmeow/store"
 	"go.mau.fi/whatsmeow/types"
 	waLog "go.mau.fi/whatsmeow/util/log"
@@ -193,6 +194,14 @@ func (wa *WhatsAppClient) ConnectBackground(ctx context.Context, params *bridgev
 	if err := wa.Main.updateProxy(ctx, wa.Client, false); err != nil {
 		zerolog.Ctx(ctx).Err(err).Msg("Failed to update proxy")
 	}
+	wa.Client.GetClientPayload = func() *waWa6.ClientPayload {
+		payload := wa.Client.Store.GetClientPayload()
+		payload.ConnectReason = waWa6.ClientPayload_PUSH.Enum()
+		return payload
+	}
+	defer func() {
+		wa.Client.GetClientPayload = nil
+	}()
 	err := wa.Client.Connect()
 	if err != nil {
 		return err
