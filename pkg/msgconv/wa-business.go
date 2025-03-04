@@ -33,14 +33,18 @@ func (mc *MessageConverter) convertTemplateMessage(ctx context.Context, info *ty
 	converted := &bridgev2.ConvertedMessagePart{
 		Type: event.EventMessage,
 		Content: &event.MessageEventContent{
-			Body:    "Unsupported business message",
+			Body:    "Unsupported business message (template)",
 			MsgType: event.MsgText,
 		},
 	}
 
 	tpl := tplMsg.GetHydratedTemplate()
 	if tpl == nil {
-		return converted, tplMsg.GetContextInfo()
+		tpl = tplMsg.GetHydratedFourRowTemplate()
+		if tpl == nil {
+			// TODO there are a few other types too
+			return converted, tplMsg.GetContextInfo()
+		}
 	}
 	content := tpl.GetHydratedContentText()
 	if buttons := tpl.GetHydratedButtons(); len(buttons) > 0 {
@@ -133,7 +137,7 @@ func (mc *MessageConverter) convertListMessage(ctx context.Context, msg *waE2E.L
 	converted := &bridgev2.ConvertedMessagePart{
 		Type: event.EventMessage,
 		Content: &event.MessageEventContent{
-			Body:    "Unsupported business message",
+			Body:    "Unsupported business message (list)",
 			MsgType: event.MsgText,
 		},
 	}
