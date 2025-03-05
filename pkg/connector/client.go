@@ -116,8 +116,9 @@ var (
 
 var pushCfg = &bridgev2.PushConfig{
 	// TODO fetch this from server instead of hardcoding?
-	Web: &bridgev2.WebPushConfig{VapidKey: "BIt4eFAVqVxe4yOA5_VLbZTbOlV-2y1FYJ_R4RlxWoyYazAq4glIxI7fh_xLbob1SNv7ZtTWn9mmZCsk2YNXYeY"},
-	FCM: &bridgev2.FCMPushConfig{SenderID: "293955441834"},
+	Web:  &bridgev2.WebPushConfig{VapidKey: "BIt4eFAVqVxe4yOA5_VLbZTbOlV-2y1FYJ_R4RlxWoyYazAq4glIxI7fh_xLbob1SNv7ZtTWn9mmZCsk2YNXYeY"},
+	FCM:  &bridgev2.FCMPushConfig{SenderID: "293955441834"},
+	APNs: &bridgev2.APNsPushConfig{BundleID: "net.whatsapp.WhatsApp"},
 }
 
 func (wa *WhatsAppClient) GetPushConfigs() *bridgev2.PushConfig {
@@ -146,6 +147,8 @@ func (wa *WhatsAppClient) RegisterPushNotifications(ctx context.Context, pushTyp
 			Auth:     meta.PushKeys.Auth,
 			P256DH:   meta.PushKeys.P256DH,
 		}
+	case bridgev2.PushTypeAPNs:
+		pc = &whatsmeow.APNsPushConfig{Token: token}
 	default:
 		return fmt.Errorf("unsupported push type %s", pushType)
 	}
