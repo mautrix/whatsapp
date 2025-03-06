@@ -280,6 +280,16 @@ func (wa *WhatsAppClient) startLoops() {
 	}
 }
 
+func (wa *WhatsAppClient) GetStore() *store.Device {
+	if cli := wa.Client; cli != nil {
+		if currentStore := cli.Store; currentStore != nil {
+			return currentStore
+		}
+	}
+	wa.UserLogin.Log.Warn().Caller(1).Msg("Returning noop device in GetStore")
+	return store.NoopDevice
+}
+
 func (wa *WhatsAppClient) Disconnect() {
 	if stopHistorySyncLoop := wa.stopLoops.Swap(nil); stopHistorySyncLoop != nil {
 		(*stopHistorySyncLoop)()

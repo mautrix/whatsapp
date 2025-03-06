@@ -133,7 +133,7 @@ func (wa *WhatsAppClient) getContactList(ctx context.Context, filter string) ([]
 	if !wa.IsLoggedIn() {
 		return nil, mautrix.MForbidden.WithMessage("You must be logged in to list contacts")
 	}
-	contacts, err := wa.Client.Store.Contacts.GetAllContacts()
+	contacts, err := wa.GetStore().Contacts.GetAllContacts()
 	if err != nil {
 		return nil, err
 	}

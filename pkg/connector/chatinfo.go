@@ -87,7 +87,7 @@ func updateDisappearingTimerSetAt(ts int64) bridgev2.ExtraUpdater[*bridgev2.Port
 }
 
 func (wa *WhatsAppClient) applyChatSettings(ctx context.Context, chatID types.JID, info *bridgev2.ChatInfo) {
-	chat, err := wa.Client.Store.ChatSettings.GetChatSettings(chatID)
+	chat, err := wa.GetStore().ChatSettings.GetChatSettings(chatID)
 	if err != nil {
 		zerolog.Ctx(ctx).Warn().Err(err).Msg("Failed to get chat settings")
 		return
