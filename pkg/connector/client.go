@@ -25,13 +25,13 @@ import (
 	"time"
 
 	"github.com/rs/zerolog"
-	"go.mau.fi/util/random"
 	"go.mau.fi/whatsmeow"
 	waBinary "go.mau.fi/whatsmeow/binary"
 	"go.mau.fi/whatsmeow/proto/waHistorySync"
 	"go.mau.fi/whatsmeow/proto/waWa6"
 	"go.mau.fi/whatsmeow/store"
 	"go.mau.fi/whatsmeow/types"
+	"go.mau.fi/whatsmeow/util/keys"
 	waLog "go.mau.fi/whatsmeow/util/log"
 	"golang.org/x/sync/semaphore"
 	"maunium.net/go/mautrix/bridge/status"
@@ -150,14 +150,17 @@ func (wa *WhatsAppClient) RegisterPushNotifications(ctx context.Context, pushTyp
 		}
 	case bridgev2.PushTypeAPNs:
 		meta := wa.UserLogin.Metadata.(*waid.UserLoginMetadata)
-		if meta.APNSEncKey == nil {
-			meta.APNSEncKey = random.Bytes(32)
+		if meta.APNSEncPubKey == nil {
+			k := keys.NewKeyPair()
+			meta.APNSEncPubKey = k.Pub[:]
+			meta.APNSEncPrivKey = k.Priv[:]
 			err := wa.UserLogin.Save(ctx)
 			if err != nil {
 				return fmt.Errorf("failed to save push enc key: %w", err)
 			}
 		}
-		pc = &whatsmeow.APNsPushConfig{Token: token, MsgIDEncKey: meta.APNSEncKey}
+		// TODO figure out if the key is supposed to be aes or curve25519
+		pc = &whatsmeow.APNsPushConfig{Token: token, MsgIDEncKey: meta.APNSEncPubKey}
 	default:
 		return fmt.Errorf("unsupported push type %s", pushType)
 	}
