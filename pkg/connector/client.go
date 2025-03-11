@@ -18,13 +18,14 @@ package connector
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/rs/zerolog"
-	"github.com/tidwall/gjson"
+	"go.mau.fi/util/random"
 	"go.mau.fi/whatsmeow"
 	waBinary "go.mau.fi/whatsmeow/binary"
 	"go.mau.fi/whatsmeow/proto/waHistorySync"
@@ -148,7 +149,15 @@ func (wa *WhatsAppClient) RegisterPushNotifications(ctx context.Context, pushTyp
 			P256DH:   meta.PushKeys.P256DH,
 		}
 	case bridgev2.PushTypeAPNs:
-		pc = &whatsmeow.APNsPushConfig{Token: token}
+		meta := wa.UserLogin.Metadata.(*waid.UserLoginMetadata)
+		if meta.APNSEncKey == nil {
+			meta.APNSEncKey = random.Bytes(32)
+			err := wa.UserLogin.Save(ctx)
+			if err != nil {
+				return fmt.Errorf("failed to save push enc key: %w", err)
+			}
+		}
+		pc = &whatsmeow.APNsPushConfig{Token: token, MsgIDEncKey: meta.APNSEncKey}
 	default:
 		return fmt.Errorf("unsupported push type %s", pushType)
 	}
@@ -188,6 +197,19 @@ func (wa *WhatsAppClient) notifyOfflineSyncWaiter(err error) {
 	}
 }
 
+type PushNotificationData struct {
+	PN            string `json:"pn"`
+	EncIV         string `json:"enc_iv"`
+	EncPayload    string `json:"enc_p"`
+	EncTag        string `json:"enc_t"`
+	EncTimeMicros uint64 `json:"enc_c"`
+	// TODO unencrypted message ID field
+}
+
+type wrappedPushNotificationData struct {
+	Data PushNotificationData `json:"data"`
+}
+
 func (wa *WhatsAppClient) ConnectBackground(ctx context.Context, params *bridgev2.ConnectBackgroundParams) error {
 	if wa.Client == nil {
 		return bridgev2.ErrNotLoggedIn
@@ -215,9 +237,10 @@ func (wa *WhatsAppClient) ConnectBackground(ctx context.Context, params *bridgev
 		return ctx.Err()
 	case err = <-wa.offlineSyncWaiter:
 		if err == nil {
-			pn := gjson.GetBytes(params.RawData, "data.pn").Str
-			if pn != "" {
-				pnErr := wa.sendPNData(ctx, pn)
+			var data wrappedPushNotificationData
+			err = json.Unmarshal(params.RawData, &data)
+			if err == nil && data.Data.PN != "" {
+				pnErr := wa.sendPNData(ctx, data.Data.PN)
 				if pnErr != nil {
 					zerolog.Ctx(ctx).Err(pnErr).Msg("Failed to send PN data")
 				}
