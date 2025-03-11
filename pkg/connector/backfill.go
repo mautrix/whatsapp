@@ -352,7 +352,7 @@ func (wa *WhatsAppClient) FetchMessages(ctx context.Context, params bridgev2.Fet
 			// TODO this only deletes after backfilling. If there's no need for backfill after a relogin,
 			//      the messages will be stuck in the database
 			var err error
-			if !wa.Main.Bridge.Config.Backfill.Queue.Enabled {
+			if !wa.Main.Bridge.Config.Backfill.Queue.Enabled && !wa.Main.Bridge.Config.Backfill.WillPaginateManually {
 				// If the backfill queue isn't enabled, delete all messages after backfilling a batch.
 				err = wa.Main.DB.Message.DeleteAllInChat(ctx, wa.UserLogin.ID, portalJID)
 			} else {
