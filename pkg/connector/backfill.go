@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/rs/zerolog"
+	"go.mau.fi/util/jsontime"
 	"go.mau.fi/util/ptr"
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/proto/waE2E"
@@ -78,6 +79,20 @@ func (wa *WhatsAppClient) handleWAHistorySync(ctx context.Context, evt *waHistor
 			Msg("Ignoring history sync")
 		return
 	}
+
+	// Check if 24 hours have passed since the last sync
+	loginMetadata := wa.UserLogin.Metadata.(*waid.UserLoginMetadata)
+	if !loginMetadata.LastHistorySync.IsZero() {
+		lastSyncTime := loginMetadata.LastHistorySync.Time
+		if time.Since(lastSyncTime) < 24*time.Hour {
+			log.Info().
+				Time("last_sync", lastSyncTime).
+				Dur("time_since_last_sync", time.Since(lastSyncTime)).
+				Msg("Skipping automatic history sync, last sync was less than 24 hours ago")
+			return
+		}
+	}
+
 	log.Info().
 		Int("conversation_count", len(evt.GetConversations())).
 		Int("past_participant_count", len(evt.GetPastParticipants())).
@@ -186,6 +201,12 @@ func (wa *WhatsAppClient) handleWAHistorySync(ctx context.Context, evt *waHistor
 		Int("total_failed_count", failedToSaveTotal).
 		Int("total_message_count", totalMessageCount).
 		Msg("Finished storing history sync")
+
+	// Update last sync time
+	loginMetadata.LastHistorySync = jsontime.Unix{Time: time.Now()}
+	// We don't need to explicitly save the metadata as it's stored in the UserLogin object
+	// The bridge will handle persisting this when needed
+	log.Info().Time("last_sync_updated", time.Now()).Msg("Updated last history sync time")
 }
 
 func (wa *WhatsAppClient) createPortalsFromHistorySync(ctx context.Context) {

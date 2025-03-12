@@ -90,6 +90,7 @@ func (wa *WhatsAppConnector) Init(bridge *bridgev2.Bridge) {
 	wa.MsgConv.DB = wa.DB
 	wa.Bridge.Commands.(*commands.Processor).AddHandlers(
 		cmdAccept,
+		cmdListGroups,
 	)
 	wa.mediaEditCache = make(MediaEditCache)
 

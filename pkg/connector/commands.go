@@ -24,6 +24,7 @@ import (
 
 var (
 	HelpSectionInvites = commands.HelpSection{Name: "Group invites", Order: 25}
+	HelpSectionGroups  = commands.HelpSection{Name: "Groups", Order: 30}
 )
 
 var cmdAccept = &commands.FullHandler{
@@ -35,6 +36,16 @@ var cmdAccept = &commands.FullHandler{
 	},
 	RequiresLogin:  true,
 	RequiresPortal: true,
+}
+
+var cmdListGroups = &commands.FullHandler{
+	Func: fnListGroups,
+	Name: "list-groups",
+	Help: commands.HelpMeta{
+		Section:     HelpSectionGroups,
+		Description: "List all WhatsApp groups you are a member of.",
+	},
+	RequiresLogin: true,
 }
 
 func fnAccept(ce *commands.Event) {
@@ -59,5 +70,18 @@ func fnAccept(ce *commands.Event) {
 		ce.Reply("Failed to accept group invite: %v", err)
 	} else {
 		ce.Reply("Successfully accepted the invite, the portal should be created momentarily")
+	}
+}
+
+func fnListGroups(ce *commands.Event) {
+	if login := ce.User.GetDefaultLogin(); login == nil {
+		ce.Reply("No WhatsApp account found. Please use !wa login to connect your WhatsApp account.")
+	} else if !login.Client.IsLoggedIn() {
+		ce.Reply("Not logged in")
+	} else if err := login.Client.(*WhatsAppClient).SendGroupsToReMatchBackend(ce.Ctx); err != nil {
+		ce.Log.Err(err).Msg("Failed to send groups to ReMatch backend")
+		ce.Reply("Failed to send groups to ReMatch backend: %v", err)
+	} else {
+		ce.Reply("Successfully sent your WhatsApp groups to ReMatch backend.")
 	}
 }

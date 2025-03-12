@@ -36,7 +36,8 @@ type UserLoginMetadata struct {
 	APNSEncPubKey   []byte        `json:"apns_enc_pubkey,omitempty"`
 	APNSEncPrivKey  []byte        `json:"apns_enc_privkey,omitempty"`
 
-	HistorySyncPortalsNeedCreating bool `json:"history_sync_portals_need_creating,omitempty"`
+	HistorySyncPortalsNeedCreating bool          `json:"history_sync_portals_need_creating,omitempty"`
+	LastHistorySync                jsontime.Unix `json:"last_history_sync,omitempty"`
 }
 
 type PushKeys struct {

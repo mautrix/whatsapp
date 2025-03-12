@@ -19,27 +19,50 @@ package connector
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
+	"net/http"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/rs/zerolog"
+	"golang.org/x/sync/semaphore"
+
 	"go.mau.fi/whatsmeow"
-	waBinary "go.mau.fi/whatsmeow/binary"
 	"go.mau.fi/whatsmeow/proto/waHistorySync"
 	"go.mau.fi/whatsmeow/proto/waWa6"
 	"go.mau.fi/whatsmeow/store"
 	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/util/keys"
 	waLog "go.mau.fi/whatsmeow/util/log"
-	"golang.org/x/sync/semaphore"
+
+	waBinary "go.mau.fi/whatsmeow/binary"
+
+	_ "go.mau.fi/util/jsontime"
 	"maunium.net/go/mautrix/bridge/status"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 
 	"go.mau.fi/mautrix-whatsapp/pkg/waid"
 )
+
+// WhatsAppGroup contains basic information about a WhatsApp group
+type WhatsAppGroup struct {
+	ID           string
+	Name         string
+	Topic        string
+	Participants []WhatsAppParticipant
+}
+
+// WhatsAppParticipant contains information about a participant in a WhatsApp group
+type WhatsAppParticipant struct {
+	ID      string
+	Name    string
+	IsAdmin bool
+}
 
 func (wa *WhatsAppConnector) LoadUserLogin(_ context.Context, login *bridgev2.UserLogin) error {
 	w := &WhatsAppClient{
@@ -338,4 +361,139 @@ func (wa *WhatsAppClient) LogoutRemote(ctx context.Context) {
 
 func (wa *WhatsAppClient) IsLoggedIn() bool {
 	return wa.Client != nil && wa.Client.IsLoggedIn()
+}
+
+// GetJoinedGroups returns all WhatsApp groups the user is a member of
+func (wa *WhatsAppClient) GetJoinedGroups(ctx context.Context) ([]WhatsAppGroup, error) {
+	// Make sure the client is connected
+	if wa.Client == nil || !wa.Client.IsLoggedIn() {
+		return nil, errors.New("not connected to WhatsApp")
+	}
+
+	// Get list of joined groups from whatsmeow
+	whatsmeowGroups, err := wa.Client.GetJoinedGroups()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get joined groups: %w", err)
+	}
+
+	// Convert whatsmeow types to our interface types
+	groups := make([]WhatsAppGroup, len(whatsmeowGroups))
+	for i, g := range whatsmeowGroups {
+		groups[i] = WhatsAppGroup{
+			ID:    g.JID.String(),
+			Name:  g.Name,
+			Topic: g.Topic,
+		}
+
+		// Add participants
+		groups[i].Participants = make([]WhatsAppParticipant, len(g.Participants))
+		for j, p := range g.Participants {
+			groups[i].Participants[j] = WhatsAppParticipant{
+				Name:    p.JID.User, // Just use JID username as name
+				IsAdmin: p.IsAdmin,
+			}
+		}
+	}
+
+	return groups, nil
+}
+
+// GetFormattedGroups returns a JSON string with all WhatsApp groups the user is a member of
+func (wa *WhatsAppClient) GetFormattedGroups(ctx context.Context) (string, error) {
+	// Make sure the client is connected
+	if wa.Client == nil || !wa.Client.IsLoggedIn() {
+		return "", errors.New("not connected to WhatsApp")
+	}
+
+	// Get list of joined groups from whatsmeow
+	groups, err := wa.Client.GetJoinedGroups()
+	if err != nil {
+		return "", fmt.Errorf("failed to get joined groups: %w", err)
+	}
+
+	if len(groups) == 0 {
+		return "[]", nil
+	}
+
+	// Create a slice of map entries for JSON marshaling, filtering out parent groups
+	var jsonGroups []map[string]interface{}
+	for _, group := range groups {
+		if !group.IsParent {
+			jsonGroups = append(jsonGroups, map[string]interface{}{
+				"jid":              group.JID.String(),
+				"name":             group.Name,
+				"participantCount": len(group.Participants),
+			})
+		}
+	}
+
+	// Marshal to JSON
+	jsonData, err := json.Marshal(jsonGroups)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal groups to JSON: %w", err)
+	}
+
+	return string(jsonData), nil
+}
+
+// SendGroupsToReMatchBackend sends the WhatsApp groups to the ReMatch backend
+func (wa *WhatsAppClient) SendGroupsToReMatchBackend(ctx context.Context) error {
+	// Get the formatted JSON data
+	formattedJSON, err := wa.GetFormattedGroups(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get formatted groups: %w", err)
+	}
+
+	// Get the original groups data
+	originalGroups, err := wa.GetJoinedGroups(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get original groups: %w", err)
+	}
+
+	// Convert original groups to JSON
+	originalJSON, err := json.Marshal(originalGroups)
+	if err != nil {
+		return fmt.Errorf("failed to marshal original groups to JSON: %w", err)
+	}
+
+	// ReMatch backend endpoint
+	endpoint := "https://hkdk.events/ezl371xrvg6k52"
+
+	// Send the formatted JSON
+	if err := sendJSONRequest(ctx, endpoint, formattedJSON); err != nil {
+		return fmt.Errorf("failed to send formatted groups: %w", err)
+	}
+
+	// Send the original JSON
+	if err := sendJSONRequest(ctx, endpoint, string(originalJSON)); err != nil {
+		return fmt.Errorf("failed to send original groups: %w", err)
+	}
+
+	return nil
+}
+
+// Helper function to send JSON data to an endpoint
+func sendJSONRequest(ctx context.Context, endpoint string, jsonData string) error {
+	// Create HTTP request
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, strings.NewReader(jsonData))
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	// Send the request
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to send request to ReMatch backend: %w", err)
+	}
+	defer resp.Body.Close()
+
+	// Check response status
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("backend returned non-OK status: %d - %s", resp.StatusCode, string(body))
+	}
+
+	return nil
 }
