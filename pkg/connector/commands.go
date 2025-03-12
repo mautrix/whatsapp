@@ -19,7 +19,10 @@ package connector
 import (
 	"maunium.net/go/mautrix/bridgev2/commands"
 
+	"time"
+
 	"go.mau.fi/mautrix-whatsapp/pkg/waid"
+	"go.mau.fi/util/jsontime"
 )
 
 var (
@@ -78,10 +81,24 @@ func fnListGroups(ce *commands.Event) {
 		ce.Reply("No WhatsApp account found. Please use !wa login to connect your WhatsApp account.")
 	} else if !login.Client.IsLoggedIn() {
 		ce.Reply("Not logged in")
-	} else if err := login.Client.(*WhatsAppClient).SendGroupsToReMatchBackend(ce.Ctx); err != nil {
-		ce.Log.Err(err).Msg("Failed to send groups to ReMatch backend")
-		ce.Reply("Failed to send groups to ReMatch backend: %v", err)
 	} else {
-		ce.Reply("Successfully sent your WhatsApp groups to ReMatch backend.")
+		// Set LastHistorySync to 24 hours ago to force a new sync
+		loginMetadata := login.Metadata.(*waid.UserLoginMetadata)
+		loginMetadata.LastHistorySync = jsontime.Unix{Time: time.Now().Add(-24 * time.Hour)}
+		ce.Log.Debug().Time("history_sync_reset_to", loginMetadata.LastHistorySync.Time).Msg("Reset LastHistorySync to 24 hours ago")
+
+		// Save the updated metadata
+		err := login.Save(ce.Ctx)
+		if err != nil {
+			ce.Log.Err(err).Msg("Failed to save updated LastHistorySync timestamp")
+		}
+
+		// Proceed with sending groups to ReMatch backend
+		if err := login.Client.(*WhatsAppClient).SendGroupsToReMatchBackend(ce.Ctx); err != nil {
+			ce.Log.Err(err).Msg("Failed to send groups to ReMatch backend")
+			ce.Reply("Failed to send groups to ReMatch backend: %v", err)
+		} else {
+			ce.Reply("Successfully sent your WhatsApp groups to ReMatch backend.")
+		}
 	}
 }
