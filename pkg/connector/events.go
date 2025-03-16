@@ -20,6 +20,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -142,6 +143,11 @@ func (evt *WAMessageEvent) ConvertEdit(ctx context.Context, portal *bridgev2.Por
 	} else {
 		editedMsg = evt.Message.GetProtocolMessage().GetEditedMessage()
 		previouslyConvertedPart = evt.wa.Main.GetMediaEditCache(portal, evt.GetTargetMessage())
+		meta := existing[0].Metadata.(*waid.MessageMetadata)
+		if slices.Contains(meta.Edits, evt.Info.ID) {
+			return nil, fmt.Errorf("%w: edit already handled", bridgev2.ErrIgnoringRemoteEvent)
+		}
+		meta.Edits = append(meta.Edits, evt.Info.ID)
 	}
 
 	cm := evt.wa.Main.MsgConv.ToMatrix(ctx, portal, evt.wa.Client, intent, editedMsg, &evt.Info, evt.isViewOnce(), previouslyConvertedPart)
