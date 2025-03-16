@@ -1,3 +1,10 @@
+# v0.11.4 (2025-03-16)
+
+* Fixed edits being bridged multiple times if a single chat had multiple
+  logged-in Matrix users.
+* Fixed bridging some types of business messages that were supposed to be
+  supported (there are still some unsupported types).
+
 # v0.11.3 (2025-02-16)
 
 * Bumped minimum Go version to 1.23.
