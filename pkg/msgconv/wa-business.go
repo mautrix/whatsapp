@@ -33,16 +33,19 @@ func (mc *MessageConverter) convertTemplateMessage(ctx context.Context, info *ty
 	tpl := tplMsg.GetHydratedTemplate()
 	if tpl == nil {
 		tpl = tplMsg.GetHydratedFourRowTemplate()
-		if tpl == nil {
-			// TODO there are a few other types too
-			return &bridgev2.ConvertedMessagePart{
-				Type: event.EventMessage,
-				Content: &event.MessageEventContent{
-					Body:    "Unsupported business message (template)",
-					MsgType: event.MsgText,
-				},
-			}, tplMsg.GetContextInfo()
+	}
+	if tpl == nil {
+		if interactiveMsg := tplMsg.GetInteractiveMessageTemplate(); interactiveMsg != nil {
+			return mc.convertInteractiveMessage(ctx, info, interactiveMsg)
 		}
+		// TODO there are a few other types too
+		return &bridgev2.ConvertedMessagePart{
+			Type: event.EventMessage,
+			Content: &event.MessageEventContent{
+				Body:    "Unsupported business message (template)",
+				MsgType: event.MsgText,
+			},
+		}, tplMsg.GetContextInfo()
 	}
 	content := tpl.GetHydratedContentText()
 	if buttons := tpl.GetHydratedButtons(); len(buttons) > 0 {
@@ -101,6 +104,68 @@ func (mc *MessageConverter) convertTemplateButtonReplyMessage(ctx context.Contex
 				"id":    msg.GetSelectedID(),
 				"index": msg.GetSelectedIndex(),
 			},
+		},
+	}, msg.GetContextInfo()
+}
+
+func (mc *MessageConverter) convertInteractiveMessage(ctx context.Context, info *types.MessageInfo, msg *waE2E.InteractiveMessage) (*bridgev2.ConvertedMessagePart, *waE2E.ContextInfo) {
+	content := msg.GetBody().GetText()
+	switch interactive := msg.GetInteractiveMessage().(type) {
+	case *waE2E.InteractiveMessage_ShopStorefrontMessage:
+		content = fmt.Sprintf("%s\n\nUnsupported shop storefront message", content)
+	case *waE2E.InteractiveMessage_CollectionMessage_:
+		// There doesn't seem to be much content here, maybe it's just meant to show the body/header/footer?
+	case *waE2E.InteractiveMessage_NativeFlowMessage_:
+		if buttons := interactive.NativeFlowMessage.GetButtons(); len(buttons) > 0 {
+			descriptions := make([]string, len(buttons))
+			for i, button := range buttons {
+				descriptions[i] = fmt.Sprintf("<%s>", button.GetName())
+			}
+			content = fmt.Sprintf("%s\n\n%s\nUse the WhatsApp app to click buttons", content, strings.Join(descriptions, " - "))
+		}
+	case *waE2E.InteractiveMessage_CarouselMessage_:
+		content = fmt.Sprintf("%s\n\nUnsupported carousel message", content)
+	}
+	if footer := msg.GetFooter().GetText(); footer != "" {
+		content = fmt.Sprintf("%s\n\n%s", content, footer)
+	}
+	if title := msg.GetHeader().GetTitle(); title != "" {
+		if subtitle := msg.GetHeader().GetSubtitle(); subtitle != "" {
+			title = fmt.Sprintf("%s\n%s", title, subtitle)
+		}
+		content = fmt.Sprintf("%s\n\n%s", title, content)
+	}
+
+	var convertedTitle *bridgev2.ConvertedMessagePart
+	switch headerMedia := msg.GetHeader().GetMedia().(type) {
+	case *waE2E.InteractiveMessage_Header_DocumentMessage:
+		convertedTitle, _ = mc.convertMediaMessage(ctx, headerMedia.DocumentMessage, "file attachment", info, false, nil)
+	case *waE2E.InteractiveMessage_Header_ImageMessage:
+		convertedTitle, _ = mc.convertMediaMessage(ctx, headerMedia.ImageMessage, "photo", info, false, nil)
+	case *waE2E.InteractiveMessage_Header_VideoMessage:
+		convertedTitle, _ = mc.convertMediaMessage(ctx, headerMedia.VideoMessage, "video attachment", info, false, nil)
+	case *waE2E.InteractiveMessage_Header_LocationMessage:
+		content = fmt.Sprintf("Unsupported location message\n\n%s", content)
+	case *waE2E.InteractiveMessage_Header_ProductMessage:
+		content = fmt.Sprintf("Unsupported product message\n\n%s", content)
+	case *waE2E.InteractiveMessage_Header_JPEGThumbnail:
+		content = fmt.Sprintf("Unsupported thumbnail message\n\n%s", content)
+	}
+
+	converted := mc.postProcessBusinessMessage(content, convertedTitle)
+	converted.Extra["fi.mau.whatsapp.business_message_type"] = "interactive"
+	return converted, msg.GetContextInfo()
+}
+
+func (mc *MessageConverter) convertInteractiveResponseMessage(ctx context.Context, msg *waE2E.InteractiveResponseMessage) (*bridgev2.ConvertedMessagePart, *waE2E.ContextInfo) {
+	return &bridgev2.ConvertedMessagePart{
+		Type: event.EventMessage,
+		Content: &event.MessageEventContent{
+			Body:    msg.GetBody().GetText(),
+			MsgType: event.MsgText,
+		},
+		Extra: map[string]any{
+			"fi.mau.whatsapp.interactive_response_message": map[string]any{},
 		},
 	}, msg.GetContextInfo()
 }

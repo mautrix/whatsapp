@@ -99,6 +99,8 @@ func getMessageType(waMsg *waE2E.Message) string {
 		return "template button reply"
 	case waMsg.InteractiveMessage != nil:
 		return "interactive"
+	case waMsg.InteractiveResponseMessage != nil:
+		return "interactive response"
 	case waMsg.ListMessage != nil:
 		return "list"
 	case waMsg.ProductMessage != nil:
