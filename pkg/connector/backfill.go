@@ -400,7 +400,7 @@ func (wa *WhatsAppClient) convertHistorySyncMessage(
 			sender = wa.JID
 		} else if reaction.GetKey().GetParticipant() != "" {
 			sender, _ = types.ParseJID(*reaction.Key.Participant)
-		} else if info.Chat.Server == types.DefaultUserServer {
+		} else if info.Chat.Server == types.DefaultUserServer || info.Chat.Server == types.BotServer {
 			sender = info.Chat
 		}
 		if sender.IsEmpty() {

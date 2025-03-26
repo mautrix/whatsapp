@@ -498,7 +498,7 @@ func (wa *WhatsAppClient) syncGhost(jid types.JID, reason string, pictureID *str
 }
 
 func (wa *WhatsAppClient) handleWAPictureUpdate(evt *events.Picture) {
-	if evt.JID.Server == types.DefaultUserServer {
+	if evt.JID.Server == types.DefaultUserServer || evt.JID.Server == types.BotServer {
 		wa.syncGhost(evt.JID, "picture event", &evt.PictureID)
 	} else {
 		var changes bridgev2.ChatInfo

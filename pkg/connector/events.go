@@ -342,7 +342,7 @@ func (evt *WAMediaRetry) getRealSender() types.JID {
 	sender := evt.SenderID
 	if evt.FromMe {
 		sender = evt.wa.JID.ToNonAD()
-	} else if sender.IsEmpty() && evt.ChatID.Server == types.DefaultUserServer {
+	} else if sender.IsEmpty() && (evt.ChatID.Server == types.DefaultUserServer || evt.ChatID.Server == types.BotServer) {
 		sender = evt.ChatID.ToNonAD()
 	}
 	return sender

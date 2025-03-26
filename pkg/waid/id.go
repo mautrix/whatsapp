@@ -37,11 +37,14 @@ func ParsePortalID(portal networkid.PortalID) (types.JID, error) {
 }
 
 const LIDPrefix = "lid-"
+const BotPrefix = "bot-"
 
 func MakeUserID(user types.JID) networkid.UserID {
 	switch user.Server {
 	case types.DefaultUserServer:
 		return networkid.UserID(user.User)
+	case types.BotServer:
+		return networkid.UserID(BotPrefix + user.User)
 	case types.HiddenUserServer:
 		return networkid.UserID(LIDPrefix + user.User)
 	default:
@@ -52,6 +55,8 @@ func MakeUserID(user types.JID) networkid.UserID {
 func ParseUserID(user networkid.UserID) types.JID {
 	if strings.HasPrefix(string(user), LIDPrefix) {
 		return types.NewJID(strings.TrimPrefix(string(user), LIDPrefix), types.HiddenUserServer)
+	} else if strings.HasPrefix(string(user), BotPrefix) {
+		return types.NewJID(strings.TrimPrefix(string(user), BotPrefix), types.BotServer)
 	}
 	return types.NewJID(string(user), types.DefaultUserServer)
 }

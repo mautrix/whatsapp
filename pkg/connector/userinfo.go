@@ -186,6 +186,9 @@ func (wa *WhatsAppClient) contactToUserInfo(jid types.JID, contact types.Contact
 		Identifiers:  []string{fmt.Sprintf("tel:+%s", jid.User)},
 		ExtraUpdates: updateGhostLastSyncAt,
 	}
+	if jid.Server == types.BotServer {
+		ui.Identifiers = []string{}
+	}
 	if getAvatar {
 		ui.ExtraUpdates = bridgev2.MergeExtraUpdaters(ui.ExtraUpdates, wa.fetchGhostAvatar)
 	}

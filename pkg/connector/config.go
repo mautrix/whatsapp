@@ -143,12 +143,16 @@ type DisplaynameParams struct {
 
 func (c *Config) FormatDisplayname(jid types.JID, contact types.ContactInfo) string {
 	var nameBuf strings.Builder
+	phone := "+" + jid.User
+	if jid.Server == types.BotServer {
+		phone = jid.User
+	}
 	err := c.displaynameTemplate.Execute(&nameBuf, &DisplaynameParams{
 		ContactInfo: contact,
-		Phone:       "+" + jid.User,
+		Phone:       phone,
 
 		// Deprecated legacy fields
-		JID:    "+" + jid.User,
+		JID:    phone,
 		Notify: contact.PushName,
 		VName:  contact.BusinessName,
 		Name:   contact.FullName,

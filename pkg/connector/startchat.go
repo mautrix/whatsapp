@@ -53,6 +53,9 @@ func looksEmaily(str string) bool {
 }
 
 func (wa *WhatsAppClient) validateIdentifer(number string) (types.JID, error) {
+	if strings.HasSuffix(number, "@"+types.BotServer) {
+		return types.ParseJID(number)
+	}
 	if strings.HasSuffix(number, "@"+types.DefaultUserServer) {
 		jid, _ := types.ParseJID(number)
 		number = "+" + jid.User
@@ -86,7 +89,7 @@ func (wa *WhatsAppConnector) ValidateUserID(id networkid.UserID) bool {
 	switch jid.Server {
 	case types.DefaultUserServer:
 		return len(jid.User) <= 13 && (jid.User == "0" || len(jid.User) >= 7) && isOnlyNumbers(jid.User)
-	case types.HiddenUserServer:
+	case types.HiddenUserServer, types.BotServer:
 		return true
 	default:
 		return false

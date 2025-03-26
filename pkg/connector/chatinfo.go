@@ -31,7 +31,7 @@ func (wa *WhatsAppClient) GetChatInfo(ctx context.Context, portal *bridgev2.Port
 
 func (wa *WhatsAppClient) getChatInfo(ctx context.Context, portalJID types.JID, conv *wadb.Conversation) (wrapped *bridgev2.ChatInfo, err error) {
 	switch portalJID.Server {
-	case types.DefaultUserServer:
+	case types.DefaultUserServer, types.BotServer:
 		wrapped = wa.wrapDMInfo(portalJID)
 	case types.BroadcastServer:
 		if portalJID == types.StatusBroadcastJID {
@@ -131,6 +131,7 @@ const StatusBroadcastName = "WhatsApp Status Broadcast"
 const BroadcastTopic = "WhatsApp broadcast list"
 const UnnamedBroadcastName = "Unnamed broadcast list"
 const PrivateChatTopic = "WhatsApp private chat"
+const BotChatTopic = "WhatsApp chat with a bot"
 
 func (wa *WhatsAppClient) wrapDMInfo(jid types.JID) *bridgev2.ChatInfo {
 	info := &bridgev2.ChatInfo{
@@ -146,6 +147,9 @@ func (wa *WhatsAppClient) wrapDMInfo(jid types.JID) *bridgev2.ChatInfo {
 			PowerLevels: nil,
 		},
 		Type: ptr.Ptr(database.RoomTypeDM),
+	}
+	if jid.Server == types.BotServer {
+		info.Topic = ptr.Ptr(BotChatTopic)
 	}
 	if jid == wa.JID.ToNonAD() {
 		// For chats with self, force-split the members so the user's own ghost is always in the room.
