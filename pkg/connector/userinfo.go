@@ -169,7 +169,7 @@ func (wa *WhatsAppClient) GetUserInfo(ctx context.Context, ghost *bridgev2.Ghost
 }
 
 func (wa *WhatsAppClient) getUserInfo(ctx context.Context, jid types.JID, fetchAvatar bool) (*bridgev2.UserInfo, error) {
-	contact, err := wa.Client.Store.Contacts.GetContact(jid)
+	contact, err := wa.GetStore().Contacts.GetContact(jid)
 	if err != nil {
 		return nil, err
 	}
@@ -185,6 +185,9 @@ func (wa *WhatsAppClient) contactToUserInfo(jid types.JID, contact types.Contact
 		IsBot:        ptr.Ptr(jid.IsBot()),
 		Identifiers:  []string{fmt.Sprintf("tel:+%s", jid.User)},
 		ExtraUpdates: updateGhostLastSyncAt,
+	}
+	if jid.Server == types.BotServer {
+		ui.Identifiers = []string{}
 	}
 	if getAvatar {
 		ui.ExtraUpdates = bridgev2.MergeExtraUpdaters(ui.ExtraUpdates, wa.fetchGhostAvatar)

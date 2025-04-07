@@ -297,3 +297,51 @@ func (wa *WhatsAppClient) HandleMatrixTyping(ctx context.Context, msg *bridgev2.
 	}
 	return wa.Client.SendChatPresence(portalJID, chatPresence, mediaPresence)
 }
+
+func (wa *WhatsAppClient) HandleMatrixMembership(ctx context.Context, msg *bridgev2.MatrixMembershipChange) (bool, error) {
+	portalJID, err := waid.ParsePortalID(msg.Portal.ID)
+	if err != nil {
+		return false, err
+	}
+
+	if msg.Portal.RoomType == database.RoomTypeDM {
+		switch msg.Type {
+		case bridgev2.Invite:
+			return false, fmt.Errorf("cannot invite additional user to dm")
+		default:
+			return false, nil
+		}
+	}
+
+	changes := make([]types.JID, 1)
+	var action whatsmeow.ParticipantChange
+
+	switch msg.Type {
+	case bridgev2.Invite:
+		action = whatsmeow.ParticipantChangeAdd
+	case bridgev2.Leave, bridgev2.Kick:
+		action = whatsmeow.ParticipantChangeRemove
+	default:
+		return false, nil
+	}
+
+	switch target := msg.Target.(type) {
+	case *bridgev2.Ghost:
+		changes[0] = waid.ParseUserID(target.ID)
+	case *bridgev2.UserLogin:
+		ghost, err := target.Bridge.GetGhostByID(ctx, networkid.UserID(target.ID))
+		if err != nil {
+			return false, fmt.Errorf("failed to get ghost for user: %w", err)
+		}
+		changes[0] = waid.ParseUserID(ghost.ID)
+	default:
+		return false, fmt.Errorf("cannot get target intent: unknown type: %T", target)
+	}
+
+	_, err = wa.Client.UpdateGroupParticipants(portalJID, changes, action)
+	if err != nil {
+		return false, err
+	}
+
+	return true, nil
+}

@@ -33,6 +33,8 @@ type UserLoginMetadata struct {
 	PhoneLastPinged jsontime.Unix `json:"phone_last_pinged"`
 	Timezone        string        `json:"timezone"`
 	PushKeys        *PushKeys     `json:"push_keys,omitempty"`
+	APNSEncPubKey   []byte        `json:"apns_enc_pubkey,omitempty"`
+	APNSEncPrivKey  []byte        `json:"apns_enc_privkey,omitempty"`
 
 	HistorySyncPortalsNeedCreating bool `json:"history_sync_portals_need_creating,omitempty"`
 }
@@ -68,13 +70,33 @@ type GroupInviteMeta struct {
 }
 
 type MessageMetadata struct {
-	SenderDeviceID   uint16           `json:"sender_device_id,omitempty"`
-	Error            MessageErrorType `json:"error,omitempty"`
-	BroadcastListJID *types.JID       `json:"broadcast_list_jid,omitempty"`
-	GroupInvite      *GroupInviteMeta `json:"group_invite,omitempty"`
-	FailedMediaMeta  json.RawMessage  `json:"media_meta,omitempty"`
-	DirectMediaMeta  json.RawMessage  `json:"direct_media_meta,omitempty"`
-	IsMatrixPoll     bool             `json:"is_matrix_poll,omitempty"`
+	SenderDeviceID   uint16            `json:"sender_device_id,omitempty"`
+	Error            MessageErrorType  `json:"error,omitempty"`
+	BroadcastListJID *types.JID        `json:"broadcast_list_jid,omitempty"`
+	GroupInvite      *GroupInviteMeta  `json:"group_invite,omitempty"`
+	FailedMediaMeta  json.RawMessage   `json:"media_meta,omitempty"`
+	DirectMediaMeta  json.RawMessage   `json:"direct_media_meta,omitempty"`
+	IsMatrixPoll     bool              `json:"is_matrix_poll,omitempty"`
+	Edits            []types.MessageID `json:"edits,omitempty"`
+}
+
+func (mm *MessageMetadata) CopyFrom(other any) {
+	otherMM := other.(*MessageMetadata)
+	mm.SenderDeviceID = otherMM.SenderDeviceID
+	mm.Error = otherMM.Error
+	if otherMM.BroadcastListJID != nil {
+		mm.BroadcastListJID = otherMM.BroadcastListJID
+	}
+	if otherMM.FailedMediaMeta != nil {
+		mm.FailedMediaMeta = otherMM.FailedMediaMeta
+	}
+	if otherMM.DirectMediaMeta != nil {
+		mm.DirectMediaMeta = otherMM.DirectMediaMeta
+	}
+	if otherMM.GroupInvite != nil {
+		mm.GroupInvite = otherMM.GroupInvite
+	}
+	mm.IsMatrixPoll = mm.IsMatrixPoll || otherMM.IsMatrixPoll
 }
 
 type ReactionMetadata struct {

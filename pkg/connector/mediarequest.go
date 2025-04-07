@@ -157,7 +157,7 @@ func (wa *WhatsAppClient) sendMediaRequestDirect(rawMsgID networkid.MessageID, k
 		ID: msgID.ID,
 		MessageSource: types.MessageSource{
 			IsFromMe: msgID.Sender.User == wa.JID.User,
-			IsGroup:  msgID.Chat.Server != types.DefaultUserServer,
+			IsGroup:  msgID.Chat.Server != types.DefaultUserServer && msgID.Chat.Server != types.BotServer,
 			Sender:   msgID.Sender,
 			Chat:     msgID.Chat,
 		},

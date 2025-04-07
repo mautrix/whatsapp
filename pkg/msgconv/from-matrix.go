@@ -309,9 +309,11 @@ func (mc *MessageConverter) convertPill(displayname, mxid, eventID string, ctx f
 
 type PaddedImage struct {
 	image.Image
-	Size    int
-	OffsetX int
-	OffsetY int
+	Size       int
+	OffsetX    int
+	OffsetY    int
+	RealWidth  int
+	RealHeight int
 }
 
 func (img *PaddedImage) Bounds() image.Rectangle {
@@ -319,7 +321,10 @@ func (img *PaddedImage) Bounds() image.Rectangle {
 }
 
 func (img *PaddedImage) At(x, y int) color.Color {
-	return img.Image.At(x+img.OffsetX, y+img.OffsetY)
+	if x < img.OffsetX || y < img.OffsetY || x >= img.OffsetX+img.RealWidth || y >= img.OffsetY+img.RealHeight {
+		return color.Transparent
+	}
+	return img.Image.At(x-img.OffsetX, y-img.OffsetY)
 }
 
 func (mc *MessageConverter) convertWebPtoPNG(webpImage []byte) ([]byte, error) {
@@ -336,36 +341,40 @@ func (mc *MessageConverter) convertWebPtoPNG(webpImage []byte) ([]byte, error) {
 	return pngBuffer.Bytes(), nil
 }
 
-func (mc *MessageConverter) convertToWebP(img []byte) ([]byte, error) {
+func (mc *MessageConverter) convertToWebP(img []byte) ([]byte, int, error) {
 	decodedImg, _, err := image.Decode(bytes.NewReader(img))
 	if err != nil {
-		return img, fmt.Errorf("failed to decode image: %w", err)
+		return img, 0, fmt.Errorf("failed to decode image: %w", err)
 	}
 
 	bounds := decodedImg.Bounds()
 	width, height := bounds.Dx(), bounds.Dy()
+	var size int
 	if width != height {
 		paddedImg := &PaddedImage{
-			Image:   decodedImg,
-			OffsetX: bounds.Min.Y,
-			OffsetY: bounds.Min.X,
+			Image:      decodedImg,
+			OffsetX:    bounds.Min.Y,
+			OffsetY:    bounds.Min.X,
+			RealWidth:  width,
+			RealHeight: height,
 		}
 		if width > height {
-			paddedImg.Size = width
-			paddedImg.OffsetY -= (paddedImg.Size - height) / 2
+			size = width
+			paddedImg.OffsetY += (size - height) / 2
 		} else {
-			paddedImg.Size = height
-			paddedImg.OffsetX -= (paddedImg.Size - width) / 2
+			size = height
+			paddedImg.OffsetX += (size - width) / 2
 		}
+		paddedImg.Size = size
 		decodedImg = paddedImg
 	}
 
 	var webpBuffer bytes.Buffer
 	if err = cwebp.Encode(&webpBuffer, decodedImg, nil); err != nil {
-		return img, fmt.Errorf("failed to encode webp image: %w", err)
+		return img, 0, fmt.Errorf("failed to encode webp image: %w", err)
 	}
 
-	return webpBuffer.Bytes(), nil
+	return webpBuffer.Bytes(), size, nil
 }
 
 func (mc *MessageConverter) reuploadFileToWhatsApp(
@@ -395,10 +404,13 @@ func (mc *MessageConverter) reuploadFileToWhatsApp(
 		isSticker = true
 		mediaType = whatsmeow.MediaImage
 		if mime != "image/webp" || content.Info.Width != content.Info.Height {
-			data, err = mc.convertToWebP(data)
+			var size int
+			data, size, err = mc.convertToWebP(data)
 			if err != nil {
 				return nil, nil, "image/webp", fmt.Errorf("%w (to webp): %w", bridgev2.ErrMediaConvertFailed, err)
 			}
+			content.Info.Width = size
+			content.Info.Height = size
 			mime = "image/webp"
 		}
 	case event.MsgImage:

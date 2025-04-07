@@ -117,6 +117,14 @@ func (mc *MessageConverter) ToMatrix(
 		part, status_part, contextInfo = mc.convertExtendedMessage(ctx, info, waMsg)
 	case waMsg.TemplateMessage != nil:
 		part, contextInfo = mc.convertTemplateMessage(ctx, info, waMsg.TemplateMessage)
+	case waMsg.ButtonsMessage != nil:
+		part, contextInfo = mc.convertButtonsMessage(ctx, info, waMsg.ButtonsMessage)
+	case waMsg.ButtonsResponseMessage != nil:
+		part, contextInfo = mc.convertButtonsResponseMessage(ctx, waMsg.ButtonsResponseMessage)
+	case waMsg.InteractiveMessage != nil:
+		part, contextInfo = mc.convertInteractiveMessage(ctx, info, waMsg.InteractiveMessage)
+	case waMsg.InteractiveResponseMessage != nil:
+		part, contextInfo = mc.convertInteractiveResponseMessage(ctx, waMsg.InteractiveResponseMessage)
 	case waMsg.HighlyStructuredMessage != nil:
 		part, contextInfo = mc.convertTemplateMessage(ctx, info, waMsg.HighlyStructuredMessage.GetHydratedHsm())
 	case waMsg.TemplateButtonReplyMessage != nil:

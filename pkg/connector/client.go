@@ -18,6 +18,7 @@ package connector
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"sync"
 	"sync/atomic"
@@ -25,14 +26,17 @@ import (
 
 	"github.com/rs/zerolog"
 	"go.mau.fi/whatsmeow"
+	waBinary "go.mau.fi/whatsmeow/binary"
 	"go.mau.fi/whatsmeow/proto/waHistorySync"
+	"go.mau.fi/whatsmeow/proto/waWa6"
 	"go.mau.fi/whatsmeow/store"
 	"go.mau.fi/whatsmeow/types"
+	"go.mau.fi/whatsmeow/util/keys"
 	waLog "go.mau.fi/whatsmeow/util/log"
 	"golang.org/x/sync/semaphore"
-	"maunium.net/go/mautrix/bridge/status"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
+	"maunium.net/go/mautrix/bridgev2/status"
 
 	"go.mau.fi/mautrix-whatsapp/pkg/waid"
 )
@@ -65,6 +69,9 @@ func (wa *WhatsAppConnector) LoadUserLogin(_ context.Context, login *bridgev2.Us
 		log := w.UserLogin.Log.With().Str("component", "whatsmeow").Logger()
 		w.Client = whatsmeow.NewClient(w.Device, waLog.Zerolog(log))
 		w.Client.AddEventHandler(w.handleWAEvent)
+		if bridgev2.PortalEventBuffer == 0 {
+			w.Client.SynchronousAck = true
+		}
 		w.Client.AutomaticMessageRerequestFromPhone = true
 		w.Client.GetMessageForRetry = w.trackNotFoundRetry
 		w.Client.PreRetryCallback = w.trackFoundRetry
@@ -110,8 +117,9 @@ var (
 
 var pushCfg = &bridgev2.PushConfig{
 	// TODO fetch this from server instead of hardcoding?
-	Web: &bridgev2.WebPushConfig{VapidKey: "BIt4eFAVqVxe4yOA5_VLbZTbOlV-2y1FYJ_R4RlxWoyYazAq4glIxI7fh_xLbob1SNv7ZtTWn9mmZCsk2YNXYeY"},
-	FCM: &bridgev2.FCMPushConfig{SenderID: "293955441834"},
+	Web:  &bridgev2.WebPushConfig{VapidKey: "BIt4eFAVqVxe4yOA5_VLbZTbOlV-2y1FYJ_R4RlxWoyYazAq4glIxI7fh_xLbob1SNv7ZtTWn9mmZCsk2YNXYeY"},
+	FCM:  &bridgev2.FCMPushConfig{SenderID: "293955441834"},
+	APNs: &bridgev2.APNsPushConfig{BundleID: "net.whatsapp.WhatsApp"},
 }
 
 func (wa *WhatsAppClient) GetPushConfigs() *bridgev2.PushConfig {
@@ -140,6 +148,19 @@ func (wa *WhatsAppClient) RegisterPushNotifications(ctx context.Context, pushTyp
 			Auth:     meta.PushKeys.Auth,
 			P256DH:   meta.PushKeys.P256DH,
 		}
+	case bridgev2.PushTypeAPNs:
+		meta := wa.UserLogin.Metadata.(*waid.UserLoginMetadata)
+		if meta.APNSEncPubKey == nil {
+			k := keys.NewKeyPair()
+			meta.APNSEncPubKey = k.Pub[:]
+			meta.APNSEncPrivKey = k.Priv[:]
+			err := wa.UserLogin.Save(ctx)
+			if err != nil {
+				return fmt.Errorf("failed to save push enc key: %w", err)
+			}
+		}
+		// TODO figure out if the key is supposed to be aes or curve25519
+		pc = &whatsmeow.APNsPushConfig{Token: token, MsgIDEncKey: meta.APNSEncPubKey}
 	default:
 		return fmt.Errorf("unsupported push type %s", pushType)
 	}
@@ -179,7 +200,20 @@ func (wa *WhatsAppClient) notifyOfflineSyncWaiter(err error) {
 	}
 }
 
-func (wa *WhatsAppClient) ConnectBackground(ctx context.Context) error {
+type PushNotificationData struct {
+	PN            string `json:"pn"`
+	EncIV         string `json:"enc_iv"`
+	EncPayload    string `json:"enc_p"`
+	EncTag        string `json:"enc_t"`
+	EncTimeMicros uint64 `json:"enc_c"`
+	// TODO unencrypted message ID field
+}
+
+type wrappedPushNotificationData struct {
+	Data PushNotificationData `json:"data"`
+}
+
+func (wa *WhatsAppClient) ConnectBackground(ctx context.Context, params *bridgev2.ConnectBackgroundParams) error {
 	if wa.Client == nil {
 		return bridgev2.ErrNotLoggedIn
 	}
@@ -188,6 +222,14 @@ func (wa *WhatsAppClient) ConnectBackground(ctx context.Context) error {
 	if err := wa.Main.updateProxy(ctx, wa.Client, false); err != nil {
 		zerolog.Ctx(ctx).Err(err).Msg("Failed to update proxy")
 	}
+	wa.Client.GetClientPayload = func() *waWa6.ClientPayload {
+		payload := wa.Client.Store.GetClientPayload()
+		payload.ConnectReason = waWa6.ClientPayload_PUSH.Enum()
+		return payload
+	}
+	defer func() {
+		wa.Client.GetClientPayload = nil
+	}()
 	err := wa.Client.Connect()
 	if err != nil {
 		return err
@@ -197,8 +239,57 @@ func (wa *WhatsAppClient) ConnectBackground(ctx context.Context) error {
 	case <-ctx.Done():
 		return ctx.Err()
 	case err = <-wa.offlineSyncWaiter:
+		if err == nil {
+			var data wrappedPushNotificationData
+			err = json.Unmarshal(params.RawData, &data)
+			if err == nil && data.Data.PN != "" {
+				pnErr := wa.sendPNData(ctx, data.Data.PN)
+				if pnErr != nil {
+					zerolog.Ctx(ctx).Err(pnErr).Msg("Failed to send PN data")
+				}
+			}
+		}
 		return err
 	}
+}
+
+func (wa *WhatsAppClient) sendPNData(ctx context.Context, pn string) error {
+	//lint:ignore SA1019 this is supposed to be dangerous
+	resp, err := wa.Client.DangerousInternals().SendIQ(whatsmeow.DangerousInfoQuery{
+		Namespace: "urn:xmpp:whatsapp:push",
+		Type:      "get",
+		To:        types.ServerJID,
+		Content: []waBinary.Node{{
+			Tag:     "pn",
+			Content: pn,
+		}},
+		Context: ctx,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to send pn: %w", err)
+	}
+	cat, ok := resp.GetOptionalChildByTag("cat")
+	if !ok {
+		return fmt.Errorf("cat element not found in response")
+	}
+	catContentBytes, ok := cat.Content.([]byte)
+	if !ok {
+		return fmt.Errorf("cat element content is not a byte slice")
+	}
+	zerolog.Ctx(ctx).Debug().Str("cat_data", string(catContentBytes)).Msg("Received cat response from sending pn data")
+	//lint:ignore SA1019 this is supposed to be dangerous
+	err = wa.Client.DangerousInternals().SendNode(waBinary.Node{
+		Tag: "ib",
+		Content: []waBinary.Node{{
+			Tag:     "cat",
+			Content: cat.Content,
+		}},
+	})
+	if err != nil {
+		return fmt.Errorf("failed to broadcast cat: %w", err)
+	}
+	zerolog.Ctx(ctx).Debug().Msg("Broadcasted cat from pn data")
+	return nil
 }
 
 func (wa *WhatsAppClient) startLoops() {
@@ -215,13 +306,22 @@ func (wa *WhatsAppClient) startLoops() {
 	}
 }
 
+func (wa *WhatsAppClient) GetStore() *store.Device {
+	if cli := wa.Client; cli != nil {
+		if currentStore := cli.Store; currentStore != nil {
+			return currentStore
+		}
+	}
+	wa.UserLogin.Log.Warn().Caller(1).Msg("Returning noop device in GetStore")
+	return store.NoopDevice
+}
+
 func (wa *WhatsAppClient) Disconnect() {
 	if stopHistorySyncLoop := wa.stopLoops.Swap(nil); stopHistorySyncLoop != nil {
 		(*stopHistorySyncLoop)()
 	}
 	if cli := wa.Client; cli != nil {
 		cli.Disconnect()
-		wa.Client = nil
 	}
 }
 
@@ -233,6 +333,7 @@ func (wa *WhatsAppClient) LogoutRemote(ctx context.Context) {
 		}
 	}
 	wa.Disconnect()
+	wa.Client = nil
 }
 
 func (wa *WhatsAppClient) IsLoggedIn() bool {

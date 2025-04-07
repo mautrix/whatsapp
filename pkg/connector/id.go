@@ -15,7 +15,7 @@ func (wa *WhatsAppClient) makeWAPortalKey(chatJID types.JID) networkid.PortalKey
 		ID: waid.MakePortalID(chatJID),
 	}
 	switch chatJID.Server {
-	case types.DefaultUserServer, types.HiddenUserServer, types.BroadcastServer:
+	case types.DefaultUserServer, types.BotServer, types.HiddenUserServer, types.BroadcastServer:
 		key.Receiver = wa.UserLogin.ID
 	default:
 		if wa.Main.Bridge.Config.SplitPortals {
@@ -45,7 +45,7 @@ func (wa *WhatsAppClient) messageIDToKey(id *waid.ParsedMessageID) *waCommon.Mes
 	if id.Sender.User == string(wa.UserLogin.ID) {
 		key.FromMe = ptr.Ptr(true)
 	}
-	if id.Chat.Server != types.MessengerServer && id.Chat.Server != types.DefaultUserServer {
+	if id.Chat.Server != types.MessengerServer && id.Chat.Server != types.DefaultUserServer && id.Chat.Server != types.BotServer {
 		key.Participant = ptr.Ptr(id.Sender.String())
 	}
 	return key

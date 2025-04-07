@@ -1,3 +1,18 @@
+# v0.11.4 (2025-03-16)
+
+* Fixed edits being bridged multiple times if a single chat had multiple
+  logged-in Matrix users.
+* Fixed bridging some types of business messages that were supposed to be
+  supported (there are still some unsupported types).
+
+# v0.11.3 (2025-02-16)
+
+* Bumped minimum Go version to 1.23.
+* Added support for signaling supported features to clients using the
+  `com.beeper.room_features` state event.
+* Fixed converting voice message duration and waveform.
+* Fixed padding in stickers sent to WhatsApp sometimes being the wrong color.
+
 # v0.11.2 (2024-12-16)
 
 * Added better notice when view-once messages are unavailable.

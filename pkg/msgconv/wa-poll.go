@@ -108,7 +108,7 @@ func KeyToMessageID(client *whatsmeow.Client, chat, sender types.JID, key *waCom
 			if sender.Server == types.LegacyUserServer {
 				sender.Server = types.DefaultUserServer
 			}
-		} else if chat.Server == types.DefaultUserServer {
+		} else if chat.Server == types.DefaultUserServer || chat.Server == types.BotServer {
 			ownID := ptr.Val(client.Store.ID).ToNonAD()
 			if sender.User == ownID.User {
 				sender = chat

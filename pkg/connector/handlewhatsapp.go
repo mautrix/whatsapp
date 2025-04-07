@@ -28,10 +28,10 @@ import (
 	"go.mau.fi/whatsmeow/appstate"
 	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
-	"maunium.net/go/mautrix/bridge/status"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/bridgev2/simplevent"
+	"maunium.net/go/mautrix/bridgev2/status"
 	"maunium.net/go/mautrix/event"
 
 	"go.mau.fi/mautrix-whatsapp/pkg/waid"
@@ -125,7 +125,7 @@ func (wa *WhatsAppClient) handleWAEvent(rawEvt any) {
 		go wa.handleWAPictureUpdate(evt)
 
 	case *events.AppStateSyncComplete:
-		if len(wa.Client.Store.PushName) > 0 && evt.Name == appstate.WAPatchCriticalBlock {
+		if len(wa.GetStore().PushName) > 0 && evt.Name == appstate.WAPatchCriticalBlock {
 			err := wa.Client.SendPresence(types.PresenceUnavailable)
 			if err != nil {
 				log.Warn().Err(err).Msg("Failed to send presence after app state sync")
@@ -142,7 +142,7 @@ func (wa *WhatsAppClient) handleWAEvent(rawEvt any) {
 		if err != nil {
 			log.Warn().Err(err).Msg("Failed to send presence after push name update")
 		}
-		_, _, err = wa.Client.Store.Contacts.PutPushName(wa.JID.ToNonAD(), evt.Action.GetName())
+		_, _, err = wa.GetStore().Contacts.PutPushName(wa.JID.ToNonAD(), evt.Action.GetName())
 		if err != nil {
 			log.Err(err).Msg("Failed to update push name in store")
 		}
@@ -157,7 +157,7 @@ func (wa *WhatsAppClient) handleWAEvent(rawEvt any) {
 	case *events.Connected:
 		log.Debug().Msg("Connected to WhatsApp socket")
 		wa.UserLogin.BridgeState.Send(status.BridgeState{StateEvent: status.StateConnected})
-		if len(wa.Client.Store.PushName) > 0 {
+		if len(wa.GetStore().PushName) > 0 {
 			go func() {
 				err := wa.Client.SendPresence(types.PresenceUnavailable)
 				if err != nil {
@@ -498,7 +498,7 @@ func (wa *WhatsAppClient) syncGhost(jid types.JID, reason string, pictureID *str
 }
 
 func (wa *WhatsAppClient) handleWAPictureUpdate(evt *events.Picture) {
-	if evt.JID.Server == types.DefaultUserServer {
+	if evt.JID.Server == types.DefaultUserServer || evt.JID.Server == types.BotServer {
 		wa.syncGhost(evt.JID, "picture event", &evt.PictureID)
 	} else {
 		var changes bridgev2.ChatInfo

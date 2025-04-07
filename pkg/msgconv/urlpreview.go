@@ -43,13 +43,9 @@ func (mc *MessageConverter) convertURLPreviewToBeeper(ctx context.Context, msg *
 	output := &event.BeeperLinkPreview{
 		MatchedURL: msg.GetMatchedText(),
 		LinkPreview: event.LinkPreview{
-			CanonicalURL: msg.GetCanonicalURL(),
-			Title:        msg.GetTitle(),
-			Description:  msg.GetDescription(),
+			Title:       msg.GetTitle(),
+			Description: msg.GetDescription(),
 		},
-	}
-	if len(output.CanonicalURL) == 0 {
-		output.CanonicalURL = output.MatchedURL
 	}
 
 	var thumbnailData []byte
@@ -128,9 +124,6 @@ func (mc *MessageConverter) convertURLPreviewToWhatsApp(ctx context.Context, con
 	}
 
 	dest.MatchedText = &preview.MatchedURL
-	if len(preview.CanonicalURL) > 0 {
-		dest.CanonicalURL = &preview.CanonicalURL
-	}
 	if len(preview.Description) > 0 {
 		dest.Description = &preview.Description
 	}
