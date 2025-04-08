@@ -186,7 +186,7 @@ func (evt *WAMessageEvent) GetRemovedEmojiID() networkid.EmojiID {
 
 func (evt *WAMessageEvent) GetType() bridgev2.RemoteEventType {
 	switch evt.parsedMessageType {
-	case "reaction":
+	case "reaction", "encrypted reaction":
 		return bridgev2.RemoteEventReaction
 	case "reaction remove":
 		return bridgev2.RemoteEventReactionRemove
@@ -297,6 +297,7 @@ func (evt *WAUndecryptableMessage) ConvertMessage(ctx context.Context, portal *b
 			Body:    "You received a view once message. For added privacy, you can only open it on the WhatsApp app.",
 		}
 	}
+	// TODO thread root for comments
 	return &bridgev2.ConvertedMessage{
 		Parts: []*bridgev2.ConvertedMessagePart{{
 			Type:    event.EventMessage,

@@ -31,7 +31,7 @@ func (wa *WhatsAppClient) makeEventSender(id types.JID) bridgev2.EventSender {
 		return bridgev2.EventSender{}
 	}
 	return bridgev2.EventSender{
-		IsFromMe:    waid.MakeUserLoginID(id) == wa.UserLogin.ID,
+		IsFromMe:    id.User == wa.Client.Store.GetJID().User || id.User == wa.Client.Store.GetLID().User,
 		Sender:      waid.MakeUserID(id),
 		SenderLogin: waid.MakeUserLoginID(id),
 	}
@@ -42,10 +42,10 @@ func (wa *WhatsAppClient) messageIDToKey(id *waid.ParsedMessageID) *waCommon.Mes
 		RemoteJID: ptr.Ptr(id.Chat.String()),
 		ID:        ptr.Ptr(id.ID),
 	}
-	if id.Sender.User == string(wa.UserLogin.ID) {
+	if id.Sender.User == wa.Client.Store.GetJID().User || id.Sender.User == wa.Client.Store.GetLID().User {
 		key.FromMe = ptr.Ptr(true)
 	}
-	if id.Chat.Server != types.MessengerServer && id.Chat.Server != types.DefaultUserServer && id.Chat.Server != types.BotServer {
+	if id.Chat.Server != types.MessengerServer && id.Chat.Server != types.DefaultUserServer && id.Chat.Server != types.HiddenUserServer && id.Chat.Server != types.BotServer {
 		key.Participant = ptr.Ptr(id.Sender.String())
 	}
 	return key

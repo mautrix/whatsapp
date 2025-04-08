@@ -264,6 +264,24 @@ func (wa *WhatsAppClient) handleWAMessage(evt *events.Message) {
 	if parsedMessageType == "ignore" || strings.HasPrefix(parsedMessageType, "unknown_protocol_") {
 		return
 	}
+	if encReact := evt.Message.GetEncReactionMessage(); encReact != nil {
+		decrypted, err := wa.Client.DecryptReaction(evt)
+		if err != nil {
+			wa.UserLogin.Log.Err(err).Str("message_id", evt.Info.ID).Msg("Failed to decrypt reaction")
+			return
+		}
+		decrypted.Key = encReact.GetTargetMessageKey()
+		evt.Message.ReactionMessage = decrypted
+	}
+	if encComment := evt.Message.GetEncCommentMessage(); encComment != nil {
+		decrypted, err := wa.Client.DecryptComment(evt)
+		if err != nil {
+			wa.UserLogin.Log.Err(err).Str("message_id", evt.Info.ID).Msg("Failed to decrypt comment")
+		} else {
+			decrypted.EncCommentMessage = evt.Message.GetEncCommentMessage()
+			evt.Message = decrypted
+		}
+	}
 	wa.Main.Bridge.QueueRemoteEvent(wa.UserLogin, &WAMessageEvent{
 		MessageInfoWrapper: &MessageInfoWrapper{
 			Info: evt.Info,

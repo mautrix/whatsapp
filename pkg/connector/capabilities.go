@@ -7,9 +7,10 @@ import (
 	"go.mau.fi/util/ffmpeg"
 	"go.mau.fi/util/jsontime"
 	"go.mau.fi/util/ptr"
-
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/event"
+
+	"go.mau.fi/mautrix-whatsapp/pkg/waid"
 )
 
 var WhatsAppGeneralCaps = &bridgev2.NetworkGeneralCapabilities{
@@ -148,6 +149,18 @@ var whatsappCaps = &event.RoomFeatures{
 	TypingNotifications: true,
 }
 
+var whatsappCAGCaps *event.RoomFeatures
+
+func init() {
+	whatsappCAGCaps = ptr.Clone(whatsappCaps)
+	whatsappCAGCaps.ID = capID() + "+cag"
+	whatsappCAGCaps.Reply = event.CapLevelUnsupported
+	whatsappCAGCaps.Thread = event.CapLevelFullySupported
+}
+
 func (wa *WhatsAppClient) GetCapabilities(ctx context.Context, portal *bridgev2.Portal) *event.RoomFeatures {
+	if portal.Metadata.(*waid.PortalMetadata).CommunityAnnouncementGroup {
+		return whatsappCAGCaps
+	}
 	return whatsappCaps
 }

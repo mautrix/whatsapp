@@ -105,8 +105,9 @@ type ReactionMetadata struct {
 }
 
 type PortalMetadata struct {
-	DisappearingTimerSetAt int64         `json:"disappearing_timer_set_at,omitempty"`
-	LastSync               jsontime.Unix `json:"last_sync,omitempty"`
+	DisappearingTimerSetAt     int64         `json:"disappearing_timer_set_at,omitempty"`
+	LastSync                   jsontime.Unix `json:"last_sync,omitempty"`
+	CommunityAnnouncementGroup bool          `json:"is_cag,omitempty"`
 }
 
 type GhostMetadata struct {

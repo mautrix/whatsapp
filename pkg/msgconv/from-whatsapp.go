@@ -27,6 +27,7 @@ import (
 	"time"
 
 	"github.com/rs/zerolog"
+	"go.mau.fi/util/ptr"
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/proto/waE2E"
 	"go.mau.fi/whatsmeow/types"
@@ -93,6 +94,14 @@ func (mc *MessageConverter) addMentions(ctx context.Context, mentionedJID []stri
 		into.Body = strings.ReplaceAll(into.Body, mentionText, displayname)
 		into.FormattedBody = strings.ReplaceAll(into.FormattedBody, mentionText, fmt.Sprintf(`<a href="%s">%s</a>`, mxid.URI().MatrixToURL(), html.EscapeString(displayname)))
 	}
+}
+
+var failedCommentPart = &bridgev2.ConvertedMessagePart{
+	Type: event.EventMessage,
+	Content: &event.MessageEventContent{
+		Body:    "Failed to decrypt comment",
+		MsgType: event.MsgNotice,
+	},
 }
 
 func (mc *MessageConverter) ToMatrix(
@@ -171,6 +180,8 @@ func (mc *MessageConverter) ToMatrix(
 		part, contextInfo = mc.convertGroupInviteMessage(ctx, info, waMsg.GroupInviteMessage)
 	case waMsg.ProtocolMessage != nil && waMsg.ProtocolMessage.GetType() == waE2E.ProtocolMessage_EPHEMERAL_SETTING:
 		part, contextInfo = mc.convertEphemeralSettingMessage(ctx, waMsg.ProtocolMessage)
+	case waMsg.EncCommentMessage != nil:
+		part = failedCommentPart
 	default:
 		part, contextInfo = mc.convertUnknownMessage(ctx, waMsg)
 	}
@@ -209,6 +220,18 @@ func (mc *MessageConverter) ToMatrix(
 		cm.ReplyTo = &networkid.MessageOptionalPartID{
 			MessageID: waid.MakeMessageID(chat, pcp, contextInfo.GetStanzaID()),
 		}
+	}
+	commentTarget := waMsg.GetEncCommentMessage().GetTargetMessageKey()
+	if commentTarget == nil {
+		commentTarget = waMsg.GetCommentMessage().GetTargetMessageKey()
+	}
+	if commentTarget != nil {
+		pcp, _ := types.ParseJID(commentTarget.GetParticipant())
+		chat, _ := types.ParseJID(commentTarget.GetRemoteJID())
+		if chat.IsEmpty() {
+			chat, _ = waid.ParsePortalID(portal.ID)
+		}
+		cm.ThreadRoot = ptr.Ptr(waid.MakeMessageID(chat, pcp, commentTarget.GetID()))
 	}
 
 	return cm
