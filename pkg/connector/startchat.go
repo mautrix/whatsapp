@@ -149,7 +149,7 @@ func (wa *WhatsAppClient) getContactList(ctx context.Context, filter string) ([]
 		resp = append(resp, &bridgev2.ResolveIdentifierResponse{
 			Ghost:    ghost,
 			UserID:   waid.MakeUserID(jid),
-			UserInfo: wa.contactToUserInfo(jid, contactInfo, false),
+			UserInfo: wa.contactToUserInfo(ctx, jid, contactInfo, false),
 			Chat:     &bridgev2.CreateChatResponse{PortalKey: wa.makeWAPortalKey(jid)},
 		})
 	}

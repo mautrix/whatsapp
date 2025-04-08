@@ -173,17 +173,48 @@ func (wa *WhatsAppClient) getUserInfo(ctx context.Context, jid types.JID, fetchA
 	if err != nil {
 		return nil, err
 	}
-	return wa.contactToUserInfo(jid, contact, fetchAvatar), nil
+	return wa.contactToUserInfo(ctx, jid, contact, fetchAvatar), nil
 }
 
-func (wa *WhatsAppClient) contactToUserInfo(jid types.JID, contact types.ContactInfo, getAvatar bool) *bridgev2.UserInfo {
+func (wa *WhatsAppClient) contactToUserInfo(ctx context.Context, jid types.JID, contact types.ContactInfo, getAvatar bool) *bridgev2.UserInfo {
 	if jid == types.MetaAIJID && contact.PushName == jid.User {
 		contact.PushName = "Meta AI"
 	} else if jid == types.PSAJID {
 		contact.PushName = "WhatsApp"
 	}
+	var phone string
+	if jid.Server == types.DefaultUserServer {
+		phone = "+" + jid.User
+	} else if jid.Server == types.HiddenUserServer {
+		pnJID, err := wa.GetStore().LIDs.GetPNForLID(ctx, jid)
+		if err != nil {
+			zerolog.Ctx(ctx).Err(err).Stringer("lid", jid).Msg("Failed to get PN for LID")
+		} else {
+			phone = "+" + pnJID.User
+			extraContact, err := wa.GetStore().Contacts.GetContact(pnJID)
+			if err != nil {
+				zerolog.Ctx(ctx).Err(err).
+					Stringer("lid", jid).
+					Stringer("pn_jid", pnJID).
+					Msg("Failed to get contact info from PN")
+			} else {
+				if contact.FirstName == "" {
+					contact.FirstName = extraContact.FirstName
+				}
+				if contact.FullName == "" {
+					contact.FullName = extraContact.FullName
+				}
+				if contact.PushName == "" {
+					contact.PushName = extraContact.PushName
+				}
+				if contact.BusinessName == "" {
+					contact.BusinessName = extraContact.BusinessName
+				}
+			}
+		}
+	}
 	ui := &bridgev2.UserInfo{
-		Name:         ptr.Ptr(wa.Main.Config.FormatDisplayname(jid, contact)),
+		Name:         ptr.Ptr(wa.Main.Config.FormatDisplayname(jid, phone, contact)),
 		IsBot:        ptr.Ptr(jid.IsBot()),
 		Identifiers:  []string{fmt.Sprintf("tel:+%s", jid.User)},
 		ExtraUpdates: updateGhostLastSyncAt,
@@ -252,7 +283,7 @@ func (wa *WhatsAppClient) resyncContacts(forceAvatarSync bool) {
 		if err != nil {
 			log.Err(err).Msg("Failed to get ghost")
 		} else if ghost != nil {
-			ghost.UpdateInfo(ctx, wa.contactToUserInfo(jid, contact, forceAvatarSync || ghost.AvatarID == ""))
+			ghost.UpdateInfo(ctx, wa.contactToUserInfo(ctx, jid, contact, forceAvatarSync || ghost.AvatarID == ""))
 		}
 	}
 }

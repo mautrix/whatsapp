@@ -141,11 +141,13 @@ type DisplaynameParams struct {
 	Short  string
 }
 
-func (c *Config) FormatDisplayname(jid types.JID, contact types.ContactInfo) string {
+func (c *Config) FormatDisplayname(jid types.JID, phone string, contact types.ContactInfo) string {
 	var nameBuf strings.Builder
-	phone := "+" + jid.User
-	if jid.Server == types.BotServer {
-		phone = jid.User
+	if phone == "" {
+		phone = "+" + jid.User
+		if jid.Server != types.DefaultUserServer {
+			phone = jid.User
+		}
 	}
 	err := c.displaynameTemplate.Execute(&nameBuf, &DisplaynameParams{
 		ContactInfo: contact,
