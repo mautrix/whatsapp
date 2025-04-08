@@ -202,6 +202,17 @@ func setDefaultSubGroupFlag(isCommunityAnnouncementGroup bool) bridgev2.ExtraUpd
 	}
 }
 
+func setAddressingMode(mode types.AddressingMode) bridgev2.ExtraUpdater[*bridgev2.Portal] {
+	return func(_ context.Context, portal *bridgev2.Portal) bool {
+		meta := portal.Metadata.(*waid.PortalMetadata)
+		if meta.AddressingMode != mode {
+			meta.AddressingMode = mode
+			return true
+		}
+		return false
+	}
+}
+
 func (wa *WhatsAppClient) wrapGroupInfo(info *types.GroupInfo) *bridgev2.ChatInfo {
 	sendEventPL := defaultPL
 	if info.IsAnnounce && !info.IsDefaultSubGroup {
@@ -214,6 +225,7 @@ func (wa *WhatsAppClient) wrapGroupInfo(info *types.GroupInfo) *bridgev2.ChatInf
 	extraUpdater := bridgev2.MergeExtraUpdaters(
 		wa.makePortalAvatarFetcher("", types.EmptyJID, time.Time{}),
 		setDefaultSubGroupFlag(info.IsDefaultSubGroup && info.IsAnnounce),
+		setAddressingMode(info.AddressingMode),
 	)
 	wrapped := &bridgev2.ChatInfo{
 		Name:  ptr.Ptr(info.Name),

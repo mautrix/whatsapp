@@ -119,7 +119,9 @@ func (wa *WhatsAppClient) PreHandleMatrixReaction(_ context.Context, msg *bridge
 		return bridgev2.MatrixReactionPreResponse{}, ErrBroadcastReactionUnsupported
 	}
 	sender := wa.JID
-	if msg.Portal.Metadata.(*waid.PortalMetadata).CommunityAnnouncementGroup {
+	if portalJID.Server == types.HiddenUserServer ||
+		msg.Portal.Metadata.(*waid.PortalMetadata).CommunityAnnouncementGroup ||
+		msg.Portal.Metadata.(*waid.PortalMetadata).AddressingMode == types.AddressingModeLID {
 		sender = wa.Device.GetLID()
 	}
 	return bridgev2.MatrixReactionPreResponse{
@@ -271,7 +273,7 @@ func (wa *WhatsAppClient) HandleMatrixReadReceipt(ctx context.Context, receipt *
 		if err != nil {
 			continue
 		}
-		if msg.SenderID == networkid.UserID(wa.UserLogin.ID) {
+		if parsed.Sender.User == wa.Device.GetLID().User || parsed.Sender.User == wa.JID.User {
 			continue
 		}
 		var key types.JID
