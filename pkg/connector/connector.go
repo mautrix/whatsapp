@@ -18,14 +18,17 @@ package connector
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"sync"
 	"sync/atomic"
 
+	"go.mau.fi/util/dbutil"
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/proto/waCompanionReg"
 	"go.mau.fi/whatsmeow/store"
 	"go.mau.fi/whatsmeow/store/sqlstore"
+	whatsmeowUpgrades "go.mau.fi/whatsmeow/store/sqlstore/upgrades"
 	waLog "go.mau.fi/whatsmeow/util/log"
 	"google.golang.org/protobuf/proto"
 	"maunium.net/go/mautrix/bridgev2"
@@ -93,10 +96,14 @@ func (wa *WhatsAppConnector) Init(bridge *bridgev2.Bridge) {
 	)
 	wa.mediaEditCache = make(MediaEditCache)
 
-	wa.DeviceStore = sqlstore.NewWithDB(
-		bridge.DB.RawDB,
-		bridge.DB.Dialect.String(),
-		waLog.Zerolog(bridge.Log.With().Str("db_section", "whatsmeow").Logger()),
+	whatsmeowDBLog := bridge.Log.With().Str("db_section", "whatsmeow").Logger()
+	wa.DeviceStore = sqlstore.NewWithWrappedDB(
+		bridge.DB.Child(
+			"whatsmeow_version",
+			whatsmeowUpgrades.Table,
+			dbutil.ZeroLogger(whatsmeowDBLog),
+		),
+		waLog.Zerolog(whatsmeowDBLog),
 	)
 
 	store.DeviceProps.Os = proto.String(wa.Config.OSName)
@@ -118,6 +125,12 @@ func (wa *WhatsAppConnector) Start(ctx context.Context) error {
 	err := wa.DeviceStore.Upgrade()
 	if err != nil {
 		return bridgev2.DBUpgradeError{Err: err, Section: "whatsmeow"}
+	}
+	if !wa.Bridge.Background {
+		err = wa.DeviceStore.LIDMap.FillCache(ctx)
+		if err != nil {
+			return fmt.Errorf("failed to fill LID cache: %w", err)
+		}
 	}
 	err = wa.DB.Upgrade(ctx)
 	if err != nil {

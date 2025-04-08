@@ -165,6 +165,20 @@ func (wa *WhatsAppClient) handleWAEvent(rawEvt any) {
 				}
 			}()
 		}
+		meta := wa.UserLogin.Metadata.(*waid.UserLoginMetadata)
+		if meta.WALID == "" {
+			meta.WALID = wa.Client.Store.GetLID().User
+			if meta.WALID != "" {
+				go func() {
+					err := wa.UserLogin.Save(log.WithContext(context.Background()))
+					if err != nil {
+						log.Err(err).Msg("Failed to save user login metadata after updating LID")
+					} else {
+						log.Info().Msg("Updated LID in user login metadata")
+					}
+				}()
+			}
+		}
 	case *events.OfflineSyncPreview:
 		log.Info().
 			Int("message_count", evt.Messages).
@@ -243,9 +257,6 @@ func (wa *WhatsAppClient) handleWAMessage(evt *events.Message) {
 		Any("info", evt.Info).
 		Any("payload", evt.Message).
 		Msg("Received WhatsApp message")
-	if evt.Info.Chat.Server == types.HiddenUserServer || evt.Info.Sender.Server == types.HiddenUserServer {
-		return
-	}
 	if evt.Info.Chat == types.StatusBroadcastJID && !wa.Main.Config.EnableStatusBroadcast {
 		return
 	}
@@ -272,7 +283,7 @@ func (wa *WhatsAppClient) handleWAUndecryptableMessage(evt *events.Undecryptable
 		Str("decrypt_fail", string(evt.DecryptFailMode)).
 		Msg("Received undecryptable WhatsApp message")
 	wa.trackUndecryptable(evt)
-	if evt.DecryptFailMode == events.DecryptFailHide || evt.Info.Chat.Server == types.HiddenUserServer || evt.Info.Sender.Server == types.HiddenUserServer {
+	if evt.DecryptFailMode == events.DecryptFailHide {
 		return
 	}
 	if evt.Info.Chat == types.StatusBroadcastJID && !wa.Main.Config.EnableStatusBroadcast {

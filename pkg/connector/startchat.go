@@ -90,7 +90,7 @@ func (wa *WhatsAppConnector) ValidateUserID(id networkid.UserID) bool {
 	case types.DefaultUserServer:
 		return len(jid.User) <= 13 && (jid.User == "0" || len(jid.User) >= 7) && isOnlyNumbers(jid.User)
 	case types.HiddenUserServer, types.BotServer:
-		return true
+		return len(jid.User) >= 12
 	default:
 		return false
 	}
