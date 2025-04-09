@@ -18,10 +18,14 @@ package connector
 
 import (
 	"errors"
+	"fmt"
+	"html"
 	"strings"
 
 	"github.com/rs/zerolog"
+	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/appstate"
+	"go.mau.fi/whatsmeow/types"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/commands"
 	"maunium.net/go/mautrix/bridgev2/simplevent"
@@ -152,5 +156,151 @@ func fnSync(ce *commands.Event) {
 		}
 	default:
 		ce.Reply("Unknown sync target `%s`", ce.Args[0])
+	}
+}
+
+var cmdInviteLink = &commands.FullHandler{
+	Func: fnInviteLink,
+	Name: "invite-link",
+	Help: commands.HelpMeta{
+		Section:     HelpSectionInvites,
+		Description: "Get an invite link to the current group chat, optionally regenerating the link and revoking the old link.",
+		Args:        "[--reset]",
+	},
+	RequiresPortal: true,
+	RequiresLogin:  true,
+}
+
+func fnInviteLink(ce *commands.Event) {
+	login := ce.User.GetDefaultLogin()
+	if login == nil {
+		ce.Reply("Login not found")
+		return
+	}
+	portalJID, err := waid.ParsePortalID(ce.Portal.ID)
+	if err != nil {
+		ce.Reply("Failed to parse portal ID: %v", err)
+		return
+	}
+
+	wa := login.Client.(*WhatsAppClient)
+	reset := len(ce.Args) > 0 && strings.ToLower(ce.Args[0]) == "--reset"
+	if portalJID.Server == types.DefaultUserServer || portalJID.Server == types.HiddenUserServer {
+		ce.Reply("Can't get invite link to private chat")
+	} else if portalJID.IsBroadcastList() {
+		ce.Reply("Can't get invite link to broadcast list")
+	} else if link, err := wa.Client.GetGroupInviteLink(portalJID, reset); err != nil {
+		ce.Reply("Failed to get invite link: %v", err)
+	} else {
+		ce.Reply(link)
+	}
+}
+
+var cmdResolveLink = &commands.FullHandler{
+	Func: fnResolveLink,
+	Name: "resolve-link",
+	Help: commands.HelpMeta{
+		Section:     HelpSectionInvites,
+		Description: "Resolve a WhatsApp group invite or business message link.",
+		Args:        "<_group, contact, or message link_>",
+	},
+	RequiresLogin: true,
+}
+
+func fnResolveLink(ce *commands.Event) {
+	if len(ce.Args) == 0 {
+		ce.Reply("**Usage:** `$cmdprefix resolve-link <group or message link>`")
+		return
+	}
+	login := ce.User.GetDefaultLogin()
+	if login == nil {
+		ce.Reply("Login not found")
+		return
+	}
+	wa := login.Client.(*WhatsAppClient)
+	if strings.HasPrefix(ce.Args[0], whatsmeow.InviteLinkPrefix) {
+		group, err := wa.Client.GetGroupInfoFromLink(ce.Args[0])
+		if err != nil {
+			ce.Reply("Failed to get group info: %v", err)
+			return
+		}
+		ce.Reply("That invite link points at %s (`%s`)", group.Name, group.JID)
+	} else if strings.HasPrefix(ce.Args[0], whatsmeow.BusinessMessageLinkPrefix) || strings.HasPrefix(ce.Args[0], whatsmeow.BusinessMessageLinkDirectPrefix) {
+		target, err := wa.Client.ResolveBusinessMessageLink(ce.Args[0])
+		if err != nil {
+			ce.Reply("Failed to get business info: %v", err)
+			return
+		}
+		message := ""
+		if len(target.Message) > 0 {
+			parts := strings.Split(target.Message, "\n")
+			for i, part := range parts {
+				parts[i] = "> " + html.EscapeString(part)
+			}
+			message = fmt.Sprintf(" The following prefilled message is attached:\n\n%s", strings.Join(parts, "\n"))
+		}
+		ce.Reply("That link points at %s (+%s).%s", target.PushName, target.JID.User, message)
+	} else if strings.HasPrefix(ce.Args[0], whatsmeow.ContactQRLinkPrefix) || strings.HasPrefix(ce.Args[0], whatsmeow.ContactQRLinkDirectPrefix) {
+		target, err := wa.Client.ResolveContactQRLink(ce.Args[0])
+		if err != nil {
+			ce.Reply("Failed to get contact info: %v", err)
+			return
+		}
+		if target.PushName != "" {
+			ce.Reply("That link points at %s (+%s)", target.PushName, target.JID.User)
+		} else {
+			ce.Reply("That link points at +%s", target.JID.User)
+		}
+	} else {
+		ce.Reply("That doesn't look like a group invite link nor a business message link.")
+	}
+}
+
+var cmdJoin = &commands.FullHandler{
+	Func: fnJoin,
+	Name: "join",
+	Help: commands.HelpMeta{
+		Section:     HelpSectionInvites,
+		Description: "Join a group chat with an invite link.",
+		Args:        "<_invite link_>",
+	},
+	RequiresLogin: true,
+}
+
+func fnJoin(ce *commands.Event) {
+	if len(ce.Args) == 0 {
+		ce.Reply("**Usage:** `$cmdprefix join <invite link>`")
+		return
+	}
+	login := ce.User.GetDefaultLogin()
+	if login == nil {
+		ce.Reply("Login not found")
+		return
+	}
+	wa := login.Client.(*WhatsAppClient)
+
+	if strings.HasPrefix(ce.Args[0], whatsmeow.InviteLinkPrefix) {
+		jid, err := wa.Client.JoinGroupWithLink(ce.Args[0])
+		if err != nil {
+			ce.Reply("Failed to join group: %v", err)
+			return
+		}
+		ce.Log.Debug().Stringer("group_jid", jid).Msg("User successfully joined WhatsApp group with link")
+		ce.Reply("Successfully joined group `%s`, the portal should be created momentarily", jid)
+	} else if strings.HasPrefix(ce.Args[0], whatsmeow.NewsletterLinkPrefix) {
+		info, err := wa.Client.GetNewsletterInfoWithInvite(ce.Args[0])
+		if err != nil {
+			ce.Reply("Failed to get channel info: %v", err)
+			return
+		}
+		err = wa.Client.FollowNewsletter(info.ID)
+		if err != nil {
+			ce.Reply("Failed to follow channel: %v", err)
+			return
+		}
+		ce.Log.Debug().Stringer("channel_jid", info.ID).Msg("User successfully followed WhatsApp channel with link")
+		ce.Reply("Successfully followed channel `%s`, the portal should be created momentarily", info.ID)
+	} else {
+		ce.Reply("That doesn't look like a WhatsApp invite link")
 	}
 }
