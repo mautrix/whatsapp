@@ -156,16 +156,15 @@ func (evt *WAMessageEvent) ConvertEdit(ctx context.Context, portal *bridgev2.Por
 			evt.wa.processFailedMedia(ctx, portal.PortalKey, evt.GetID(), cm, false)
 		}
 	}
+	editPart := cm.Parts[0].ToEditPart(existing[0])
 	if evt.isUndecryptableUpsertSubEvent {
-		for _, part := range cm.Parts {
-			if part.Extra == nil {
-				part.Extra = make(map[string]any)
-			}
-			part.Extra["com.beeper.dont_render_edited"] = true
+		if editPart.TopLevelExtra == nil {
+			editPart.TopLevelExtra = make(map[string]any)
 		}
+		editPart.TopLevelExtra["com.beeper.dont_render_edited"] = true
 	}
 	return &bridgev2.ConvertedEdit{
-		ModifiedParts: []*bridgev2.ConvertedEditPart{cm.Parts[0].ToEditPart(existing[0])},
+		ModifiedParts: []*bridgev2.ConvertedEditPart{editPart},
 	}, nil
 }
 
