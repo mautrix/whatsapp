@@ -28,6 +28,9 @@ import (
 )
 
 func (wa *WhatsAppClient) obfuscateJID(jid types.JID) string {
+	if jid.Server == types.HiddenUserServer {
+		return jid.String()
+	}
 	// Turn the first 4 bytes of HMAC-SHA256(user_mxid, phone) into a number and replace the middle of the actual phone with that deterministic random number.
 	randomNumber := binary.BigEndian.Uint32(hmac.New(sha256.New, []byte(wa.UserLogin.UserMXID)).Sum([]byte(jid.User))[:4])
 	return fmt.Sprintf("+%s-%d-%s:%d", jid.User[:1], randomNumber, jid.User[len(jid.User)-2:], jid.Device)
