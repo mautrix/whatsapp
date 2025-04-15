@@ -322,6 +322,15 @@ func (wl *WALogin) Wait(ctx context.Context) (*bridgev2.LoginStep, error) {
 	ul.Client.(*WhatsAppClient).isNewLogin = true
 	ul.Client.Connect(ul.Log.WithContext(context.Background()))
 
+	if contact, err := ul.Client.(*WhatsAppClient).GetStore().Contacts.GetContact(wl.LoginSuccess.ID); err != nil {
+		wl.Log.Err(err).Msg("Failed to get own contact after login")
+	} else {
+		contactInfo := ul.Client.(*WhatsAppClient).contactToUserInfo(ctx, wl.LoginSuccess.ID, contact, true)
+		if contactInfo.Name != nil {
+			ul.UserLogin.RemoteProfile.Username = *contactInfo.Name
+		}
+	}
+
 	return &bridgev2.LoginStep{
 		Type:         bridgev2.LoginStepTypeComplete,
 		StepID:       LoginStepIDComplete,
