@@ -130,6 +130,7 @@ func (wa *WhatsAppClient) handleWAEvent(rawEvt any) {
 			if err != nil {
 				log.Warn().Err(err).Msg("Failed to send presence after app state sync")
 			}
+			go wa.syncRemoteProfile(log.WithContext(context.Background()), nil)
 		} else if evt.Name == appstate.WAPatchCriticalUnblockLow {
 			go wa.resyncContacts(false)
 		}
@@ -164,6 +165,7 @@ func (wa *WhatsAppClient) handleWAEvent(rawEvt any) {
 					log.Warn().Err(err).Msg("Failed to send initial presence after connecting")
 				}
 			}()
+			go wa.syncRemoteProfile(log.WithContext(context.Background()), nil)
 		}
 		meta := wa.UserLogin.Metadata.(*waid.UserLoginMetadata)
 		if meta.WALID == "" {
@@ -524,6 +526,7 @@ func (wa *WhatsAppClient) syncGhost(jid types.JID, reason string, pictureID *str
 		ghost.UpdateInfo(ctx, userInfo)
 		log.Debug().Msg("Synced ghost info")
 	}
+	go wa.syncRemoteProfile(ctx, ghost)
 }
 
 func (wa *WhatsAppClient) handleWAPictureUpdate(evt *events.Picture) {

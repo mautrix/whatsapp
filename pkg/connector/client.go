@@ -339,3 +339,38 @@ func (wa *WhatsAppClient) LogoutRemote(ctx context.Context) {
 func (wa *WhatsAppClient) IsLoggedIn() bool {
 	return wa.Client != nil && wa.Client.IsLoggedIn()
 }
+
+func (wa *WhatsAppClient) syncRemoteProfile(ctx context.Context, ghost *bridgev2.Ghost) {
+	ownID := waid.MakeUserID(wa.Device.GetJID())
+	if ghost == nil {
+		var err error
+		ghost, err = wa.Main.Bridge.GetExistingGhostByID(ctx, ownID)
+		if err != nil {
+			zerolog.Ctx(ctx).Err(err).Msg("Failed to get own ghost to sync remote profile")
+			return
+		} else if ghost == nil {
+			return
+		}
+	}
+	if ghost.ID != ownID {
+		return
+	}
+	name := wa.Device.BusinessName
+	if name == "" {
+		name = wa.Device.PushName
+	}
+	if name == "" || wa.UserLogin.RemoteProfile.Name == name && wa.UserLogin.RemoteProfile.Avatar == ghost.AvatarMXC {
+		return
+	}
+	wa.UserLogin.RemoteProfile.Name = name
+	wa.UserLogin.RemoteProfile.Avatar = ghost.AvatarMXC
+	err := wa.UserLogin.Save(ctx)
+	if err != nil {
+		zerolog.Ctx(ctx).Err(err).Msg("Failed to save remote profile")
+	}
+	// FIXME this might be racy, should invent a proper way to send last state with info filled
+	if wa.Client.IsConnected() {
+		wa.UserLogin.BridgeState.Send(status.BridgeState{StateEvent: status.StateConnected})
+	}
+	zerolog.Ctx(ctx).Info().Msg("Remote profile updated")
+}
