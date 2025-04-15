@@ -104,9 +104,7 @@ type WhatsAppClient struct {
 	directMediaLock    sync.Mutex
 	mediaRetryLock     *semaphore.Weighted
 	offlineSyncWaiter  chan error
-
-	lastPhoneOfflineWarning time.Time
-	isNewLogin              bool
+	isNewLogin         bool
 }
 
 var (
@@ -300,7 +298,6 @@ func (wa *WhatsAppClient) startLoops() {
 	}
 	go wa.historySyncLoop(ctx)
 	go wa.ghostResyncLoop(ctx)
-	go wa.disconnectWarningLoop(ctx)
 	if mrc := wa.Main.Config.HistorySync.MediaRequests; mrc.AutoRequestMedia && mrc.RequestMethod == MediaRequestMethodLocalTime {
 		go wa.mediaRequestLoop(ctx)
 	}

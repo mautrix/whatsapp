@@ -18,50 +18,26 @@ package connector
 
 import (
 	"context"
-	"fmt"
 	"time"
 
-	"go.mau.fi/util/exfmt"
 	"go.mau.fi/util/jsontime"
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/proto/waE2E"
 	"maunium.net/go/mautrix/bridgev2/status"
-	"maunium.net/go/mautrix/event"
 
 	"go.mau.fi/mautrix-whatsapp/pkg/waid"
 )
 
-func (wa *WhatsAppClient) disconnectWarningLoop(ctx context.Context) {
-	ticker := time.NewTicker(1 * time.Hour)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-			if wa.Client != nil && wa.Client.IsConnected() {
-				if !wa.PhoneRecentlySeen(true) {
-					go wa.sendPhoneOfflineWarning(ctx)
-				}
-			}
-		}
-	}
-}
+var _ status.BridgeStateFiller = (*WhatsAppClient)(nil)
 
-func (wa *WhatsAppClient) sendPhoneOfflineWarning(ctx context.Context) {
-	if wa.UserLogin.User.ManagementRoom == "" || time.Since(wa.lastPhoneOfflineWarning) < 12*time.Hour {
-		// Don't spam the warning too much
-		return
+func (wa *WhatsAppClient) FillBridgeState(state status.BridgeState) status.BridgeState {
+	if !wa.PhoneRecentlySeen(false) && state.StateEvent == status.StateConnected {
+		// TODO transient disconnect is wrong, this should be bad credentials or connected
+		state.StateEvent = status.StateTransientDisconnect
+		state.Error = WAPhoneOffline
+		state.UserAction = status.UserActionOpenNative
 	}
-	wa.lastPhoneOfflineWarning = time.Now()
-	timeSinceSeen := time.Since(wa.UserLogin.Metadata.(*waid.UserLoginMetadata).PhoneLastSeen.Time).Round(time.Hour)
-	// TODO remove this manual message after bridge states are plumbed to the management room as messages
-	_, _ = wa.Main.Bridge.Bot.SendMessage(ctx, wa.UserLogin.User.ManagementRoom, event.EventMessage, &event.Content{
-		Parsed: &event.MessageEventContent{
-			MsgType: event.MsgText,
-			Body:    fmt.Sprintf("Your phone hasn't been seen in %s. The server will force the bridge to log out if the phone is not active at least every 2 weeks.", exfmt.Duration(timeSinceSeen)),
-		},
-	}, nil)
+	return state
 }
 
 const PhoneDisconnectWarningTime = 12 * 24 * time.Hour // 12 days
@@ -128,7 +104,10 @@ func (wa *WhatsAppClient) phoneSeen(ts time.Time) {
 		// The last seen timestamp isn't going to be perfectly accurate in any case,
 		// so don't spam the database with an update every time there's an event.
 		return
-	} else if !wa.PhoneRecentlySeen(false) {
+	}
+	hadBeenSeen := wa.PhoneRecentlySeen(false)
+	meta.PhoneLastSeen = jsontime.U(ts)
+	if !hadBeenSeen {
 		isConnected := wa.IsLoggedIn() && wa.Client.IsConnected()
 		prevStateError := wa.UserLogin.BridgeState.GetPrev().Error
 		if prevStateError == WAPhoneOffline && isConnected {
@@ -141,7 +120,6 @@ func (wa *WhatsAppClient) phoneSeen(ts time.Time) {
 				Msg("Saw phone after current bridge state said it has been offline, not sending new bridge state")
 		}
 	}
-	meta.PhoneLastSeen = jsontime.U(ts)
 	go func() {
 		err := wa.UserLogin.Save(ctx)
 		if err != nil {
