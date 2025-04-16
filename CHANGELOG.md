@@ -1,3 +1,12 @@
+# v0.12.0 (2025-04-16)
+
+* Migrated Signal session store to use new `@lid` identifiers to support future
+  chats that don't expose phone numbers.
+* Added fallbacks for various business message types.
+* Added support for bridging invites, kicks and leaves in groups.
+* Re-added `invite-link`, `join` and `sync` commands for groups.
+* Fixed bridging chats with Meta AI.
+
 # v0.11.4 (2025-03-16)
 
 * Fixed edits being bridged multiple times if a single chat had multiple
