@@ -169,7 +169,7 @@ func (wa *WhatsAppClient) handleWAEvent(rawEvt any) {
 		}
 		meta := wa.UserLogin.Metadata.(*waid.UserLoginMetadata)
 		if meta.WALID == "" {
-			meta.WALID = wa.Client.Store.GetLID().User
+			meta.WALID = wa.GetStore().GetLID().User
 			if meta.WALID != "" {
 				go func() {
 					err := wa.UserLogin.Save(log.WithContext(context.Background()))

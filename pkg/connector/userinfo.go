@@ -272,7 +272,7 @@ func (wa *WhatsAppClient) fetchGhostAvatar(ctx context.Context, ghost *bridgev2.
 func (wa *WhatsAppClient) resyncContacts(forceAvatarSync bool) {
 	log := wa.UserLogin.Log.With().Str("action", "resync contacts").Logger()
 	ctx := log.WithContext(context.Background())
-	contacts, err := wa.Device.Contacts.GetAllContacts()
+	contacts, err := wa.GetStore().Contacts.GetAllContacts()
 	if err != nil {
 		log.Err(err).Msg("Failed to get cached contacts")
 		return

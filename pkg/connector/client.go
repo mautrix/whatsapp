@@ -221,7 +221,7 @@ func (wa *WhatsAppClient) ConnectBackground(ctx context.Context, params *bridgev
 		zerolog.Ctx(ctx).Err(err).Msg("Failed to update proxy")
 	}
 	wa.Client.GetClientPayload = func() *waWa6.ClientPayload {
-		payload := wa.Client.Store.GetClientPayload()
+		payload := wa.GetStore().GetClientPayload()
 		payload.ConnectReason = waWa6.ClientPayload_PUSH.Enum()
 		return payload
 	}
@@ -338,7 +338,7 @@ func (wa *WhatsAppClient) IsLoggedIn() bool {
 }
 
 func (wa *WhatsAppClient) syncRemoteProfile(ctx context.Context, ghost *bridgev2.Ghost) {
-	ownID := waid.MakeUserID(wa.Device.GetJID())
+	ownID := waid.MakeUserID(wa.GetStore().GetJID())
 	if ghost == nil {
 		var err error
 		ghost, err = wa.Main.Bridge.GetExistingGhostByID(ctx, ownID)
@@ -352,9 +352,9 @@ func (wa *WhatsAppClient) syncRemoteProfile(ctx context.Context, ghost *bridgev2
 	if ghost.ID != ownID {
 		return
 	}
-	name := wa.Device.BusinessName
+	name := wa.GetStore().BusinessName
 	if name == "" {
-		name = wa.Device.PushName
+		name = wa.GetStore().PushName
 	}
 	if name == "" || wa.UserLogin.RemoteProfile.Name == name && wa.UserLogin.RemoteProfile.Avatar == ghost.AvatarMXC {
 		return

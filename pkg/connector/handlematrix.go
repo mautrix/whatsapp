@@ -82,7 +82,7 @@ func (wa *WhatsAppClient) handleConvertedMatrixMessage(ctx context.Context, msg 
 		return nil, ErrBroadcastSendDisabled
 	}
 	wrappedMsgID := waid.MakeMessageID(chatJID, wa.JID, req.ID)
-	wrappedMsgID2 := waid.MakeMessageID(chatJID, wa.Device.GetLID(), req.ID)
+	wrappedMsgID2 := waid.MakeMessageID(chatJID, wa.GetStore().GetLID(), req.ID)
 	msg.AddPendingToIgnore(networkid.TransactionID(wrappedMsgID))
 	msg.AddPendingToIgnore(networkid.TransactionID(wrappedMsgID2))
 	resp, err := wa.Client.SendMessage(ctx, chatJID, waMsg, *req)
@@ -90,7 +90,7 @@ func (wa *WhatsAppClient) handleConvertedMatrixMessage(ctx context.Context, msg 
 		return nil, err
 	}
 	var pickedMessageID networkid.MessageID
-	if resp.Sender == wa.Device.GetLID() {
+	if resp.Sender == wa.GetStore().GetLID() {
 		pickedMessageID = wrappedMsgID2
 		msg.RemovePending(networkid.TransactionID(wrappedMsgID))
 	} else {
@@ -122,7 +122,7 @@ func (wa *WhatsAppClient) PreHandleMatrixReaction(_ context.Context, msg *bridge
 	if portalJID.Server == types.HiddenUserServer ||
 		msg.Portal.Metadata.(*waid.PortalMetadata).CommunityAnnouncementGroup ||
 		msg.Portal.Metadata.(*waid.PortalMetadata).AddressingMode == types.AddressingModeLID {
-		sender = wa.Device.GetLID()
+		sender = wa.GetStore().GetLID()
 	}
 	return bridgev2.MatrixReactionPreResponse{
 		SenderID:     waid.MakeUserID(sender),
@@ -273,7 +273,7 @@ func (wa *WhatsAppClient) HandleMatrixReadReceipt(ctx context.Context, receipt *
 		if err != nil {
 			continue
 		}
-		if parsed.Sender.User == wa.Device.GetLID().User || parsed.Sender.User == wa.JID.User {
+		if parsed.Sender.User == wa.GetStore().GetLID().User || parsed.Sender.User == wa.JID.User {
 			continue
 		}
 		var key types.JID
