@@ -114,7 +114,7 @@ func (wa *WhatsAppClient) handleConvertedMatrixMessage(ctx context.Context, msg 
 func (wa *WhatsAppClient) PreHandleMatrixReaction(_ context.Context, msg *bridgev2.MatrixReaction) (bridgev2.MatrixReactionPreResponse, error) {
 	portalJID, err := waid.ParsePortalID(msg.Portal.ID)
 	if err != nil {
-		return bridgev2.MatrixReactionPreResponse{}, err
+		return bridgev2.MatrixReactionPreResponse{}, fmt.Errorf("failed to parse portal ID: %w", err)
 	} else if portalJID == types.StatusBroadcastJID {
 		return bridgev2.MatrixReactionPreResponse{}, ErrBroadcastReactionUnsupported
 	}
@@ -134,12 +134,12 @@ func (wa *WhatsAppClient) PreHandleMatrixReaction(_ context.Context, msg *bridge
 func (wa *WhatsAppClient) HandleMatrixReaction(ctx context.Context, msg *bridgev2.MatrixReaction) (*database.Reaction, error) {
 	messageID, err := waid.ParseMessageID(msg.TargetMessage.ID)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to parse target message ID: %w", err)
 	}
 
 	portalJID, err := waid.ParsePortalID(msg.Portal.ID)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to parse portal ID: %w", err)
 	}
 	reactionMsg := &waE2E.Message{
 		ReactionMessage: &waE2E.ReactionMessage{
@@ -172,12 +172,12 @@ func (wa *WhatsAppClient) HandleMatrixReaction(ctx context.Context, msg *bridgev
 func (wa *WhatsAppClient) HandleMatrixReactionRemove(ctx context.Context, msg *bridgev2.MatrixReactionRemove) error {
 	messageID, err := waid.ParseMessageID(msg.TargetReaction.MessageID)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to parse target message ID: %w", err)
 	}
 
 	portalJID, err := waid.ParsePortalID(msg.Portal.ID)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to parse portal ID: %w", err)
 	}
 
 	reactionMsg := &waE2E.Message{
@@ -199,12 +199,12 @@ func (wa *WhatsAppClient) HandleMatrixEdit(ctx context.Context, edit *bridgev2.M
 
 	messageID, err := waid.ParseMessageID(edit.EditTarget.ID)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to parse target message ID: %w", err)
 	}
 
 	portalJID, err := waid.ParsePortalID(edit.Portal.ID)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to parse portal ID: %w", err)
 	}
 
 	waMsg, _, err := wa.Main.MsgConv.ToWhatsApp(ctx, wa.Client, edit.Event, edit.Content, nil, nil, edit.Portal)
@@ -229,12 +229,12 @@ func (wa *WhatsAppClient) HandleMatrixMessageRemove(ctx context.Context, msg *br
 	log := zerolog.Ctx(ctx)
 	messageID, err := waid.ParseMessageID(msg.TargetMessage.ID)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to parse target message ID: %w", err)
 	}
 
 	portalJID, err := waid.ParsePortalID(msg.Portal.ID)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to parse portal ID: %w", err)
 	}
 
 	revokeMessage := wa.Client.BuildRevoke(messageID.Chat, messageID.Sender, messageID.ID)
@@ -253,7 +253,7 @@ func (wa *WhatsAppClient) HandleMatrixReadReceipt(ctx context.Context, receipt *
 	}
 	portalJID, err := waid.ParsePortalID(receipt.Portal.ID)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to parse portal ID: %w", err)
 	}
 	messages, err := receipt.Portal.Bridge.DB.Message.GetMessagesBetweenTimeQuery(ctx, receipt.Portal.PortalKey, receipt.LastRead, receipt.ReadUpTo)
 	if err != nil {
