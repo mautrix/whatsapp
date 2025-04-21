@@ -71,10 +71,7 @@ func (mc *MessageConverter) PollStartToWhatsApp(
 	if maxAnswers >= len(content.PollStart.Answers) || maxAnswers < 0 {
 		maxAnswers = 0
 	}
-	contextInfo, err := mc.generateContextInfo(replyTo, portal)
-	if err != nil {
-		return nil, nil, err
-	}
+	contextInfo := mc.generateContextInfo(ctx, replyTo, portal)
 	var question string
 	question, contextInfo.MentionedJID = mc.msc1767ToWhatsApp(ctx, content.PollStart.Question, content.Mentions)
 	if len(question) == 0 {
