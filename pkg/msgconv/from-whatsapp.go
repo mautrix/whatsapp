@@ -221,6 +221,21 @@ func (mc *MessageConverter) ToMatrix(
 			MessageID: waid.MakeMessageID(chat, pcp, contextInfo.GetStanzaID()),
 		}
 	}
+	if contextInfo.GetIsForwarded() {
+		hasCaption := part.Content.FileName != "" && part.Content.FileName != part.Content.Body
+		isMedia := part.Content.MsgType.IsMedia()
+		isText := part.Content.MsgType.IsText()
+		if isMedia && !hasCaption {
+			part.Content.FileName = part.Content.Body
+			part.Content.Body = "↷ Forwarded"
+			part.Content.Format = event.FormatHTML
+			part.Content.FormattedBody = "<p data-mx-forwarded-notice><em>↷ Forwarded</em></p>"
+		} else if isText || isMedia {
+			part.Content.EnsureHasHTML()
+			part.Content.Body = "↷ Forwarded\n\n" + part.Content.Body
+			part.Content.FormattedBody = "<p data-mx-forwarded-notice><em>↷ Forwarded</em></p>" + part.Content.FormattedBody
+		}
+	}
 	commentTarget := waMsg.GetEncCommentMessage().GetTargetMessageKey()
 	if commentTarget == nil {
 		commentTarget = waMsg.GetCommentMessage().GetTargetMessageKey()
