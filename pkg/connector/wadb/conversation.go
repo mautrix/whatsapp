@@ -40,15 +40,19 @@ func parseHistoryTime(ts *uint64) time.Time {
 	return time.Unix(int64(*ts), 0)
 }
 
-func NewConversation(loginID networkid.UserLoginID, chatJID types.JID, conv *waHistorySync.Conversation) *Conversation {
+func NewConversation(loginID networkid.UserLoginID, chatJID types.JID, conv *waHistorySync.Conversation, mostRecentMessage time.Time) *Conversation {
 	var pinned *bool
 	if conv.Pinned != nil {
 		pinned = ptr.Ptr(*conv.Pinned > 0)
 	}
+	lastMessageTS := parseHistoryTime(conv.LastMsgTimestamp)
+	if lastMessageTS.IsZero() {
+		lastMessageTS = mostRecentMessage
+	}
 	return &Conversation{
 		UserLoginID:               loginID,
 		ChatJID:                   chatJID,
-		LastMessageTimestamp:      parseHistoryTime(conv.LastMsgTimestamp),
+		LastMessageTimestamp:      lastMessageTS,
 		Archived:                  conv.Archived,
 		Pinned:                    pinned,
 		MuteEndTime:               parseHistoryTime(conv.MuteEndTime),

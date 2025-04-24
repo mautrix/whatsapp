@@ -155,6 +155,7 @@ func (wa *WhatsAppClient) handleWAHistorySync(ctx context.Context, evt *waHistor
 			Dict("metadata", zerolog.Dict().
 				Uint32("ephemeral_expiration", conv.GetEphemeralExpiration()).
 				Int64("ephemeral_setting_timestamp", conv.GetEphemeralSettingTimestamp()).
+				Uint64("last_message_ts", conv.GetLastMsgTimestamp()).
 				Bool("marked_unread", conv.GetMarkedAsUnread()).
 				Bool("archived", conv.GetArchived()).
 				Uint32("pinned", conv.GetPinned()).
@@ -164,7 +165,7 @@ func (wa *WhatsAppClient) handleWAHistorySync(ctx context.Context, evt *waHistor
 			Msg("Collected messages to save from history sync conversation")
 
 		if len(messages) > 0 {
-			err = wa.Main.DB.Conversation.Put(ctx, wadb.NewConversation(wa.UserLogin.ID, jid, conv))
+			err = wa.Main.DB.Conversation.Put(ctx, wadb.NewConversation(wa.UserLogin.ID, jid, conv, maxTime))
 			if err != nil {
 				log.Err(err).Msg("Failed to save conversation metadata")
 				continue
@@ -249,8 +250,12 @@ func (wa *WhatsAppClient) createPortalsFromHistorySync(ctx context.Context) {
 		}
 		wa.Main.Bridge.QueueRemoteEvent(wa.UserLogin, &simplevent.ChatResync{
 			EventMeta: simplevent.EventMeta{
-				Type:         bridgev2.RemoteEventChatResync,
-				LogContext:   nil,
+				Type: bridgev2.RemoteEventChatResync,
+				LogContext: func(c zerolog.Context) zerolog.Context {
+					return c.
+						Stringer("chat_jid", conv.ChatJID).
+						Time("latest_message_ts", conv.LastMessageTimestamp)
+				},
 				PortalKey:    wa.makeWAPortalKey(conv.ChatJID),
 				CreatePortal: true,
 				PostHandleFunc: func(ctx context.Context, portal *bridgev2.Portal) {
