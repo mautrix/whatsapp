@@ -400,7 +400,7 @@ func (mc *MessageConverter) extractAnimatedSticker(fileInfo *PreparedMedia, data
 	if err != nil {
 		return nil, fmt.Errorf("failed to read animation.json: %w", err)
 	}
-	fileInfo.Info.MimeType = "image/lottie+json"
+	fileInfo.Info.MimeType = "video/lottie+json"
 	fileInfo.FileName = "sticker.json"
 	return data, nil
 }

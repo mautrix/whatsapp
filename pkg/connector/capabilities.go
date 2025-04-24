@@ -98,7 +98,7 @@ var whatsappCaps = &event.RoomFeatures{
 			MimeTypes: map[string]event.CapabilitySupportLevel{
 				"image/webp": event.CapLevelFullySupported,
 				// TODO see if sending lottie is possible
-				//"image/lottie+json": event.CapLevelFullySupported,
+				//"video/lottie+json": event.CapLevelFullySupported,
 				"image/png":  event.CapLevelPartialSupport,
 				"image/jpeg": event.CapLevelPartialSupport,
 			},
