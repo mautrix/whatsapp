@@ -213,6 +213,10 @@ func (wa *WhatsAppClient) createPortalsFromHistorySync(ctx context.Context) {
 		if conv.ChatJID == types.StatusBroadcastJID && !wa.Main.Config.EnableStatusBroadcast {
 			wg.Done()
 			continue
+		} else if conv.ChatJID == types.PSAJID {
+			// We don't currently support new PSAs, so don't bother backfilling them either
+			wg.Done()
+			continue
 		}
 		// TODO can the chat info fetch be avoided entirely?
 		time.Sleep(time.Duration(rateLimitErrors) * time.Second)
