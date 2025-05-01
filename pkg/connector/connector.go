@@ -18,12 +18,14 @@ package connector
 
 import (
 	"context"
+	"encoding/hex"
 	"fmt"
 	"strings"
 	"sync"
 	"sync/atomic"
 
 	"go.mau.fi/util/dbutil"
+	"go.mau.fi/util/random"
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/proto/waCompanionReg"
 	"go.mau.fi/whatsmeow/store"
@@ -33,6 +35,9 @@ import (
 	"google.golang.org/protobuf/proto"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/commands"
+	"maunium.net/go/mautrix/bridgev2/networkid"
+	"maunium.net/go/mautrix/event"
+	"maunium.net/go/mautrix/id"
 
 	"go.mau.fi/mautrix-whatsapp/pkg/connector/wadb"
 	"go.mau.fi/mautrix-whatsapp/pkg/msgconv"
@@ -160,4 +165,10 @@ func (wa *WhatsAppConnector) onFirstClientConnect() {
 	meclCtx, cancel := context.WithCancel(context.Background())
 	wa.stopMediaEditCacheLoop.Store(&cancel)
 	go wa.mediaEditCacheExpireLoop(meclCtx)
+}
+
+func (wa *WhatsAppConnector) GenerateTransactionID(_ id.UserID, _ id.RoomID, _ event.Type) networkid.RawTransactionID {
+	// The "proper" way would be a hash of the user ID among other things, but the hash includes random bytes too,
+	// so nobody can tell the difference if we just generate random bytes.
+	return networkid.RawTransactionID(whatsmeow.WebMessageIDPrefix + strings.ToUpper(hex.EncodeToString(random.Bytes(9))))
 }

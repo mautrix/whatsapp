@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -73,7 +74,12 @@ func (wa *WhatsAppClient) handleConvertedMatrixMessage(ctx context.Context, msg 
 	if req == nil {
 		req = &whatsmeow.SendRequestExtra{}
 	}
-	req.ID = wa.Client.GenerateMessageID()
+	if strings.HasPrefix(string(msg.InputTransactionID), whatsmeow.WebMessageIDPrefix) {
+		req.ID = types.MessageID(msg.InputTransactionID)
+	} else {
+		req.ID = wa.Client.GenerateMessageID()
+	}
+
 	chatJID, err := waid.ParsePortalID(msg.Portal.ID)
 	if err != nil {
 		return nil, err
@@ -188,14 +194,25 @@ func (wa *WhatsAppClient) HandleMatrixReactionRemove(ctx context.Context, msg *b
 		},
 	}
 
-	resp, err := wa.Client.SendMessage(ctx, portalJID, reactionMsg)
+	extra := whatsmeow.SendRequestExtra{}
+	if strings.HasPrefix(string(msg.InputTransactionID), whatsmeow.WebMessageIDPrefix) {
+		extra.ID = types.MessageID(msg.InputTransactionID)
+	}
+
+	resp, err := wa.Client.SendMessage(ctx, portalJID, reactionMsg, extra)
 	zerolog.Ctx(ctx).Trace().Any("response", resp).Msg("WhatsApp reaction response")
 	return err
 }
 
 func (wa *WhatsAppClient) HandleMatrixEdit(ctx context.Context, edit *bridgev2.MatrixEdit) error {
 	log := zerolog.Ctx(ctx)
-	editID := wa.Client.GenerateMessageID()
+
+	var editID types.MessageID
+	if strings.HasPrefix(string(edit.InputTransactionID), whatsmeow.WebMessageIDPrefix) {
+		editID = types.MessageID(edit.InputTransactionID)
+	} else {
+		editID = wa.Client.GenerateMessageID()
+	}
 
 	messageID, err := waid.ParseMessageID(edit.EditTarget.ID)
 	if err != nil {
@@ -239,7 +256,12 @@ func (wa *WhatsAppClient) HandleMatrixMessageRemove(ctx context.Context, msg *br
 
 	revokeMessage := wa.Client.BuildRevoke(messageID.Chat, messageID.Sender, messageID.ID)
 
-	resp, err := wa.Client.SendMessage(ctx, portalJID, revokeMessage)
+	extra := whatsmeow.SendRequestExtra{}
+	if strings.HasPrefix(string(msg.InputTransactionID), whatsmeow.WebMessageIDPrefix) {
+		extra.ID = types.MessageID(msg.InputTransactionID)
+	}
+
+	resp, err := wa.Client.SendMessage(ctx, portalJID, revokeMessage, extra)
 	log.Trace().Any("response", resp).Msg("WhatsApp delete response")
 	return err
 }
