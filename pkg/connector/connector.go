@@ -61,6 +61,8 @@ var (
 	_ bridgev2.NetworkConnector      = (*WhatsAppConnector)(nil)
 	_ bridgev2.MaxFileSizeingNetwork = (*WhatsAppConnector)(nil)
 	_ bridgev2.StoppableNetwork      = (*WhatsAppConnector)(nil)
+
+	_ bridgev2.TransactionIDGeneratingNetwork = (*WhatsAppConnector)(nil)
 )
 
 func (wa *WhatsAppConnector) SetMaxFileSize(maxSize int64) {
