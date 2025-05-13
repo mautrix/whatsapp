@@ -9,7 +9,7 @@ require (
 	github.com/gorilla/websocket v1.5.0
 	github.com/lib/pq v1.10.9
 	github.com/rs/zerolog v1.34.0
-	go.mau.fi/util v0.8.7-0.20250514115735-05fea4054bbd
+	go.mau.fi/util v0.8.7-0.20250515082453-0c3084f59163
 	go.mau.fi/webp v0.2.0
 	go.mau.fi/whatsmeow v0.0.0-20250514120708-22ca98ea604a
 	golang.org/x/image v0.27.0
