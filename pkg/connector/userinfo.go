@@ -169,7 +169,7 @@ func (wa *WhatsAppClient) GetUserInfo(ctx context.Context, ghost *bridgev2.Ghost
 }
 
 func (wa *WhatsAppClient) getUserInfo(ctx context.Context, jid types.JID, fetchAvatar bool) (*bridgev2.UserInfo, error) {
-	contact, err := wa.GetStore().Contacts.GetContact(jid)
+	contact, err := wa.GetStore().Contacts.GetContact(ctx, jid)
 	if err != nil {
 		return nil, err
 	}
@@ -191,7 +191,7 @@ func (wa *WhatsAppClient) contactToUserInfo(ctx context.Context, jid types.JID, 
 			zerolog.Ctx(ctx).Err(err).Stringer("lid", jid).Msg("Failed to get PN for LID")
 		} else {
 			phone = "+" + pnJID.User
-			extraContact, err := wa.GetStore().Contacts.GetContact(pnJID)
+			extraContact, err := wa.GetStore().Contacts.GetContact(ctx, pnJID)
 			if err != nil {
 				zerolog.Ctx(ctx).Err(err).
 					Stringer("lid", jid).
@@ -262,7 +262,7 @@ func (wa *WhatsAppClient) fetchGhostAvatar(ctx context.Context, ghost *bridgev2.
 		wrappedAvatar = &bridgev2.Avatar{
 			ID: networkid.AvatarID(avatar.ID),
 			Get: func(ctx context.Context) ([]byte, error) {
-				return wa.Client.DownloadMediaWithPath(avatar.DirectPath, nil, nil, nil, 0, "", "")
+				return wa.Client.DownloadMediaWithPath(ctx, avatar.DirectPath, nil, nil, nil, 0, "", "")
 			},
 		}
 	}
@@ -272,7 +272,7 @@ func (wa *WhatsAppClient) fetchGhostAvatar(ctx context.Context, ghost *bridgev2.
 func (wa *WhatsAppClient) resyncContacts(forceAvatarSync bool) {
 	log := wa.UserLogin.Log.With().Str("action", "resync contacts").Logger()
 	ctx := log.WithContext(context.Background())
-	contacts, err := wa.GetStore().Contacts.GetAllContacts()
+	contacts, err := wa.GetStore().Contacts.GetAllContacts(ctx)
 	if err != nil {
 		log.Err(err).Msg("Failed to get cached contacts")
 		return

@@ -142,7 +142,7 @@ func fnSync(ce *commands.Event) {
 		ce.React("✅")
 	case "appstate":
 		for _, name := range appstate.AllPatchNames {
-			err := wa.Client.FetchAppState(name, true, false)
+			err := wa.Client.FetchAppState(ce.Ctx, name, true, false)
 			if errors.Is(err, appstate.ErrKeyNotFound) {
 				ce.Reply("Key not found error syncing app state %s: %v\n\nKey requests are sent automatically, and the sync should happen in the background after your phone responds.", name, err)
 				return

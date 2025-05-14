@@ -99,7 +99,7 @@ func (wa *WhatsAppConnector) Download(ctx context.Context, mediaID networkid.Med
 	}
 	return &mediaproxy.GetMediaResponseFile{
 		Callback: func(f *os.File) error {
-			err := waClient.Client.DownloadToFile(keys, f)
+			err := waClient.Client.DownloadToFile(ctx, keys, f)
 			if errors.Is(err, whatsmeow.ErrMediaDownloadFailedWith403) || errors.Is(err, whatsmeow.ErrMediaDownloadFailedWith404) || errors.Is(err, whatsmeow.ErrMediaDownloadFailedWith410) {
 				val := params["fi.mau.whatsapp.reload_media"]
 				if val == "false" || (!wa.Config.DirectMediaAutoRequest && val != "true") {
@@ -112,7 +112,7 @@ func (wa *WhatsAppConnector) Download(ctx context.Context, mediaID networkid.Med
 					return err
 				}
 				log.Trace().Msg("Retrying download after successful retry")
-				err = waClient.Client.DownloadToFile(keys, f)
+				err = waClient.Client.DownloadToFile(ctx, keys, f)
 			}
 			if errors.Is(err, whatsmeow.ErrFileLengthMismatch) || errors.Is(err, whatsmeow.ErrInvalidMediaSHA256) {
 				zerolog.Ctx(ctx).Warn().Err(err).Msg("Mismatching media checksums in message. Ignoring because WhatsApp seems to ignore them too")

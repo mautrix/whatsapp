@@ -127,7 +127,7 @@ func (wa *WhatsAppConnector) Init(bridge *bridgev2.Bridge) {
 }
 
 func (wa *WhatsAppConnector) Start(ctx context.Context) error {
-	err := wa.DeviceStore.Upgrade()
+	err := wa.DeviceStore.Upgrade(ctx)
 	if err != nil {
 		return bridgev2.DBUpgradeError{Err: err, Section: "whatsmeow"}
 	}
@@ -152,7 +152,7 @@ func (wa *WhatsAppConnector) Stop() {
 }
 
 func (wa *WhatsAppConnector) onFirstClientConnect() {
-	ver, err := whatsmeow.GetLatestVersion(nil)
+	ver, err := whatsmeow.GetLatestVersion(wa.Bridge.BackgroundCtx, nil)
 	if err != nil {
 		wa.Bridge.Log.Err(err).Msg("Failed to get latest WhatsApp web version number")
 	} else {

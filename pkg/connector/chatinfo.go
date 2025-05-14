@@ -92,7 +92,7 @@ func updateDisappearingTimerSetAt(ts int64) bridgev2.ExtraUpdater[*bridgev2.Port
 }
 
 func (wa *WhatsAppClient) applyChatSettings(ctx context.Context, chatID types.JID, info *bridgev2.ChatInfo) {
-	chat, err := wa.GetStore().ChatSettings.GetChatSettings(chatID)
+	chat, err := wa.GetStore().ChatSettings.GetChatSettings(ctx, chatID)
 	if err != nil {
 		zerolog.Ctx(ctx).Warn().Err(err).Msg("Failed to get chat settings")
 		return
@@ -406,7 +406,7 @@ func (wa *WhatsAppClient) makePortalAvatarFetcher(avatarID string, sender types.
 			wrappedAvatar = &bridgev2.Avatar{
 				ID: networkid.AvatarID(avatar.ID),
 				Get: func(ctx context.Context) ([]byte, error) {
-					return wa.Client.DownloadMediaWithPath(avatar.DirectPath, nil, nil, nil, 0, "", "")
+					return wa.Client.DownloadMediaWithPath(ctx, avatar.DirectPath, nil, nil, nil, 0, "", "")
 				},
 			}
 		}
@@ -441,7 +441,7 @@ func (wa *WhatsAppClient) wrapNewsletterInfo(info *types.NewsletterMetadata) *br
 	if info.ThreadMeta.Picture != nil {
 		avatar.ID = networkid.AvatarID(info.ThreadMeta.Picture.ID)
 		avatar.Get = func(ctx context.Context) ([]byte, error) {
-			return wa.Client.DownloadMediaWithPath(info.ThreadMeta.Picture.DirectPath, nil, nil, nil, 0, "", "")
+			return wa.Client.DownloadMediaWithPath(ctx, info.ThreadMeta.Picture.DirectPath, nil, nil, nil, 0, "", "")
 		}
 	} else if info.ThreadMeta.Preview.ID != "" {
 		avatar.ID = networkid.AvatarID(info.ThreadMeta.Preview.ID)
@@ -452,7 +452,7 @@ func (wa *WhatsAppClient) wrapNewsletterInfo(info *types.NewsletterMetadata) *br
 			} else if meta.ThreadMeta.Picture == nil {
 				return nil, fmt.Errorf("full res avatar info is missing")
 			}
-			return wa.Client.DownloadMediaWithPath(meta.ThreadMeta.Picture.DirectPath, nil, nil, nil, 0, "", "")
+			return wa.Client.DownloadMediaWithPath(ctx, meta.ThreadMeta.Picture.DirectPath, nil, nil, nil, 0, "", "")
 		}
 	} else {
 		avatar.ID = "remove"

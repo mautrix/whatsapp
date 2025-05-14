@@ -162,7 +162,7 @@ func (wl *WALogin) SubmitUserInput(ctx context.Context, input map[string]string)
 		wl.Log.Warn().Err(err).Msg("Timed out waiting for connection")
 		return nil, fmt.Errorf("failed to wait for connection: %w", err)
 	}
-	pairingCode, err := wl.Client.PairPhone(input["phone_number"], true, whatsmeow.PairClientChrome, "Chrome (Linux)")
+	pairingCode, err := wl.Client.PairPhone(ctx, input["phone_number"], true, whatsmeow.PairClientChrome, "Chrome (Linux)")
 	if err != nil {
 		wl.Log.Err(err).Msg("Failed to request phone code login")
 		return nil, err

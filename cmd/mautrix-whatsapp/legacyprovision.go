@@ -236,7 +236,7 @@ func legacyProvContacts(w http.ResponseWriter, r *http.Request) {
 	if userLogin == nil {
 		return
 	}
-	if contacts, err := userLogin.Client.(*connector.WhatsAppClient).Device.Contacts.GetAllContacts(); err != nil {
+	if contacts, err := userLogin.Client.(*connector.WhatsAppClient).Device.Contacts.GetAllContacts(r.Context()); err != nil {
 		hlog.FromRequest(r).Err(err).Msg("Failed to fetch all contacts")
 		exhttp.WriteJSONResponse(w, http.StatusInternalServerError, Error{
 			Error:   "Internal server error while fetching contact list",

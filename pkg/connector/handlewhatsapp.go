@@ -73,10 +73,11 @@ func init() {
 
 func (wa *WhatsAppClient) handleWAEvent(rawEvt any) {
 	log := wa.UserLogin.Log
+	ctx := log.WithContext(wa.Main.Bridge.BackgroundCtx)
 
 	switch evt := rawEvt.(type) {
 	case *events.Message:
-		wa.handleWAMessage(evt)
+		wa.handleWAMessage(ctx, evt)
 	case *events.Receipt:
 		wa.handleWAReceipt(evt)
 	case *events.ChatPresence:
@@ -143,7 +144,7 @@ func (wa *WhatsAppClient) handleWAEvent(rawEvt any) {
 		if err != nil {
 			log.Warn().Err(err).Msg("Failed to send presence after push name update")
 		}
-		_, _, err = wa.GetStore().Contacts.PutPushName(wa.JID.ToNonAD(), evt.Action.GetName())
+		_, _, err = wa.GetStore().Contacts.PutPushName(ctx, wa.JID.ToNonAD(), evt.Action.GetName())
 		if err != nil {
 			log.Err(err).Msg("Failed to update push name in store")
 		}
@@ -254,7 +255,7 @@ func (wa *WhatsAppClient) handleWAEvent(rawEvt any) {
 	}
 }
 
-func (wa *WhatsAppClient) handleWAMessage(evt *events.Message) {
+func (wa *WhatsAppClient) handleWAMessage(ctx context.Context, evt *events.Message) {
 	wa.UserLogin.Log.Trace().
 		Any("info", evt.Info).
 		Any("payload", evt.Message).
@@ -267,7 +268,7 @@ func (wa *WhatsAppClient) handleWAMessage(evt *events.Message) {
 		return
 	}
 	if encReact := evt.Message.GetEncReactionMessage(); encReact != nil {
-		decrypted, err := wa.Client.DecryptReaction(evt)
+		decrypted, err := wa.Client.DecryptReaction(ctx, evt)
 		if err != nil {
 			wa.UserLogin.Log.Err(err).Str("message_id", evt.Info.ID).Msg("Failed to decrypt reaction")
 			return
@@ -276,7 +277,7 @@ func (wa *WhatsAppClient) handleWAMessage(evt *events.Message) {
 		evt.Message.ReactionMessage = decrypted
 	}
 	if encComment := evt.Message.GetEncCommentMessage(); encComment != nil {
-		decrypted, err := wa.Client.DecryptComment(evt)
+		decrypted, err := wa.Client.DecryptComment(ctx, evt)
 		if err != nil {
 			wa.UserLogin.Log.Err(err).Str("message_id", evt.Info.ID).Msg("Failed to decrypt comment")
 		} else {

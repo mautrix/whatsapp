@@ -144,7 +144,7 @@ func (mc *MessageConverter) convertPollUpdateMessage(ctx context.Context, info *
 		log.Err(err).Msg("Failed to get poll update target message")
 		return failedPollUpdatePart, nil
 	}
-	vote, err := getClient(ctx).DecryptPollVote(&events.Message{
+	vote, err := getClient(ctx).DecryptPollVote(ctx, &events.Message{
 		Info:    *info,
 		Message: &waE2E.Message{PollUpdateMessage: msg},
 	})

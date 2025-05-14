@@ -122,7 +122,7 @@ func (mc *MessageConverter) ToWhatsApp(
 				return nil, nil, fmt.Errorf("failed to parse message ID: %w", err)
 			}
 			rootMsgInfo := MessageIDToInfo(client, parsedID)
-			message, err = client.EncryptComment(rootMsgInfo, message)
+			message, err = client.EncryptComment(ctx, rootMsgInfo, message)
 			if err != nil {
 				return nil, nil, fmt.Errorf("failed to encrypt comment: %w", err)
 			}

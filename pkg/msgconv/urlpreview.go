@@ -51,7 +51,7 @@ func (mc *MessageConverter) convertURLPreviewToBeeper(ctx context.Context, msg *
 	var thumbnailData []byte
 	if msg.ThumbnailDirectPath != nil {
 		var err error
-		thumbnailData, err = getClient(ctx).DownloadThumbnail(msg)
+		thumbnailData, err = getClient(ctx).DownloadThumbnail(ctx, msg)
 		if err != nil {
 			zerolog.Ctx(ctx).Err(err).Msg("Failed to download thumbnail for link preview")
 		}

@@ -140,7 +140,7 @@ func (mc *MessageConverter) PollVoteToWhatsApp(
 			}
 		}
 	}
-	pollUpdate, err := client.EncryptPollVote(pollMsgInfo, &waE2E.PollVoteMessage{
+	pollUpdate, err := client.EncryptPollVote(ctx, pollMsgInfo, &waE2E.PollVoteMessage{
 		SelectedOptions: optionHashes,
 	})
 	return &waE2E.Message{PollUpdateMessage: pollUpdate}, err

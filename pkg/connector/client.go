@@ -41,7 +41,7 @@ import (
 	"go.mau.fi/mautrix-whatsapp/pkg/waid"
 )
 
-func (wa *WhatsAppConnector) LoadUserLogin(_ context.Context, login *bridgev2.UserLogin) error {
+func (wa *WhatsAppConnector) LoadUserLogin(ctx context.Context, login *bridgev2.UserLogin) error {
 	w := &WhatsAppClient{
 		Main:      wa,
 		UserLogin: login,
@@ -60,7 +60,7 @@ func (wa *WhatsAppConnector) LoadUserLogin(_ context.Context, login *bridgev2.Us
 
 	var err error
 	w.JID = waid.ParseUserLoginID(login.ID, loginMetadata.WADeviceID)
-	w.Device, err = wa.DeviceStore.GetDevice(w.JID)
+	w.Device, err = wa.DeviceStore.GetDevice(ctx, w.JID)
 	if err != nil {
 		return err
 	}
@@ -71,6 +71,7 @@ func (wa *WhatsAppConnector) LoadUserLogin(_ context.Context, login *bridgev2.Us
 		w.Client.AddEventHandler(w.handleWAEvent)
 		if bridgev2.PortalEventBuffer == 0 {
 			w.Client.SynchronousAck = true
+			w.Client.EnableDecryptedEventBuffer = true
 		}
 		w.Client.AutomaticMessageRerequestFromPhone = true
 		w.Client.GetMessageForRetry = w.trackNotFoundRetry
@@ -324,7 +325,7 @@ func (wa *WhatsAppClient) Disconnect() {
 
 func (wa *WhatsAppClient) LogoutRemote(ctx context.Context) {
 	if cli := wa.Client; cli != nil {
-		err := cli.Logout()
+		err := cli.Logout(ctx)
 		if err != nil {
 			zerolog.Ctx(ctx).Err(err).Msg("Failed to log out")
 		}
