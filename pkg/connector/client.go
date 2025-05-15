@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/rs/zerolog"
+	"go.mau.fi/util/exerrors"
 	"go.mau.fi/whatsmeow"
 	waBinary "go.mau.fi/whatsmeow/binary"
 	"go.mau.fi/whatsmeow/proto/waHistorySync"
@@ -170,6 +171,34 @@ func (wa *WhatsAppClient) IsThisUser(_ context.Context, userID networkid.UserID)
 	return userID == waid.MakeUserID(wa.JID)
 }
 
+func (wa *WhatsAppClient) connectInBackground(ctx context.Context) {
+	for i := 0; i < wa.Main.Config.MaxConnectRetries || wa.Main.Config.MaxConnectRetries < 0; i++ {
+		select {
+		case <-time.After(5 * time.Second):
+		case <-ctx.Done():
+			return
+		}
+
+		if err := wa.Client.Connect(); err == nil {
+			return
+		} else if exerrors.IsNetworkError(err) {
+			state := status.BridgeState{
+				StateEvent: status.StateTransientDisconnect,
+				Error:      WADisconnected,
+			}
+			wa.UserLogin.BridgeState.Send(state)
+		} else {
+			break
+		}
+	}
+
+	state := status.BridgeState{
+		StateEvent: status.StateUnknownError,
+		Error:      WAConnectionFailed,
+	}
+	wa.UserLogin.BridgeState.Send(state)
+}
+
 func (wa *WhatsAppClient) Connect(ctx context.Context) {
 	if wa.Client == nil {
 		state := status.BridgeState{
@@ -183,8 +212,16 @@ func (wa *WhatsAppClient) Connect(ctx context.Context) {
 	if err := wa.Main.updateProxy(ctx, wa.Client, false); err != nil {
 		zerolog.Ctx(ctx).Err(err).Msg("Failed to update proxy")
 	}
-	wa.startLoops()
-	if err := wa.Client.Connect(); err != nil {
+	startCtx := wa.startLoops()
+
+	if err := wa.Client.Connect(); exerrors.IsNetworkError(err) && wa.Main.Config.MaxConnectRetries != 0 {
+		state := status.BridgeState{
+			StateEvent: status.StateTransientDisconnect,
+			Error:      WADisconnected,
+		}
+		wa.UserLogin.BridgeState.Send(state)
+		go wa.connectInBackground(startCtx)
+	} else if err != nil {
 		state := status.BridgeState{
 			StateEvent: status.StateUnknownError,
 			Error:      WAConnectionFailed,
@@ -291,7 +328,7 @@ func (wa *WhatsAppClient) sendPNData(ctx context.Context, pn string) error {
 	return nil
 }
 
-func (wa *WhatsAppClient) startLoops() {
+func (wa *WhatsAppClient) startLoops() context.Context {
 	ctx, cancel := context.WithCancel(context.Background())
 	oldStop := wa.stopLoops.Swap(&cancel)
 	if oldStop != nil {
@@ -302,6 +339,7 @@ func (wa *WhatsAppClient) startLoops() {
 	if mrc := wa.Main.Config.HistorySync.MediaRequests; mrc.AutoRequestMedia && mrc.RequestMethod == MediaRequestMethodLocalTime {
 		go wa.mediaRequestLoop(ctx)
 	}
+	return ctx
 }
 
 func (wa *WhatsAppClient) GetStore() *store.Device {

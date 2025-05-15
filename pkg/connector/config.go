@@ -48,6 +48,7 @@ type Config struct {
 	DisableViewOnce             bool          `yaml:"disable_view_once"`
 	ForceActiveDeliveryReceipts bool          `yaml:"force_active_delivery_receipts"`
 	DirectMediaAutoRequest      bool          `yaml:"direct_media_auto_request"`
+	MaxConnectRetries           int           `yaml:"max_connect_retries"`
 
 	AnimatedSticker msgconv.AnimatedStickerConfig `yaml:"animated_sticker"`
 
