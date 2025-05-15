@@ -104,6 +104,7 @@ type WALogin struct {
 var (
 	_ bridgev2.LoginProcessDisplayAndWait = (*WALogin)(nil)
 	_ bridgev2.LoginProcessUserInput      = (*WALogin)(nil)
+	_ bridgev2.LoginProcessWithOverride   = (*WALogin)(nil)
 )
 
 const LoginConnectWait = 15 * time.Second
@@ -147,6 +148,20 @@ func (wl *WALogin) Start(ctx context.Context) (*bridgev2.LoginStep, error) {
 		return nil, err
 	}
 	return makeQRStep(wl.QRs[0]), nil
+}
+
+func (wl *WALogin) StartWithOverride(ctx context.Context, old *bridgev2.UserLogin) (*bridgev2.LoginStep, error) {
+	step, err := wl.Start(ctx)
+	if err == nil && step != nil && old != nil && step.StepID == LoginStepIDPhoneNumber {
+		phoneNumber := fmt.Sprintf("+%s", old.ID)
+		wl.Log.Debug().
+			Str("phone_number", phoneNumber).
+			Msg("Auto-submitting phone number for relogin")
+		return wl.SubmitUserInput(ctx, map[string]string{
+			"phone_number": phoneNumber,
+		})
+	}
+	return step, err
 }
 
 func (wl *WALogin) SubmitUserInput(ctx context.Context, input map[string]string) (*bridgev2.LoginStep, error) {
