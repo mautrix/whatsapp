@@ -80,9 +80,14 @@ func (mc *MessageConverter) convertMediaMessage(
 		Type:      whatsmeow.GetMediaType(msg),
 		SHA256:    msg.GetFileSHA256(),
 		EncSHA256: msg.GetFileEncSHA256(),
+		MimeType:  msg.GetMimetype(),
 	}
 	if mc.DirectMedia {
 		preparedMedia.FillFileName()
+		if preparedMedia.Info.MimeType == "application/was" {
+			preparedMedia.Info.MimeType = "video/lottie+json"
+			preparedMedia.FileName = "sticker.json"
+		}
 		var err error
 		portal := getPortal(ctx)
 		preparedMedia.URL, err = portal.Bridge.Matrix.GenerateContentURI(ctx, waid.MakeMediaID(messageInfo, portal.Receiver))
@@ -123,6 +128,7 @@ type FailedMediaKeys struct {
 	SHA256     []byte              `json:"sha256"`
 	EncSHA256  []byte              `json:"enc_sha256"`
 	DirectPath string              `json:"direct_path,omitempty"`
+	MimeType   string              `json:"mime_type,omitempty"`
 }
 
 func (f *FailedMediaKeys) GetDirectPath() string {
@@ -378,35 +384,8 @@ func (mc *MessageConverter) reuploadWhatsAppAttachment(
 	return nil
 }
 
-func (mc *MessageConverter) extractAnimatedSticker(fileInfo *PreparedMedia, data []byte) ([]byte, error) {
-	zipReader, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
-	if err != nil {
-		return nil, fmt.Errorf("failed to read sticker zip: %w", err)
-	}
-	animationFile, err := zipReader.Open("animation/animation.json")
-	if err != nil {
-		return nil, fmt.Errorf("failed to open animation.json: %w", err)
-	}
-	animationFileInfo, err := animationFile.Stat()
-	if err != nil {
-		_ = animationFile.Close()
-		return nil, fmt.Errorf("failed to stat animation.json: %w", err)
-	} else if animationFileInfo.Size() > uploadFileThreshold {
-		_ = animationFile.Close()
-		return nil, fmt.Errorf("animation.json is too large (%.2f MiB)", float64(animationFileInfo.Size())/1024/1024)
-	}
-	data, err = io.ReadAll(animationFile)
-	_ = animationFile.Close()
-	if err != nil {
-		return nil, fmt.Errorf("failed to read animation.json: %w", err)
-	}
-	fileInfo.Info.MimeType = "video/lottie+json"
-	fileInfo.FileName = "sticker.json"
-	return data, nil
-}
-
 func (mc *MessageConverter) convertAnimatedSticker(ctx context.Context, fileInfo *PreparedMedia, data []byte) ([]byte, []byte, *event.FileInfo, error) {
-	data, err := mc.extractAnimatedSticker(fileInfo, data)
+	data, err := ExtractAnimatedSticker(fileInfo, data)
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -500,4 +479,33 @@ func (mc *MessageConverter) makeMediaFailure(ctx context.Context, mediaInfo *Pre
 		part.Content.Body += "\n\n" + mediaInfo.Body
 	}
 	return part
+}
+
+func ExtractAnimatedSticker(fileInfo *PreparedMedia, data []byte) ([]byte, error) {
+	zipReader, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
+	if err != nil {
+		return nil, fmt.Errorf("failed to read sticker zip: %w", err)
+	}
+	animationFile, err := zipReader.Open("animation/animation.json")
+	if err != nil {
+		return nil, fmt.Errorf("failed to open animation.json: %w", err)
+	}
+	animationFileInfo, err := animationFile.Stat()
+	if err != nil {
+		_ = animationFile.Close()
+		return nil, fmt.Errorf("failed to stat animation.json: %w", err)
+	} else if animationFileInfo.Size() > uploadFileThreshold {
+		_ = animationFile.Close()
+		return nil, fmt.Errorf("animation.json is too large (%.2f MiB)", float64(animationFileInfo.Size())/1024/1024)
+	}
+	data, err = io.ReadAll(animationFile)
+	_ = animationFile.Close()
+	if err != nil {
+		return nil, fmt.Errorf("failed to read animation.json: %w", err)
+	}
+	if fileInfo != nil {
+		fileInfo.Info.MimeType = "video/lottie+json"
+		fileInfo.FileName = "sticker.json"
+	}
+	return data, nil
 }
