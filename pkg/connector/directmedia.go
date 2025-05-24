@@ -126,7 +126,7 @@ func (wa *WhatsAppConnector) Download(ctx context.Context, mediaID networkid.Med
 					return fmt.Errorf("failed to seek to start of sticker zip: %w", err)
 				} else if zipData, err := io.ReadAll(f); err != nil {
 					return fmt.Errorf("failed to read sticker zip: %w", err)
-				} else if data, err := msgconv.ExtractAnimatedSticker(nil, zipData); err != nil {
+				} else if data, err := msgconv.ExtractAnimatedSticker(zipData); err != nil {
 					return fmt.Errorf("failed to extract animated sticker: %w %x", err, zipData)
 				} else if _, err := f.WriteAt(data, 0); err != nil {
 					return fmt.Errorf("failed to write animated sticker to file: %w", err)
