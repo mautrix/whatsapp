@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"sync"
@@ -119,6 +120,21 @@ func (wa *WhatsAppConnector) Download(ctx context.Context, mediaID networkid.Med
 			} else if err != nil {
 				return err
 			}
+
+			if keys.MimeType == "application/was" {
+				if _, err := f.Seek(0, io.SeekStart); err != nil {
+					return fmt.Errorf("failed to seek to start of sticker zip: %w", err)
+				} else if zipData, err := io.ReadAll(f); err != nil {
+					return fmt.Errorf("failed to read sticker zip: %w", err)
+				} else if data, err := msgconv.ExtractAnimatedSticker(zipData); err != nil {
+					return fmt.Errorf("failed to extract animated sticker: %w %x", err, zipData)
+				} else if _, err := f.WriteAt(data, 0); err != nil {
+					return fmt.Errorf("failed to write animated sticker to file: %w", err)
+				} else if err := f.Truncate(int64(len(data))); err != nil {
+					return fmt.Errorf("failed to truncate animated sticker file: %w", err)
+				}
+			}
+
 			return nil
 		},
 		// TODO?
