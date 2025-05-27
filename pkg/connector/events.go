@@ -239,7 +239,7 @@ func (evt *WAMessageEvent) GetType() bridgev2.RemoteEventType {
 	case "edit":
 		return bridgev2.RemoteEventEdit
 	case "revoke":
-		return bridgev2.RemoteEventMessageRemove
+		return bridgev2.RemoteEventMessage
 	case "ignore":
 		return bridgev2.RemoteEventUnknown
 	default:
@@ -263,6 +263,32 @@ func (evt *WAMessageEvent) HandleExisting(ctx context.Context, portal *bridgev2.
 }
 
 func (evt *WAMessageEvent) ConvertMessage(ctx context.Context, portal *bridgev2.Portal, intent bridgev2.MatrixAPI) (*bridgev2.ConvertedMessage, error) {
+	if evt.parsedMessageType == "revoke" {
+        // TODO: Get original sender's display name if possible
+        // senderJID := evt.Info.Sender
+        // ghost, _ := evt.wa.Main.Bridge.GetGhostByID(ctx, waid.MakeUserID(senderJID))
+        // senderDisplayName := ghost.Name
+        // if senderDisplayName == "" {
+        //     senderDisplayName = senderJID.User
+        // }
+        // notificationText := fmt.Sprintf("A message from %s was deleted on WhatsApp.", senderDisplayName)
+
+        // For now, a simpler message:
+        notificationText := fmt.Sprintf("A message (ID: %s) was deleted on WhatsApp by %s.", evt.Message.GetProtocolMessage().GetKey().GetID(), evt.Info.Sender.User)
+
+        return &bridgev2.ConvertedMessage{
+            Parts: []*bridgev2.ConvertedMessagePart{{
+                Type: event.EventMessage,
+                Content: &event.MessageEventContent{
+                    MsgType: event.MsgNotice,
+                    Body:    notificationText,
+                },
+                // No DBMetadata needed for this notice as it's a new message.
+            }},
+            // Keep original timestamp of the deletion event
+            // Disappear settings can be copied from portal if needed
+        }, nil
+    }
 	evt.wa.EnqueuePortalResync(portal)
 	converted := evt.wa.Main.MsgConv.ToMatrix(
 		ctx, portal, evt.wa.Client, intent, evt.Message, evt.MsgEvent.RawMessage, &evt.Info, evt.isViewOnce(), false, nil,
