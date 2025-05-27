@@ -60,16 +60,16 @@ func (mc *MessageConverter) convertURLPreviewToBeeper(ctx context.Context, msg *
 		thumbnailData = msg.JPEGThumbnail
 	}
 	if thumbnailData != nil {
-		output.ImageHeight = int(msg.GetThumbnailHeight())
-		output.ImageWidth = int(msg.GetThumbnailWidth())
+		output.ImageHeight = event.IntOrString(msg.GetThumbnailHeight())
+		output.ImageWidth = event.IntOrString(msg.GetThumbnailWidth())
 		if output.ImageHeight == 0 || output.ImageWidth == 0 {
 			src, _, err := image.Decode(bytes.NewReader(thumbnailData))
 			if err == nil {
 				imageBounds := src.Bounds()
-				output.ImageWidth, output.ImageHeight = imageBounds.Max.X, imageBounds.Max.Y
+				output.ImageWidth, output.ImageHeight = event.IntOrString(imageBounds.Max.X), event.IntOrString(imageBounds.Max.Y)
 			}
 		}
-		output.ImageSize = len(thumbnailData)
+		output.ImageSize = event.IntOrString(len(thumbnailData))
 		output.ImageType = http.DetectContentType(thumbnailData)
 		var err error
 		output.ImageURL, output.ImageEncryption, err = getIntent(ctx).UploadMedia(
