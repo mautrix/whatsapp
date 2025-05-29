@@ -189,7 +189,7 @@ func (wa *WhatsAppClient) contactToUserInfo(ctx context.Context, jid types.JID, 
 		pnJID, err := wa.GetStore().LIDs.GetPNForLID(ctx, jid)
 		if err != nil {
 			zerolog.Ctx(ctx).Err(err).Stringer("lid", jid).Msg("Failed to get PN for LID")
-		} else {
+		} else if !pnJID.IsEmpty() {
 			phone = "+" + pnJID.User
 			extraContact, err := wa.GetStore().Contacts.GetContact(ctx, pnJID)
 			if err != nil {
@@ -216,11 +216,12 @@ func (wa *WhatsAppClient) contactToUserInfo(ctx context.Context, jid types.JID, 
 	ui := &bridgev2.UserInfo{
 		Name:         ptr.Ptr(wa.Main.Config.FormatDisplayname(jid, phone, contact)),
 		IsBot:        ptr.Ptr(jid.IsBot()),
-		Identifiers:  []string{fmt.Sprintf("tel:+%s", jid.User)},
 		ExtraUpdates: updateGhostLastSyncAt,
 	}
 	if jid.Server == types.BotServer {
 		ui.Identifiers = []string{}
+	} else if phone != "" {
+		ui.Identifiers = []string{fmt.Sprintf("tel:%s", phone)}
 	}
 	if getAvatar {
 		ui.ExtraUpdates = bridgev2.MergeExtraUpdaters(ui.ExtraUpdates, wa.fetchGhostAvatar)
