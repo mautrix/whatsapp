@@ -33,7 +33,7 @@ func (wa *WhatsAppClient) makeEventSender(id types.JID) bridgev2.EventSender {
 	return bridgev2.EventSender{
 		IsFromMe:    id.User == wa.GetStore().GetJID().User || id.User == wa.GetStore().GetLID().User,
 		Sender:      waid.MakeUserID(id),
-		SenderLogin: waid.MakeUserLoginID(id),
+		SenderLogin: waid.MakeUserLoginID(id), // TODO add support for lids here by looking up pn jid
 	}
 }
 

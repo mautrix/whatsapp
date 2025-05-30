@@ -61,14 +61,32 @@ func getPortal(ctx context.Context) *bridgev2.Portal {
 	return ctx.Value(contextKeyPortal).(*bridgev2.Portal)
 }
 
-func (mc *MessageConverter) getBasicUserInfo(ctx context.Context, user networkid.UserID) (id.UserID, string, error) {
-	ghost, err := mc.Bridge.GetGhostByID(ctx, user)
+func (mc *MessageConverter) getBasicUserInfo(ctx context.Context, user types.JID) (id.UserID, string, error) {
+	ghost, err := mc.Bridge.GetGhostByID(ctx, waid.MakeUserID(user))
 	if err != nil {
 		return "", "", fmt.Errorf("failed to get ghost by ID: %w", err)
 	}
-	login := mc.Bridge.GetCachedUserLoginByID(networkid.UserLoginID(user))
-	if login != nil {
-		return login.UserMXID, ghost.Name, nil
+	var pnJID types.JID
+	if user.Server == types.DefaultUserServer {
+		pnJID = user
+	} else if user.Server == types.HiddenUserServer {
+		cli := getClient(ctx)
+		if user.User == cli.Store.GetLID().User {
+			pnJID = cli.Store.GetJID()
+		} else {
+			pnJID, err = cli.Store.LIDs.GetPNForLID(ctx, user)
+			if err != nil {
+				zerolog.Ctx(ctx).Err(err).
+					Stringer("lid", user).
+					Msg("Failed to get PN for LID in mention bridging")
+			}
+		}
+	}
+	if !pnJID.IsEmpty() {
+		login := mc.Bridge.GetCachedUserLoginByID(waid.MakeUserLoginID(pnJID))
+		if login != nil {
+			return login.UserMXID, ghost.Name, nil
+		}
 	}
 	return ghost.Intent.GetMXID(), ghost.Name, nil
 }
@@ -84,7 +102,7 @@ func (mc *MessageConverter) addMentions(ctx context.Context, mentionedJID []stri
 			zerolog.Ctx(ctx).Err(err).Str("jid", jid).Msg("Failed to parse mentioned JID")
 			continue
 		}
-		mxid, displayname, err := mc.getBasicUserInfo(ctx, waid.MakeUserID(parsed))
+		mxid, displayname, err := mc.getBasicUserInfo(ctx, parsed)
 		if err != nil {
 			zerolog.Ctx(ctx).Err(err).Str("jid", jid).Msg("Failed to get user info")
 			continue
