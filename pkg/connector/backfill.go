@@ -192,13 +192,15 @@ func (wa *WhatsAppClient) createPortalsFromHistorySync(ctx context.Context) {
 		Logger()
 	ctx = log.WithContext(ctx)
 	limit := wa.Main.Config.HistorySync.MaxInitialConversations
-	log.Info().Int("limit", limit).Msg("Creating portals from history sync")
 	conversations, err := wa.Main.DB.Conversation.GetRecent(ctx, wa.UserLogin.ID, limit)
 	if err != nil {
 		log.Err(err).Msg("Failed to get recent conversations from database")
 		return
 	}
-	log.Info().Int("conversation_count", len(conversations)).Msg("Creating portals from history sync")
+	log.Info().
+		Int("limit", limit).
+		Int("conversation_count", len(conversations)).
+		Msg("Creating portals from history sync")
 	rateLimitErrors := 0
 	var wg sync.WaitGroup
 	wg.Add(len(conversations))
@@ -220,7 +222,12 @@ func (wa *WhatsAppClient) createPortalsFromHistorySync(ctx context.Context) {
 			continue
 		}
 		// TODO can the chat info fetch be avoided entirely?
-		time.Sleep(time.Duration(rateLimitErrors) * time.Second)
+		select {
+		case <-time.After(time.Duration(rateLimitErrors) * time.Second):
+		case <-ctx.Done():
+			log.Warn().Err(ctx.Err()).Msg("Context cancelled, stopping history sync portal creation")
+			return
+		}
 		wrappedInfo, err := wa.getChatInfo(ctx, conv.ChatJID, conv)
 		if errors.Is(err, whatsmeow.ErrNotInGroup) {
 			log.Debug().Stringer("chat_jid", conv.ChatJID).
@@ -241,7 +248,12 @@ func (wa *WhatsAppClient) createPortalsFromHistorySync(ctx context.Context) {
 			log.Err(err).Stringer("chat_jid", conv.ChatJID).
 				Int("error_count", rateLimitErrors).
 				Msg("Ratelimit error getting chat info, retrying after sleep")
-			time.Sleep(time.Duration(rateLimitErrors) * time.Minute)
+			select {
+			case <-time.After(time.Duration(rateLimitErrors) * time.Second):
+			case <-ctx.Done():
+				log.Warn().Err(ctx.Err()).Msg("Context cancelled, stopping history sync portal creation")
+				return
+			}
 			continue
 		} else if err != nil {
 			log.Err(err).Stringer("chat_jid", conv.ChatJID).Msg("Failed to get chat info")
