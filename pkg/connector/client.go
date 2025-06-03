@@ -379,7 +379,7 @@ func (wa *WhatsAppClient) syncRemoteProfile(ctx context.Context, ghost *bridgev2
 }
 
 func (wa *WhatsAppClient) HandleMatrixViewingChat(ctx context.Context, msg *bridgev2.MatrixViewingChat) error {
-	if msg.Portal.Metadata.(*waid.PortalMetadata).LastSync.Add(5 * time.Minute).After(time.Now()) {
+	if msg.Portal == nil || msg.Portal.Metadata.(*waid.PortalMetadata).LastSync.Add(5*time.Minute).After(time.Now()) {
 		// If we resynced this portal within the last 5 minutes, don't do it again
 		return nil
 	}
