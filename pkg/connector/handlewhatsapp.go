@@ -263,6 +263,12 @@ func (wa *WhatsAppClient) handleWAMessage(ctx context.Context, evt *events.Messa
 	if evt.Info.Chat == types.StatusBroadcastJID && !wa.Main.Config.EnableStatusBroadcast {
 		return
 	}
+	if evt.Info.IsFromMe &&
+		evt.Message.GetProtocolMessage().GetHistorySyncNotification() != nil &&
+		wa.Main.Bridge.Config.Backfill.Enabled &&
+		wa.Client.ManualHistorySyncDownload {
+		wa.saveWAHistorySyncNotification(ctx, evt.Message.ProtocolMessage.HistorySyncNotification)
+	}
 	parsedMessageType := getMessageType(evt.Message)
 	if parsedMessageType == "ignore" || strings.HasPrefix(parsedMessageType, "unknown_protocol_") {
 		return

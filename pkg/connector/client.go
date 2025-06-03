@@ -47,6 +47,7 @@ func (wa *WhatsAppConnector) LoadUserLogin(ctx context.Context, login *bridgev2.
 		UserLogin: login,
 
 		historySyncs:       make(chan *waHistorySync.HistorySync, 64),
+		historySyncWakeup:  make(chan struct{}, 1),
 		resyncQueue:        make(map[types.JID]resyncQueueItem),
 		directMediaRetries: make(map[networkid.MessageID]*directMediaRetry),
 		mediaRetryLock:     semaphore.NewWeighted(wa.Config.HistorySync.MediaRequests.MaxAsyncHandle),
@@ -72,6 +73,7 @@ func (wa *WhatsAppConnector) LoadUserLogin(ctx context.Context, login *bridgev2.
 		if bridgev2.PortalEventBuffer == 0 {
 			w.Client.SynchronousAck = true
 			w.Client.EnableDecryptedEventBuffer = true
+			w.Client.ManualHistorySyncDownload = true
 		}
 		w.Client.AutomaticMessageRerequestFromPhone = true
 		w.Client.GetMessageForRetry = w.trackNotFoundRetry
@@ -98,6 +100,7 @@ type WhatsAppClient struct {
 	JID       types.JID
 
 	historySyncs       chan *waHistorySync.HistorySync
+	historySyncWakeup  chan struct{}
 	stopLoops          atomic.Pointer[context.CancelFunc]
 	resyncQueue        map[types.JID]resyncQueueItem
 	resyncQueueLock    sync.Mutex
