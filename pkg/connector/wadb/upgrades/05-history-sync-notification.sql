@@ -7,7 +7,7 @@ CREATE TABLE whatsapp_history_sync_notification (
 
     bridge_id     TEXT  NOT NULL,
     user_login_id TEXT  NOT NULL,
-    notification  bytea NOT NULL,
+    data          bytea NOT NULL,
 
     CONSTRAINT whatsapp_history_sync_notification_user_login_fkey FOREIGN KEY (bridge_id, user_login_id)
         REFERENCES user_login (bridge_id, id) ON UPDATE CASCADE ON DELETE CASCADE
