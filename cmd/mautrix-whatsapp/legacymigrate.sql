@@ -193,7 +193,8 @@ SELECT
     'after_read',
     expire_in * 1000000, -- timer
     expire_at * 1000000 -- disappear_at
-FROM disappearing_message_old;
+FROM disappearing_message_old
+WHERE room_id IN (SELECT mxid FROM portal WHERE mxid IS NOT NULL);
 
 INSERT INTO whatsapp_poll_option_id (bridge_id, msg_mxid, opt_id, opt_hash)
 SELECT '', msg_mxid, opt_id, opt_hash

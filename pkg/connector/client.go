@@ -116,6 +116,7 @@ var (
 	_ bridgev2.NetworkAPI                  = (*WhatsAppClient)(nil)
 	_ bridgev2.PushableNetworkAPI          = (*WhatsAppClient)(nil)
 	_ bridgev2.BackgroundSyncingNetworkAPI = (*WhatsAppClient)(nil)
+	_ bridgev2.ChatViewingNetworkAPI       = (*WhatsAppClient)(nil)
 )
 
 var pushCfg = &bridgev2.PushConfig{
@@ -375,4 +376,34 @@ func (wa *WhatsAppClient) syncRemoteProfile(ctx context.Context, ghost *bridgev2
 		wa.UserLogin.BridgeState.Send(status.BridgeState{StateEvent: status.StateConnected})
 	}
 	zerolog.Ctx(ctx).Info().Msg("Remote profile updated")
+}
+
+func (wa *WhatsAppClient) HandleMatrixViewingChat(ctx context.Context, msg *bridgev2.MatrixViewingChat) error {
+	if msg.Portal.Metadata.(*waid.PortalMetadata).LastSync.Add(5 * time.Minute).After(time.Now()) {
+		// If we resynced this portal within the last 5 minutes, don't do it again
+		return nil
+	}
+
+	// Reset, but don't save, portal last sync time for immediate sync now
+	msg.Portal.Metadata.(*waid.PortalMetadata).LastSync.Time = time.Time{}
+	// Enqueue for the sync, don't block on it completing
+	wa.EnqueuePortalResync(msg.Portal)
+
+	if msg.Portal.OtherUserID != "" {
+		// If this is a DM, also sync the ghost of the other user immediately
+		ghost, err := wa.Main.Bridge.GetExistingGhostByID(ctx, msg.Portal.OtherUserID)
+		if err != nil {
+			return fmt.Errorf("failed to get ghost for sync: %w", err)
+		} else if ghost == nil {
+			zerolog.Ctx(ctx).Warn().
+				Str("other_user_id", string(msg.Portal.OtherUserID)).
+				Msg("No ghost found for other user in portal")
+		} else {
+			// Reset, but don't save, portal last sync time for immediate sync now
+			ghost.Metadata.(*waid.GhostMetadata).LastSync.Time = time.Time{}
+			wa.EnqueueGhostResync(ghost)
+		}
+	}
+
+	return nil
 }
