@@ -191,6 +191,7 @@ func (wa *WhatsAppClient) Connect(ctx context.Context) {
 		zerolog.Ctx(ctx).Err(err).Msg("Failed to update proxy")
 	}
 	wa.startLoops()
+	wa.Client.BackgroundEventCtx = wa.Main.Bridge.BackgroundCtx
 	if err := wa.Client.Connect(); err != nil {
 		state := status.BridgeState{
 			StateEvent: status.StateUnknownError,
@@ -223,6 +224,7 @@ func (wa *WhatsAppClient) ConnectBackground(ctx context.Context, params *bridgev
 	if wa.Client == nil {
 		return bridgev2.ErrNotLoggedIn
 	}
+	wa.Client.BackgroundEventCtx = wa.Main.Bridge.BackgroundCtx
 	wa.offlineSyncWaiter = make(chan error)
 	wa.Main.firstClientConnectOnce.Do(wa.Main.onFirstClientConnect)
 	if err := wa.Main.updateProxy(ctx, wa.Client, false); err != nil {
