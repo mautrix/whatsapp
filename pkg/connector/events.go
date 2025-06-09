@@ -137,7 +137,8 @@ func (evt *WAMessageEvent) PreHandle(ctx context.Context, portal *bridgev2.Porta
 	if meta.AddressingMode == types.AddressingModeLID || meta.LIDMigrationAttempted {
 		return
 	}
-	log := zerolog.Ctx(ctx)
+	log := zerolog.Ctx(ctx).With().Str("action", "group lid migration").Logger()
+	ctx = log.WithContext(ctx)
 	meta.LIDMigrationAttempted = true
 	info, err := evt.wa.Client.GetGroupInfo(portalJID)
 	if err != nil {
