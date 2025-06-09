@@ -161,7 +161,7 @@ func (wa *WhatsAppClient) doGhostResync(ctx context.Context, queue map[types.JID
 }
 
 func (wa *WhatsAppClient) GetUserInfo(ctx context.Context, ghost *bridgev2.Ghost) (*bridgev2.UserInfo, error) {
-	if ghost.Name != "" {
+	if ghost.Name != "" && ghost.NameSet {
 		wa.EnqueueGhostResync(ghost)
 		return nil, nil
 	}

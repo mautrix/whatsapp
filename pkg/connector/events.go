@@ -125,7 +125,8 @@ func (evt *WAMessageEvent) AddLogContext(c zerolog.Context) zerolog.Context {
 }
 
 func (evt *WAMessageEvent) PreHandle(ctx context.Context, portal *bridgev2.Portal) {
-	if evt.Info.Sender.Server != types.HiddenUserServer || evt.Info.Chat.Server != types.GroupServer {
+	if (evt.Info.Sender.Server != types.HiddenUserServer && evt.Info.AddressingMode != types.AddressingModeLID) ||
+		evt.Info.Chat.Server != types.GroupServer {
 		return
 	}
 	portalJID, err := waid.ParsePortalID(portal.ID)
