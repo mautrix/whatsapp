@@ -272,7 +272,20 @@ func (wa *WhatsAppClient) wrapGroupInfo(info *types.GroupInfo) *bridgev2.ChatInf
 		} else {
 			member.PowerLevel = ptr.Ptr(defaultPL)
 		}
+		member.MemberEventExtra = map[string]any{
+			"com.beeper.exclude_from_timeline": true,
+		}
 		wrapped.Members.MemberMap[waid.MakeUserID(pcp.JID)] = member
+		if pcp.JID.Server == types.HiddenUserServer && !pcp.PhoneNumber.IsEmpty() {
+			wrapped.Members.MemberMap[waid.MakeUserID(pcp.PhoneNumber)] = bridgev2.ChatMember{
+				EventSender:    wa.makeEventSender(pcp.PhoneNumber),
+				Membership:     event.MembershipLeave,
+				PrevMembership: event.MembershipJoin,
+				MemberEventExtra: map[string]any{
+					"com.beeper.exclude_from_timeline": true,
+				},
+			}
+		}
 	}
 
 	if !info.LinkedParentJID.IsEmpty() {
