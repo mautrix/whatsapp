@@ -124,6 +124,34 @@ func (evt *WAMessageEvent) AddLogContext(c zerolog.Context) zerolog.Context {
 	return evt.MessageInfoWrapper.AddLogContext(c).Str("parsed_message_type", evt.parsedMessageType)
 }
 
+func (evt *WAMessageEvent) PreHandle(ctx context.Context, portal *bridgev2.Portal) {
+	if evt.Info.Sender.Server != types.HiddenUserServer || evt.Info.Chat.Server != types.GroupServer {
+		return
+	}
+	portalJID, err := waid.ParsePortalID(portal.ID)
+	if err != nil {
+		return
+	}
+	meta := portal.Metadata.(*waid.PortalMetadata)
+	if meta.AddressingMode == types.AddressingModeLID || meta.LIDMigrationAttempted {
+		return
+	}
+	log := zerolog.Ctx(ctx)
+	meta.LIDMigrationAttempted = true
+	info, err := evt.wa.Client.GetGroupInfo(portalJID)
+	if err != nil {
+		log.Err(err).Msg("Failed to get group info for lid migration")
+		return
+	}
+	if info.AddressingMode != types.AddressingModeLID {
+		log.Warn().Msg("Received LID message, but group addressing mode isn't set to LID? Not migrating")
+		return
+	}
+	log.Info().Msg("Resyncing group members as it appears to have switched to LID addressing mode")
+	portal.UpdateInfo(ctx, evt.wa.wrapGroupInfo(info), evt.wa.UserLogin, nil, time.Time{})
+	log.Debug().Msg("Finished resyncing after LID change")
+}
+
 func (evt *WAMessageEvent) PostHandle(ctx context.Context, portal *bridgev2.Portal) {
 	if ph := evt.postHandle; ph != nil {
 		evt.postHandle = nil

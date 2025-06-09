@@ -109,6 +109,7 @@ type PortalMetadata struct {
 	LastSync                   jsontime.Unix        `json:"last_sync,omitempty"`
 	CommunityAnnouncementGroup bool                 `json:"is_cag,omitempty"`
 	AddressingMode             types.AddressingMode `json:"addressing_mode,omitempty"`
+	LIDMigrationAttempted      bool                 `json:"lid_migration_attempted,omitempty"`
 }
 
 type GhostMetadata struct {
