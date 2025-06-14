@@ -53,7 +53,7 @@ func looksEmaily(str string) bool {
 }
 
 func (wa *WhatsAppClient) validateIdentifer(number string) (types.JID, error) {
-	if strings.HasSuffix(number, "@"+types.BotServer) {
+	if strings.HasSuffix(number, "@"+types.BotServer) || strings.HasSuffix(number, "@"+types.HiddenUserServer) {
 		return types.ParseJID(number)
 	}
 	if strings.HasSuffix(number, "@"+types.DefaultUserServer) {
@@ -96,12 +96,47 @@ func (wa *WhatsAppConnector) ValidateUserID(id networkid.UserID) bool {
 	}
 }
 
+func (wa *WhatsAppClient) startChatLIDToPN(ctx context.Context, jid types.JID) (types.JID, error) {
+	if jid.Server == types.HiddenUserServer {
+		pn, err := wa.Device.LIDs.GetPNForLID(ctx, jid)
+		if err != nil {
+			return jid, fmt.Errorf("failed to get phone number for lid: %w", err)
+		} else if pn.IsEmpty() {
+			// Don't allow starting chats with LIDs for now
+			return jid, fmt.Errorf("phone number not found")
+		}
+		return pn, nil
+	}
+	return jid, nil
+}
+
+func (wa *WhatsAppClient) makeCreateChatResponse(jid, origJID types.JID) *bridgev2.CreateChatResponse {
+	var redirID networkid.UserID
+	if origJID != jid {
+		redirID = waid.MakeUserID(jid)
+	}
+	return &bridgev2.CreateChatResponse{
+		PortalKey:      wa.makeWAPortalKey(jid),
+		PortalInfo:     wa.wrapDMInfo(jid),
+		DMRedirectedTo: redirID,
+	}
+}
+
 func (wa *WhatsAppClient) CreateChatWithGhost(ctx context.Context, ghost *bridgev2.Ghost) (*bridgev2.CreateChatResponse, error) {
-	return &bridgev2.CreateChatResponse{PortalKey: wa.makeWAPortalKey(waid.ParseUserID(ghost.ID))}, nil
+	origJID := waid.ParseUserID(ghost.ID)
+	jid, err := wa.startChatLIDToPN(ctx, origJID)
+	if err != nil {
+		return nil, err
+	}
+	return wa.makeCreateChatResponse(jid, origJID), nil
 }
 
 func (wa *WhatsAppClient) ResolveIdentifier(ctx context.Context, identifier string, startChat bool) (*bridgev2.ResolveIdentifierResponse, error) {
-	jid, err := wa.validateIdentifer(identifier)
+	origJID, err := wa.validateIdentifer(identifier)
+	if err != nil {
+		return nil, err
+	}
+	jid, err := wa.startChatLIDToPN(ctx, origJID)
 	if err != nil {
 		return nil, err
 	}
@@ -113,7 +148,7 @@ func (wa *WhatsAppClient) ResolveIdentifier(ctx context.Context, identifier stri
 	return &bridgev2.ResolveIdentifierResponse{
 		Ghost:  ghost,
 		UserID: waid.MakeUserID(jid),
-		Chat:   &bridgev2.CreateChatResponse{PortalKey: wa.makeWAPortalKey(jid)},
+		Chat:   wa.makeCreateChatResponse(jid, origJID),
 	}, nil
 }
 
