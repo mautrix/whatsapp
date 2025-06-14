@@ -61,6 +61,8 @@ force_active_delivery_receipts: false
 # When direct media is enabled and a piece of media isn't available on the WhatsApp servers,
 # should it be automatically requested from the phone?
 direct_media_auto_request: true
+# Should the bridge automatically reconnect if it fails to connect on startup?
+initial_auto_reconnect: true
 
 # Settings for converting animated stickers.
 animated_sticker:

@@ -193,9 +193,13 @@ func (wa *WhatsAppClient) Connect(ctx context.Context) {
 	wa.startLoops()
 	wa.Client.BackgroundEventCtx = wa.Main.Bridge.BackgroundCtx
 	if err := wa.Client.Connect(); err != nil {
+		zerolog.Ctx(ctx).Err(err).Msg("Failed to connect to WhatsApp")
 		state := status.BridgeState{
 			StateEvent: status.StateUnknownError,
 			Error:      WAConnectionFailed,
+			Info: map[string]any{
+				"go_error": err.Error(),
+			},
 		}
 		wa.UserLogin.BridgeState.Send(state)
 	}
