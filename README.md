@@ -1,5 +1,5 @@
 # mautrix-whatsapp
-A Matrix-WhatsApp puppeting bridge based on [whatsmeow](https://github.com/tulir/whatsmeow).
+A Matrix-WhatsApp [puppeting bridge] based on [whatsmeow](https://github.com/tulir/whatsmeow).
 
 ## Documentation
 All setup and usage instructions are located on [docs.mau.fi]. Some quick links:
@@ -15,3 +15,5 @@ All setup and usage instructions are located on [docs.mau.fi]. Some quick links:
 
 ## Discussion
 Matrix room: [#whatsapp:maunium.net](https://matrix.to/#/#whatsapp:maunium.net)
+
+[puppeting bridge]: https://matrix.org/docs/older/types-of-bridging/#simple-puppeted-bridge
