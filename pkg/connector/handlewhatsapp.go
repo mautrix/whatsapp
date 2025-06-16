@@ -376,6 +376,11 @@ func (wa *WhatsAppClient) handleWAReceipt(evt *events.Receipt) {
 	messageSender := wa.JID
 	if !evt.MessageSender.IsEmpty() {
 		messageSender = evt.MessageSender
+	} else if evt.Chat.Server == types.GroupServer && evt.Sender.Server == types.HiddenUserServer {
+		lid := wa.Device.GetLID()
+		if !lid.IsEmpty() {
+			messageSender = lid
+		}
 	}
 	for i, id := range evt.MessageIDs {
 		targets[i] = waid.MakeMessageID(evt.Chat, messageSender, id)
