@@ -1,3 +1,13 @@
+# v0.12.2 (2025-06-16)
+
+* Improved support for `@lid` users.
+  * **N.B.** As mentioned in the v0.12.0 release, old registration files may
+    have `[0-9]+` in the `users` regex. You must change it to `.+`, as the new
+    `lid` identifiers are bridged as `lid-<number>` instead of just `<phone number>`.
+* Updated Docker image to Alpine 3.22.
+* Fixed network errors on first connect not triggering automatic reconnect.
+* Fixed animated sticker zips not being extracted when using direct media.
+
 # v0.12.1 (2025-05-16)
 
 * Added prefix to identify forwarded messages on WhatsApp.
@@ -13,6 +23,9 @@
 
 * Migrated Signal session store to use new `@lid` identifiers to support future
   chats that don't expose phone numbers.
+  * **N.B.** Old registration files may have `[0-9]+` in the `users` regex. You
+    must change it to `.+`, as the new `lid` identifiers are bridged as
+    `lid-<number>` instead of just `<phone number>`.
 * Added fallbacks for various business message types.
 * Added support for bridging invites, kicks and leaves in groups.
 * Re-added `invite-link`, `join` and `sync` commands for groups.
