@@ -427,7 +427,10 @@ func (wa *WhatsAppClient) makePortalAvatarFetcher(avatarID string, sender types.
 		if !sender.IsEmpty() {
 			evtSender = wa.makeEventSender(sender)
 		}
-		senderIntent := portal.GetIntentFor(ctx, evtSender, wa.UserLogin, bridgev2.RemoteEventChatInfoChange)
+		senderIntent, ok := portal.GetIntentFor(ctx, evtSender, wa.UserLogin, bridgev2.RemoteEventChatInfoChange)
+		if !ok {
+			return false
+		}
 		//lint:ignore SA1019 TODO invent a cleaner way to fetch avatar metadata before updating?
 		return portal.Internal().UpdateAvatar(ctx, wrappedAvatar, senderIntent, ts)
 	}
