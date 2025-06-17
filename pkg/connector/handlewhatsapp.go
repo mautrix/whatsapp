@@ -71,19 +71,19 @@ func init() {
 	})
 }
 
-func (wa *WhatsAppClient) handleWAEvent(rawEvt any) {
+func (wa *WhatsAppClient) handleWAEvent(rawEvt any) (success bool) {
 	log := wa.UserLogin.Log
 	ctx := log.WithContext(wa.Main.Bridge.BackgroundCtx)
 
 	switch evt := rawEvt.(type) {
 	case *events.Message:
-		wa.handleWAMessage(ctx, evt)
+		return wa.handleWAMessage(ctx, evt)
 	case *events.Receipt:
-		wa.handleWAReceipt(evt)
+		return wa.handleWAReceipt(evt)
 	case *events.ChatPresence:
 		wa.handleWAChatPresence(evt)
 	case *events.UndecryptableMessage:
-		wa.handleWAUndecryptableMessage(evt)
+		return wa.handleWAUndecryptableMessage(evt)
 
 	case *events.CallOffer:
 		wa.handleWACallStart(evt.CallCreator, evt.CallID, "", evt.Timestamp)
@@ -253,9 +253,11 @@ func (wa *WhatsAppClient) handleWAEvent(rawEvt any) {
 	default:
 		log.Debug().Type("event_type", rawEvt).Msg("Unhandled WhatsApp event")
 	}
+	return true
 }
 
-func (wa *WhatsAppClient) handleWAMessage(ctx context.Context, evt *events.Message) {
+func (wa *WhatsAppClient) handleWAMessage(ctx context.Context, evt *events.Message) (success bool) {
+	success = true
 	if evt.Info.Chat.Server == types.HiddenUserServer && evt.Info.Sender.ToNonAD() == evt.Info.Chat && evt.Info.SenderAlt.Server == types.DefaultUserServer {
 		wa.UserLogin.Log.Debug().
 			Stringer("lid", evt.Info.Sender).
@@ -307,7 +309,7 @@ func (wa *WhatsAppClient) handleWAMessage(ctx context.Context, evt *events.Messa
 			evt.Message = decrypted
 		}
 	}
-	wa.Main.Bridge.QueueRemoteEvent(wa.UserLogin, &WAMessageEvent{
+	res := wa.Main.Bridge.QueueRemoteEvent(wa.UserLogin, &WAMessageEvent{
 		MessageInfoWrapper: &MessageInfoWrapper{
 			Info: evt.Info,
 			wa:   wa,
@@ -317,9 +319,10 @@ func (wa *WhatsAppClient) handleWAMessage(ctx context.Context, evt *events.Messa
 
 		parsedMessageType: parsedMessageType,
 	})
+	return res.Success
 }
 
-func (wa *WhatsAppClient) handleWAUndecryptableMessage(evt *events.UndecryptableMessage) {
+func (wa *WhatsAppClient) handleWAUndecryptableMessage(evt *events.UndecryptableMessage) bool {
 	wa.UserLogin.Log.Debug().
 		Any("info", evt.Info).
 		Bool("unavailable", evt.IsUnavailable).
@@ -327,21 +330,22 @@ func (wa *WhatsAppClient) handleWAUndecryptableMessage(evt *events.Undecryptable
 		Msg("Received undecryptable WhatsApp message")
 	wa.trackUndecryptable(evt)
 	if evt.DecryptFailMode == events.DecryptFailHide {
-		return
+		return true
 	}
 	if evt.Info.Chat == types.StatusBroadcastJID && !wa.Main.Config.EnableStatusBroadcast {
-		return
+		return true
 	}
-	wa.Main.Bridge.QueueRemoteEvent(wa.UserLogin, &WAUndecryptableMessage{
+	res := wa.Main.Bridge.QueueRemoteEvent(wa.UserLogin, &WAUndecryptableMessage{
 		MessageInfoWrapper: &MessageInfoWrapper{
 			Info: evt.Info,
 			wa:   wa,
 		},
 		Type: evt.UnavailableType,
 	})
+	return res.Success
 }
 
-func (wa *WhatsAppClient) handleWAReceipt(evt *events.Receipt) {
+func (wa *WhatsAppClient) handleWAReceipt(evt *events.Receipt) (success bool) {
 	if evt.Chat.Server == types.HiddenUserServer && evt.Sender.ToNonAD() == evt.Chat && evt.SenderAlt.Server == types.DefaultUserServer {
 		wa.UserLogin.Log.Debug().
 			Stringer("lid", evt.Sender).
@@ -370,7 +374,7 @@ func (wa *WhatsAppClient) handleWAReceipt(evt *events.Receipt) {
 	case types.ReceiptTypeSender:
 		fallthrough
 	default:
-		return
+		return true
 	}
 	targets := make([]networkid.MessageID, len(evt.MessageIDs))
 	messageSender := wa.JID
@@ -385,7 +389,7 @@ func (wa *WhatsAppClient) handleWAReceipt(evt *events.Receipt) {
 	for i, id := range evt.MessageIDs {
 		targets[i] = waid.MakeMessageID(evt.Chat, messageSender, id)
 	}
-	wa.Main.Bridge.QueueRemoteEvent(wa.UserLogin, &simplevent.Receipt{
+	res := wa.Main.Bridge.QueueRemoteEvent(wa.UserLogin, &simplevent.Receipt{
 		EventMeta: simplevent.EventMeta{
 			Type:      evtType,
 			PortalKey: wa.makeWAPortalKey(evt.Chat),
@@ -394,6 +398,7 @@ func (wa *WhatsAppClient) handleWAReceipt(evt *events.Receipt) {
 		},
 		Targets: targets,
 	})
+	return res.Success
 }
 
 func (wa *WhatsAppClient) handleWAChatPresence(evt *events.ChatPresence) {
