@@ -51,6 +51,7 @@ type WhatsAppConnector struct {
 	DB          *wadb.Database
 
 	firstClientConnectOnce sync.Once
+	backgroundConnectOnce  sync.Once
 
 	mediaEditCache         MediaEditCache
 	mediaEditCacheLock     sync.RWMutex
@@ -146,13 +147,34 @@ func (wa *WhatsAppConnector) Start(ctx context.Context) error {
 }
 
 func (wa *WhatsAppConnector) Stop() {
-	if stop := wa.stopMediaEditCacheLoop.Load(); stop != nil {
+	if stop := wa.stopMediaEditCacheLoop.Swap(nil); stop != nil {
 		(*stop)()
 	}
 }
 
+const kvWAVersion = "whatsapp_web_version"
+
+func (wa *WhatsAppConnector) onFirstBackgroundConnect() {
+	verStr := wa.Bridge.DB.KV.Get(wa.Bridge.BackgroundCtx, kvWAVersion)
+	if verStr == "" {
+		wa.Bridge.Log.Warn().Msg("No WhatsApp web version number cached in database")
+		return
+	}
+	ver, err := store.ParseVersion(verStr)
+	if err != nil {
+		wa.Bridge.Log.Err(err).Msg("Failed to parse WhatsApp web version number from database")
+		return
+	}
+	wa.Bridge.Log.Debug().
+		Stringer("hardcoded_version", store.GetWAVersion()).
+		Stringer("cached_version", ver).
+		Msg("Using cached WhatsApp web version number")
+	store.SetWAVersion(ver)
+}
+
 func (wa *WhatsAppConnector) onFirstClientConnect() {
-	ver, err := whatsmeow.GetLatestVersion(wa.Bridge.BackgroundCtx, nil)
+	ctx := wa.Bridge.BackgroundCtx
+	ver, err := whatsmeow.GetLatestVersion(ctx, nil)
 	if err != nil {
 		wa.Bridge.Log.Err(err).Msg("Failed to get latest WhatsApp web version number")
 	} else {
@@ -161,8 +183,9 @@ func (wa *WhatsAppConnector) onFirstClientConnect() {
 			Stringer("latest_version", *ver).
 			Msg("Got latest WhatsApp web version number")
 		store.SetWAVersion(*ver)
+		wa.Bridge.DB.KV.Set(ctx, kvWAVersion, ver.String())
 	}
-	meclCtx, cancel := context.WithCancel(context.Background())
+	meclCtx, cancel := context.WithCancel(ctx)
 	wa.stopMediaEditCacheLoop.Store(&cancel)
 	go wa.mediaEditCacheExpireLoop(meclCtx)
 }

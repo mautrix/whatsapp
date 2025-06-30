@@ -230,7 +230,7 @@ func (wa *WhatsAppClient) ConnectBackground(ctx context.Context, params *bridgev
 	}
 	wa.Client.BackgroundEventCtx = wa.Main.Bridge.BackgroundCtx
 	wa.offlineSyncWaiter = make(chan error)
-	wa.Main.firstClientConnectOnce.Do(wa.Main.onFirstClientConnect)
+	wa.Main.backgroundConnectOnce.Do(wa.Main.onFirstBackgroundConnect)
 	if err := wa.Main.updateProxy(ctx, wa.Client, false); err != nil {
 		zerolog.Ctx(ctx).Err(err).Msg("Failed to update proxy")
 	}
