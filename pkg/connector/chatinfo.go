@@ -278,7 +278,7 @@ func (wa *WhatsAppClient) wrapGroupInfo(info *types.GroupInfo) *bridgev2.ChatInf
 		wrapped.Members.MemberMap[waid.MakeUserID(pcp.JID)] = member
 		if pcp.JID.Server == types.HiddenUserServer && !pcp.PhoneNumber.IsEmpty() {
 			wrapped.Members.MemberMap[waid.MakeUserID(pcp.PhoneNumber)] = bridgev2.ChatMember{
-				EventSender:    wa.makeEventSender(pcp.PhoneNumber),
+				EventSender:    bridgev2.EventSender{Sender: waid.MakeUserID(pcp.PhoneNumber)},
 				Membership:     event.MembershipLeave,
 				PrevMembership: event.MembershipJoin,
 				MemberEventExtra: map[string]any{
