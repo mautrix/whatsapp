@@ -225,7 +225,9 @@ func (wa *WhatsAppClient) receiveDirectMediaRetry(ctx context.Context, msg *data
 		log.Warn().Err(err).Msg("Failed to decrypt media retry notification")
 		return
 	}
-	state.resultType = retryData.GetResult()
+	if state != nil {
+		state.resultType = retryData.GetResult()
+	}
 	if retryData.GetResult() != waMmsRetry.MediaRetryNotification_SUCCESS {
 		errorName := waMmsRetry.MediaRetryNotification_ResultType_name[int32(retryData.GetResult())]
 		if retryData.GetDirectPath() == "" {
