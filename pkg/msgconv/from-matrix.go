@@ -464,13 +464,17 @@ func (mc *MessageConverter) reuploadFileToWhatsApp(
 		switch mime {
 		case "video/mp4", "video/3gpp":
 			// allowed
-		case "video/webm":
-			data, err = ffmpeg.ConvertBytes(ctx, data, ".mp4", []string{"-f", "webm"}, []string{
+		case "video/webm", "video/quicktime":
+			sourceFormat := "webm"
+			if mime == "video/quicktime" {
+				sourceFormat = "mov"
+			}
+			data, err = ffmpeg.ConvertBytes(ctx, data, ".mp4", []string{"-f", sourceFormat}, []string{
 				"-pix_fmt", "yuv420p", "-c:v", "libx264",
 				"-filter:v", "crop='floor(in_w/2)*2:floor(in_h/2)*2'",
 			}, mime)
 			if err != nil {
-				return nil, nil, "video/webm", fmt.Errorf("%w (webm to mp4): %w", bridgev2.ErrMediaConvertFailed, err)
+				return nil, nil, mime, fmt.Errorf("%w (%s to mp4): %w", bridgev2.ErrMediaConvertFailed, sourceFormat, err)
 			}
 			mime = "video/mp4"
 		case "image/gif":
