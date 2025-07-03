@@ -225,9 +225,9 @@ func (mc *MessageConverter) ToMatrix(
 	if contextInfo.GetExpiration() > 0 {
 		cm.Disappear.Timer = time.Duration(contextInfo.GetExpiration()) * time.Second
 		cm.Disappear.Type = database.DisappearingTypeAfterRead
-		if portal.Disappear.Timer != cm.Disappear.Timer && portal.Metadata.(*waid.PortalMetadata).DisappearingTimerSetAt < contextInfo.GetEphemeralSettingTimestamp() {
-			portal.UpdateDisappearingSetting(ctx, cm.Disappear, intent, info.Timestamp, true, true)
-		}
+	}
+	if portal.Disappear.Timer != cm.Disappear.Timer && portal.Metadata.(*waid.PortalMetadata).DisappearingTimerSetAt < contextInfo.GetEphemeralSettingTimestamp() {
+		portal.UpdateDisappearingSetting(ctx, cm.Disappear, intent, info.Timestamp, true, true)
 	}
 	if contextInfo.GetStanzaID() != "" {
 		pcp, _ := types.ParseJID(contextInfo.GetParticipant())
