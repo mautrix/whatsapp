@@ -110,14 +110,14 @@ func (wa *WhatsAppClient) startChatLIDToPN(ctx context.Context, jid types.JID) (
 	return jid, nil
 }
 
-func (wa *WhatsAppClient) makeCreateChatResponse(jid, origJID types.JID) *bridgev2.CreateChatResponse {
+func (wa *WhatsAppClient) makeCreateChatResponse(ctx context.Context, jid, origJID types.JID) *bridgev2.CreateChatResponse {
 	var redirID networkid.UserID
 	if origJID != jid {
 		redirID = waid.MakeUserID(jid)
 	}
 	return &bridgev2.CreateChatResponse{
 		PortalKey:      wa.makeWAPortalKey(jid),
-		PortalInfo:     wa.wrapDMInfo(jid),
+		PortalInfo:     wa.wrapDMInfo(ctx, jid),
 		DMRedirectedTo: redirID,
 	}
 }
@@ -128,7 +128,7 @@ func (wa *WhatsAppClient) CreateChatWithGhost(ctx context.Context, ghost *bridge
 	if err != nil {
 		return nil, err
 	}
-	return wa.makeCreateChatResponse(jid, origJID), nil
+	return wa.makeCreateChatResponse(ctx, jid, origJID), nil
 }
 
 func (wa *WhatsAppClient) ResolveIdentifier(ctx context.Context, identifier string, startChat bool) (*bridgev2.ResolveIdentifierResponse, error) {
@@ -148,7 +148,7 @@ func (wa *WhatsAppClient) ResolveIdentifier(ctx context.Context, identifier stri
 	return &bridgev2.ResolveIdentifierResponse{
 		Ghost:  ghost,
 		UserID: waid.MakeUserID(jid),
-		Chat:   wa.makeCreateChatResponse(jid, origJID),
+		Chat:   wa.makeCreateChatResponse(ctx, jid, origJID),
 	}, nil
 }
 

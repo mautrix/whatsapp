@@ -482,7 +482,7 @@ func (wa *WhatsAppClient) convertHistorySyncMessage(
 	intent := wa.Main.Bridge.Bot
 	wrapped := &bridgev2.BackfillMessage{
 		ConvertedMessage: wa.Main.MsgConv.ToMatrix(ctx, portal, wa.Client, intent, msg, info, isViewOnce, nil),
-		Sender:           wa.makeEventSender(info.Sender),
+		Sender:           wa.makeEventSender(ctx, info.Sender),
 		ID:               waid.MakeMessageID(info.Chat, info.Sender, info.ID),
 		TxnID:            networkid.TransactionID(waid.MakeMessageID(info.Chat, info.Sender, info.ID)),
 		Timestamp:        info.Timestamp,
@@ -505,7 +505,7 @@ func (wa *WhatsAppClient) convertHistorySyncMessage(
 		wrapped.Reactions[i] = &bridgev2.BackfillReaction{
 			TargetPart: ptr.Ptr(networkid.PartID("")),
 			Timestamp:  time.UnixMilli(reaction.GetSenderTimestampMS()),
-			Sender:     wa.makeEventSender(sender),
+			Sender:     wa.makeEventSender(ctx, sender),
 			Emoji:      reaction.GetText(),
 		}
 	}

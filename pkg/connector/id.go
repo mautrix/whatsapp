@@ -1,6 +1,9 @@
 package connector
 
 import (
+	"context"
+
+	"github.com/rs/zerolog"
 	"go.mau.fi/util/ptr"
 	"go.mau.fi/whatsmeow/proto/waCommon"
 	"go.mau.fi/whatsmeow/types"
@@ -25,15 +28,30 @@ func (wa *WhatsAppClient) makeWAPortalKey(chatJID types.JID) networkid.PortalKey
 	return key
 }
 
-func (wa *WhatsAppClient) makeEventSender(id types.JID) bridgev2.EventSender {
+func (wa *WhatsAppClient) makeEventSender(ctx context.Context, id types.JID) bridgev2.EventSender {
 	if id.Server == types.NewsletterServer {
 		// Send as bot
 		return bridgev2.EventSender{}
 	}
+	var senderLoginJID types.JID
+	if wa.Main.Bridge.Config.SplitPortals {
+		// no need for sender login ID
+	} else if id.Server == types.DefaultUserServer {
+		senderLoginJID = id
+	} else if id.Server == types.HiddenUserServer {
+		pn, err := wa.Device.LIDs.GetPNForLID(ctx, id)
+		if err != nil {
+			zerolog.Ctx(ctx).Err(err).
+				Stringer("lid", id).
+				Msg("Failed to get phone number for LID to make event sender")
+		} else if !pn.IsEmpty() {
+			senderLoginJID = pn
+		}
+	}
 	return bridgev2.EventSender{
 		IsFromMe:    id.User == wa.GetStore().GetJID().User || id.User == wa.GetStore().GetLID().User,
 		Sender:      waid.MakeUserID(id),
-		SenderLogin: waid.MakeUserLoginID(id), // TODO add support for lids here by looking up pn jid
+		SenderLogin: waid.MakeUserLoginID(senderLoginJID),
 	}
 }
 

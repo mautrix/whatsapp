@@ -73,7 +73,7 @@ func (evt *MessageInfoWrapper) GetTimestamp() time.Time {
 }
 
 func (evt *MessageInfoWrapper) GetSender() bridgev2.EventSender {
-	return evt.wa.makeEventSender(evt.Info.Sender)
+	return evt.wa.makeEventSender(evt.wa.Main.Bridge.BackgroundCtx, evt.Info.Sender)
 }
 
 func (evt *MessageInfoWrapper) GetID() networkid.MessageID {
@@ -149,7 +149,7 @@ func (evt *WAMessageEvent) PreHandle(ctx context.Context, portal *bridgev2.Porta
 		return
 	}
 	log.Info().Msg("Resyncing group members as it appears to have switched to LID addressing mode")
-	portal.UpdateInfo(ctx, evt.wa.wrapGroupInfo(info), evt.wa.UserLogin, nil, time.Time{})
+	portal.UpdateInfo(ctx, evt.wa.wrapGroupInfo(ctx, info), evt.wa.UserLogin, nil, time.Time{})
 	log.Debug().Msg("Finished resyncing after LID change")
 }
 
@@ -386,7 +386,7 @@ func (evt *WAMediaRetry) getRealSender() types.JID {
 }
 
 func (evt *WAMediaRetry) GetSender() bridgev2.EventSender {
-	return evt.wa.makeEventSender(evt.getRealSender())
+	return evt.wa.makeEventSender(evt.wa.Main.Bridge.BackgroundCtx, evt.getRealSender())
 }
 
 func (evt *WAMediaRetry) GetTargetMessage() networkid.MessageID {

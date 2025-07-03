@@ -120,7 +120,7 @@ func fnSync(ce *commands.Event) {
 			return
 		}
 		for _, group := range groups {
-			wrapped := wa.wrapGroupInfo(group)
+			wrapped := wa.wrapGroupInfo(ce.Ctx, group)
 			wrapped.ExtraUpdates = bridgev2.MergeExtraUpdaters(wrapped.ExtraUpdates, updatePortalLastSyncAt)
 			wa.addExtrasToWrapped(ce.Ctx, group.JID, wrapped, nil)
 			login.QueueRemoteEvent(&simplevent.ChatResync{

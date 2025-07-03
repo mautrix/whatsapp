@@ -32,10 +32,10 @@ func (wa *WhatsAppClient) GetChatInfo(ctx context.Context, portal *bridgev2.Port
 func (wa *WhatsAppClient) getChatInfo(ctx context.Context, portalJID types.JID, conv *wadb.Conversation) (wrapped *bridgev2.ChatInfo, err error) {
 	switch portalJID.Server {
 	case types.DefaultUserServer, types.HiddenUserServer, types.BotServer:
-		wrapped = wa.wrapDMInfo(portalJID)
+		wrapped = wa.wrapDMInfo(ctx, portalJID)
 	case types.BroadcastServer:
 		if portalJID == types.StatusBroadcastJID {
-			wrapped = wa.wrapStatusBroadcastInfo()
+			wrapped = wa.wrapStatusBroadcastInfo(ctx)
 		} else {
 			return nil, fmt.Errorf("broadcast list bridging is currently not supported")
 		}
@@ -44,14 +44,14 @@ func (wa *WhatsAppClient) getChatInfo(ctx context.Context, portalJID types.JID, 
 		if err != nil {
 			return nil, err
 		}
-		wrapped = wa.wrapGroupInfo(info)
+		wrapped = wa.wrapGroupInfo(ctx, info)
 		wrapped.ExtraUpdates = bridgev2.MergeExtraUpdaters(wrapped.ExtraUpdates, updatePortalLastSyncAt)
 	case types.NewsletterServer:
 		info, err := wa.Client.GetNewsletterInfo(portalJID)
 		if err != nil {
 			return nil, err
 		}
-		wrapped = wa.wrapNewsletterInfo(info)
+		wrapped = wa.wrapNewsletterInfo(ctx, info)
 	default:
 		return nil, fmt.Errorf("unsupported server %s", portalJID.Server)
 	}
@@ -138,7 +138,7 @@ const UnnamedBroadcastName = "Unnamed broadcast list"
 const PrivateChatTopic = "WhatsApp private chat"
 const BotChatTopic = "WhatsApp chat with a bot"
 
-func (wa *WhatsAppClient) wrapDMInfo(jid types.JID) *bridgev2.ChatInfo {
+func (wa *WhatsAppClient) wrapDMInfo(ctx context.Context, jid types.JID) *bridgev2.ChatInfo {
 	info := &bridgev2.ChatInfo{
 		Topic: ptr.Ptr(PrivateChatTopic),
 		Members: &bridgev2.ChatMemberList{
@@ -146,8 +146,8 @@ func (wa *WhatsAppClient) wrapDMInfo(jid types.JID) *bridgev2.ChatInfo {
 			TotalMemberCount: 2,
 			OtherUserID:      waid.MakeUserID(jid),
 			MemberMap: map[networkid.UserID]bridgev2.ChatMember{
-				waid.MakeUserID(jid):    {EventSender: wa.makeEventSender(jid)},
-				waid.MakeUserID(wa.JID): {EventSender: wa.makeEventSender(wa.JID)},
+				waid.MakeUserID(jid):    {EventSender: wa.makeEventSender(ctx, jid)},
+				waid.MakeUserID(wa.JID): {EventSender: wa.makeEventSender(ctx, wa.JID)},
 			},
 			PowerLevels: nil,
 		},
@@ -166,7 +166,7 @@ func (wa *WhatsAppClient) wrapDMInfo(jid types.JID) *bridgev2.ChatInfo {
 	return info
 }
 
-func (wa *WhatsAppClient) wrapStatusBroadcastInfo() *bridgev2.ChatInfo {
+func (wa *WhatsAppClient) wrapStatusBroadcastInfo(ctx context.Context) *bridgev2.ChatInfo {
 	userLocal := &bridgev2.UserLocalPortalInfo{}
 	if wa.Main.Config.MuteStatusBroadcast {
 		userLocal.MutedUntil = ptr.Ptr(event.MutedForever)
@@ -180,7 +180,7 @@ func (wa *WhatsAppClient) wrapStatusBroadcastInfo() *bridgev2.ChatInfo {
 		Members: &bridgev2.ChatMemberList{
 			IsFull: false,
 			MemberMap: map[networkid.UserID]bridgev2.ChatMember{
-				waid.MakeUserID(wa.JID): {EventSender: wa.makeEventSender(wa.JID)},
+				waid.MakeUserID(wa.JID): {EventSender: wa.makeEventSender(ctx, wa.JID)},
 			},
 		},
 		Type:        ptr.Ptr(database.RoomTypeDefault),
@@ -218,7 +218,7 @@ func setAddressingMode(mode types.AddressingMode) bridgev2.ExtraUpdater[*bridgev
 	}
 }
 
-func (wa *WhatsAppClient) wrapGroupInfo(info *types.GroupInfo) *bridgev2.ChatInfo {
+func (wa *WhatsAppClient) wrapGroupInfo(ctx context.Context, info *types.GroupInfo) *bridgev2.ChatInfo {
 	sendEventPL := defaultPL
 	if info.IsAnnounce && !info.IsDefaultSubGroup {
 		sendEventPL = adminPL
@@ -262,7 +262,7 @@ func (wa *WhatsAppClient) wrapGroupInfo(info *types.GroupInfo) *bridgev2.ChatInf
 	}
 	for _, pcp := range info.Participants {
 		member := bridgev2.ChatMember{
-			EventSender: wa.makeEventSender(pcp.JID),
+			EventSender: wa.makeEventSender(ctx, pcp.JID),
 			Membership:  event.MembershipJoin,
 		}
 		if pcp.IsSuperAdmin {
@@ -299,7 +299,7 @@ func (wa *WhatsAppClient) wrapGroupInfo(info *types.GroupInfo) *bridgev2.ChatInf
 	return wrapped
 }
 
-func (wa *WhatsAppClient) wrapGroupInfoChange(evt *events.GroupInfo) *bridgev2.ChatInfoChange {
+func (wa *WhatsAppClient) wrapGroupInfoChange(ctx context.Context, evt *events.GroupInfo) *bridgev2.ChatInfoChange {
 	var changes *bridgev2.ChatInfo
 	if evt.Name != nil || evt.Topic != nil || evt.Ephemeral != nil || evt.Unlink != nil || evt.Link != nil {
 		changes = &bridgev2.ChatInfo{}
@@ -333,24 +333,24 @@ func (wa *WhatsAppClient) wrapGroupInfoChange(evt *events.GroupInfo) *bridgev2.C
 		}
 		for _, userID := range evt.Join {
 			memberChanges.MemberMap[waid.MakeUserID(userID)] = bridgev2.ChatMember{
-				EventSender: wa.makeEventSender(userID),
+				EventSender: wa.makeEventSender(ctx, userID),
 			}
 		}
 		for _, userID := range evt.Promote {
 			memberChanges.MemberMap[waid.MakeUserID(userID)] = bridgev2.ChatMember{
-				EventSender: wa.makeEventSender(userID),
+				EventSender: wa.makeEventSender(ctx, userID),
 				PowerLevel:  ptr.Ptr(adminPL),
 			}
 		}
 		for _, userID := range evt.Demote {
 			memberChanges.MemberMap[waid.MakeUserID(userID)] = bridgev2.ChatMember{
-				EventSender: wa.makeEventSender(userID),
+				EventSender: wa.makeEventSender(ctx, userID),
 				PowerLevel:  ptr.Ptr(defaultPL),
 			}
 		}
 		for _, userID := range evt.Leave {
 			memberChanges.MemberMap[waid.MakeUserID(userID)] = bridgev2.ChatMember{
-				EventSender: wa.makeEventSender(userID),
+				EventSender: wa.makeEventSender(ctx, userID),
 				Membership:  event.MembershipLeave,
 			}
 		}
@@ -425,7 +425,7 @@ func (wa *WhatsAppClient) makePortalAvatarFetcher(avatarID string, sender types.
 		}
 		var evtSender bridgev2.EventSender
 		if !sender.IsEmpty() {
-			evtSender = wa.makeEventSender(sender)
+			evtSender = wa.makeEventSender(ctx, sender)
 		}
 		senderIntent, ok := portal.GetIntentFor(ctx, evtSender, wa.UserLogin, bridgev2.RemoteEventChatInfoChange)
 		if !ok {
@@ -436,7 +436,7 @@ func (wa *WhatsAppClient) makePortalAvatarFetcher(avatarID string, sender types.
 	}
 }
 
-func (wa *WhatsAppClient) wrapNewsletterInfo(info *types.NewsletterMetadata) *bridgev2.ChatInfo {
+func (wa *WhatsAppClient) wrapNewsletterInfo(ctx context.Context, info *types.NewsletterMetadata) *bridgev2.ChatInfo {
 	ownPowerLevel := defaultPL
 	var mutedUntil *time.Time
 	if info.ViewerMeta != nil {
@@ -485,7 +485,7 @@ func (wa *WhatsAppClient) wrapNewsletterInfo(info *types.NewsletterMetadata) *br
 			TotalMemberCount: info.ThreadMeta.SubscriberCount,
 			MemberMap: map[networkid.UserID]bridgev2.ChatMember{
 				waid.MakeUserID(wa.JID): {
-					EventSender: wa.makeEventSender(wa.JID),
+					EventSender: wa.makeEventSender(ctx, wa.JID),
 					PowerLevel:  &ownPowerLevel,
 				},
 			},

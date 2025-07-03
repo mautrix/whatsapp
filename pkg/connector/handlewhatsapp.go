@@ -79,22 +79,22 @@ func (wa *WhatsAppClient) handleWAEvent(rawEvt any) (success bool) {
 	case *events.Message:
 		return wa.handleWAMessage(ctx, evt)
 	case *events.Receipt:
-		return wa.handleWAReceipt(evt)
+		return wa.handleWAReceipt(ctx, evt)
 	case *events.ChatPresence:
-		wa.handleWAChatPresence(evt)
+		wa.handleWAChatPresence(ctx, evt)
 	case *events.UndecryptableMessage:
 		return wa.handleWAUndecryptableMessage(evt)
 
 	case *events.CallOffer:
-		wa.handleWACallStart(evt.CallCreator, evt.CallID, "", evt.Timestamp)
+		wa.handleWACallStart(ctx, evt.CallCreator, evt.CallID, "", evt.Timestamp)
 	case *events.CallOfferNotice:
-		wa.handleWACallStart(evt.CallCreator, evt.CallID, evt.Type, evt.Timestamp)
+		wa.handleWACallStart(ctx, evt.CallCreator, evt.CallID, evt.Type, evt.Timestamp)
 	case *events.CallTerminate, *events.CallRelayLatency, *events.CallAccept, *events.UnknownCallEvent:
 		// ignore
 	case *events.IdentityChange:
-		wa.handleWAIdentityChange(evt)
+		wa.handleWAIdentityChange(ctx, evt)
 	case *events.MarkChatAsRead:
-		wa.handleWAMarkChatAsRead(evt)
+		wa.handleWAMarkChatAsRead(ctx, evt)
 	case *events.DeleteForMe:
 		wa.handleWADeleteForMe(evt)
 	case *events.DeleteChat:
@@ -115,15 +115,15 @@ func (wa *WhatsAppClient) handleWAEvent(rawEvt any) (success bool) {
 		wa.UserLogin.QueueRemoteEvent(&WAMediaRetry{MediaRetry: evt, wa: wa})
 
 	case *events.GroupInfo:
-		wa.handleWAGroupInfoChange(evt)
+		wa.handleWAGroupInfoChange(ctx, evt)
 	case *events.JoinedGroup:
-		wa.handleWAJoinedGroup(evt)
+		wa.handleWAJoinedGroup(ctx, evt)
 	case *events.NewsletterJoin:
-		wa.handleWANewsletterJoin(evt)
+		wa.handleWANewsletterJoin(ctx, evt)
 	case *events.NewsletterLeave:
 		wa.handleWANewsletterLeave(evt)
 	case *events.Picture:
-		go wa.handleWAPictureUpdate(evt)
+		go wa.handleWAPictureUpdate(ctx, evt)
 
 	case *events.AppStateSyncComplete:
 		if len(wa.GetStore().PushName) > 0 && evt.Name == appstate.WAPatchCriticalBlock {
@@ -345,7 +345,7 @@ func (wa *WhatsAppClient) handleWAUndecryptableMessage(evt *events.Undecryptable
 	return res.Success
 }
 
-func (wa *WhatsAppClient) handleWAReceipt(evt *events.Receipt) (success bool) {
+func (wa *WhatsAppClient) handleWAReceipt(ctx context.Context, evt *events.Receipt) (success bool) {
 	if evt.Chat.Server == types.HiddenUserServer && evt.Sender.ToNonAD() == evt.Chat && evt.SenderAlt.Server == types.DefaultUserServer {
 		wa.UserLogin.Log.Debug().
 			Stringer("lid", evt.Sender).
@@ -393,7 +393,7 @@ func (wa *WhatsAppClient) handleWAReceipt(evt *events.Receipt) (success bool) {
 		EventMeta: simplevent.EventMeta{
 			Type:      evtType,
 			PortalKey: wa.makeWAPortalKey(evt.Chat),
-			Sender:    wa.makeEventSender(evt.Sender),
+			Sender:    wa.makeEventSender(ctx, evt.Sender),
 			Timestamp: evt.Timestamp,
 		},
 		Targets: targets,
@@ -401,7 +401,7 @@ func (wa *WhatsAppClient) handleWAReceipt(evt *events.Receipt) (success bool) {
 	return res.Success
 }
 
-func (wa *WhatsAppClient) handleWAChatPresence(evt *events.ChatPresence) {
+func (wa *WhatsAppClient) handleWAChatPresence(ctx context.Context, evt *events.ChatPresence) {
 	typingType := bridgev2.TypingTypeText
 	timeout := 15 * time.Second
 	if evt.Media == types.ChatPresenceMediaAudio {
@@ -416,7 +416,7 @@ func (wa *WhatsAppClient) handleWAChatPresence(evt *events.ChatPresence) {
 			Type:       bridgev2.RemoteEventTyping,
 			LogContext: nil,
 			PortalKey:  wa.makeWAPortalKey(evt.Chat),
-			Sender:     wa.makeEventSender(evt.Sender),
+			Sender:     wa.makeEventSender(ctx, evt.Sender),
 			Timestamp:  time.Now(),
 		},
 		Timeout: timeout,
@@ -443,7 +443,7 @@ func (wa *WhatsAppClient) handleWALogout(reason events.ConnectFailureReason, onC
 
 const callEventMaxAge = 15 * time.Minute
 
-func (wa *WhatsAppClient) handleWACallStart(sender types.JID, id, callType string, ts time.Time) {
+func (wa *WhatsAppClient) handleWACallStart(ctx context.Context, sender types.JID, id, callType string, ts time.Time) {
 	if !wa.Main.Config.CallStartNotices || time.Since(ts) > callEventMaxAge {
 		return
 	}
@@ -452,7 +452,7 @@ func (wa *WhatsAppClient) handleWACallStart(sender types.JID, id, callType strin
 			Type:         bridgev2.RemoteEventMessage,
 			LogContext:   nil,
 			PortalKey:    wa.makeWAPortalKey(sender),
-			Sender:       wa.makeEventSender(sender),
+			Sender:       wa.makeEventSender(ctx, sender),
 			CreatePortal: true,
 			Timestamp:    ts,
 		},
@@ -478,7 +478,7 @@ func convertCallStart(ctx context.Context, portal *bridgev2.Portal, intent bridg
 	}, nil
 }
 
-func (wa *WhatsAppClient) handleWAIdentityChange(evt *events.IdentityChange) {
+func (wa *WhatsAppClient) handleWAIdentityChange(ctx context.Context, evt *events.IdentityChange) {
 	if !wa.Main.Config.IdentityChangeNotices {
 		return
 	}
@@ -487,7 +487,7 @@ func (wa *WhatsAppClient) handleWAIdentityChange(evt *events.IdentityChange) {
 			Type:         bridgev2.RemoteEventMessage,
 			LogContext:   nil,
 			PortalKey:    wa.makeWAPortalKey(evt.JID),
-			Sender:       wa.makeEventSender(evt.JID),
+			Sender:       wa.makeEventSender(ctx, evt.JID),
 			CreatePortal: false,
 			Timestamp:    evt.Timestamp,
 		},
@@ -540,12 +540,12 @@ func (wa *WhatsAppClient) handleWADeleteForMe(evt *events.DeleteForMe) {
 	})
 }
 
-func (wa *WhatsAppClient) handleWAMarkChatAsRead(evt *events.MarkChatAsRead) {
+func (wa *WhatsAppClient) handleWAMarkChatAsRead(ctx context.Context, evt *events.MarkChatAsRead) {
 	wa.UserLogin.QueueRemoteEvent(&simplevent.Receipt{
 		EventMeta: simplevent.EventMeta{
 			Type:      bridgev2.RemoteEventReadReceipt,
 			PortalKey: wa.makeWAPortalKey(evt.JID),
-			Sender:    wa.makeEventSender(wa.JID),
+			Sender:    wa.makeEventSender(ctx, wa.JID),
 			Timestamp: evt.Timestamp,
 		},
 		ReadUpTo: evt.Timestamp,
@@ -578,7 +578,7 @@ func (wa *WhatsAppClient) syncGhost(jid types.JID, reason string, pictureID *str
 	go wa.syncRemoteProfile(ctx, ghost)
 }
 
-func (wa *WhatsAppClient) handleWAPictureUpdate(evt *events.Picture) {
+func (wa *WhatsAppClient) handleWAPictureUpdate(ctx context.Context, evt *events.Picture) {
 	if evt.JID.Server == types.DefaultUserServer || evt.JID.Server == types.BotServer {
 		wa.syncGhost(evt.JID, "picture event", &evt.PictureID)
 	} else {
@@ -599,7 +599,7 @@ func (wa *WhatsAppClient) handleWAPictureUpdate(evt *events.Picture) {
 						Bool("remove_picture", evt.Remove)
 				},
 				PortalKey: wa.makeWAPortalKey(evt.JID),
-				Sender:    wa.makeEventSender(evt.Author),
+				Sender:    wa.makeEventSender(ctx, evt.Author),
 				Timestamp: evt.Timestamp,
 			},
 			ChatInfoChange: &bridgev2.ChatInfoChange{
@@ -609,7 +609,7 @@ func (wa *WhatsAppClient) handleWAPictureUpdate(evt *events.Picture) {
 	}
 }
 
-func (wa *WhatsAppClient) handleWAGroupInfoChange(evt *events.GroupInfo) {
+func (wa *WhatsAppClient) handleWAGroupInfoChange(ctx context.Context, evt *events.GroupInfo) {
 	eventMeta := simplevent.EventMeta{
 		Type:         bridgev2.RemoteEventChatInfoChange,
 		LogContext:   nil,
@@ -618,7 +618,7 @@ func (wa *WhatsAppClient) handleWAGroupInfoChange(evt *events.GroupInfo) {
 		Timestamp:    evt.Timestamp,
 	}
 	if evt.Sender != nil {
-		eventMeta.Sender = wa.makeEventSender(*evt.Sender)
+		eventMeta.Sender = wa.makeEventSender(ctx, *evt.Sender)
 	}
 	if evt.Delete != nil {
 		eventMeta.Type = bridgev2.RemoteEventChatDelete
@@ -626,12 +626,12 @@ func (wa *WhatsAppClient) handleWAGroupInfoChange(evt *events.GroupInfo) {
 	} else {
 		wa.UserLogin.QueueRemoteEvent(&simplevent.ChatInfoChange{
 			EventMeta:      eventMeta,
-			ChatInfoChange: wa.wrapGroupInfoChange(evt),
+			ChatInfoChange: wa.wrapGroupInfoChange(ctx, evt),
 		})
 	}
 }
 
-func (wa *WhatsAppClient) handleWAJoinedGroup(evt *events.JoinedGroup) {
+func (wa *WhatsAppClient) handleWAJoinedGroup(ctx context.Context, evt *events.JoinedGroup) {
 	wa.Main.Bridge.QueueRemoteEvent(wa.UserLogin, &simplevent.ChatResync{
 		EventMeta: simplevent.EventMeta{
 			Type:         bridgev2.RemoteEventChatResync,
@@ -639,11 +639,11 @@ func (wa *WhatsAppClient) handleWAJoinedGroup(evt *events.JoinedGroup) {
 			PortalKey:    wa.makeWAPortalKey(evt.JID),
 			CreatePortal: true,
 		},
-		ChatInfo: wa.wrapGroupInfo(&evt.GroupInfo),
+		ChatInfo: wa.wrapGroupInfo(ctx, &evt.GroupInfo),
 	})
 }
 
-func (wa *WhatsAppClient) handleWANewsletterJoin(evt *events.NewsletterJoin) {
+func (wa *WhatsAppClient) handleWANewsletterJoin(ctx context.Context, evt *events.NewsletterJoin) {
 	wa.Main.Bridge.QueueRemoteEvent(wa.UserLogin, &simplevent.ChatResync{
 		EventMeta: simplevent.EventMeta{
 			Type:         bridgev2.RemoteEventChatResync,
@@ -651,7 +651,7 @@ func (wa *WhatsAppClient) handleWANewsletterJoin(evt *events.NewsletterJoin) {
 			PortalKey:    wa.makeWAPortalKey(evt.ID),
 			CreatePortal: true,
 		},
-		ChatInfo: wa.wrapNewsletterInfo(&evt.NewsletterMetadata),
+		ChatInfo: wa.wrapNewsletterInfo(ctx, &evt.NewsletterMetadata),
 	})
 }
 
