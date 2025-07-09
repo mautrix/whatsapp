@@ -1,3 +1,10 @@
+# v0.12.3 (unreleased)
+
+* Further improved support for `@lid` users.
+* Added automatic conversion when sending quicktime/mov videos to WhatsApp.
+* Fixed disappearing message timer not automatically fixing itself in some cases.
+* Fixed call notices being sent to DM portal even if the call was in a group.
+
 # v0.12.2 (2025-06-16)
 
 * Improved support for `@lid` users.
