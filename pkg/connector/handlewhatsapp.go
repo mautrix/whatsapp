@@ -86,9 +86,9 @@ func (wa *WhatsAppClient) handleWAEvent(rawEvt any) (success bool) {
 		return wa.handleWAUndecryptableMessage(evt)
 
 	case *events.CallOffer:
-		wa.handleWACallStart(ctx, evt.CallCreator, evt.CallID, "", evt.Timestamp)
+		wa.handleWACallStart(ctx, evt.GroupJID, evt.CallCreator, evt.CallID, "", evt.Timestamp)
 	case *events.CallOfferNotice:
-		wa.handleWACallStart(ctx, evt.CallCreator, evt.CallID, evt.Type, evt.Timestamp)
+		wa.handleWACallStart(ctx, evt.GroupJID, evt.CallCreator, evt.CallID, evt.Type, evt.Timestamp)
 	case *events.CallTerminate, *events.CallRelayLatency, *events.CallAccept, *events.UnknownCallEvent:
 		// ignore
 	case *events.IdentityChange:
@@ -443,21 +443,25 @@ func (wa *WhatsAppClient) handleWALogout(reason events.ConnectFailureReason, onC
 
 const callEventMaxAge = 15 * time.Minute
 
-func (wa *WhatsAppClient) handleWACallStart(ctx context.Context, sender types.JID, id, callType string, ts time.Time) {
+func (wa *WhatsAppClient) handleWACallStart(ctx context.Context, group, sender types.JID, id, callType string, ts time.Time) {
 	if !wa.Main.Config.CallStartNotices || time.Since(ts) > callEventMaxAge {
 		return
+	}
+	chat := group
+	if chat.IsEmpty() {
+		chat = sender
 	}
 	wa.UserLogin.QueueRemoteEvent(&simplevent.Message[string]{
 		EventMeta: simplevent.EventMeta{
 			Type:         bridgev2.RemoteEventMessage,
 			LogContext:   nil,
-			PortalKey:    wa.makeWAPortalKey(sender),
+			PortalKey:    wa.makeWAPortalKey(chat),
 			Sender:       wa.makeEventSender(ctx, sender),
 			CreatePortal: true,
 			Timestamp:    ts,
 		},
 		Data:               callType,
-		ID:                 waid.MakeFakeMessageID(sender, sender, "call-"+id),
+		ID:                 waid.MakeFakeMessageID(chat, sender, "call-"+id),
 		ConvertMessageFunc: convertCallStart,
 	})
 }
