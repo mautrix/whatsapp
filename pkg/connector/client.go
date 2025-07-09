@@ -79,7 +79,7 @@ func (wa *WhatsAppConnector) LoadUserLogin(ctx context.Context, login *bridgev2.
 		w.Client.AutomaticMessageRerequestFromPhone = true
 		w.Client.GetMessageForRetry = w.trackNotFoundRetry
 		w.Client.PreRetryCallback = w.trackFoundRetry
-		w.Client.BackgroundEventCtx = wa.Bridge.BackgroundCtx
+		w.Client.BackgroundEventCtx = w.UserLogin.Log.WithContext(wa.Bridge.BackgroundCtx)
 		w.Client.SetForceActiveDeliveryReceipts(wa.Config.ForceActiveDeliveryReceipts)
 		w.Client.InitialAutoReconnect = wa.Config.InitialAutoReconnect
 	} else {
@@ -228,7 +228,7 @@ func (wa *WhatsAppClient) ConnectBackground(ctx context.Context, params *bridgev
 	if wa.Client == nil {
 		return bridgev2.ErrNotLoggedIn
 	}
-	wa.Client.BackgroundEventCtx = wa.Main.Bridge.BackgroundCtx
+	wa.Client.BackgroundEventCtx = wa.UserLogin.Log.WithContext(wa.Main.Bridge.BackgroundCtx)
 	wa.offlineSyncWaiter = make(chan error)
 	wa.Main.backgroundConnectOnce.Do(wa.Main.onFirstBackgroundConnect)
 	if err := wa.Main.updateProxy(ctx, wa.Client, false); err != nil {
