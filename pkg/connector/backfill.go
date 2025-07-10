@@ -338,7 +338,7 @@ func (wa *WhatsAppClient) createPortalsFromHistorySync(ctx context.Context) {
 			wg.Done()
 			continue
 		}
-		wa.UserLogin.QueueRemoteEvent(&simplevent.ChatResync{
+		res := wa.UserLogin.QueueRemoteEvent(&simplevent.ChatResync{
 			EventMeta: simplevent.EventMeta{
 				Type: bridgev2.RemoteEventChatResync,
 				LogContext: func(c zerolog.Context) zerolog.Context {
@@ -359,6 +359,10 @@ func (wa *WhatsAppClient) createPortalsFromHistorySync(ctx context.Context) {
 			ChatInfo:        wrappedInfo,
 			LatestMessageTS: conv.LastMessageTimestamp,
 		})
+		if !res.Success {
+			log.Debug().Msg("Cancelling history sync portal creation loop")
+			return
+		}
 	}
 	log.Info().Int("conversation_count", len(conversations)).Msg("Finished creating portals from history sync")
 	go func() {
