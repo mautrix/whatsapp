@@ -1,4 +1,4 @@
-# v0.12.3 (unreleased)
+# v0.12.3 (2025-07-16)
 
 * Further improved support for `@lid` users.
 * Added automatic conversion when sending quicktime/mov videos to WhatsApp.
