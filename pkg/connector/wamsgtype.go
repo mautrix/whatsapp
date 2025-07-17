@@ -124,10 +124,6 @@ func getMessageType(waMsg *waE2E.Message) string {
 	case waMsg.EncEventResponseMessage != nil:
 		return "ignore" // these are ignored for now as they're not meant to be shown as new messages
 		//return "encrypted event response"
-	case waMsg.CommentMessage != nil:
-		return "comment"
-	case waMsg.EncCommentMessage != nil:
-		return "encrypted comment"
 	case waMsg.NewsletterAdminInviteMessage != nil:
 		return "newsletter admin invite"
 	case waMsg.SecretEncryptedMessage != nil:
