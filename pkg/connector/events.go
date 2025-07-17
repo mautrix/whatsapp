@@ -151,6 +151,13 @@ func (evt *WAMessageEvent) PreHandle(ctx context.Context, portal *bridgev2.Porta
 	log.Info().Msg("Resyncing group members as it appears to have switched to LID addressing mode")
 	portal.UpdateInfo(ctx, evt.wa.wrapGroupInfo(ctx, info), evt.wa.UserLogin, nil, time.Time{})
 	log.Debug().Msg("Finished resyncing after LID change")
+	if evt.Info.Sender.Server == types.DefaultUserServer && evt.Info.SenderAlt.Server == types.HiddenUserServer {
+		evt.Info.Sender, evt.Info.SenderAlt = evt.Info.SenderAlt, evt.Info.Sender
+		log.Debug().
+			Stringer("new_sender", evt.Info.Sender).
+			Stringer("new_sender_alt", evt.Info.SenderAlt).
+			Msg("Overriding sender to LID after resyncing group members")
+	}
 }
 
 func (evt *WAMessageEvent) PostHandle(ctx context.Context, portal *bridgev2.Portal) {
