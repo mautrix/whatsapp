@@ -29,7 +29,6 @@ import (
 
 type UserLoginMetadata struct {
 	WADeviceID      uint16        `json:"wa_device_id"`
-	WALID           string        `json:"wa_lid"`
 	PhoneLastSeen   jsontime.Unix `json:"phone_last_seen"`
 	PhoneLastPinged jsontime.Unix `json:"phone_last_pinged"`
 	Timezone        string        `json:"timezone"`

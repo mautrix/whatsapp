@@ -321,7 +321,6 @@ func (wl *WALogin) Wait(ctx context.Context) (*bridgev2.LoginStep, error) {
 			Name:  wl.LoginSuccess.BusinessName,
 		},
 		Metadata: &waid.UserLoginMetadata{
-			WALID:      wl.LoginSuccess.LID.User,
 			WADeviceID: wl.LoginSuccess.ID.Device,
 			Timezone:   wl.Timezone,
 

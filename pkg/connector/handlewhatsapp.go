@@ -169,20 +169,6 @@ func (wa *WhatsAppClient) handleWAEvent(rawEvt any) (success bool) {
 			}()
 			go wa.syncRemoteProfile(log.WithContext(context.Background()), nil)
 		}
-		meta := wa.UserLogin.Metadata.(*waid.UserLoginMetadata)
-		if meta.WALID == "" {
-			meta.WALID = wa.GetStore().GetLID().User
-			if meta.WALID != "" {
-				go func() {
-					err := wa.UserLogin.Save(log.WithContext(context.Background()))
-					if err != nil {
-						log.Err(err).Msg("Failed to save user login metadata after updating LID")
-					} else {
-						log.Info().Msg("Updated LID in user login metadata")
-					}
-				}()
-			}
-		}
 	case *events.OfflineSyncPreview:
 		log.Info().
 			Int("message_count", evt.Messages).
