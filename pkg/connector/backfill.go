@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -28,13 +29,13 @@ import (
 
 var _ bridgev2.BackfillingNetworkAPI = (*WhatsAppClient)(nil)
 
-const historySyncDispatchWait = 30 * time.Second
-
 func (wa *WhatsAppClient) historySyncLoop(ctx context.Context) {
-	dispatchTimer := time.NewTimer(historySyncDispatchWait)
+	dispatchTimer := time.NewTimer(wa.Main.Config.HistorySync.DispatchWait)
 
+	var timerPending atomic.Bool
 	if !wa.isNewLogin && wa.UserLogin.Metadata.(*waid.UserLoginMetadata).HistorySyncPortalsNeedCreating {
 		dispatchTimer.Reset(5 * time.Second)
+		timerPending.Store(true)
 	} else {
 		dispatchTimer.Stop()
 	}
@@ -45,34 +46,51 @@ func (wa *WhatsAppClient) historySyncLoop(ctx context.Context) {
 		default:
 		}
 	}
-	wa.UserLogin.Log.Debug().Msg("Starting history sync loop")
+	wa.UserLogin.Log.Debug().Msg("Starting history sync loops")
+	// Separate loop for creating portals to ensure it doesn't block processing new history sync payloads.
+	go func() {
+		for {
+			select {
+			case <-dispatchTimer.C:
+				timerPending.Store(false)
+				wa.createPortalsFromHistorySync(ctx)
+			case <-ctx.Done():
+				wa.UserLogin.Log.Debug().Msg("Stopping portal creation history sync loop")
+				return
+			}
+		}
+	}()
 	for {
+		var resetTimer bool
+		// The timer is stopped unconditionally and restarted if either handleWAHistorySync had conversations,
+		// or if the timer was previously started and hadn't reached the loop above yet.
+		dispatchTimer.Stop()
 		select {
 		case evt := <-wa.historySyncs:
-			dispatchTimer.Stop()
-			_ = wa.handleWAHistorySync(ctx, evt, false)
-			dispatchTimer.Reset(historySyncDispatchWait)
+			resetTimer, _ = wa.handleWAHistorySync(ctx, evt, false)
 		case <-wa.historySyncWakeup:
-			dispatchTimer.Stop()
 			notif, rowid, err := wa.Main.DB.HSNotif.GetNext(ctx, wa.UserLogin.ID)
 			if err != nil {
 				wa.UserLogin.Log.Err(err).Msg("Failed to get next history sync notification")
 			} else if notif == nil {
 				wa.UserLogin.Log.Debug().Msg("No more queued history sync notifications")
 			} else {
-				wa.downloadAndSaveWAHistorySyncData(ctx, notif, rowid)
+				resetTimer = wa.downloadAndSaveWAHistorySyncData(ctx, notif, rowid)
 				// Continue waking up the loop until all queued notifications are processed
 				select {
 				case wa.historySyncWakeup <- struct{}{}:
 				default:
 				}
 			}
-			dispatchTimer.Reset(historySyncDispatchWait)
-		case <-dispatchTimer.C:
-			wa.createPortalsFromHistorySync(ctx)
 		case <-ctx.Done():
-			wa.UserLogin.Log.Debug().Msg("Stopping history sync loop")
+			wa.UserLogin.Log.Debug().Msg("Stopping main history sync loop")
 			return
+		}
+		if resetTimer {
+			timerPending.Store(true)
+		}
+		if timerPending.Load() {
+			dispatchTimer.Reset(wa.Main.Config.HistorySync.DispatchWait)
 		}
 	}
 }
@@ -94,7 +112,7 @@ func (wa *WhatsAppClient) saveWAHistorySyncNotification(ctx context.Context, evt
 	}
 }
 
-func (wa *WhatsAppClient) downloadAndSaveWAHistorySyncData(ctx context.Context, evt *waE2E.HistorySyncNotification, rowid int) {
+func (wa *WhatsAppClient) downloadAndSaveWAHistorySyncData(ctx context.Context, evt *waE2E.HistorySyncNotification, rowid int) (resetTimer bool) {
 	log := wa.UserLogin.Log.With().
 		Str("action", "download history sync").
 		Stringer("sync_type", evt.GetSyncType()).
@@ -107,25 +125,26 @@ func (wa *WhatsAppClient) downloadAndSaveWAHistorySyncData(ctx context.Context, 
 		log.Err(err).Msg("Failed to download history sync")
 		return
 	}
-	err = wa.Main.DB.DoTxn(ctx, nil, func(ctx context.Context) error {
-		err := wa.handleWAHistorySync(ctx, blob, true)
-		if err != nil {
-			return err
+	err = wa.Main.DB.DoTxn(ctx, nil, func(ctx context.Context) (innerErr error) {
+		resetTimer, innerErr = wa.handleWAHistorySync(ctx, blob, true)
+		if innerErr != nil {
+			return
 		}
-		err = wa.Main.DB.HSNotif.Delete(ctx, rowid)
-		if err != nil {
-			return fmt.Errorf("failed to delete queued history sync notification: %w", err)
+		innerErr = wa.Main.DB.HSNotif.Delete(ctx, rowid)
+		if innerErr != nil {
+			innerErr = fmt.Errorf("failed to delete queued history sync notification: %w", innerErr)
 		}
-		return nil
+		return
 	})
 	if err != nil {
 		log.Err(err).Msg("Failed to store history sync notification data")
 	}
+	return
 }
 
-func (wa *WhatsAppClient) handleWAHistorySync(ctx context.Context, evt *waHistorySync.HistorySync, stopOnError bool) error {
+func (wa *WhatsAppClient) handleWAHistorySync(ctx context.Context, evt *waHistorySync.HistorySync, stopOnError bool) (bool, error) {
 	if evt == nil || evt.SyncType == nil {
-		return nil
+		return false, nil
 	}
 	log := wa.UserLogin.Log.With().
 		Str("action", "store history sync").
@@ -145,7 +164,7 @@ func (wa *WhatsAppClient) handleWAHistorySync(ctx context.Context, evt *waHistor
 			Int("recent_sticker_count", len(evt.GetRecentStickers())).
 			Int("past_participant_count", len(evt.GetPastParticipants())).
 			Msg("Ignoring history sync")
-		return nil
+		return false, nil
 	}
 	log.Info().
 		Int("conversation_count", len(evt.GetConversations())).
@@ -238,7 +257,7 @@ func (wa *WhatsAppClient) handleWAHistorySync(ctx context.Context, evt *waHistor
 			err = wa.Main.DB.Conversation.Put(ctx, wadb.NewConversation(wa.UserLogin.ID, jid, conv, maxTime))
 			if err != nil {
 				if stopOnError {
-					return fmt.Errorf("failed to save conversation metadata for %s: %w", jid, err)
+					return false, fmt.Errorf("failed to save conversation metadata for %s: %w", jid, err)
 				}
 				log.Err(err).Msg("Failed to save conversation metadata")
 				continue
@@ -246,7 +265,7 @@ func (wa *WhatsAppClient) handleWAHistorySync(ctx context.Context, evt *waHistor
 			err = wa.Main.DB.Message.Put(ctx, wa.UserLogin.ID, jid, messages)
 			if err != nil {
 				if stopOnError {
-					return fmt.Errorf("failed to save messages in %s: %w", jid, err)
+					return false, fmt.Errorf("failed to save messages in %s: %w", jid, err)
 				}
 				log.Err(err).Msg("Failed to save messages")
 				failedToSaveTotal += len(messages)
@@ -256,7 +275,7 @@ func (wa *WhatsAppClient) handleWAHistorySync(ctx context.Context, evt *waHistor
 			err = wa.Main.Bridge.DB.BackfillTask.MarkNotDone(ctx, wa.makeWAPortalKey(jid), wa.UserLogin.ID)
 			if err != nil {
 				if stopOnError {
-					return fmt.Errorf("failed to mark backfill task as not done for %s: %w", jid, err)
+					return false, fmt.Errorf("failed to mark backfill task as not done for %s: %w", jid, err)
 				}
 				log.Err(err).Msg("Failed to mark backfill task as not done")
 			}
@@ -268,7 +287,8 @@ func (wa *WhatsAppClient) handleWAHistorySync(ctx context.Context, evt *waHistor
 		Int("total_message_count", totalMessageCount).
 		Dur("duration", time.Since(start)).
 		Msg("Finished storing history sync")
-	return nil
+	resetTimer := evt.GetSyncType() == waHistorySync.HistorySync_RECENT || evt.GetSyncType() == waHistorySync.HistorySync_FULL
+	return resetTimer, nil
 }
 
 func (wa *WhatsAppClient) createPortalsFromHistorySync(ctx context.Context) {

@@ -88,6 +88,10 @@ history_sync:
     # Should the bridge request a full sync from the phone when logging in?
     # This bumps the size of history syncs from 3 months to 1 year.
     request_full_sync: false
+    # Time to wait for history sync payloads before starting backfill. Each new payload resets the timer.
+    # If this is too low, the backfill may happen with incomplete history
+    # and backfill less messages than what is configured in the backfill section.
+    dispatch_wait: 1m
     # Configuration parameters that are sent to the phone along with the request full sync flag.
     # By default, (when the values are null or 0), the config isn't sent at all.
     full_sync_config:
