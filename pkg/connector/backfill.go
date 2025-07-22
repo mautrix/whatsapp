@@ -62,13 +62,14 @@ func (wa *WhatsAppClient) historySyncLoop(ctx context.Context) {
 	}()
 	for {
 		var resetTimer bool
-		// The timer is stopped unconditionally and restarted if either handleWAHistorySync had conversations,
-		// or if the timer was previously started and hadn't reached the loop above yet.
-		dispatchTimer.Stop()
 		select {
 		case evt := <-wa.historySyncs:
+			// The timer is stopped unconditionally and restarted if either handleWAHistorySync had conversations,
+			// or if the timer was previously started and hadn't reached the loop above yet.
+			dispatchTimer.Stop()
 			resetTimer, _ = wa.handleWAHistorySync(ctx, evt, false)
 		case <-wa.historySyncWakeup:
+			dispatchTimer.Stop()
 			notif, rowid, err := wa.Main.DB.HSNotif.GetNext(ctx, wa.UserLogin.ID)
 			if err != nil {
 				wa.UserLogin.Log.Err(err).Msg("Failed to get next history sync notification")
@@ -287,7 +288,8 @@ func (wa *WhatsAppClient) handleWAHistorySync(ctx context.Context, evt *waHistor
 		Int("total_message_count", totalMessageCount).
 		Dur("duration", time.Since(start)).
 		Msg("Finished storing history sync")
-	resetTimer := evt.GetSyncType() == waHistorySync.HistorySync_RECENT || evt.GetSyncType() == waHistorySync.HistorySync_FULL
+	resetTimer := evt.GetSyncType() == waHistorySync.HistorySync_RECENT ||
+		evt.GetSyncType() == waHistorySync.HistorySync_FULL
 	return resetTimer, nil
 }
 
