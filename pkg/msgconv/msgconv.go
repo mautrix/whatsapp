@@ -69,6 +69,9 @@ func New(br *bridgev2.Bridge) *MessageConverter {
 		MonospaceBlockConverter: func(code, language string, ctx format.Context) string {
 			return "```\n" + code + "\n```"
 		},
+		TextConverter: func(s string, context format.Context) string {
+			return hackyFormattingEscaper.Replace(s)
+		},
 	}
 	return mc
 }
