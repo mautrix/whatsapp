@@ -253,6 +253,13 @@ func (wa *WhatsAppClient) handleWAHistorySync(ctx context.Context, evt *waHistor
 			} else {
 				successfullySavedTotal += len(messages)
 			}
+			err = wa.Main.Bridge.DB.BackfillTask.MarkNotDone(ctx, wa.makeWAPortalKey(jid), wa.UserLogin.ID)
+			if err != nil {
+				if stopOnError {
+					return fmt.Errorf("failed to mark backfill task as not done for %s: %w", jid, err)
+				}
+				log.Err(err).Msg("Failed to mark backfill task as not done")
+			}
 		}
 	}
 	log.Info().
