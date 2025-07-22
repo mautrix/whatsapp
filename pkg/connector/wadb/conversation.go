@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"go.mau.fi/util/dbutil"
+	"go.mau.fi/util/jsontime"
 	"go.mau.fi/util/ptr"
 	"go.mau.fi/whatsmeow/proto/waHistorySync"
 	"go.mau.fi/whatsmeow/types"
@@ -30,7 +31,6 @@ type Conversation struct {
 	EphemeralSettingTimestamp *int64
 	MarkedAsUnread            *bool
 	UnreadCount               *uint32
-	Bridged                   bool
 }
 
 func parseHistoryTime(ts *uint64) time.Time {
@@ -69,9 +69,9 @@ const (
 		INSERT INTO whatsapp_history_sync_conversation (
 			bridge_id, user_login_id, chat_jid, last_message_timestamp, archived, pinned, mute_end_time,
 			end_of_history_transfer_type, ephemeral_expiration, ephemeral_setting_timestamp, marked_as_unread,
-			unread_count, bridged
+			unread_count
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
 		ON CONFLICT (bridge_id, user_login_id, chat_jid)
 		DO UPDATE SET
 			last_message_timestamp=CASE
@@ -87,16 +87,15 @@ const (
 			ephemeral_expiration=COALESCE(excluded.ephemeral_expiration, whatsapp_history_sync_conversation.ephemeral_expiration),
 			ephemeral_setting_timestamp=COALESCE(excluded.ephemeral_setting_timestamp, whatsapp_history_sync_conversation.ephemeral_setting_timestamp),
 			marked_as_unread=COALESCE(excluded.marked_as_unread, whatsapp_history_sync_conversation.marked_as_unread),
-			unread_count=COALESCE(excluded.unread_count, whatsapp_history_sync_conversation.unread_count),
-			bridged=false
+			unread_count=COALESCE(excluded.unread_count, whatsapp_history_sync_conversation.unread_count)
 	`
 	getRecentConversations = `
 		SELECT
 			bridge_id, user_login_id, chat_jid, last_message_timestamp, archived, pinned, mute_end_time,
 			end_of_history_transfer_type, ephemeral_expiration, ephemeral_setting_timestamp, marked_as_unread,
-			unread_count, bridged
+			unread_count
 		FROM whatsapp_history_sync_conversation
-		WHERE bridge_id=$1 AND user_login_id=$2 AND bridged=false
+		WHERE bridge_id=$1 AND user_login_id=$2 AND (synced_login_ts IS NULL OR synced_login_ts < $4)
 		ORDER BY last_message_timestamp DESC
 		LIMIT $3
 	`
@@ -104,7 +103,7 @@ const (
 		SELECT
 			bridge_id, user_login_id, chat_jid, last_message_timestamp, archived, pinned, mute_end_time,
 			end_of_history_transfer_type, ephemeral_expiration, ephemeral_setting_timestamp, marked_as_unread,
-			unread_count, bridged
+			unread_count
 		FROM whatsapp_history_sync_conversation
 		WHERE bridge_id=$1 AND user_login_id=$2 AND chat_jid=$3
 	`
@@ -113,9 +112,9 @@ const (
 		DELETE FROM whatsapp_history_sync_conversation
 		WHERE bridge_id=$1 AND user_login_id=$2 AND chat_jid=$3
 	`
-	markConversationBridged = `
+	markConversationSynced = `
 		UPDATE whatsapp_history_sync_conversation
-		SET bridged=true
+		SET synced_login_ts=$4
 		WHERE bridge_id=$1 AND user_login_id=$2 AND chat_jid=$3
 	`
 )
@@ -125,17 +124,19 @@ func (cq *ConversationQuery) Put(ctx context.Context, conv *Conversation) error 
 	return cq.Exec(ctx, upsertHistorySyncConversationQuery, conv.sqlVariables()...)
 }
 
-func (cq *ConversationQuery) GetRecent(ctx context.Context, loginID networkid.UserLoginID, limit int) ([]*Conversation, error) {
+func (cq *ConversationQuery) GetRecent(
+	ctx context.Context, loginID networkid.UserLoginID, limit int, notSyncedAfter jsontime.Unix,
+) ([]*Conversation, error) {
 	limitPtr := &limit
 	// Negative limit on SQLite means unlimited, but Postgres prefers a NULL limit.
 	if limit < 0 && cq.GetDB().Dialect == dbutil.Postgres {
 		limitPtr = nil
 	}
-	return cq.QueryMany(ctx, getRecentConversations, cq.BridgeID, loginID, limitPtr)
+	return cq.QueryMany(ctx, getRecentConversations, cq.BridgeID, loginID, limitPtr, notSyncedAfter)
 }
 
-func (cq *ConversationQuery) MarkBridged(ctx context.Context, loginID networkid.UserLoginID, chatJID types.JID) error {
-	return cq.Exec(ctx, markConversationBridged, cq.BridgeID, loginID, chatJID)
+func (cq *ConversationQuery) MarkSynced(ctx context.Context, loginID networkid.UserLoginID, chatJID types.JID, loginTS jsontime.Unix) error {
+	return cq.Exec(ctx, markConversationSynced, cq.BridgeID, loginID, chatJID, loginTS)
 }
 
 func (cq *ConversationQuery) Get(ctx context.Context, loginID networkid.UserLoginID, chatJID types.JID) (*Conversation, error) {
@@ -171,7 +172,6 @@ func (c *Conversation) sqlVariables() []any {
 		c.EphemeralSettingTimestamp,
 		c.MarkedAsUnread,
 		c.UnreadCount,
-		c.Bridged,
 	}
 }
 
@@ -190,7 +190,6 @@ func (c *Conversation) Scan(row dbutil.Scannable) (*Conversation, error) {
 		&c.EphemeralSettingTimestamp,
 		&c.MarkedAsUnread,
 		&c.UnreadCount,
-		&c.Bridged,
 	)
 	if err != nil {
 		return nil, err

@@ -277,7 +277,8 @@ func (wa *WhatsAppClient) createPortalsFromHistorySync(ctx context.Context) {
 		Logger()
 	ctx = log.WithContext(ctx)
 	limit := wa.Main.Config.HistorySync.MaxInitialConversations
-	conversations, err := wa.Main.DB.Conversation.GetRecent(ctx, wa.UserLogin.ID, limit)
+	loginTS := wa.UserLogin.Metadata.(*waid.UserLoginMetadata).LoggedInAt
+	conversations, err := wa.Main.DB.Conversation.GetRecent(ctx, wa.UserLogin.ID, limit, loginTS)
 	if err != nil {
 		log.Err(err).Msg("Failed to get recent conversations from database")
 		return
@@ -285,6 +286,7 @@ func (wa *WhatsAppClient) createPortalsFromHistorySync(ctx context.Context) {
 	log.Info().
 		Int("limit", limit).
 		Int("conversation_count", len(conversations)).
+		Int64("login_timestamp", loginTS.Unix()).
 		Msg("Creating portals from history sync")
 	rateLimitErrors := 0
 	var wg sync.WaitGroup
@@ -356,7 +358,7 @@ func (wa *WhatsAppClient) createPortalsFromHistorySync(ctx context.Context) {
 				PortalKey:    wa.makeWAPortalKey(conv.ChatJID),
 				CreatePortal: true,
 				PostHandleFunc: func(ctx context.Context, portal *bridgev2.Portal) {
-					err := wa.Main.DB.Conversation.MarkBridged(ctx, wa.UserLogin.ID, conv.ChatJID)
+					err := wa.Main.DB.Conversation.MarkSynced(ctx, wa.UserLogin.ID, conv.ChatJID, loginTS)
 					if err != nil {
 						zerolog.Ctx(ctx).Err(err).Msg("Failed to mark conversation as bridged")
 					}
