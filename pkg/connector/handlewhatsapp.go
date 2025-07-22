@@ -550,7 +550,7 @@ func (wa *WhatsAppClient) syncGhost(jid types.JID, reason string, pictureID *str
 		Str("picture_id", ptr.Val(pictureID)).
 		Stringer("jid", jid).
 		Logger()
-	ctx := log.WithContext(context.Background())
+	ctx := log.WithContext(wa.Main.Bridge.BackgroundCtx)
 	ghost, err := wa.Main.Bridge.GetGhostByID(ctx, waid.MakeUserID(jid))
 	if err != nil {
 		log.Err(err).Msg("Failed to get ghost")
@@ -567,10 +567,22 @@ func (wa *WhatsAppClient) syncGhost(jid types.JID, reason string, pictureID *str
 		log.Debug().Msg("Synced ghost info")
 	}
 	go wa.syncRemoteProfile(ctx, ghost)
+	var altJID types.JID
+	if jid.Server == types.HiddenUserServer {
+		altJID, err = wa.Device.LIDs.GetPNForLID(ctx, jid)
+	} else if jid.Server == types.DefaultUserServer {
+		altJID, err = wa.Device.LIDs.GetLIDForPN(ctx, jid)
+	}
+	if err != nil {
+		log.Warn().Err(err).Msg("Failed to get alternate JID for avatar change event")
+	}
+	if !altJID.IsEmpty() {
+		wa.syncGhost(altJID, reason+" + alt jid", pictureID)
+	}
 }
 
 func (wa *WhatsAppClient) handleWAPictureUpdate(ctx context.Context, evt *events.Picture) bool {
-	if evt.JID.Server == types.DefaultUserServer || evt.JID.Server == types.BotServer {
+	if evt.JID.Server == types.DefaultUserServer || evt.JID.Server == types.HiddenUserServer || evt.JID.Server == types.BotServer {
 		go wa.syncGhost(evt.JID, "picture event", &evt.PictureID)
 		return true
 	} else {
