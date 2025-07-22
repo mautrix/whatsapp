@@ -185,7 +185,7 @@ func (wa *WhatsAppClient) getUserInfo(ctx context.Context, jid types.JID, fetchA
 func (wa *WhatsAppClient) contactToUserInfo(ctx context.Context, jid types.JID, contact types.ContactInfo, getAvatar bool) *bridgev2.UserInfo {
 	if jid == types.MetaAIJID && contact.PushName == jid.User {
 		contact.PushName = "Meta AI"
-	} else if jid == types.PSAJID {
+	} else if jid == types.LegacyPSAJID || jid == types.PSAJID {
 		contact.PushName = "WhatsApp"
 	}
 	var phone string

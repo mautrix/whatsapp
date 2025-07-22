@@ -325,7 +325,7 @@ func (wa *WhatsAppClient) createPortalsFromHistorySync(ctx context.Context) {
 		if conv.ChatJID == types.StatusBroadcastJID && !wa.Main.Config.EnableStatusBroadcast {
 			wg.Done()
 			continue
-		} else if conv.ChatJID == types.PSAJID {
+		} else if conv.ChatJID == types.PSAJID || conv.ChatJID == types.LegacyPSAJID {
 			// We don't currently support new PSAs, so don't bother backfilling them either
 			wg.Done()
 			continue
