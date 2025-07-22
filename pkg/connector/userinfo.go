@@ -161,6 +161,7 @@ func (wa *WhatsAppClient) doGhostResync(ctx context.Context, queue map[types.JID
 			continue
 		}
 		ghost.UpdateInfo(ctx, userInfo)
+		wa.syncAltGhostWithInfo(ctx, jid, userInfo)
 	}
 }
 
@@ -289,7 +290,42 @@ func (wa *WhatsAppClient) resyncContacts(forceAvatarSync bool) {
 		if err != nil {
 			log.Err(err).Msg("Failed to get ghost")
 		} else if ghost != nil {
-			ghost.UpdateInfo(ctx, wa.contactToUserInfo(ctx, jid, contact, forceAvatarSync || ghost.AvatarID == ""))
+			userInfo := wa.contactToUserInfo(ctx, jid, contact, forceAvatarSync || ghost.AvatarID == "")
+			ghost.UpdateInfo(ctx, userInfo)
+			wa.syncAltGhostWithInfo(ctx, jid, userInfo)
 		}
 	}
+}
+
+func (wa *WhatsAppClient) syncAltGhostWithInfo(ctx context.Context, jid types.JID, info *bridgev2.UserInfo) {
+	log := zerolog.Ctx(ctx)
+	var altJID types.JID
+	var err error
+	if jid.Server == types.HiddenUserServer {
+		altJID, err = wa.Device.LIDs.GetPNForLID(ctx, jid)
+	} else if jid.Server == types.DefaultUserServer {
+		altJID, err = wa.Device.LIDs.GetLIDForPN(ctx, jid)
+	}
+	if err != nil {
+		log.Warn().Err(err).
+			Stringer("jid", jid).
+			Msg("Failed to get alternate JID for syncing user info")
+		return
+	} else if altJID.IsEmpty() {
+		return
+	}
+	ghost, err := wa.Main.Bridge.GetGhostByID(ctx, waid.MakeUserID(altJID))
+	if err != nil {
+		log.Err(err).
+			Stringer("alternate_jid", altJID).
+			Stringer("jid", jid).
+			Msg("Failed to get ghost for alternate JID")
+		return
+	}
+	ghost.UpdateInfo(ctx, info)
+	log.Debug().
+		Stringer("jid", jid).
+		Stringer("alternate_jid", altJID).
+		Msg("Synced alternate ghost with info")
+	go wa.syncRemoteProfile(ctx, ghost)
 }

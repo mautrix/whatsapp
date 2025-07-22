@@ -565,20 +565,9 @@ func (wa *WhatsAppClient) syncGhost(jid types.JID, reason string, pictureID *str
 	} else {
 		ghost.UpdateInfo(ctx, userInfo)
 		log.Debug().Msg("Synced ghost info")
+		wa.syncAltGhostWithInfo(ctx, jid, userInfo)
 	}
 	go wa.syncRemoteProfile(ctx, ghost)
-	var altJID types.JID
-	if jid.Server == types.HiddenUserServer {
-		altJID, err = wa.Device.LIDs.GetPNForLID(ctx, jid)
-	} else if jid.Server == types.DefaultUserServer {
-		altJID, err = wa.Device.LIDs.GetLIDForPN(ctx, jid)
-	}
-	if err != nil {
-		log.Warn().Err(err).Msg("Failed to get alternate JID for avatar change event")
-	}
-	if !altJID.IsEmpty() {
-		wa.syncGhost(altJID, reason+" + alt jid", pictureID)
-	}
 }
 
 func (wa *WhatsAppClient) handleWAPictureUpdate(ctx context.Context, evt *events.Picture) bool {
