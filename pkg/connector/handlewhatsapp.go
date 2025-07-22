@@ -260,6 +260,21 @@ func (wa *WhatsAppClient) handleWAMessage(ctx context.Context, evt *events.Messa
 			Str("message_id", evt.Info.ID).
 			Msg("Forced LID DM sender to phone number in own message sent from another device")
 		evt.Info.Chat = evt.Info.RecipientAlt.ToNonAD()
+	} else if evt.Info.Sender.Server == types.BotServer && evt.Info.Chat.Server == types.HiddenUserServer {
+		chatPN, err := wa.Device.LIDs.GetPNForLID(ctx, evt.Info.Chat)
+		if err != nil {
+			wa.UserLogin.Log.Err(err).
+				Str("message_id", evt.Info.ID).
+				Stringer("lid", evt.Info.Chat).
+				Msg("Failed to get phone number of DM for incoming bot message")
+		} else if !chatPN.IsEmpty() {
+			wa.UserLogin.Log.Debug().
+				Stringer("lid", evt.Info.Chat).
+				Stringer("pn", chatPN).
+				Str("message_id", evt.Info.ID).
+				Msg("Forced LID chat to phone number in bot message")
+			evt.Info.Chat = chatPN
+		}
 	}
 	wa.UserLogin.Log.Trace().
 		Any("info", evt.Info).
