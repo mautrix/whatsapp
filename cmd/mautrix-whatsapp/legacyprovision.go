@@ -7,7 +7,6 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/gorilla/mux"
 	"github.com/gorilla/websocket"
 	"github.com/rs/zerolog/hlog"
 	"go.mau.fi/util/exhttp"
@@ -263,7 +262,7 @@ func legacyProvContacts(w http.ResponseWriter, r *http.Request) {
 }
 
 func legacyProvResolveIdentifier(w http.ResponseWriter, r *http.Request) {
-	number := mux.Vars(r)["number"]
+	number := r.PathValue("number")
 	userLogin := m.Matrix.Provisioning.GetLoginForRequest(w, r)
 	if userLogin == nil {
 		return
