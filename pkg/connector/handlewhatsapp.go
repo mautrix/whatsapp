@@ -150,7 +150,7 @@ func (wa *WhatsAppClient) handleWAEvent(rawEvt any) (success bool) {
 		// Send presence when connecting and when the pushname is changed.
 		// This makes sure that outgoing messages always have the right pushname.
 		wa.sendDefaultPresence(log, "push name update")
-		_, _, err = wa.GetStore().Contacts.PutPushName(ctx, wa.JID.ToNonAD(), evt.Action.GetName())
+		_, _, err := wa.GetStore().Contacts.PutPushName(ctx, wa.JID.ToNonAD(), evt.Action.GetName())
 		if err != nil {
 			log.Err(err).Msg("Failed to update push name in store")
 		}
