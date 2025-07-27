@@ -26,8 +26,8 @@ identity_change_notices: false
 # Should the bridge mark you as online on WhatsApp when you send typing notifications?
 # Full presence bridging is not supported.
 send_presence_on_typing: false
-# Should the bridge send initial presence as "online" when connecting to WhatsApp?
-send_initial_presence_online: false
+# Should the bridge send default presence as "online" when connecting to WhatsApp?
+send_default_presence_online: false
 # Should WhatsApp status messages be bridged into a Matrix room?
 enable_status_broadcast: true
 # Should sending WhatsApp status messages be allowed?

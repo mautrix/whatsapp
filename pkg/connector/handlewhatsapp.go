@@ -71,6 +71,17 @@ func init() {
 	})
 }
 
+func (wa *WhatsAppClient) sendDefaultPresence(log zerolog.Logger, context string) {
+	presence := types.PresenceUnavailable
+	if wa.Main.Config.SendDefaultPresenceOnline {
+		presence = types.PresenceAvailable
+	}
+	err := wa.Client.SendPresence(presence)
+	if err != nil {
+		log.Warn().Err(err).Str("context", context).Msg("Failed to send presence")
+	}
+}
+
 func (wa *WhatsAppClient) handleWAEvent(rawEvt any) (success bool) {
 	log := wa.UserLogin.Log
 	ctx := log.WithContext(wa.Main.Bridge.BackgroundCtx)
@@ -128,10 +139,7 @@ func (wa *WhatsAppClient) handleWAEvent(rawEvt any) (success bool) {
 
 	case *events.AppStateSyncComplete:
 		if len(wa.GetStore().PushName) > 0 && evt.Name == appstate.WAPatchCriticalBlock {
-			err := wa.Client.SendPresence(types.PresenceUnavailable)
-			if err != nil {
-				log.Warn().Err(err).Msg("Failed to send presence after app state sync")
-			}
+			wa.sendDefaultPresence(log, "app state sync")
 			go wa.syncRemoteProfile(log.WithContext(context.Background()), nil)
 		} else if evt.Name == appstate.WAPatchCriticalUnblockLow {
 			go wa.resyncContacts(false)
@@ -139,12 +147,9 @@ func (wa *WhatsAppClient) handleWAEvent(rawEvt any) (success bool) {
 	case *events.AppState:
 		// Intentionally ignored
 	case *events.PushNameSetting:
-		// Send presence available when connecting and when the pushname is changed.
+		// Send presence when connecting and when the pushname is changed.
 		// This makes sure that outgoing messages always have the right pushname.
-		err := wa.Client.SendPresence(types.PresenceUnavailable)
-		if err != nil {
-			log.Warn().Err(err).Msg("Failed to send presence after push name update")
-		}
+		wa.sendDefaultPresence(log, "push name update")
 		_, _, err = wa.GetStore().Contacts.PutPushName(ctx, wa.JID.ToNonAD(), evt.Action.GetName())
 		if err != nil {
 			log.Err(err).Msg("Failed to update push name in store")
@@ -162,14 +167,7 @@ func (wa *WhatsAppClient) handleWAEvent(rawEvt any) (success bool) {
 		wa.UserLogin.BridgeState.Send(status.BridgeState{StateEvent: status.StateConnected})
 		if len(wa.GetStore().PushName) > 0 {
 			go func() {
-				presence := types.PresenceUnavailable
-				if wa.Main.Config.SendInitialPresenceOnline {
-					presence = types.PresenceAvailable
-				}
-				err := wa.Client.SendPresence(presence)
-				if err != nil {
-					log.Warn().Err(err).Msg("Failed to send initial presence after connecting")
-				}
+				wa.sendDefaultPresence(log, "initial connection")
 			}()
 			go wa.syncRemoteProfile(log.WithContext(context.Background()), nil)
 		}
