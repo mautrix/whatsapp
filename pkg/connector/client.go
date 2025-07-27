@@ -112,6 +112,7 @@ type WhatsAppClient struct {
 	mediaRetryLock     *semaphore.Weighted
 	offlineSyncWaiter  chan error
 	isNewLogin         bool
+	lastPresence       types.Presence
 }
 
 var (
@@ -387,6 +388,22 @@ func (wa *WhatsAppClient) syncRemoteProfile(ctx context.Context, ghost *bridgev2
 }
 
 func (wa *WhatsAppClient) HandleMatrixViewingChat(ctx context.Context, msg *bridgev2.MatrixViewingChat) error {
+	var presence types.Presence
+	if msg.Portal != nil {
+		presence = types.PresenceAvailable
+	} else {
+		presence = types.PresenceUnavailable
+	}
+
+	if wa.lastPresence != presence {
+		err := wa.Client.SendPresence(presence)
+		if err != nil {
+			zerolog.Ctx(ctx).Warn().Err(err).Msg("Failed to set presence when viewing chat")
+		} else {
+			wa.lastPresence = presence
+		}
+	}
+
 	if msg.Portal == nil || msg.Portal.Metadata.(*waid.PortalMetadata).LastSync.Add(5*time.Minute).After(time.Now()) {
 		// If we resynced this portal within the last 5 minutes, don't do it again
 		return nil
