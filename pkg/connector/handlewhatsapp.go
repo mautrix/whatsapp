@@ -162,7 +162,11 @@ func (wa *WhatsAppClient) handleWAEvent(rawEvt any) (success bool) {
 		wa.UserLogin.BridgeState.Send(status.BridgeState{StateEvent: status.StateConnected})
 		if len(wa.GetStore().PushName) > 0 {
 			go func() {
-				err := wa.Client.SendPresence(types.PresenceUnavailable)
+				presence := types.PresenceUnavailable
+				if wa.Main.Config.SendInitialPresenceOnline {
+					presence = types.PresenceAvailable
+				}
+				err := wa.Client.SendPresence(presence)
 				if err != nil {
 					log.Warn().Err(err).Msg("Failed to send initial presence after connecting")
 				}

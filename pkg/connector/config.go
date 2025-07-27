@@ -37,6 +37,7 @@ type Config struct {
 	CallStartNotices            bool          `yaml:"call_start_notices"`
 	IdentityChangeNotices       bool          `yaml:"identity_change_notices"`
 	SendPresenceOnTyping        bool          `yaml:"send_presence_on_typing"`
+	SendInitialPresenceOnline   bool          `yaml:"send_initial_presence_online"`
 	EnableStatusBroadcast       bool          `yaml:"enable_status_broadcast"`
 	DisableStatusBroadcastSend  bool          `yaml:"disable_status_broadcast_send"`
 	MuteStatusBroadcast         bool          `yaml:"mute_status_broadcast"`
@@ -103,6 +104,7 @@ func upgradeConfig(helper up.Helper) {
 	helper.Copy(up.Bool, "call_start_notices")
 	helper.Copy(up.Bool, "identity_change_notices")
 	helper.Copy(up.Bool, "send_presence_on_typing")
+	helper.Copy(up.Bool, "send_initial_presence_online")
 	helper.Copy(up.Bool, "enable_status_broadcast")
 	helper.Copy(up.Bool, "disable_status_broadcast_send")
 	helper.Copy(up.Bool, "mute_status_broadcast")
