@@ -396,11 +396,9 @@ func (wa *WhatsAppClient) HandleMatrixViewingChat(ctx context.Context, msg *brid
 	}
 
 	if wa.lastPresence != presence {
-		err := wa.Client.SendPresence(presence)
+		err := wa.updatePresence(presence)
 		if err != nil {
 			zerolog.Ctx(ctx).Warn().Err(err).Msg("Failed to set presence when viewing chat")
-		} else {
-			wa.lastPresence = presence
 		}
 	}
 
@@ -431,4 +429,12 @@ func (wa *WhatsAppClient) HandleMatrixViewingChat(ctx context.Context, msg *brid
 	}
 
 	return nil
+}
+
+func (wa *WhatsAppClient) updatePresence(presence types.Presence) error {
+	err := wa.Client.SendPresence(presence)
+	if err == nil {
+		wa.lastPresence = presence
+	}
+	return err
 }

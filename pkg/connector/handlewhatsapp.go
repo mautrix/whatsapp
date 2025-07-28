@@ -128,7 +128,7 @@ func (wa *WhatsAppClient) handleWAEvent(rawEvt any) (success bool) {
 
 	case *events.AppStateSyncComplete:
 		if len(wa.GetStore().PushName) > 0 && evt.Name == appstate.WAPatchCriticalBlock {
-			err := wa.Client.SendPresence(types.PresenceUnavailable)
+			err := wa.updatePresence(types.PresenceUnavailable)
 			if err != nil {
 				log.Warn().Err(err).Msg("Failed to send presence after app state sync")
 			}
@@ -141,7 +141,7 @@ func (wa *WhatsAppClient) handleWAEvent(rawEvt any) (success bool) {
 	case *events.PushNameSetting:
 		// Send presence available when connecting and when the pushname is changed.
 		// This makes sure that outgoing messages always have the right pushname.
-		err := wa.Client.SendPresence(types.PresenceUnavailable)
+		err := wa.updatePresence(types.PresenceUnavailable)
 		if err != nil {
 			log.Warn().Err(err).Msg("Failed to send presence after push name update")
 		}
@@ -162,7 +162,7 @@ func (wa *WhatsAppClient) handleWAEvent(rawEvt any) (success bool) {
 		wa.UserLogin.BridgeState.Send(status.BridgeState{StateEvent: status.StateConnected})
 		if len(wa.GetStore().PushName) > 0 {
 			go func() {
-				err := wa.Client.SendPresence(types.PresenceUnavailable)
+				err := wa.updatePresence(types.PresenceUnavailable)
 				if err != nil {
 					log.Warn().Err(err).Msg("Failed to send initial presence after connecting")
 				}
