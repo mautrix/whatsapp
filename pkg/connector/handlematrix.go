@@ -336,7 +336,7 @@ func (wa *WhatsAppClient) HandleMatrixTyping(ctx context.Context, msg *bridgev2.
 	}
 
 	if wa.Main.Config.SendPresenceOnTyping {
-		err = wa.Client.SendPresence(types.PresenceAvailable)
+		err = wa.updatePresence(types.PresenceAvailable)
 		if err != nil {
 			zerolog.Ctx(ctx).Warn().Err(err).Msg("Failed to set presence on typing")
 		}
