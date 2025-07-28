@@ -1,8 +1,6 @@
 package main
 
 import (
-	"net/http"
-
 	"maunium.net/go/mautrix/bridgev2/bridgeconfig"
 	"maunium.net/go/mautrix/bridgev2/matrix/mxmain"
 
@@ -43,11 +41,11 @@ func main() {
 	}
 	m.PostStart = func() {
 		if m.Matrix.Provisioning != nil {
-			m.Matrix.Provisioning.Router.HandleFunc("/v1/login", legacyProvLogin).Methods(http.MethodGet)
-			m.Matrix.Provisioning.Router.HandleFunc("/v1/logout", legacyProvLogout).Methods(http.MethodPost)
-			m.Matrix.Provisioning.Router.HandleFunc("/v1/contacts", legacyProvContacts).Methods(http.MethodGet)
-			m.Matrix.Provisioning.Router.HandleFunc("/v1/resolve_identifier/{number}", legacyProvResolveIdentifier).Methods(http.MethodGet)
-			m.Matrix.Provisioning.Router.HandleFunc("/v1/pm/{number}", legacyProvResolveIdentifier).Methods(http.MethodPost)
+			m.Matrix.Provisioning.Router.HandleFunc("GET /v1/login", legacyProvLogin)
+			m.Matrix.Provisioning.Router.HandleFunc("POST /v1/logout", legacyProvLogout)
+			m.Matrix.Provisioning.Router.HandleFunc("GET /v1/contacts", legacyProvContacts)
+			m.Matrix.Provisioning.Router.HandleFunc("GET /v1/resolve_identifier/{number}", legacyProvResolveIdentifier)
+			m.Matrix.Provisioning.Router.HandleFunc("POST /v1/pm/{number}", legacyProvResolveIdentifier)
 			m.Matrix.Provisioning.GetAuthFromRequest = legacyProvAuth
 		}
 	}
