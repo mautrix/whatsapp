@@ -298,7 +298,7 @@ func (wa *WhatsAppClient) handleWAMessage(ctx context.Context, evt *events.Messa
 		wa.UserLogin.Log.Debug().
 			Str("message_id", evt.Info.ID).
 			Str("parent_id", parentKey.GetID()).
-			Str("assoc_type", assocType.String()).
+			Stringer("assoc_type", assocType).
 			Msg("Received HD replacement message, converting to edit")
 
 		protocolMsg := &waE2E.ProtocolMessage{
