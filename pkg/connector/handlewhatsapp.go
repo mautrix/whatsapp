@@ -290,10 +290,9 @@ func (wa *WhatsAppClient) handleWAMessage(ctx context.Context, evt *events.Messa
 		wa.Client.ManualHistorySyncDownload {
 		wa.saveWAHistorySyncNotification(ctx, evt.Message.ProtocolMessage.HistorySyncNotification)
 	}
+
 	messageAssoc := evt.Message.GetMessageContextInfo().GetMessageAssociation()
-	assocType := messageAssoc.GetAssociationType()
-	if assocType == waE2E.MessageAssociation_HD_IMAGE_DUAL_UPLOAD ||
-		assocType == waE2E.MessageAssociation_HD_VIDEO_DUAL_UPLOAD {
+	if assocType := messageAssoc.GetAssociationType(); assocType == waE2E.MessageAssociation_HD_IMAGE_DUAL_UPLOAD || assocType == waE2E.MessageAssociation_HD_VIDEO_DUAL_UPLOAD {
 		parentKey := messageAssoc.GetParentMessageKey()
 		associatedMessage := evt.Message.GetAssociatedChildMessage().GetMessage()
 		wa.UserLogin.Log.Debug().
