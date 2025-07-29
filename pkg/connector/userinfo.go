@@ -331,20 +331,37 @@ func (wa *WhatsAppClient) fetchGhostAvatar(ctx context.Context, ghost *bridgev2.
 	return ghost.UpdateAvatar(ctx, wrappedAvatar)
 }
 
-func (wa *WhatsAppClient) resyncContacts(forceAvatarSync bool) {
+func (wa *WhatsAppClient) resyncContacts(forceAvatarSync, automatic bool) {
 	log := wa.UserLogin.Log.With().Str("action", "resync contacts").Logger()
-	ctx := log.WithContext(context.Background())
-	contacts, err := wa.GetStore().Contacts.GetAllContacts(ctx)
+	ctx := log.WithContext(wa.Main.Bridge.BackgroundCtx)
+	if automatic && wa.isNewLogin {
+		log.Debug().Msg("Waiting for push name history sync before resyncing contacts")
+		timeoutCtx, cancel := context.WithTimeout(ctx, 5*time.Minute)
+		_ = wa.pushNamesSynced.Wait(timeoutCtx)
+		cancel()
+		if ctx.Err() != nil {
+			return
+		}
+	}
+	contactStore := wa.GetStore().Contacts
+	contacts, err := contactStore.GetAllContacts(ctx)
 	if err != nil {
 		log.Err(err).Msg("Failed to get cached contacts")
 		return
 	}
 	log.Info().Int("contact_count", len(contacts)).Msg("Resyncing displaynames with contact info")
-	for jid, contact := range contacts {
+	for jid := range contacts {
+		if ctx.Err() != nil {
+			return
+		}
 		ghost, err := wa.Main.Bridge.GetGhostByID(ctx, waid.MakeUserID(jid))
 		if err != nil {
-			log.Err(err).Msg("Failed to get ghost")
-		} else if ghost != nil {
+			log.Err(err).Stringer("jid", jid).Msg("Failed to get ghost")
+			// Refetch contact info from the store to reduce the risk of races.
+			// This should always hit the cache.
+		} else if contact, err := contactStore.GetContact(ctx, jid); err != nil {
+			log.Err(err).Stringer("jid", jid).Msg("Failed to get contact info")
+		} else {
 			userInfo := wa.contactToUserInfo(ctx, jid, contact, forceAvatarSync || ghost.AvatarID == "")
 			ghost.UpdateInfo(ctx, userInfo)
 			wa.syncAltGhostWithInfo(ctx, jid, userInfo)

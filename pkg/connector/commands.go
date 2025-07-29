@@ -135,10 +135,10 @@ func fnSync(ce *commands.Event) {
 		}
 		ce.Reply("Queued syncs for %d groups", len(groups))
 	case "contacts":
-		wa.resyncContacts(false)
+		wa.resyncContacts(false, false)
 		ce.React("✅")
 	case "contacts-with-avatars":
-		wa.resyncContacts(true)
+		wa.resyncContacts(true, false)
 		ce.React("✅")
 	case "appstate":
 		for _, name := range appstate.AllPatchNames {

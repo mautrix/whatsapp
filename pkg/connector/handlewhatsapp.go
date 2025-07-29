@@ -135,7 +135,7 @@ func (wa *WhatsAppClient) handleWAEvent(rawEvt any) (success bool) {
 			}
 			go wa.syncRemoteProfile(log.WithContext(context.Background()), nil)
 		} else if evt.Name == appstate.WAPatchCriticalUnblockLow {
-			go wa.resyncContacts(false)
+			go wa.resyncContacts(false, true)
 		}
 	case *events.AppState:
 		// Intentionally ignored

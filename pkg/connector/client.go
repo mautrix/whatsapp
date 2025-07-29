@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/rs/zerolog"
+	"go.mau.fi/util/exsync"
 	"go.mau.fi/whatsmeow"
 	waBinary "go.mau.fi/whatsmeow/binary"
 	"go.mau.fi/whatsmeow/proto/waHistorySync"
@@ -112,6 +113,7 @@ type WhatsAppClient struct {
 	mediaRetryLock     *semaphore.Weighted
 	offlineSyncWaiter  chan error
 	isNewLogin         bool
+	pushNamesSynced    exsync.Event
 	lastPresence       types.Presence
 }
 

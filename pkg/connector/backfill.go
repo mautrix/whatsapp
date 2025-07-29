@@ -157,7 +157,12 @@ func (wa *WhatsAppClient) handleWAHistorySync(ctx context.Context, evt *waHistor
 	if evt.GetGlobalSettings() != nil {
 		log.Debug().Interface("global_settings", evt.GetGlobalSettings()).Msg("Got global settings in history sync")
 	}
-	if evt.GetSyncType() == waHistorySync.HistorySync_INITIAL_STATUS_V3 || evt.GetSyncType() == waHistorySync.HistorySync_PUSH_NAME || evt.GetSyncType() == waHistorySync.HistorySync_NON_BLOCKING_DATA {
+	if evt.GetSyncType() == waHistorySync.HistorySync_INITIAL_STATUS_V3 ||
+		evt.GetSyncType() == waHistorySync.HistorySync_PUSH_NAME ||
+		evt.GetSyncType() == waHistorySync.HistorySync_NON_BLOCKING_DATA {
+		if evt.GetSyncType() == waHistorySync.HistorySync_PUSH_NAME {
+			wa.pushNamesSynced.Set()
+		}
 		log.Debug().
 			Int("conversation_count", len(evt.GetConversations())).
 			Int("pushname_count", len(evt.GetPushnames())).
