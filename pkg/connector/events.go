@@ -186,6 +186,7 @@ func (evt *WAMessageEvent) ConvertEdit(ctx context.Context, portal *bridgev2.Por
 		meta.Edits = append(meta.Edits, evt.Info.ID)
 	}
 
+	ctx = context.WithValue(ctx, msgconv.ContextKeyEditTargetID, evt.Message.GetProtocolMessage().GetKey().GetID())
 	cm := evt.wa.Main.MsgConv.ToMatrix(ctx, portal, evt.wa.Client, intent, editedMsg, &evt.Info, evt.isViewOnce(), previouslyConvertedPart)
 	if evt.isUndecryptableUpsertSubEvent && isFailedMedia(cm) {
 		evt.postHandle = func() {

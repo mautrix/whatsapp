@@ -35,11 +35,16 @@ const (
 	mediaIDTypeCommunityAvatar = 253
 )
 
-func MakeMediaID(messageInfo *types.MessageInfo, receiver networkid.UserLoginID) networkid.MediaID {
+func MakeMediaID(messageInfo *types.MessageInfo, idOverride types.MessageID, receiver networkid.UserLoginID) networkid.MediaID {
 	compactChat := compactJID(messageInfo.Chat.ToNonAD())
 	compactSender := compactJID(messageInfo.Sender.ToNonAD())
 	receiverID := compactJID(ParseUserLoginID(receiver, 0))
-	compactID := compactMsgID(messageInfo.ID)
+	var compactID []byte
+	if idOverride != "" {
+		compactID = compactMsgID(idOverride)
+	} else {
+		compactID = compactMsgID(messageInfo.ID)
+	}
 	mediaID := make([]byte, 0, 5+len(compactChat)+len(compactSender)+len(receiverID)+len(compactID))
 	mediaID = append(mediaID, mediaIDTypeMessage)
 	mediaID = append(mediaID, byte(len(compactChat)))

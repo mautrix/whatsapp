@@ -90,7 +90,8 @@ func (mc *MessageConverter) convertMediaMessage(
 		}
 		var err error
 		portal := getPortal(ctx)
-		preparedMedia.URL, err = portal.Bridge.Matrix.GenerateContentURI(ctx, waid.MakeMediaID(messageInfo, portal.Receiver))
+		idOverride := getEditTargetID(ctx)
+		preparedMedia.URL, err = portal.Bridge.Matrix.GenerateContentURI(ctx, waid.MakeMediaID(messageInfo, idOverride, portal.Receiver))
 		if err != nil {
 			panic(fmt.Errorf("failed to generate content URI: %w", err))
 		}
