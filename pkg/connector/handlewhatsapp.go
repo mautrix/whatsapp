@@ -290,30 +290,29 @@ func (wa *WhatsAppClient) handleWAMessage(ctx context.Context, evt *events.Messa
 		wa.Client.ManualHistorySyncDownload {
 		wa.saveWAHistorySyncNotification(ctx, evt.Message.ProtocolMessage.HistorySyncNotification)
 	}
-	if evt.Message != nil && evt.Message.GetMessageContextInfo() != nil {
-		messageAssoc := evt.Message.GetMessageContextInfo().GetMessageAssociation()
-		if messageAssoc != nil {
-			assocType := messageAssoc.GetAssociationType()
-			if assocType == waE2E.MessageAssociation_HD_IMAGE_DUAL_UPLOAD ||
-				assocType == waE2E.MessageAssociation_HD_VIDEO_DUAL_UPLOAD {
-				parentKey := messageAssoc.GetParentMessageKey()
-				if parentKey != nil {
-					wa.UserLogin.Log.Debug().
-						Str("message_id", evt.Info.ID).
-						Str("parent_id", parentKey.GetID()).
-						Str("assoc_type", assocType.String()).
-						Msg("Received HD replacement message, converting to edit")
+	messageAssoc := evt.Message.GetMessageContextInfo().GetMessageAssociation()
+	assocType := messageAssoc.GetAssociationType()
+	parentKey := messageAssoc.GetParentMessageKey()
+	if parentKey != nil && (assocType == waE2E.MessageAssociation_HD_IMAGE_DUAL_UPLOAD ||
+		assocType == waE2E.MessageAssociation_HD_VIDEO_DUAL_UPLOAD) {
+		wa.UserLogin.Log.Debug().
+			Str("message_id", evt.Info.ID).
+			Str("parent_id", parentKey.GetID()).
+			Str("assoc_type", assocType.String()).
+			Msg("Received HD replacement message, converting to edit")
 
-					protocolMsg := &waE2E.ProtocolMessage{
-						Type:          waE2E.ProtocolMessage_MESSAGE_EDIT.Enum(),
-						Key:           parentKey,
-						EditedMessage: evt.Message,
-					}
-					evt.Message = &waE2E.Message{
-						ProtocolMessage: protocolMsg,
-					}
-				}
-			}
+		editedMessage := evt.Message
+		if childMsg := evt.Message.GetAssociatedChildMessage(); childMsg != nil && childMsg.GetMessage() != nil {
+			editedMessage = childMsg.GetMessage()
+		}
+
+		protocolMsg := &waE2E.ProtocolMessage{
+			Type:          waE2E.ProtocolMessage_MESSAGE_EDIT.Enum(),
+			Key:           parentKey,
+			EditedMessage: editedMessage,
+		}
+		evt.Message = &waE2E.Message{
+			ProtocolMessage: protocolMsg,
 		}
 	}
 
