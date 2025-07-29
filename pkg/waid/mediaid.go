@@ -17,7 +17,6 @@
 package waid
 
 import (
-	"bytes"
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
@@ -29,12 +28,20 @@ import (
 	"maunium.net/go/mautrix/bridgev2/networkid"
 )
 
+const (
+	// Media ID types start from 255, because old media IDs didn't have a type byte and had the length at the start.
+	mediaIDTypeMessage         = 255
+	mediaIDTypeAvatar          = 254
+	mediaIDTypeCommunityAvatar = 253
+)
+
 func MakeMediaID(messageInfo *types.MessageInfo, receiver networkid.UserLoginID) networkid.MediaID {
 	compactChat := compactJID(messageInfo.Chat.ToNonAD())
 	compactSender := compactJID(messageInfo.Sender.ToNonAD())
 	receiverID := compactJID(ParseUserLoginID(receiver, 0))
 	compactID := compactMsgID(messageInfo.ID)
-	mediaID := make([]byte, 0, 3+len(compactChat)+len(compactSender)+len(compactID))
+	mediaID := make([]byte, 0, 5+len(compactChat)+len(compactSender)+len(receiverID)+len(compactID))
+	mediaID = append(mediaID, mediaIDTypeMessage)
 	mediaID = append(mediaID, byte(len(compactChat)))
 	mediaID = append(mediaID, compactChat...)
 	mediaID = append(mediaID, byte(len(compactSender)))
@@ -46,29 +53,94 @@ func MakeMediaID(messageInfo *types.MessageInfo, receiver networkid.UserLoginID)
 	return mediaID
 }
 
-func ParseMediaID(mediaID networkid.MediaID) (*ParsedMessageID, networkid.UserLoginID, error) {
-	reader := bytes.NewReader(mediaID)
-	chatJID, err := readCompact(reader, parseCompactJID)
-	if err != nil {
-		return nil, "", fmt.Errorf("failed to parse chat JID: %w", err)
+func MakeAvatarMediaID(targetJID types.JID, id string, receiver networkid.UserLoginID, community bool) networkid.MediaID {
+	compactTarget := compactJID(targetJID.ToNonAD())
+	receiverID := compactJID(ParseUserLoginID(receiver, 0))
+	mediaID := make([]byte, 0, 4+len(compactTarget)+len(id)+len(receiverID))
+	if community {
+		mediaID = append(mediaID, mediaIDTypeCommunityAvatar)
+	} else {
+		mediaID = append(mediaID, mediaIDTypeAvatar)
 	}
-	senderJID, err := readCompact(reader, parseCompactJID)
-	if err != nil {
-		return nil, "", fmt.Errorf("failed to parse sender JID: %w", err)
+	mediaID = append(mediaID, byte(len(compactTarget)))
+	mediaID = append(mediaID, compactTarget...)
+	mediaID = append(mediaID, byte(len(id)))
+	mediaID = append(mediaID, id...)
+	mediaID = append(mediaID, byte(len(receiverID)))
+	mediaID = append(mediaID, receiverID...)
+	return mediaID
+}
+
+type AvatarMediaInfo struct {
+	TargetJID types.JID
+	AvatarID  string
+	Community bool
+}
+
+type ParsedMediaID struct {
+	Message   *ParsedMessageID
+	Avatar    *AvatarMediaInfo
+	UserLogin networkid.UserLoginID
+}
+
+func ParseMediaID(mediaID networkid.MediaID) (*ParsedMediaID, error) {
+	mediaIDType := mediaIDTypeMessage
+	if mediaID[0] > 127 {
+		mediaIDType = int(mediaID[0])
+		mediaID = mediaID[1:]
 	}
-	receiverID, err := readCompact(reader, parseCompactJID)
-	if err != nil {
-		return nil, "", fmt.Errorf("failed to parse receiver JID: %w", err)
+	var parsed ParsedMediaID
+	switch mediaIDType {
+	case mediaIDTypeMessage:
+		chatJID, err := readCompact(&mediaID, parseCompactJID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse chat JID: %w", err)
+		}
+		senderJID, err := readCompact(&mediaID, parseCompactJID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse sender JID: %w", err)
+		}
+		receiverID, err := readCompact(&mediaID, parseCompactJID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse receiver JID: %w", err)
+		}
+		id, err := readCompact(&mediaID, parseCompactMsgID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse message ID: %w", err)
+		}
+		parsed.Message = &ParsedMessageID{
+			Chat:   chatJID,
+			Sender: senderJID,
+			ID:     id,
+		}
+		parsed.UserLogin = MakeUserLoginID(receiverID)
+	case mediaIDTypeAvatar, mediaIDTypeCommunityAvatar:
+		targetJID, err := readCompact(&mediaID, parseCompactJID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse target JID: %w", err)
+		}
+		avatarID, err := readCompact(&mediaID, parseString)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse avatar ID: %w", err)
+		}
+		receiverID, err := readCompact(&mediaID, parseCompactJID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse receiver JID: %w", err)
+		}
+		parsed.Avatar = &AvatarMediaInfo{
+			TargetJID: targetJID,
+			AvatarID:  avatarID,
+			Community: mediaIDType == mediaIDTypeCommunityAvatar,
+		}
+		parsed.UserLogin = MakeUserLoginID(receiverID)
+	default:
+		return nil, fmt.Errorf("unknown media ID type %d", mediaIDType)
 	}
-	id, err := readCompact(reader, parseCompactMsgID)
-	if err != nil {
-		return nil, "", fmt.Errorf("failed to parse message ID: %w", err)
-	}
-	return &ParsedMessageID{
-		Chat:   chatJID,
-		Sender: senderJID,
-		ID:     id,
-	}, MakeUserLoginID(receiverID), nil
+	return &parsed, nil
+}
+
+func parseString(data []byte) (string, error) {
+	return string(data), nil
 }
 
 func isUpperHex(str string) bool {
@@ -169,16 +241,16 @@ func parseCompactJID(jid []byte) (types.JID, error) {
 	}
 }
 
-func readCompact[T any](reader *bytes.Reader, fn func(data []byte) (T, error)) (T, error) {
+func readCompact[T any](data *networkid.MediaID, fn func(data []byte) (T, error)) (T, error) {
 	var defVal T
-	length, err := reader.ReadByte()
-	if err != nil {
-		return defVal, err
+	if len(*data) < 1 {
+		return defVal, fmt.Errorf("%w (data too short to read length)", io.ErrUnexpectedEOF)
 	}
-	data := make([]byte, length)
-	_, err = io.ReadFull(reader, data)
-	if err != nil {
-		return defVal, err
+	length := int((*data)[0])
+	if len(*data) < length+1 {
+		return defVal, fmt.Errorf("%w (wanted %d+1 bytes, only have %d)", io.ErrUnexpectedEOF, length, len(*data))
 	}
-	return fn(data)
+	dataToParse := (*data)[1 : length+1]
+	*data = (*data)[length+1:]
+	return fn(dataToParse)
 }

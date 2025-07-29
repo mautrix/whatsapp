@@ -2,9 +2,12 @@ package connector
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"math/rand/v2"
+	"regexp"
+	"strconv"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -17,6 +20,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/bridgev2/simplevent"
 
+	"go.mau.fi/mautrix-whatsapp/pkg/connector/wadb"
 	"go.mau.fi/mautrix-whatsapp/pkg/waid"
 )
 
@@ -242,6 +246,51 @@ func updateGhostLastSyncAt(_ context.Context, ghost *bridgev2.Ghost) bool {
 	return forceSave
 }
 
+var expiryRegex = regexp.MustCompile("oe=([0-9A-Fa-f]+)")
+
+func avatarInfoToCacheEntry(ctx context.Context, jid types.JID, avatar *types.ProfilePictureInfo) *wadb.AvatarCacheEntry {
+	expiry := time.Now().Add(24 * time.Hour)
+	match := expiryRegex.FindStringSubmatch(avatar.DirectPath)
+	if len(match) == 2 {
+		expiryUnix, err := strconv.ParseInt(match[1], 16, 64)
+		if err == nil {
+			expiry = time.Unix(expiryUnix, 0)
+		} else {
+			zerolog.Ctx(ctx).Warn().Err(err).
+				Strs("match", match).
+				Msg("Failed to parse expiry from avatar direct path")
+		}
+	}
+	return &wadb.AvatarCacheEntry{
+		EntityJID:  jid,
+		AvatarID:   avatar.ID,
+		DirectPath: avatar.DirectPath,
+		Expiry:     jsontime.U(expiry),
+		Gone:       false,
+	}
+}
+
+func (wa *WhatsAppClient) makeDirectMediaAvatar(ctx context.Context, jid types.JID, avatar *types.ProfilePictureInfo, community bool) (*bridgev2.Avatar, error) {
+	mxc, err := wa.Main.Bridge.Matrix.GenerateContentURI(ctx, waid.MakeAvatarMediaID(jid, avatar.ID, wa.UserLogin.ID, community))
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate MXC URI: %w", err)
+	}
+	cacheEntry := avatarInfoToCacheEntry(ctx, jid, avatar)
+	err = wa.Main.DB.AvatarCache.Put(ctx, cacheEntry)
+	if err != nil {
+		return nil, fmt.Errorf("failed to cache avatar info: %w", err)
+	}
+	hash := sha256.Sum256([]byte(avatar.ID))
+	if len(avatar.Hash) == 32 {
+		hash = [32]byte(avatar.Hash)
+	}
+	return &bridgev2.Avatar{
+		ID:   networkid.AvatarID(avatar.ID),
+		MXC:  mxc,
+		Hash: hash,
+	}, nil
+}
+
 func (wa *WhatsAppClient) fetchGhostAvatar(ctx context.Context, ghost *bridgev2.Ghost) bool {
 	jid := waid.ParseUserID(ghost.ID)
 	existingID := string(ghost.AvatarID)
@@ -265,6 +314,12 @@ func (wa *WhatsAppClient) fetchGhostAvatar(ctx context.Context, ghost *bridgev2.
 		return false
 	} else if avatar == nil {
 		return false
+	} else if wa.Main.MsgConv.DirectMedia {
+		wrappedAvatar, err = wa.makeDirectMediaAvatar(ctx, jid, avatar, false)
+		if err != nil {
+			zerolog.Ctx(ctx).Err(err).Msg("Failed to prepare direct media avatar")
+			return false
+		}
 	} else {
 		wrappedAvatar = &bridgev2.Avatar{
 			ID: networkid.AvatarID(avatar.ID),

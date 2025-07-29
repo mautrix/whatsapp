@@ -415,6 +415,12 @@ func (wa *WhatsAppClient) makePortalAvatarFetcher(avatarID string, sender types.
 			return false
 		} else if avatar == nil {
 			return false
+		} else if wa.Main.MsgConv.DirectMedia {
+			wrappedAvatar, err = wa.makeDirectMediaAvatar(ctx, jid, avatar, portal.RoomType == database.RoomTypeSpace)
+			if err != nil {
+				zerolog.Ctx(ctx).Err(err).Msg("Failed to prepare direct media avatar")
+				return false
+			}
 		} else {
 			wrappedAvatar = &bridgev2.Avatar{
 				ID: networkid.AvatarID(avatar.ID),
@@ -454,6 +460,7 @@ func (wa *WhatsAppClient) wrapNewsletterInfo(ctx context.Context, info *types.Ne
 		}
 	}
 	avatar := &bridgev2.Avatar{}
+	// TODO direct media for newsletter avatars
 	if info.ThreadMeta.Picture != nil {
 		avatar.ID = networkid.AvatarID(info.ThreadMeta.Picture.ID)
 		avatar.Get = func(ctx context.Context) ([]byte, error) {

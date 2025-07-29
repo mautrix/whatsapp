@@ -38,6 +38,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/mediaproxy"
 
+	"go.mau.fi/mautrix-whatsapp/pkg/connector/wadb"
 	"go.mau.fi/mautrix-whatsapp/pkg/msgconv"
 	"go.mau.fi/mautrix-whatsapp/pkg/waid"
 )
@@ -55,13 +56,81 @@ var ErrReloadNeeded = mautrix.RespError{
 }
 
 func (wa *WhatsAppConnector) Download(ctx context.Context, mediaID networkid.MediaID, params map[string]string) (mediaproxy.GetMediaResponse, error) {
-	parsedID, receiverID, err := waid.ParseMediaID(mediaID)
+	parsedID, err := waid.ParseMediaID(mediaID)
 	if err != nil {
 		return nil, err
 	}
-	log := zerolog.Ctx(ctx).With().Any("message_id", parsedID).Logger()
+	log := zerolog.Ctx(ctx).With().Any("parsed_media_id", parsedID).Logger()
 	ctx = log.WithContext(ctx)
-	msg, err := wa.Bridge.DB.Message.GetFirstPartByID(ctx, receiverID, parsedID.String())
+	if parsedID.Message != nil {
+		return wa.downloadMessageDirectMedia(ctx, parsedID, params)
+	} else if parsedID.Avatar != nil {
+		return wa.downloadAvatarDirectMedia(ctx, parsedID, params)
+	} else {
+		return nil, fmt.Errorf("unexpected media ID parsing result")
+	}
+}
+
+func (wa *WhatsAppConnector) downloadAvatarDirectMedia(ctx context.Context, parsedID *waid.ParsedMediaID, params map[string]string) (mediaproxy.GetMediaResponse, error) {
+	ul := wa.Bridge.GetCachedUserLoginByID(parsedID.UserLogin)
+	if ul == nil {
+		return nil, fmt.Errorf("%w: user login %s not found", bridgev2.ErrNotLoggedIn, parsedID.UserLogin)
+	}
+	waClient := ul.Client.(*WhatsAppClient)
+	if waClient.Client == nil {
+		return nil, fmt.Errorf("no WhatsApp client found on login %s", parsedID.UserLogin)
+	}
+	cachedInfo, err := wa.DB.AvatarCache.Get(ctx, parsedID.Avatar.TargetJID, parsedID.Avatar.AvatarID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get avatar cache entry: %w", err)
+	}
+	if cachedInfo != nil && cachedInfo.Gone {
+		return nil, mautrix.MNotFound.WithMessage("Avatar is no longer available")
+	} else if cachedInfo == nil || cachedInfo.Expiry.Time.Before(time.Now().Add(5*time.Minute)) {
+		zerolog.Ctx(ctx).Debug().
+			Str("avatar_id", parsedID.Avatar.AvatarID).
+			Msg("Refreshing avatar URL from WhatsApp servers")
+		avatar, err := waClient.Client.GetProfilePictureInfo(parsedID.Avatar.TargetJID, &whatsmeow.GetProfilePictureParams{
+			IsCommunity: parsedID.Avatar.Community,
+		})
+		if errors.Is(err, whatsmeow.ErrProfilePictureNotSet) ||
+			errors.Is(err, whatsmeow.ErrProfilePictureUnauthorized) ||
+			(err == nil && (avatar == nil || avatar.ID != parsedID.Avatar.AvatarID)) {
+			err = wa.DB.AvatarCache.Put(ctx, &wadb.AvatarCacheEntry{
+				EntityJID: parsedID.Avatar.TargetJID,
+				AvatarID:  parsedID.Avatar.AvatarID,
+				Gone:      true,
+			})
+			if err != nil {
+				zerolog.Ctx(ctx).Warn().Err(err).
+					Str("avatar_id", parsedID.Avatar.AvatarID).
+					Msg("Failed to mark avatar as gone in cache")
+			}
+			return nil, mautrix.MNotFound.WithMessage("Avatar is no longer available")
+		} else if err != nil {
+			return nil, fmt.Errorf("failed to refresh avatar url: %w", err)
+		}
+		cachedInfo = avatarInfoToCacheEntry(ctx, parsedID.Avatar.TargetJID, avatar)
+		err = wa.DB.AvatarCache.Put(ctx, cachedInfo)
+		if err != nil {
+			zerolog.Ctx(ctx).Warn().Err(err).
+				Str("avatar_id", avatar.ID).
+				Msg("Failed to update avatar cache entry")
+		}
+	}
+	return &mediaproxy.GetMediaResponseFile{
+		Callback: func(w *os.File) error {
+			return waClient.Client.DownloadMediaWithPathToFile(
+				ctx, cachedInfo.DirectPath, nil, nil, nil, 0, "", "", w,
+			)
+		},
+		ContentType: "", // TODO are avatars always jpeg?
+	}, nil
+}
+
+func (wa *WhatsAppConnector) downloadMessageDirectMedia(ctx context.Context, parsedID *waid.ParsedMediaID, params map[string]string) (mediaproxy.GetMediaResponse, error) {
+	log := zerolog.Ctx(ctx)
+	msg, err := wa.Bridge.DB.Message.GetFirstPartByID(ctx, parsedID.UserLogin, parsedID.Message.String())
 	if err != nil {
 		return nil, fmt.Errorf("failed to get message: %w", err)
 	} else if msg == nil {
@@ -77,8 +146,8 @@ func (wa *WhatsAppConnector) Download(ctx context.Context, mediaID networkid.Med
 		return nil, fmt.Errorf("failed to unmarshal media keys: %w", err)
 	}
 	var ul *bridgev2.UserLogin
-	if receiverID != "" {
-		ul = wa.Bridge.GetCachedUserLoginByID(receiverID)
+	if parsedID.UserLogin != "" {
+		ul = wa.Bridge.GetCachedUserLoginByID(parsedID.UserLogin)
 	} else {
 		logins, err := wa.Bridge.GetUserLoginsInPortal(ctx, msg.Room)
 		if err != nil {

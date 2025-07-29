@@ -15,6 +15,7 @@ type Database struct {
 	PollOption   *PollOptionQuery
 	MediaRequest *MediaRequestQuery
 	HSNotif      *HistorySyncNotificationQuery
+	AvatarCache  *AvatarCacheQuery
 }
 
 func New(bridgeID networkid.BridgeID, db *dbutil.Database, log zerolog.Logger) *Database {
@@ -44,6 +45,11 @@ func New(bridgeID networkid.BridgeID, db *dbutil.Database, log zerolog.Logger) *
 		HSNotif: &HistorySyncNotificationQuery{
 			BridgeID: bridgeID,
 			Database: db,
+		},
+		AvatarCache: &AvatarCacheQuery{
+			QueryHelper: dbutil.MakeQueryHelper(db, func(_ *dbutil.QueryHelper[*AvatarCacheEntry]) *AvatarCacheEntry {
+				return &AvatarCacheEntry{}
+			}),
 		},
 	}
 }
