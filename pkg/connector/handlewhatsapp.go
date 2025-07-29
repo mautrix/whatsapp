@@ -26,6 +26,7 @@ import (
 	"github.com/rs/zerolog"
 	"go.mau.fi/util/ptr"
 	"go.mau.fi/whatsmeow/appstate"
+	"go.mau.fi/whatsmeow/proto/waE2E"
 	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
 	"maunium.net/go/mautrix/bridgev2"
@@ -289,6 +290,33 @@ func (wa *WhatsAppClient) handleWAMessage(ctx context.Context, evt *events.Messa
 		wa.Client.ManualHistorySyncDownload {
 		wa.saveWAHistorySyncNotification(ctx, evt.Message.ProtocolMessage.HistorySyncNotification)
 	}
+	if evt.Message != nil && evt.Message.GetMessageContextInfo() != nil {
+		messageAssoc := evt.Message.GetMessageContextInfo().GetMessageAssociation()
+		if messageAssoc != nil {
+			assocType := messageAssoc.GetAssociationType()
+			if assocType == waE2E.MessageAssociation_HD_IMAGE_DUAL_UPLOAD ||
+				assocType == waE2E.MessageAssociation_HD_VIDEO_DUAL_UPLOAD {
+				parentKey := messageAssoc.GetParentMessageKey()
+				if parentKey != nil {
+					wa.UserLogin.Log.Debug().
+						Str("message_id", evt.Info.ID).
+						Str("parent_id", parentKey.GetID()).
+						Str("assoc_type", assocType.String()).
+						Msg("Received HD replacement message, converting to edit")
+
+					protocolMsg := &waE2E.ProtocolMessage{
+						Type:          waE2E.ProtocolMessage_MESSAGE_EDIT.Enum(),
+						Key:           parentKey,
+						EditedMessage: evt.Message,
+					}
+					evt.Message = &waE2E.Message{
+						ProtocolMessage: protocolMsg,
+					}
+				}
+			}
+		}
+	}
+
 	parsedMessageType := getMessageType(evt.Message)
 	if parsedMessageType == "ignore" || strings.HasPrefix(parsedMessageType, "unknown_protocol_") {
 		return
