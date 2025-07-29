@@ -47,6 +47,7 @@ const (
 	contextKeyClient contextKey = iota
 	contextKeyIntent
 	contextKeyPortal
+	ContextKeyEditTargetID
 )
 
 func getClient(ctx context.Context) *whatsmeow.Client {
@@ -59,6 +60,11 @@ func getIntent(ctx context.Context) bridgev2.MatrixAPI {
 
 func getPortal(ctx context.Context) *bridgev2.Portal {
 	return ctx.Value(contextKeyPortal).(*bridgev2.Portal)
+}
+
+func getEditTargetID(ctx context.Context) types.MessageID {
+	editID, _ := ctx.Value(ContextKeyEditTargetID).(types.MessageID)
+	return editID
 }
 
 func (mc *MessageConverter) getBasicUserInfo(ctx context.Context, user types.JID) (id.UserID, string, error) {
