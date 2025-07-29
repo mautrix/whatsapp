@@ -292,8 +292,8 @@ func (wa *WhatsAppClient) handleWAMessage(ctx context.Context, evt *events.Messa
 	}
 	messageAssoc := evt.Message.GetMessageContextInfo().GetMessageAssociation()
 	assocType := messageAssoc.GetAssociationType()
-	if (assocType == waE2E.MessageAssociation_HD_IMAGE_DUAL_UPLOAD ||
-		assocType == waE2E.MessageAssociation_HD_VIDEO_DUAL_UPLOAD) {
+	if assocType == waE2E.MessageAssociation_HD_IMAGE_DUAL_UPLOAD ||
+		assocType == waE2E.MessageAssociation_HD_VIDEO_DUAL_UPLOAD {
 		parentKey := messageAssoc.GetParentMessageKey()
 		associatedMessage := evt.Message.GetAssociatedChildMessage().GetMessage()
 		wa.UserLogin.Log.Debug().
