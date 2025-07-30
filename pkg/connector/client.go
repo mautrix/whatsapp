@@ -111,7 +111,7 @@ type WhatsAppClient struct {
 	directMediaRetries map[networkid.MessageID]*directMediaRetry
 	directMediaLock    sync.Mutex
 	mediaRetryLock     *semaphore.Weighted
-	offlineSyncWaiter  chan error
+	offlineSyncWaiter  atomic.Pointer[chan error]
 	isNewLogin         bool
 	pushNamesSynced    exsync.Event
 	lastPresence       types.Presence
@@ -209,8 +209,14 @@ func (wa *WhatsAppClient) Connect(ctx context.Context) {
 }
 
 func (wa *WhatsAppClient) notifyOfflineSyncWaiter(err error) {
-	if wa.offlineSyncWaiter != nil {
-		wa.offlineSyncWaiter <- err
+	if ch := wa.offlineSyncWaiter.Load(); ch != nil {
+		select {
+		case *ch <- err:
+		default:
+			wa.UserLogin.Log.Warn().
+				AnErr("dropped_error", err).
+				Msg("Offline sync waiter channel was full, dropping input")
+		}
 	}
 }
 
@@ -232,7 +238,9 @@ func (wa *WhatsAppClient) ConnectBackground(ctx context.Context, params *bridgev
 		return bridgev2.ErrNotLoggedIn
 	}
 	wa.Client.BackgroundEventCtx = wa.UserLogin.Log.WithContext(wa.Main.Bridge.BackgroundCtx)
-	wa.offlineSyncWaiter = make(chan error)
+	ch := make(chan error, 1)
+	wa.offlineSyncWaiter.Store(&ch)
+	defer wa.offlineSyncWaiter.Store(nil)
 	wa.Main.backgroundConnectOnce.Do(wa.Main.onFirstBackgroundConnect)
 	if err := wa.Main.updateProxy(ctx, wa.Client, false); err != nil {
 		zerolog.Ctx(ctx).Err(err).Msg("Failed to update proxy")
@@ -253,7 +261,7 @@ func (wa *WhatsAppClient) ConnectBackground(ctx context.Context, params *bridgev
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
-	case err = <-wa.offlineSyncWaiter:
+	case err = <-ch:
 		if err == nil {
 			var data wrappedPushNotificationData
 			err = json.Unmarshal(params.RawData, &data)
