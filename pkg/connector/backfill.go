@@ -518,6 +518,11 @@ func (wa *WhatsAppClient) FetchMessages(ctx context.Context, params bridgev2.Fet
 func (wa *WhatsAppClient) convertHistorySyncMessage(
 	ctx context.Context, portal *bridgev2.Portal, info *types.MessageInfo, msg *waE2E.Message, isViewOnce bool, reactions []*waWeb.Reaction,
 ) (*bridgev2.BackfillMessage, *wadb.MediaRequest) {
+	// New messages turn these into edits, but in backfill we only have the last version,
+	// so no need to do the edit thing. Instead, just unwrap the message.
+	if msg.GetAssociatedChildMessage().GetMessage() != nil {
+		msg = msg.GetAssociatedChildMessage().GetMessage()
+	}
 	// TODO use proper intent
 	intent := wa.Main.Bridge.Bot
 	wrapped := &bridgev2.BackfillMessage{
