@@ -279,13 +279,6 @@ func (mc *MessageConverter) constructMediaMessage(
 	}
 }
 
-var hackyFormattingEscaper = strings.NewReplacer(
-	"~", "\u200b~",
-	"_", "\u200b_",
-	"*", "\u200b*",
-	"`", "\u200b`",
-)
-
 func (mc *MessageConverter) parseText(ctx context.Context, content *event.MessageEventContent) (text string, mentions []string) {
 	mentions = make([]string, 0)
 
@@ -295,7 +288,7 @@ func (mc *MessageConverter) parseText(ctx context.Context, content *event.Messag
 	if content.Format == event.FormatHTML {
 		text = mc.HTMLParser.Parse(content.FormattedBody, parseCtx)
 	} else {
-		text = hackyFormattingEscaper.Replace(content.Body)
+		text = content.Body
 	}
 	return
 }
