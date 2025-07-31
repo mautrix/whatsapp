@@ -63,6 +63,16 @@ var (
 		Err:        "Unexpected event while waiting for login",
 		StatusCode: http.StatusInternalServerError,
 	}
+	ErrPhoneNumberTooShort = bridgev2.RespError{
+		ErrCode:    "FI.MAU.WHATSAPP.PHONE_NUMBER_TOO_SHORT",
+		Err:        "Phone number too short",
+		StatusCode: http.StatusBadRequest,
+	}
+	ErrPhoneNumberIsNotInternational = bridgev2.RespError{
+		ErrCode:    "FI.MAU.WHATSAPP.PHONE_NUMBER_NOT_INTERNATIONAL",
+		Err:        "Phone number must be in international format",
+		StatusCode: http.StatusBadRequest,
+	}
 )
 
 func (wa *WhatsAppConnector) CreateLogin(_ context.Context, user *bridgev2.User, flowID string) (bridgev2.LoginProcess, error) {
@@ -181,6 +191,11 @@ func (wl *WALogin) SubmitUserInput(ctx context.Context, input map[string]string)
 	pairingCode, err := wl.Client.PairPhone(ctx, input["phone_number"], true, whatsmeow.PairClientChrome, "Chrome (Linux)")
 	if err != nil {
 		wl.Log.Err(err).Msg("Failed to request phone code login")
+		if errors.Is(err, whatsmeow.ErrPhoneNumberTooShort) {
+			return nil, ErrPhoneNumberTooShort
+		} else if errors.Is(err, whatsmeow.ErrPhoneNumberIsNotInternational) {
+			return nil, ErrPhoneNumberIsNotInternational
+		}
 		return nil, err
 	}
 	wl.Log.Debug().Msg("Phone code login started")
