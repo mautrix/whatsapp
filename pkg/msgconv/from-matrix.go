@@ -440,11 +440,16 @@ func (mc *MessageConverter) reuploadFileToWhatsApp(
 			var size int
 			data, size, err = mc.convertToWebP(data)
 			if err != nil {
-				return nil, nil, "image/webp", fmt.Errorf("%w (to webp): %w", bridgev2.ErrMediaConvertFailed, err)
+				if mime != "image/webp" {
+					return nil, nil, "image/webp", fmt.Errorf("%w (to webp): %w", bridgev2.ErrMediaConvertFailed, err)
+				} else {
+					zerolog.Ctx(ctx).Warn().Err(err).Msg("Failed to add padding to webp, continuing with original file")
+				}
+			} else {
+				content.Info.Width = size
+				content.Info.Height = size
+				mime = "image/webp"
 			}
-			content.Info.Width = size
-			content.Info.Height = size
-			mime = "image/webp"
 		}
 	case event.MsgImage:
 		mediaType = whatsmeow.MediaImage
