@@ -199,7 +199,9 @@ func (wa *WhatsAppClient) contactToUserInfo(ctx context.Context, jid types.JID, 
 		pnJID, err := wa.GetStore().LIDs.GetPNForLID(ctx, jid)
 		if err != nil {
 			zerolog.Ctx(ctx).Err(err).Stringer("lid", jid).Msg("Failed to get PN for LID")
-		} else if !pnJID.IsEmpty() {
+		} else if pnJID.IsEmpty() {
+			zerolog.Ctx(ctx).Debug().Stringer("lid", jid).Msg("Phone number not found for LID in contactToUserInfo")
+		} else {
 			phone = "+" + pnJID.User
 			extraContact, err := wa.GetStore().Contacts.GetContact(ctx, pnJID)
 			if err != nil {
