@@ -134,6 +134,7 @@ func (mc *MessageConverter) ToMatrix(
 	client *whatsmeow.Client,
 	intent bridgev2.MatrixAPI,
 	waMsg *waE2E.Message,
+	rawWaMsg *waE2E.Message,
 	info *types.MessageInfo,
 	isViewOnce bool,
 	previouslyConvertedPart *bridgev2.ConvertedMessagePart,
@@ -209,7 +210,7 @@ func (mc *MessageConverter) ToMatrix(
 	case waMsg.EncCommentMessage != nil:
 		part = failedCommentPart
 	default:
-		part, contextInfo = mc.convertUnknownMessage(ctx, waMsg)
+		part, contextInfo = mc.convertUnknownMessage(ctx, rawWaMsg)
 	}
 
 	part.Content.Mentions = &event.Mentions{}

@@ -187,7 +187,9 @@ func (evt *WAMessageEvent) ConvertEdit(ctx context.Context, portal *bridgev2.Por
 	}
 
 	ctx = context.WithValue(ctx, msgconv.ContextKeyEditTargetID, evt.Message.GetProtocolMessage().GetKey().GetID())
-	cm := evt.wa.Main.MsgConv.ToMatrix(ctx, portal, evt.wa.Client, intent, editedMsg, &evt.Info, evt.isViewOnce(), previouslyConvertedPart)
+	cm := evt.wa.Main.MsgConv.ToMatrix(
+		ctx, portal, evt.wa.Client, intent, editedMsg, evt.MsgEvent.RawMessage, &evt.Info, evt.isViewOnce(), previouslyConvertedPart,
+	)
 	if evt.isUndecryptableUpsertSubEvent && isFailedMedia(cm) {
 		evt.postHandle = func() {
 			evt.wa.processFailedMedia(ctx, portal.PortalKey, evt.GetID(), cm, false)
@@ -262,7 +264,9 @@ func (evt *WAMessageEvent) HandleExisting(ctx context.Context, portal *bridgev2.
 
 func (evt *WAMessageEvent) ConvertMessage(ctx context.Context, portal *bridgev2.Portal, intent bridgev2.MatrixAPI) (*bridgev2.ConvertedMessage, error) {
 	evt.wa.EnqueuePortalResync(portal)
-	converted := evt.wa.Main.MsgConv.ToMatrix(ctx, portal, evt.wa.Client, intent, evt.Message, &evt.Info, evt.isViewOnce(), nil)
+	converted := evt.wa.Main.MsgConv.ToMatrix(
+		ctx, portal, evt.wa.Client, intent, evt.Message, evt.MsgEvent.RawMessage, &evt.Info, evt.isViewOnce(), nil,
+	)
 	if isFailedMedia(converted) {
 		evt.postHandle = func() {
 			evt.wa.processFailedMedia(ctx, portal.PortalKey, evt.GetID(), converted, false)

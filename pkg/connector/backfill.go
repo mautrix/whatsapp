@@ -471,7 +471,9 @@ func (wa *WhatsAppClient) FetchMessages(ctx context.Context, params bridgev2.Fet
 		}
 		var mediaReq *wadb.MediaRequest
 		isViewOnce := evt.IsViewOnce || evt.IsViewOnceV2 || evt.IsViewOnceV2Extension
-		convertedMessages[i], mediaReq = wa.convertHistorySyncMessage(ctx, params.Portal, &evt.Info, evt.Message, isViewOnce, msg.Reactions)
+		convertedMessages[i], mediaReq = wa.convertHistorySyncMessage(
+			ctx, params.Portal, &evt.Info, evt.Message, evt.RawMessage, isViewOnce, msg.Reactions,
+		)
 		if mediaReq != nil {
 			mediaRequests = append(mediaRequests, mediaReq)
 		}
@@ -516,7 +518,7 @@ func (wa *WhatsAppClient) FetchMessages(ctx context.Context, params bridgev2.Fet
 }
 
 func (wa *WhatsAppClient) convertHistorySyncMessage(
-	ctx context.Context, portal *bridgev2.Portal, info *types.MessageInfo, msg *waE2E.Message, isViewOnce bool, reactions []*waWeb.Reaction,
+	ctx context.Context, portal *bridgev2.Portal, info *types.MessageInfo, msg, rawMsg *waE2E.Message, isViewOnce bool, reactions []*waWeb.Reaction,
 ) (*bridgev2.BackfillMessage, *wadb.MediaRequest) {
 	// New messages turn these into edits, but in backfill we only have the last version,
 	// so no need to do the edit thing. Instead, just unwrap the message.
@@ -526,7 +528,7 @@ func (wa *WhatsAppClient) convertHistorySyncMessage(
 	// TODO use proper intent
 	intent := wa.Main.Bridge.Bot
 	wrapped := &bridgev2.BackfillMessage{
-		ConvertedMessage: wa.Main.MsgConv.ToMatrix(ctx, portal, wa.Client, intent, msg, info, isViewOnce, nil),
+		ConvertedMessage: wa.Main.MsgConv.ToMatrix(ctx, portal, wa.Client, intent, msg, rawMsg, info, isViewOnce, nil),
 		Sender:           wa.makeEventSender(ctx, info.Sender),
 		ID:               waid.MakeMessageID(info.Chat, info.Sender, info.ID),
 		TxnID:            networkid.TransactionID(waid.MakeMessageID(info.Chat, info.Sender, info.ID)),
