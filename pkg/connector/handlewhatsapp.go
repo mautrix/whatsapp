@@ -85,7 +85,7 @@ func (wa *WhatsAppClient) handleWAEvent(rawEvt any) (success bool) {
 	case *events.ChatPresence:
 		wa.handleWAChatPresence(ctx, evt)
 	case *events.UndecryptableMessage:
-		success = wa.handleWAUndecryptableMessage(evt)
+		success = wa.handleWAUndecryptableMessage(ctx, evt)
 
 	case *events.CallOffer:
 		success = wa.handleWACallStart(ctx, evt.GroupJID, evt.CallCreator, evt.CallID, "", evt.Timestamp)
@@ -247,39 +247,43 @@ func (wa *WhatsAppClient) handleWAEvent(rawEvt any) (success bool) {
 	return
 }
 
-func (wa *WhatsAppClient) handleWAMessage(ctx context.Context, evt *events.Message) (success bool) {
-	success = true
-	if evt.Info.Chat.Server == types.HiddenUserServer && evt.Info.Sender.ToNonAD() == evt.Info.Chat && evt.Info.SenderAlt.Server == types.DefaultUserServer {
+func (wa *WhatsAppClient) rerouteWAMessage(ctx context.Context, info *types.MessageInfo) {
+	if info.Chat.Server == types.HiddenUserServer && info.Sender.ToNonAD() == info.Chat && info.SenderAlt.Server == types.DefaultUserServer {
 		wa.UserLogin.Log.Debug().
-			Stringer("lid", evt.Info.Sender).
-			Stringer("pn", evt.Info.SenderAlt).
-			Str("message_id", evt.Info.ID).
+			Stringer("lid", info.Sender).
+			Stringer("pn", info.SenderAlt).
+			Str("message_id", info.ID).
 			Msg("Forced LID DM sender to phone number in incoming message")
-		evt.Info.Sender, evt.Info.SenderAlt = evt.Info.SenderAlt, evt.Info.Sender
-		evt.Info.Chat = evt.Info.Sender.ToNonAD()
-	} else if evt.Info.Chat.Server == types.HiddenUserServer && evt.Info.IsFromMe && evt.Info.RecipientAlt.Server == types.DefaultUserServer {
+		info.Sender, info.SenderAlt = info.SenderAlt, info.Sender
+		info.Chat = info.Sender.ToNonAD()
+	} else if info.Chat.Server == types.HiddenUserServer && info.IsFromMe && info.RecipientAlt.Server == types.DefaultUserServer {
 		wa.UserLogin.Log.Debug().
-			Stringer("lid", evt.Info.Chat).
-			Stringer("pn", evt.Info.RecipientAlt).
-			Str("message_id", evt.Info.ID).
+			Stringer("lid", info.Chat).
+			Stringer("pn", info.RecipientAlt).
+			Str("message_id", info.ID).
 			Msg("Forced LID DM sender to phone number in own message sent from another device")
-		evt.Info.Chat = evt.Info.RecipientAlt.ToNonAD()
-	} else if evt.Info.Sender.Server == types.BotServer && evt.Info.Chat.Server == types.HiddenUserServer {
-		chatPN, err := wa.Device.LIDs.GetPNForLID(ctx, evt.Info.Chat)
+		info.Chat = info.RecipientAlt.ToNonAD()
+	} else if info.Sender.Server == types.BotServer && info.Chat.Server == types.HiddenUserServer {
+		chatPN, err := wa.Device.LIDs.GetPNForLID(ctx, info.Chat)
 		if err != nil {
 			wa.UserLogin.Log.Err(err).
-				Str("message_id", evt.Info.ID).
-				Stringer("lid", evt.Info.Chat).
+				Str("message_id", info.ID).
+				Stringer("lid", info.Chat).
 				Msg("Failed to get phone number of DM for incoming bot message")
 		} else if !chatPN.IsEmpty() {
 			wa.UserLogin.Log.Debug().
-				Stringer("lid", evt.Info.Chat).
+				Stringer("lid", info.Chat).
 				Stringer("pn", chatPN).
-				Str("message_id", evt.Info.ID).
+				Str("message_id", info.ID).
 				Msg("Forced LID chat to phone number in bot message")
-			evt.Info.Chat = chatPN
+			info.Chat = chatPN
 		}
 	}
+}
+
+func (wa *WhatsAppClient) handleWAMessage(ctx context.Context, evt *events.Message) (success bool) {
+	success = true
+	wa.rerouteWAMessage(ctx, &evt.Info)
 	wa.UserLogin.Log.Trace().
 		Any("info", evt.Info).
 		Any("payload", evt.Message).
@@ -349,7 +353,8 @@ func (wa *WhatsAppClient) handleWAMessage(ctx context.Context, evt *events.Messa
 	return res.Success
 }
 
-func (wa *WhatsAppClient) handleWAUndecryptableMessage(evt *events.UndecryptableMessage) bool {
+func (wa *WhatsAppClient) handleWAUndecryptableMessage(ctx context.Context, evt *events.UndecryptableMessage) bool {
+	wa.rerouteWAMessage(ctx, &evt.Info)
 	wa.UserLogin.Log.Debug().
 		Any("info", evt.Info).
 		Bool("unavailable", evt.IsUnavailable).
