@@ -229,3 +229,18 @@ func (mc *MessageConverter) convertPinInChatMessage(ctx context.Context, msg *wa
 		},
 	}, nil
 }
+
+func (mc *MessageConverter) convertKeepInChatMessage(ctx context.Context, msg *waE2E.KeepInChatMessage) (*bridgev2.ConvertedMessagePart, *waE2E.ContextInfo) {
+	body := "Kept a message"
+	if msg.GetKeepType() == waE2E.KeepType_UNDO_KEEP_FOR_ALL {
+		body = "Unkept a message"
+	}
+
+	return &bridgev2.ConvertedMessagePart{
+		Type: event.EventMessage,
+		Content: &event.MessageEventContent{
+			MsgType: event.MsgNotice,
+			Body:    body,
+		},
+	}, nil
+}
