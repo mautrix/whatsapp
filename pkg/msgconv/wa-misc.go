@@ -257,11 +257,9 @@ func (mc *MessageConverter) convertRichResponseMessage(ctx context.Context, msg 
 		}
 	}
 
+	content := format.RenderMarkdown(body.String(), true, false)
 	return &bridgev2.ConvertedMessagePart{
-		Type: event.EventMessage,
-		Content: &event.MessageEventContent{
-			MsgType: event.MsgText,
-			Body:    body.String(),
-		},
+		Type:    event.EventMessage,
+		Content: &content,
 	}, msg.GetContextInfo()
 }
