@@ -220,7 +220,7 @@ func (mc *MessageConverter) convertPinInChatMessage(ctx context.Context, msg *wa
 	if msg.GetType() == waE2E.PinInChatMessage_UNPIN_FOR_ALL {
 		body = "Unpinned a message"
 	}
-	
+
 	return &bridgev2.ConvertedMessagePart{
 		Type: event.EventMessage,
 		Content: &event.MessageEventContent{
