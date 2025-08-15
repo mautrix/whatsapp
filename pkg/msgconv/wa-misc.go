@@ -214,3 +214,18 @@ func (mc *MessageConverter) convertEventMessage(ctx context.Context, msg *waE2E.
 		Content: &content,
 	}, msg.GetContextInfo()
 }
+
+func (mc *MessageConverter) convertPinInChatMessage(ctx context.Context, msg *waE2E.PinInChatMessage) (*bridgev2.ConvertedMessagePart, *waE2E.ContextInfo) {
+	body := "Pinned a message"
+	if msg.GetType() == waE2E.PinInChatMessage_UNPIN_FOR_ALL {
+		body = "Unpinned a message"
+	}
+	
+	return &bridgev2.ConvertedMessagePart{
+		Type: event.EventMessage,
+		Content: &event.MessageEventContent{
+			MsgType: event.MsgNotice,
+			Body:    body,
+		},
+	}, nil
+}
