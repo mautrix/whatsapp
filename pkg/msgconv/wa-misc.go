@@ -244,3 +244,24 @@ func (mc *MessageConverter) convertKeepInChatMessage(ctx context.Context, msg *w
 		},
 	}, nil
 }
+
+func (mc *MessageConverter) convertRichResponseMessage(ctx context.Context, msg *waE2E.AIRichResponseMessage) (*bridgev2.ConvertedMessagePart, *waE2E.ContextInfo) {
+	var body strings.Builder
+
+	for i, submsg := range msg.GetSubmessages() {
+		if submsg.GetMessageType() == waE2E.AIRichResponseMessage_AI_RICH_RESPONSE_TEXT {
+			if i > 0 {
+				body.WriteString("\n")
+			}
+			body.WriteString(submsg.GetMessageText())
+		}
+	}
+
+	return &bridgev2.ConvertedMessagePart{
+		Type: event.EventMessage,
+		Content: &event.MessageEventContent{
+			MsgType: event.MsgText,
+			Body:    body.String(),
+		},
+	}, msg.GetContextInfo()
+}
