@@ -148,6 +148,14 @@ var whatsappCaps = &event.RoomFeatures{
 	ReactionCount:       1,
 	ReadReceipts:        true,
 	TypingNotifications: true,
+	DisappearingTimer: &event.DisappearingTimerCapability{
+		Types: []string{string(event.DisappearingTypeAfterSend)},
+		Timers: []int64{
+			86400,   // 24 hours
+			604800,  // 7 days
+			7776000, // 90 days
+		},
+	},
 }
 
 var whatsappCAGCaps *event.RoomFeatures
