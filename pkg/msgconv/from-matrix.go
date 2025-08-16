@@ -48,7 +48,7 @@ import (
 	"go.mau.fi/mautrix-whatsapp/pkg/waid"
 )
 
-func (mc *MessageConverter) generateContextInfo(ctx context.Context, replyTo *database.Message, portal *bridgev2.Portal) *waE2E.ContextInfo {
+func (mc *MessageConverter) generateContextInfo(ctx context.Context, replyTo *database.Message, portal *bridgev2.Portal, perMessageTimer *event.BeeperDisappearingTimer) *waE2E.ContextInfo {
 	contextInfo := &waE2E.ContextInfo{}
 	if replyTo != nil {
 		msgID, err := waid.ParseMessageID(replyTo.ID)
@@ -63,12 +63,14 @@ func (mc *MessageConverter) generateContextInfo(ctx context.Context, replyTo *da
 				Msg("Failed to parse reply to message ID")
 		}
 	}
-	if portal.Disappear.Timer > 0 {
+	if perMessageTimer != nil && perMessageTimer.Timer > 0 {
+		contextInfo.Expiration = ptr.Ptr(uint32(perMessageTimer.Timer / 1000))
+	} else if portal.Disappear.Timer > 0 {
 		contextInfo.Expiration = ptr.Ptr(uint32(portal.Disappear.Timer.Seconds()))
-		setAt := portal.Metadata.(*waid.PortalMetadata).DisappearingTimerSetAt
-		if setAt > 0 {
-			contextInfo.EphemeralSettingTimestamp = ptr.Ptr(setAt)
-		}
+	}
+	setAt := portal.Metadata.(*waid.PortalMetadata).DisappearingTimerSetAt
+	if setAt > 0 && contextInfo.Expiration != nil {
+		contextInfo.EphemeralSettingTimestamp = ptr.Ptr(setAt)
 	}
 	return contextInfo
 }
@@ -89,7 +91,7 @@ func (mc *MessageConverter) ToWhatsApp(
 	}
 
 	message := &waE2E.Message{}
-	contextInfo := mc.generateContextInfo(ctx, replyTo, portal)
+	contextInfo := mc.generateContextInfo(ctx, replyTo, portal, content.BeeperDisappearingTimer)
 
 	switch content.MsgType {
 	case event.MsgText, event.MsgNotice, event.MsgEmote:
