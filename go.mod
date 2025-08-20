@@ -2,21 +2,21 @@ module go.mau.fi/mautrix-whatsapp
 
 go 1.24.0
 
-toolchain go1.24.5
+toolchain go1.25.0
 
 require (
 	github.com/gorilla/websocket v1.5.0
 	github.com/lib/pq v1.10.9
 	github.com/rs/zerolog v1.34.0
-	go.mau.fi/util v0.8.9-0.20250813172851-79bf3eba563d
+	go.mau.fi/util v0.9.0
 	go.mau.fi/webp v0.2.0
-	go.mau.fi/whatsmeow v0.0.0-20250811141640-b804d10c54c2
-	golang.org/x/image v0.29.0
+	go.mau.fi/whatsmeow v0.0.0-20250816105909-9a955523cf0c
+	golang.org/x/image v0.30.0
 	golang.org/x/net v0.43.0
 	golang.org/x/sync v0.16.0
 	google.golang.org/protobuf v1.36.7
 	gopkg.in/yaml.v3 v3.0.1
-	maunium.net/go/mautrix v0.24.3-0.20250801084753-196164ed6749
+	maunium.net/go/mautrix v0.25.0
 )
 
 require (
@@ -27,7 +27,7 @@ require (
 	github.com/kr/pretty v0.3.1 // indirect
 	github.com/mattn/go-colorable v0.1.14 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
-	github.com/mattn/go-sqlite3 v1.14.31 // indirect
+	github.com/mattn/go-sqlite3 v1.14.32 // indirect
 	github.com/petermattis/goid v0.0.0-20250813065127-a731cc31b4fe // indirect
 	github.com/rogpeppe/go-internal v1.10.0 // indirect
 	github.com/rs/xid v1.6.0 // indirect
@@ -38,7 +38,7 @@ require (
 	github.com/tidwall/sjson v1.2.5 // indirect
 	github.com/yuin/goldmark v1.7.13 // indirect
 	go.mau.fi/libsignal v0.2.0 // indirect
-	go.mau.fi/zeroconfig v0.1.3 // indirect
+	go.mau.fi/zeroconfig v0.2.0 // indirect
 	golang.org/x/crypto v0.41.0 // indirect
 	golang.org/x/exp v0.0.0-20250813145105-42675adae3e6 // indirect
 	golang.org/x/sys v0.35.0 // indirect

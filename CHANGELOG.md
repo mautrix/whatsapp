@@ -1,3 +1,21 @@
+# v0.12.4 (2025-08-16)
+
+* Deprecated legacy provisioning API. The `/_matrix/provision/v1` endpoints will
+  be deleted in the next release.
+* Bumped minimum Go version to 1.24.
+* Added support for bridging HD dual uploads from WhatsApp into edits on Matrix.
+* Added better placeholders for pin and keep messages from WhatsApp.
+* Fixed bridging animated webp stickers to WhatsApp.
+  * Note that non-square stickers may appear corrupted on native clients.
+    The bridge will not automatically add padding to animated stickers like it
+    does for static ones.
+* Fixed avatar changes not reflecting on both the LID and phone number ghost of
+  a given user in certain cases.
+* Fixed first message after group LID migration still using the phone number
+  ghost.
+* Fixed bot messages in DMs being split into another portal room.
+* Fixed new group members not having a phone number name in some cases.
+
 # v0.12.3 (2025-07-16)
 
 * Further improved support for `@lid` users.

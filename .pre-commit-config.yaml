@@ -1,6 +1,6 @@
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v5.0.0
+    rev: v6.0.0
     hooks:
       - id: trailing-whitespace
         exclude_types: [markdown]
@@ -9,7 +9,7 @@ repos:
       - id: check-added-large-files
 
   - repo: https://github.com/tekwizely/pre-commit-golang
-    rev: v1.0.0-rc.1
+    rev: v1.0.0-rc.2
     hooks:
       - id: go-imports-repo
         args:
