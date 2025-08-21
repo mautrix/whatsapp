@@ -89,8 +89,9 @@ func (mc *MessageConverter) getBasicUserInfo(ctx context.Context, user types.JID
 		}
 	}
 	if !pnJID.IsEmpty() {
+		portal := getPortal(ctx)
 		login := mc.Bridge.GetCachedUserLoginByID(waid.MakeUserLoginID(pnJID))
-		if login != nil {
+		if login != nil && (portal.Receiver == "" || portal.Receiver == login.ID) {
 			return login.UserMXID, ghost.Name, nil
 		}
 	}
