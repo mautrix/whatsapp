@@ -122,7 +122,7 @@ func (wa *WhatsAppClient) applyHistoryInfo(info *bridgev2.ChatInfo, conv *wadb.C
 	}
 	if info.Disappear == nil && ptr.Val(conv.EphemeralExpiration) > 0 {
 		info.Disappear = &database.DisappearingSetting{
-			Type:  database.DisappearingTypeAfterRead,
+			Type:  database.DisappearingTypeAfterSend,
 			Timer: time.Duration(*conv.EphemeralExpiration) * time.Second,
 		}
 		if conv.EphemeralSettingTimestamp != nil {
@@ -255,7 +255,7 @@ func (wa *WhatsAppClient) wrapGroupInfo(ctx context.Context, info *types.GroupIn
 			},
 		},
 		Disappear: &database.DisappearingSetting{
-			Type:  database.DisappearingTypeAfterRead,
+			Type:  database.DisappearingTypeAfterSend,
 			Timer: time.Duration(info.DisappearingTimer) * time.Second,
 		},
 		ExtraUpdates: extraUpdater,
@@ -311,7 +311,7 @@ func (wa *WhatsAppClient) wrapGroupInfoChange(ctx context.Context, evt *events.G
 		}
 		if evt.Ephemeral != nil {
 			changes.Disappear = &database.DisappearingSetting{
-				Type:  database.DisappearingTypeAfterRead,
+				Type:  database.DisappearingTypeAfterSend,
 				Timer: time.Duration(evt.Ephemeral.DisappearingTimer) * time.Second,
 			}
 			if !evt.Ephemeral.IsEphemeral {
