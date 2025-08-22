@@ -65,9 +65,9 @@ func (mc *MessageConverter) generateContextInfo(ctx context.Context, replyTo *da
 		}
 	}
 	var timer time.Duration
-	if perMessageTimer != nil && perMessageTimer.Timer.Duration > 0 {
+	if perMessageTimer != nil {
 		timer = perMessageTimer.Timer.Duration
-	} else if portal.Disappear.Timer > 0 {
+	} else {
 		timer = portal.Disappear.Timer
 	}
 	if timer > 0 {
