@@ -23,7 +23,7 @@ func (wa *WhatsAppConnector) GetCapabilities() *bridgev2.NetworkGeneralCapabilit
 }
 
 func (wa *WhatsAppConnector) GetBridgeInfoVersion() (info, caps int) {
-	return 1, 2
+	return 1, 3
 }
 
 const WAMaxFileSize = 2000 * 1024 * 1024
@@ -38,7 +38,7 @@ func supportedIfFFmpeg() event.CapabilitySupportLevel {
 }
 
 func capID() string {
-	base := "fi.mau.whatsapp.capabilities.2025_06_03"
+	base := "fi.mau.whatsapp.capabilities.2025_08_22"
 	if ffmpeg.Supported() {
 		return base + "+ffmpeg"
 	}
@@ -149,11 +149,11 @@ var whatsappCaps = &event.RoomFeatures{
 	ReadReceipts:        true,
 	TypingNotifications: true,
 	DisappearingTimer: &event.DisappearingTimerCapability{
-		Types: []string{string(event.DisappearingTypeAfterSend)},
-		Timers: []int64{
-			86400,   // 24 hours
-			604800,  // 7 days
-			7776000, // 90 days
+		Types: []event.DisappearingType{event.DisappearingTypeAfterSend},
+		Timers: []jsontime.Milliseconds{
+			jsontime.MS(24 * time.Hour),     // 24 hours
+			jsontime.MS(7 * 24 * time.Hour), // 7 days
+			jsontime.MS(90 * 24 * time.Hour), // 90 days
 		},
 	},
 }

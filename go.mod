@@ -16,7 +16,7 @@ require (
 	golang.org/x/sync v0.16.0
 	google.golang.org/protobuf v1.36.7
 	gopkg.in/yaml.v3 v3.0.1
-	maunium.net/go/mautrix v0.25.0
+	maunium.net/go/mautrix v0.25.1-0.20250822091656-1d484e01d071
 )
 
 require (
@@ -40,7 +40,7 @@ require (
 	go.mau.fi/libsignal v0.2.0 // indirect
 	go.mau.fi/zeroconfig v0.2.0 // indirect
 	golang.org/x/crypto v0.41.0 // indirect
-	golang.org/x/exp v0.0.0-20250813145105-42675adae3e6 // indirect
+	golang.org/x/exp v0.0.0-20250819193227-8b4c13bb791b // indirect
 	golang.org/x/sys v0.35.0 // indirect
 	golang.org/x/text v0.28.0 // indirect
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c // indirect

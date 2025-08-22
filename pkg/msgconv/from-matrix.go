@@ -63,10 +63,14 @@ func (mc *MessageConverter) generateContextInfo(ctx context.Context, replyTo *da
 				Msg("Failed to parse reply to message ID")
 		}
 	}
-	if perMessageTimer != nil && perMessageTimer.Timer > 0 {
-		contextInfo.Expiration = ptr.Ptr(uint32(perMessageTimer.Timer / 1000))
+	var timerSeconds time.Duration
+	if perMessageTimer != nil && perMessageTimer.Timer.Duration > 0 {
+		timerSeconds = perMessageTimer.Timer.Duration
 	} else if portal.Disappear.Timer > 0 {
-		contextInfo.Expiration = ptr.Ptr(uint32(portal.Disappear.Timer.Seconds()))
+		timerSeconds = portal.Disappear.Timer
+	}
+	if timerSeconds > 0 {
+		contextInfo.Expiration = ptr.Ptr(uint32(timerSeconds.Seconds()))
 	}
 	setAt := portal.Metadata.(*waid.PortalMetadata).DisappearingTimerSetAt
 	if setAt > 0 && contextInfo.Expiration != nil {
