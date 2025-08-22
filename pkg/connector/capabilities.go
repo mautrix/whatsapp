@@ -151,8 +151,8 @@ var whatsappCaps = &event.RoomFeatures{
 	DisappearingTimer: &event.DisappearingTimerCapability{
 		Types: []event.DisappearingType{event.DisappearingTypeAfterSend},
 		Timers: []jsontime.Milliseconds{
-			jsontime.MS(24 * time.Hour),     // 24 hours
-			jsontime.MS(7 * 24 * time.Hour), // 7 days
+			jsontime.MS(24 * time.Hour),      // 24 hours
+			jsontime.MS(7 * 24 * time.Hour),  // 7 days
 			jsontime.MS(90 * 24 * time.Hour), // 90 days
 		},
 	},

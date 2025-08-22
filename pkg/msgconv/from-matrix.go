@@ -28,6 +28,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/rs/zerolog"
 	"go.mau.fi/util/ffmpeg"
@@ -63,14 +64,14 @@ func (mc *MessageConverter) generateContextInfo(ctx context.Context, replyTo *da
 				Msg("Failed to parse reply to message ID")
 		}
 	}
-	var timerSeconds time.Duration
+	var timer time.Duration
 	if perMessageTimer != nil && perMessageTimer.Timer.Duration > 0 {
-		timerSeconds = perMessageTimer.Timer.Duration
+		timer = perMessageTimer.Timer.Duration
 	} else if portal.Disappear.Timer > 0 {
-		timerSeconds = portal.Disappear.Timer
+		timer = portal.Disappear.Timer
 	}
-	if timerSeconds > 0 {
-		contextInfo.Expiration = ptr.Ptr(uint32(timerSeconds.Seconds()))
+	if timer > 0 {
+		contextInfo.Expiration = ptr.Ptr(uint32(timer.Seconds()))
 	}
 	setAt := portal.Metadata.(*waid.PortalMetadata).DisappearingTimerSetAt
 	if setAt > 0 && contextInfo.Expiration != nil {
