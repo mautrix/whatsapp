@@ -33,7 +33,6 @@ import (
 	"go.mau.fi/whatsmeow/types"
 	_ "golang.org/x/image/webp"
 	"maunium.net/go/mautrix/bridgev2"
-	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
@@ -240,7 +239,7 @@ func (mc *MessageConverter) ToMatrix(
 	}
 	if contextInfo.GetExpiration() > 0 {
 		cm.Disappear.Timer = time.Duration(contextInfo.GetExpiration()) * time.Second
-		cm.Disappear.Type = database.DisappearingTypeAfterSend
+		cm.Disappear.Type = event.DisappearingTypeAfterSend
 	}
 	if portal.Disappear.Timer != cm.Disappear.Timer && portal.Metadata.(*waid.PortalMetadata).DisappearingTimerSetAt < contextInfo.GetEphemeralSettingTimestamp() {
 		portal.UpdateDisappearingSetting(ctx, cm.Disappear, intent, info.Timestamp, true, true)

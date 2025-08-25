@@ -118,7 +118,7 @@ func (mc *MessageConverter) convertEphemeralSettingMessage(ctx context.Context, 
 	portal := getPortal(ctx)
 	portalMeta := portal.Metadata.(*waid.PortalMetadata)
 	disappear := database.DisappearingSetting{
-		Type:  database.DisappearingTypeAfterSend,
+		Type:  event.DisappearingTypeAfterSend,
 		Timer: time.Duration(msg.GetEphemeralExpiration()) * time.Second,
 	}
 	if disappear.Timer == 0 {
