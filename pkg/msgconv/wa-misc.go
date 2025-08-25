@@ -114,7 +114,7 @@ func (mc *MessageConverter) convertGroupInviteMessage(ctx context.Context, info 
 	}, msg.GetContextInfo()
 }
 
-func (mc *MessageConverter) convertEphemeralSettingMessage(ctx context.Context, msg *waE2E.ProtocolMessage) (*bridgev2.ConvertedMessagePart, *waE2E.ContextInfo) {
+func (mc *MessageConverter) convertEphemeralSettingMessage(ctx context.Context, msg *waE2E.ProtocolMessage, ts time.Time) (*bridgev2.ConvertedMessagePart, *waE2E.ContextInfo) {
 	portal := getPortal(ctx)
 	portalMeta := portal.Metadata.(*waid.PortalMetadata)
 	disappear := database.DisappearingSetting{
@@ -127,12 +127,14 @@ func (mc *MessageConverter) convertEphemeralSettingMessage(ctx context.Context, 
 	dontBridge := portal.Disappear == disappear
 	content := bridgev2.DisappearingMessageNotice(disappear.Timer, false)
 	if msg.EphemeralSettingTimestamp == nil || portalMeta.DisappearingTimerSetAt < msg.GetEphemeralSettingTimestamp() {
-		portal.Disappear = disappear
 		portalMeta.DisappearingTimerSetAt = msg.GetEphemeralSettingTimestamp()
-		err := portal.Save(ctx)
-		if err != nil {
-			zerolog.Ctx(ctx).Err(err).Msg("Failed to save portal after updating expiration timer")
-		}
+		portal.UpdateDisappearingSetting(ctx, disappear, bridgev2.UpdateDisappearingSettingOpts{
+			Sender:     getIntent(ctx),
+			Timestamp:  ts,
+			Implicit:   false,
+			Save:       true,
+			SendNotice: false,
+		})
 	} else {
 		content.Body += ", but the change was ignored."
 	}
