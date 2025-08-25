@@ -492,30 +492,35 @@ func convertRoomAvatar(data []byte) ([]byte, error) {
 	imageBounds := src.Bounds()
 	width, height := imageBounds.Max.X, imageBounds.Max.Y
 
-	if width == height &&
-		avatarMinSize < width && width < avatarMaxSize &&
-		http.DetectContentType(data) == "image/jpeg" {
+	isCorrectSize := width == height && avatarMinSize < width && width < avatarMaxSize
+	if isCorrectSize && http.DetectContentType(data) == "image/jpeg" {
 		return data, nil
 	}
 
-	// Determine source crop and destination image size
-	var squareCrop image.Rectangle
-	var dstSize int
-	if width > height {
-		dstSize = max(avatarMinSize, min(height, avatarMaxSize))
-
-		offset := (width - height) / 2
-		squareCrop = image.Rectangle{Min: image.Point{X: offset, Y: 0}, Max: image.Point{X: width - offset, Y: height}}
+	var dst image.Image
+	if isCorrectSize {
+		dst = src
 	} else {
-		dstSize = max(avatarMinSize, min(width, avatarMaxSize))
+		// Determine source crop and destination image size
+		var squareCrop image.Rectangle
+		var dstSize int
+		if width > height {
+			dstSize = max(avatarMinSize, min(height, avatarMaxSize))
 
-		offset := (height - width) / 2
-		squareCrop = image.Rectangle{Min: image.Point{X: 0, Y: offset}, Max: image.Point{X: width, Y: height - offset}}
+			offset := (width - height) / 2
+			squareCrop = image.Rectangle{Min: image.Point{X: offset, Y: 0}, Max: image.Point{X: width - offset, Y: height}}
+		} else {
+			dstSize = max(avatarMinSize, min(width, avatarMaxSize))
+
+			offset := (height - width) / 2
+			squareCrop = image.Rectangle{Min: image.Point{X: 0, Y: offset}, Max: image.Point{X: width, Y: height - offset}}
+		}
+
+		// Scale src (with crop) to dst
+		img := image.NewRGBA(image.Rect(0, 0, dstSize, dstSize))
+		draw.BiLinear.Scale(img, img.Rect, src, squareCrop, draw.Src, nil)
+		dst = img
 	}
-
-	// Scale src (with crop) to dst
-	dst := image.NewRGBA(image.Rect(0, 0, dstSize, dstSize))
-	draw.BiLinear.Scale(dst, dst.Rect, src, squareCrop, draw.Src, nil)
 
 	// Convert to jpeg
 	var buf bytes.Buffer
