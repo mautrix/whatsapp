@@ -14,10 +14,10 @@
   * [x] Typing notifications
   * [x] Read receipts
   * [ ] Power level
-  * [ ] Membership actions
-    * [ ] Invite
-    * [ ] Leave
-    * [ ] Kick
+  * [x] Membership actions
+    * [x] Invite
+    * [x] Leave
+    * [x] Kick
   * [ ] Room metadata changes
     * [ ] Name
     * [ ] Avatar

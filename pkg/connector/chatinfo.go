@@ -149,7 +149,14 @@ func (wa *WhatsAppClient) wrapDMInfo(ctx context.Context, jid types.JID) *bridge
 				waid.MakeUserID(jid):    {EventSender: wa.makeEventSender(ctx, jid)},
 				waid.MakeUserID(wa.JID): {EventSender: wa.makeEventSender(ctx, wa.JID)},
 			},
-			PowerLevels: nil,
+			PowerLevels: &bridgev2.PowerLevelOverrides{
+				Events: map[event.Type]int{
+					event.StateRoomName:                0,
+					event.StateRoomAvatar:              0,
+					event.StateTopic:                   0,
+					event.StateBeeperDisappearingTimer: 0,
+				},
+			},
 		},
 		Type: ptr.Ptr(database.RoomTypeDM),
 	}
@@ -250,6 +257,8 @@ func (wa *WhatsAppClient) wrapGroupInfo(ctx context.Context, info *types.GroupIn
 					event.StateTopic:      metaChangePL,
 					event.EventReaction:   defaultPL,
 					event.EventRedaction:  defaultPL,
+
+					event.StateBeeperDisappearingTimer: metaChangePL,
 					// TODO always allow poll responses
 				},
 			},
