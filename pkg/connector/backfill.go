@@ -527,8 +527,13 @@ func (wa *WhatsAppClient) convertHistorySyncMessage(
 	}
 	// TODO use proper intent
 	intent := wa.Main.Bridge.Bot
+
+	// Add backfill context to indicate this is from history sync
+	backfillCtx := context.WithValue(ctx, "is_backfill", true)
+	backfillCtx = context.WithValue(backfillCtx, "skip_media", wa.Main.Config.HistorySync.SkipMediaDuringSync)
+
 	wrapped := &bridgev2.BackfillMessage{
-		ConvertedMessage: wa.Main.MsgConv.ToMatrix(ctx, portal, wa.Client, intent, msg, rawMsg, info, isViewOnce, nil),
+		ConvertedMessage: wa.Main.MsgConv.ToMatrix(backfillCtx, portal, wa.Client, intent, msg, rawMsg, info, isViewOnce, nil),
 		Sender:           wa.makeEventSender(ctx, info.Sender),
 		ID:               waid.MakeMessageID(info.Chat, info.Sender, info.ID),
 		TxnID:            networkid.TransactionID(waid.MakeMessageID(info.Chat, info.Sender, info.ID)),
