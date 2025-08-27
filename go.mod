@@ -5,7 +5,6 @@ go 1.24.0
 toolchain go1.25.0
 
 require (
-	github.com/gorilla/websocket v1.5.0
 	github.com/lib/pq v1.10.9
 	github.com/rs/zerolog v1.34.0
 	go.mau.fi/util v0.9.0
@@ -16,7 +15,7 @@ require (
 	golang.org/x/sync v0.16.0
 	google.golang.org/protobuf v1.36.7
 	gopkg.in/yaml.v3 v3.0.1
-	maunium.net/go/mautrix v0.25.1-0.20250826140716-0345a5356de1
+	maunium.net/go/mautrix v0.25.1-0.20250827232041-3048d2edab7a
 )
 
 require (
@@ -24,6 +23,7 @@ require (
 	github.com/coder/websocket v1.8.13 // indirect
 	github.com/coreos/go-systemd/v22 v22.5.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
+	github.com/gorilla/websocket v1.5.0 // indirect
 	github.com/kr/pretty v0.3.1 // indirect
 	github.com/mattn/go-colorable v0.1.14 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect

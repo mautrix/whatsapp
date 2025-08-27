@@ -1,3 +1,13 @@
+# v0.12.5 (unreleased)
+
+* Removed legacy provisioning API and database legacy migration.
+  Upgrading directly from versions prior to v0.11.0 is not supported.
+* Added support for `com.beeper.disappearing_timer` state event, which stores
+  the disappearing setting of chats and allows changing the setting from Matrix.
+* Added lottieconverter to Docker images to enable converting animated stickers
+  from WhatsApp.
+* Fixed sent PNGs not being rendered on WhatsApp iOS.
+
 # v0.12.4 (2025-08-16)
 
 * Deprecated legacy provisioning API. The `/_matrix/provision/v1` endpoints will
