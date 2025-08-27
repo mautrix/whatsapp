@@ -23,7 +23,7 @@ func (wa *WhatsAppConnector) GetCapabilities() *bridgev2.NetworkGeneralCapabilit
 }
 
 func (wa *WhatsAppConnector) GetBridgeInfoVersion() (info, caps int) {
-	return 1, 2
+	return 1, 4
 }
 
 const WAMaxFileSize = 2000 * 1024 * 1024
@@ -38,7 +38,7 @@ func supportedIfFFmpeg() event.CapabilitySupportLevel {
 }
 
 func capID() string {
-	base := "fi.mau.whatsapp.capabilities.2025_06_03"
+	base := "fi.mau.whatsapp.capabilities.2025_08_25+1"
 	if ffmpeg.Supported() {
 		return base + "+ffmpeg"
 	}
@@ -66,8 +66,8 @@ var whatsappCaps = &event.RoomFeatures{
 	File: map[event.CapabilityMsgType]*event.FileFeatures{
 		event.MsgImage: {
 			MimeTypes: map[string]event.CapabilitySupportLevel{
-				"image/png":  event.CapLevelFullySupported,
 				"image/jpeg": event.CapLevelFullySupported,
+				"image/png":  event.CapLevelPartialSupport,
 				"image/webp": event.CapLevelPartialSupport,
 				"image/gif":  supportedIfFFmpeg(),
 			},
@@ -148,6 +148,14 @@ var whatsappCaps = &event.RoomFeatures{
 	ReactionCount:       1,
 	ReadReceipts:        true,
 	TypingNotifications: true,
+	DisappearingTimer: &event.DisappearingTimerCapability{
+		Types: []event.DisappearingType{event.DisappearingTypeAfterSend},
+		Timers: []jsontime.Milliseconds{
+			jsontime.MS(24 * time.Hour),      // 24 hours
+			jsontime.MS(7 * 24 * time.Hour),  // 7 days
+			jsontime.MS(90 * 24 * time.Hour), // 90 days
+		},
+	},
 }
 
 var whatsappCAGCaps *event.RoomFeatures

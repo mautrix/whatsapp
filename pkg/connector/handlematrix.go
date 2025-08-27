@@ -29,15 +29,17 @@ import (
 )
 
 var (
-	_ bridgev2.TypingHandlingNetworkAPI      = (*WhatsAppClient)(nil)
-	_ bridgev2.EditHandlingNetworkAPI        = (*WhatsAppClient)(nil)
-	_ bridgev2.ReactionHandlingNetworkAPI    = (*WhatsAppClient)(nil)
-	_ bridgev2.RedactionHandlingNetworkAPI   = (*WhatsAppClient)(nil)
-	_ bridgev2.ReadReceiptHandlingNetworkAPI = (*WhatsAppClient)(nil)
-	_ bridgev2.PollHandlingNetworkAPI        = (*WhatsAppClient)(nil)
-	_ bridgev2.RoomNameHandlingNetworkAPI    = (*WhatsAppClient)(nil)
-	_ bridgev2.RoomTopicHandlingNetworkAPI   = (*WhatsAppClient)(nil)
-	_ bridgev2.RoomAvatarHandlingNetworkAPI  = (*WhatsAppClient)(nil)
+	_ bridgev2.TypingHandlingNetworkAPI         = (*WhatsAppClient)(nil)
+	_ bridgev2.EditHandlingNetworkAPI           = (*WhatsAppClient)(nil)
+	_ bridgev2.ReactionHandlingNetworkAPI       = (*WhatsAppClient)(nil)
+	_ bridgev2.RedactionHandlingNetworkAPI      = (*WhatsAppClient)(nil)
+	_ bridgev2.ReadReceiptHandlingNetworkAPI    = (*WhatsAppClient)(nil)
+	_ bridgev2.PollHandlingNetworkAPI           = (*WhatsAppClient)(nil)
+	_ bridgev2.DisappearTimerChangingNetworkAPI = (*WhatsAppClient)(nil)
+	_ bridgev2.MembershipHandlingNetworkAPI     = (*WhatsAppClient)(nil)
+	_ bridgev2.RoomNameHandlingNetworkAPI       = (*WhatsAppClient)(nil)
+	_ bridgev2.RoomTopicHandlingNetworkAPI      = (*WhatsAppClient)(nil)
+	_ bridgev2.RoomAvatarHandlingNetworkAPI     = (*WhatsAppClient)(nil)
 )
 
 func (wa *WhatsAppClient) HandleMatrixPollStart(ctx context.Context, msg *bridgev2.MatrixPollStart) (*bridgev2.MatrixMessageResponse, error) {
@@ -350,6 +352,36 @@ func (wa *WhatsAppClient) HandleMatrixTyping(ctx context.Context, msg *bridgev2.
 		}
 	}
 	return wa.Client.SendChatPresence(portalJID, chatPresence, mediaPresence)
+}
+
+var errUnsupportedDisappearingTimer = bridgev2.WrapErrorInStatus(errors.New("invalid value for disappearing timer")).WithErrorAsMessage().WithIsCertain(true).WithSendNotice(true)
+
+func (wa *WhatsAppClient) HandleMatrixDisappearingTimer(ctx context.Context, msg *bridgev2.MatrixDisappearingTimer) (bool, error) {
+	portalJID, err := waid.ParsePortalID(msg.Portal.ID)
+	if err != nil {
+		return false, err
+	}
+
+	switch msg.Content.Timer.Duration {
+	case whatsmeow.DisappearingTimerOff, whatsmeow.DisappearingTimer24Hours, whatsmeow.DisappearingTimer7Days, whatsmeow.DisappearingTimer90Days:
+	default:
+		return false, fmt.Errorf("%w (%s)", errUnsupportedDisappearingTimer, msg.Content.Timer.Duration)
+	}
+
+	settingTS := time.UnixMilli(msg.Event.Timestamp)
+	err = wa.Client.SetDisappearingTimer(portalJID, msg.Content.Timer.Duration, settingTS)
+	if err != nil {
+		return false, err
+	}
+	msg.Portal.Metadata.(*waid.PortalMetadata).DisappearingTimerSetAt = settingTS.Unix()
+	msg.Portal.Disappear = database.DisappearingSetting{
+		Type:  event.DisappearingTypeAfterSend,
+		Timer: msg.Content.Timer.Duration,
+	}
+	if msg.Portal.Disappear.Timer == 0 {
+		msg.Portal.Disappear.Type = event.DisappearingTypeNone
+	}
+	return true, nil
 }
 
 func (wa *WhatsAppClient) HandleMatrixMembership(ctx context.Context, msg *bridgev2.MatrixMembershipChange) (bool, error) {

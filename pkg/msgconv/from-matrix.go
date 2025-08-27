@@ -23,11 +23,12 @@ import (
 	"fmt"
 	"image"
 	"image/color"
-	"image/png"
+	"image/jpeg"
 	"net/http"
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/rs/zerolog"
 	"go.mau.fi/util/ffmpeg"
@@ -37,7 +38,6 @@ import (
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/proto/waE2E"
 	"go.mau.fi/whatsmeow/types"
-	"golang.org/x/image/webp"
 	"google.golang.org/protobuf/proto"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
@@ -48,7 +48,7 @@ import (
 	"go.mau.fi/mautrix-whatsapp/pkg/waid"
 )
 
-func (mc *MessageConverter) generateContextInfo(ctx context.Context, replyTo *database.Message, portal *bridgev2.Portal) *waE2E.ContextInfo {
+func (mc *MessageConverter) generateContextInfo(ctx context.Context, replyTo *database.Message, portal *bridgev2.Portal, perMessageTimer *event.BeeperDisappearingTimer) *waE2E.ContextInfo {
 	contextInfo := &waE2E.ContextInfo{}
 	if replyTo != nil {
 		msgID, err := waid.ParseMessageID(replyTo.ID)
@@ -63,12 +63,18 @@ func (mc *MessageConverter) generateContextInfo(ctx context.Context, replyTo *da
 				Msg("Failed to parse reply to message ID")
 		}
 	}
-	if portal.Disappear.Timer > 0 {
-		contextInfo.Expiration = ptr.Ptr(uint32(portal.Disappear.Timer.Seconds()))
-		setAt := portal.Metadata.(*waid.PortalMetadata).DisappearingTimerSetAt
-		if setAt > 0 {
-			contextInfo.EphemeralSettingTimestamp = ptr.Ptr(setAt)
-		}
+	var timer time.Duration
+	if perMessageTimer != nil {
+		timer = perMessageTimer.Timer.Duration
+	} else {
+		timer = portal.Disappear.Timer
+	}
+	if timer > 0 {
+		contextInfo.Expiration = ptr.Ptr(uint32(timer.Seconds()))
+	}
+	setAt := portal.Metadata.(*waid.PortalMetadata).DisappearingTimerSetAt
+	if setAt > 0 && contextInfo.Expiration != nil {
+		contextInfo.EphemeralSettingTimestamp = ptr.Ptr(setAt)
 	}
 	return contextInfo
 }
@@ -89,7 +95,7 @@ func (mc *MessageConverter) ToWhatsApp(
 	}
 
 	message := &waE2E.Message{}
-	contextInfo := mc.generateContextInfo(ctx, replyTo, portal)
+	contextInfo := mc.generateContextInfo(ctx, replyTo, portal, content.BeeperDisappearingTimer)
 
 	switch content.MsgType {
 	case event.MsgText, event.MsgNotice, event.MsgEmote:
@@ -360,18 +366,18 @@ func (img *PaddedImage) At(x, y int) color.Color {
 	return img.Image.At(x-img.OffsetX, y-img.OffsetY)
 }
 
-func (mc *MessageConverter) convertWebPtoPNG(webpImage []byte) ([]byte, error) {
-	webpDecoded, err := webp.Decode(bytes.NewReader(webpImage))
+func (mc *MessageConverter) convertToJPEG(webpImage []byte) ([]byte, error) {
+	decoded, _, err := image.Decode(bytes.NewReader(webpImage))
 	if err != nil {
 		return nil, fmt.Errorf("failed to decode webp image: %w", err)
 	}
 
-	var pngBuffer bytes.Buffer
-	if err = png.Encode(&pngBuffer, webpDecoded); err != nil {
+	var jpgBuffer bytes.Buffer
+	if err = jpeg.Encode(&jpgBuffer, decoded, &jpeg.Options{Quality: 80}); err != nil {
 		return nil, fmt.Errorf("failed to encode png image: %w", err)
 	}
 
-	return pngBuffer.Bytes(), nil
+	return jpgBuffer.Bytes(), nil
 }
 
 func (mc *MessageConverter) convertToWebP(img []byte) ([]byte, int, error) {
@@ -454,14 +460,14 @@ func (mc *MessageConverter) reuploadFileToWhatsApp(
 	case event.MsgImage:
 		mediaType = whatsmeow.MediaImage
 		switch mime {
-		case "image/jpeg", "image/png":
+		case "image/jpeg":
 			// allowed
-		case "image/webp":
-			data, err = mc.convertWebPtoPNG(data)
+		case "image/webp", "image/png":
+			data, err = mc.convertToJPEG(data)
 			if err != nil {
 				return nil, nil, "image/webp", fmt.Errorf("%w (webp to png): %s", bridgev2.ErrMediaConvertFailed, err)
 			}
-			mime = "image/png"
+			mime = "image/jpeg"
 		default:
 			return nil, nil, mime, fmt.Errorf("%w %s in image message", bridgev2.ErrUnsupportedMediaType, mime)
 		}
