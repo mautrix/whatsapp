@@ -463,13 +463,16 @@ func (wa *WhatsAppClient) HandleMatrixRoomTopic(ctx context.Context, msg *bridge
 		return false, fmt.Errorf("cannot set room topic for DM")
 	}
 
-	err = wa.Client.SetGroupTopic(portalJID, "", "", msg.Content.Topic)
+	newID := wa.Client.GenerateMessageID()
+	oldID := msg.Portal.Metadata.(*waid.PortalMetadata).TopicID
+	err = wa.Client.SetGroupTopic(portalJID, oldID, newID, msg.Content.Topic)
 	if err != nil {
 		return false, err
 	}
 
 	msg.Portal.Topic = msg.Content.Topic
 	msg.Portal.TopicSet = true
+	msg.Portal.Metadata.(*waid.PortalMetadata).TopicID = newID
 
 	return true, nil
 }
