@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"image"
 	"image/jpeg"
-	"net/http"
 	"strings"
 	"time"
 
@@ -484,7 +483,7 @@ const avatarMaxSize = 720
 const avatarMinSize = 190
 
 func convertRoomAvatar(data []byte) ([]byte, error) {
-	src, _, err := image.Decode(bytes.NewReader(data))
+	src, imageType, err := image.Decode(bytes.NewReader(data))
 	if err != nil {
 		return nil, fmt.Errorf("failed to decode avatar: %w", err)
 	}
@@ -493,7 +492,7 @@ func convertRoomAvatar(data []byte) ([]byte, error) {
 	width, height := imageBounds.Max.X, imageBounds.Max.Y
 
 	isCorrectSize := width == height && avatarMinSize < width && width < avatarMaxSize
-	if isCorrectSize && http.DetectContentType(data) == "image/jpeg" {
+	if isCorrectSize && imageType == "jpeg" {
 		return data, nil
 	}
 
