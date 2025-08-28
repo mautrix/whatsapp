@@ -225,6 +225,17 @@ func setAddressingMode(mode types.AddressingMode) bridgev2.ExtraUpdater[*bridgev
 	}
 }
 
+func setTopicID(id, topic string) bridgev2.ExtraUpdater[*bridgev2.Portal] {
+	return func(_ context.Context, portal *bridgev2.Portal) bool {
+		meta := portal.Metadata.(*waid.PortalMetadata)
+		if meta.TopicID != id && portal.Topic == topic {
+			meta.TopicID = id
+			return true
+		}
+		return false
+	}
+}
+
 func (wa *WhatsAppClient) wrapGroupInfo(ctx context.Context, info *types.GroupInfo) *bridgev2.ChatInfo {
 	sendEventPL := defaultPL
 	if info.IsAnnounce && !info.IsDefaultSubGroup {
@@ -238,6 +249,7 @@ func (wa *WhatsAppClient) wrapGroupInfo(ctx context.Context, info *types.GroupIn
 		wa.makePortalAvatarFetcher("", types.EmptyJID, time.Time{}),
 		setDefaultSubGroupFlag(info.IsDefaultSubGroup && info.IsAnnounce),
 		setAddressingMode(info.AddressingMode),
+		setTopicID(info.TopicID, info.Topic),
 	)
 	wrapped := &bridgev2.ChatInfo{
 		Name:  ptr.Ptr(info.Name),
@@ -317,6 +329,7 @@ func (wa *WhatsAppClient) wrapGroupInfoChange(ctx context.Context, evt *events.G
 		}
 		if evt.Topic != nil {
 			changes.Topic = &evt.Topic.Topic
+			changes.ExtraUpdates = bridgev2.MergeExtraUpdaters(changes.ExtraUpdates, setTopicID(evt.Topic.TopicID, evt.Topic.Topic))
 		}
 		if evt.Ephemeral != nil {
 			changes.Disappear = &database.DisappearingSetting{
