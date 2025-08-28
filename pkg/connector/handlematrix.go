@@ -500,13 +500,19 @@ func (wa *WhatsAppClient) HandleMatrixRoomAvatar(ctx context.Context, msg *bridg
 		}
 	}
 
-	_, err = wa.Client.SetGroupPhoto(portalJID, data)
+	avatarID, err := wa.Client.SetGroupPhoto(portalJID, data)
 	if err != nil {
 		return false, err
 	}
 
 	msg.Portal.AvatarMXC = msg.Content.URL
-	msg.Portal.AvatarHash = sha256.Sum256(data)
+	if data == nil {
+		msg.Portal.AvatarHash = [32]byte{}
+		msg.Portal.AvatarID = "remove"
+	} else {
+		msg.Portal.AvatarHash = sha256.Sum256(data)
+		msg.Portal.AvatarID = networkid.AvatarID(avatarID)
+	}
 	msg.Portal.AvatarSet = true
 
 	return true, nil
