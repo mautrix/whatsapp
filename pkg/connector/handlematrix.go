@@ -488,9 +488,7 @@ func (wa *WhatsAppClient) HandleMatrixRoomAvatar(ctx context.Context, msg *bridg
 	}
 
 	var data []byte
-	if msg.Content.URL == "" {
-		data = nil
-	} else {
+	if msg.Content.URL != "" || msg.Content.MSC3414File != nil {
 		data, err = msg.Portal.Bridge.Bot.DownloadMedia(ctx, msg.Content.URL, msg.Content.MSC3414File)
 		if err != nil {
 			return false, fmt.Errorf("failed to download avatar: %w", err)
@@ -518,47 +516,45 @@ const avatarMaxSize = 720
 const avatarMinSize = 190
 
 func convertRoomAvatar(data []byte) ([]byte, error) {
-	src, imageType, err := image.Decode(bytes.NewReader(data))
+	cfg, imageType, err := image.DecodeConfig(bytes.NewReader(data))
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode avatar: %w", err)
+	}
+	width, height := cfg.Width, cfg.Height
+	isCorrectSize := width == height && avatarMinSize < width && width < avatarMaxSize
+	if isCorrectSize && imageType == "jpeg" {
+		return data, nil
+	} else if len(data) > 10*1024*1024 || width > 12000 || height > 12000 {
+		return nil, fmt.Errorf("avatar is too large for re-encoding")
+	}
+
+	img, _, err := image.Decode(bytes.NewReader(data))
 	if err != nil {
 		return nil, fmt.Errorf("failed to decode avatar: %w", err)
 	}
 
-	imageBounds := src.Bounds()
-	width, height := imageBounds.Max.X, imageBounds.Max.Y
-
-	isCorrectSize := width == height && avatarMinSize < width && width < avatarMaxSize
-	if isCorrectSize && imageType == "jpeg" {
-		return data, nil
-	}
-
-	var dst image.Image
-	if isCorrectSize {
-		dst = src
-	} else {
-		// Determine source crop and destination image size
+	if !isCorrectSize {
 		var squareCrop image.Rectangle
 		var dstSize int
 		if width > height {
 			dstSize = max(avatarMinSize, min(height, avatarMaxSize))
 
 			offset := (width - height) / 2
-			squareCrop = image.Rectangle{Min: image.Point{X: offset, Y: 0}, Max: image.Point{X: width - offset, Y: height}}
+			squareCrop = image.Rect(offset, 0, width-offset, height)
 		} else {
 			dstSize = max(avatarMinSize, min(width, avatarMaxSize))
 
 			offset := (height - width) / 2
-			squareCrop = image.Rectangle{Min: image.Point{X: 0, Y: offset}, Max: image.Point{X: width, Y: height - offset}}
+			squareCrop = image.Rect(0, offset, width, height-offset)
 		}
 
-		// Scale src (with crop) to dst
-		img := image.NewRGBA(image.Rect(0, 0, dstSize, dstSize))
-		draw.BiLinear.Scale(img, img.Rect, src, squareCrop, draw.Src, nil)
-		dst = img
+		cropped := image.NewRGBA(image.Rect(0, 0, dstSize, dstSize))
+		draw.BiLinear.Scale(cropped, cropped.Rect, img, squareCrop, draw.Src, nil)
+		img = cropped
 	}
 
-	// Convert to jpeg
 	var buf bytes.Buffer
-	err = jpeg.Encode(&buf, dst, &jpeg.Options{Quality: jpeg.DefaultQuality})
+	err = jpeg.Encode(&buf, img, &jpeg.Options{Quality: jpeg.DefaultQuality})
 	if err != nil {
 		return nil, fmt.Errorf("failed to re-encode avatar: %w", err)
 	}
