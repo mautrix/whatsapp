@@ -92,6 +92,10 @@ history_sync:
     # If this is too low, the backfill may happen with incomplete history
     # and backfill less messages than what is configured in the backfill section.
     dispatch_wait: 1m
+    # Should media be skipped during initial sync for faster completion?
+    # When enabled, media from history sync will show as placeholders but new messages will have media.
+    # Historical media can still be requested manually by reacting with ♻️ emoji.
+    skip_media_during_sync: true
     # Configuration parameters that are sent to the phone along with the request full sync flag.
     # By default, (when the values are null or 0), the config isn't sent at all.
     full_sync_config:

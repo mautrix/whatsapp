@@ -339,6 +339,13 @@ func (mc *MessageConverter) reuploadWhatsAppAttachment(
 	message whatsmeow.DownloadableMessage,
 	part *PreparedMedia,
 ) error {
+	// Check if media should be skipped during backfill
+	if isBackfill, ok := ctx.Value("is_backfill").(bool); ok && isBackfill {
+		if skipMedia, ok := ctx.Value("skip_media").(bool); ok && skipMedia {
+			return mc.createMediaPlaceholder(part)
+		}
+	}
+
 	client := getClient(ctx)
 	intent := getIntent(ctx)
 	portal := getPortal(ctx)
@@ -537,4 +544,19 @@ func ExtractAnimatedSticker(data []byte) ([]byte, error) {
 		return nil, fmt.Errorf("failed to read animation.json: %w", err)
 	}
 	return data, nil
+}
+
+func (mc *MessageConverter) createMediaPlaceholder(part *PreparedMedia) error {
+	// Create a placeholder message for skipped media
+	part.MessageEventContent = &event.MessageEventContent{
+		MsgType: event.MsgNotice,
+		Body:    fmt.Sprintf("📎 %s (media skipped during sync)", part.TypeDescription),
+		Info:    &event.FileInfo{},
+	}
+
+	// Clear media-specific fields
+	part.URL = ""
+	part.File = nil
+
+	return nil
 }

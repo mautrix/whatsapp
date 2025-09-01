@@ -2,6 +2,10 @@
 
 * Removed legacy provisioning API and database legacy migration.
   Upgrading directly from versions prior to v0.11.0 is not supported.
+  * If you've been using the bridge since before v0.11.0 and have prevented the
+    bridge from writing to the config, you must either update the config
+    manually or allow the bridge to update it for you **before** upgrading to
+    this release.
 * Added support for `com.beeper.disappearing_timer` state event, which stores
   the disappearing setting of chats and allows changing the setting from Matrix.
 * Added lottieconverter to Docker images to enable converting animated stickers
