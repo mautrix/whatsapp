@@ -122,7 +122,7 @@ func (wa *WhatsAppClient) applyHistoryInfo(info *bridgev2.ChatInfo, conv *wadb.C
 	}
 	if info.Disappear == nil && ptr.Val(conv.EphemeralExpiration) > 0 {
 		info.Disappear = &database.DisappearingSetting{
-			Type:  database.DisappearingTypeAfterRead,
+			Type:  event.DisappearingTypeAfterSend,
 			Timer: time.Duration(*conv.EphemeralExpiration) * time.Second,
 		}
 		if conv.EphemeralSettingTimestamp != nil {
@@ -149,7 +149,14 @@ func (wa *WhatsAppClient) wrapDMInfo(ctx context.Context, jid types.JID) *bridge
 				waid.MakeUserID(jid):    {EventSender: wa.makeEventSender(ctx, jid)},
 				waid.MakeUserID(wa.JID): {EventSender: wa.makeEventSender(ctx, wa.JID)},
 			},
-			PowerLevels: nil,
+			PowerLevels: &bridgev2.PowerLevelOverrides{
+				Events: map[event.Type]int{
+					event.StateRoomName:                0,
+					event.StateRoomAvatar:              0,
+					event.StateTopic:                   0,
+					event.StateBeeperDisappearingTimer: 0,
+				},
+			},
 		},
 		Type: ptr.Ptr(database.RoomTypeDM),
 	}
@@ -218,6 +225,17 @@ func setAddressingMode(mode types.AddressingMode) bridgev2.ExtraUpdater[*bridgev
 	}
 }
 
+func setTopicID(id, topic string) bridgev2.ExtraUpdater[*bridgev2.Portal] {
+	return func(_ context.Context, portal *bridgev2.Portal) bool {
+		meta := portal.Metadata.(*waid.PortalMetadata)
+		if meta.TopicID != id && portal.Topic == topic {
+			meta.TopicID = id
+			return true
+		}
+		return false
+	}
+}
+
 func (wa *WhatsAppClient) wrapGroupInfo(ctx context.Context, info *types.GroupInfo) *bridgev2.ChatInfo {
 	sendEventPL := defaultPL
 	if info.IsAnnounce && !info.IsDefaultSubGroup {
@@ -231,6 +249,7 @@ func (wa *WhatsAppClient) wrapGroupInfo(ctx context.Context, info *types.GroupIn
 		wa.makePortalAvatarFetcher("", types.EmptyJID, time.Time{}),
 		setDefaultSubGroupFlag(info.IsDefaultSubGroup && info.IsAnnounce),
 		setAddressingMode(info.AddressingMode),
+		setTopicID(info.TopicID, info.Topic),
 	)
 	wrapped := &bridgev2.ChatInfo{
 		Name:  ptr.Ptr(info.Name),
@@ -250,12 +269,14 @@ func (wa *WhatsAppClient) wrapGroupInfo(ctx context.Context, info *types.GroupIn
 					event.StateTopic:      metaChangePL,
 					event.EventReaction:   defaultPL,
 					event.EventRedaction:  defaultPL,
+
+					event.StateBeeperDisappearingTimer: metaChangePL,
 					// TODO always allow poll responses
 				},
 			},
 		},
 		Disappear: &database.DisappearingSetting{
-			Type:  database.DisappearingTypeAfterRead,
+			Type:  event.DisappearingTypeAfterSend,
 			Timer: time.Duration(info.DisappearingTimer) * time.Second,
 		},
 		ExtraUpdates: extraUpdater,
@@ -308,10 +329,11 @@ func (wa *WhatsAppClient) wrapGroupInfoChange(ctx context.Context, evt *events.G
 		}
 		if evt.Topic != nil {
 			changes.Topic = &evt.Topic.Topic
+			changes.ExtraUpdates = bridgev2.MergeExtraUpdaters(changes.ExtraUpdates, setTopicID(evt.Topic.TopicID, evt.Topic.Topic))
 		}
 		if evt.Ephemeral != nil {
 			changes.Disappear = &database.DisappearingSetting{
-				Type:  database.DisappearingTypeAfterRead,
+				Type:  event.DisappearingTypeAfterSend,
 				Timer: time.Duration(evt.Ephemeral.DisappearingTimer) * time.Second,
 			}
 			if !evt.Ephemeral.IsEphemeral {

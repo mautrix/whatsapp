@@ -5,18 +5,17 @@ go 1.24.0
 toolchain go1.25.0
 
 require (
-	github.com/gorilla/websocket v1.5.0
 	github.com/lib/pq v1.10.9
 	github.com/rs/zerolog v1.34.0
 	go.mau.fi/util v0.9.0
 	go.mau.fi/webp v0.2.0
-	go.mau.fi/whatsmeow v0.0.0-20250816105909-9a955523cf0c
+	go.mau.fi/whatsmeow v0.0.0-20250825151841-7b1a3f7e5746
 	golang.org/x/image v0.30.0
 	golang.org/x/net v0.43.0
 	golang.org/x/sync v0.16.0
 	google.golang.org/protobuf v1.36.7
 	gopkg.in/yaml.v3 v3.0.1
-	maunium.net/go/mautrix v0.25.0
+	maunium.net/go/mautrix v0.25.1-0.20250827232041-3048d2edab7a
 )
 
 require (
@@ -24,6 +23,7 @@ require (
 	github.com/coder/websocket v1.8.13 // indirect
 	github.com/coreos/go-systemd/v22 v22.5.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
+	github.com/gorilla/websocket v1.5.0 // indirect
 	github.com/kr/pretty v0.3.1 // indirect
 	github.com/mattn/go-colorable v0.1.14 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
@@ -40,7 +40,7 @@ require (
 	go.mau.fi/libsignal v0.2.0 // indirect
 	go.mau.fi/zeroconfig v0.2.0 // indirect
 	golang.org/x/crypto v0.41.0 // indirect
-	golang.org/x/exp v0.0.0-20250813145105-42675adae3e6 // indirect
+	golang.org/x/exp v0.0.0-20250819193227-8b4c13bb791b // indirect
 	golang.org/x/sys v0.35.0 // indirect
 	golang.org/x/text v0.28.0 // indirect
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c // indirect
