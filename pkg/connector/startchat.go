@@ -18,14 +18,22 @@ package connector
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
+	"github.com/rs/zerolog"
+	"go.mau.fi/util/ptr"
+	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/types"
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/bridgev2"
+	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
+	"maunium.net/go/mautrix/event"
+	"maunium.net/go/mautrix/id"
 
 	"go.mau.fi/mautrix-whatsapp/pkg/waid"
 )
@@ -35,6 +43,7 @@ var (
 	_ bridgev2.ContactListingNetworkAPI      = (*WhatsAppClient)(nil)
 	_ bridgev2.UserSearchingNetworkAPI       = (*WhatsAppClient)(nil)
 	_ bridgev2.GhostDMCreatingNetworkAPI     = (*WhatsAppClient)(nil)
+	_ bridgev2.GroupCreatingNetworkAPI       = (*WhatsAppClient)(nil)
 	_ bridgev2.IdentifierValidatingNetwork   = (*WhatsAppConnector)(nil)
 )
 
@@ -191,4 +200,124 @@ func (wa *WhatsAppClient) getContactList(ctx context.Context, filter string) ([]
 		})
 	}
 	return resp, nil
+}
+
+func (wa *WhatsAppClient) CreateGroup(ctx context.Context, params *bridgev2.GroupCreateParams) (*bridgev2.CreateChatResponse, error) {
+	createKey := wa.Client.GenerateMessageID()
+	if params.RoomID != "" {
+		wa.createDedup.Add(createKey)
+	}
+	req := whatsmeow.ReqCreateGroup{
+		Name:         ptr.Val(params.Name).Name,
+		Participants: make([]types.JID, len(params.Participants)),
+		CreateKey:    createKey,
+	}
+	for i, participant := range params.Participants {
+		req.Participants[i] = waid.ParseUserID(participant)
+	}
+	if params.Parent != nil {
+		var err error
+		req.GroupLinkedParent.LinkedParentJID, err = waid.ParsePortalID(params.Parent.ID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse parent ID: %w", err)
+		}
+	}
+	if params.Disappear != nil {
+		req.GroupEphemeral = types.GroupEphemeral{
+			IsEphemeral:       true,
+			DisappearingTimer: uint32(params.Disappear.Timer.Seconds()),
+		}
+	}
+	var avatarBytes []byte
+	var avatarMXC id.ContentURIString
+	if params.Avatar != nil {
+		avatarMXC = params.Avatar.URL
+		var err error
+		avatarBytes, err = wa.Main.Bridge.Bot.DownloadMedia(ctx, params.Avatar.URL, params.Avatar.MSC3414File)
+		if err != nil {
+			return nil, fmt.Errorf("failed to download avatar: %w", err)
+		}
+		avatarBytes, err = convertRoomAvatar(avatarBytes)
+		if err != nil {
+			return nil, err
+		}
+	}
+	resp, err := wa.Client.CreateGroup(ctx, req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create group: %w", err)
+	}
+	portal, err := wa.Main.Bridge.GetPortalByKey(ctx, wa.makeWAPortalKey(resp.JID))
+	if err != nil {
+		return nil, fmt.Errorf("failed to get portal: %w", err)
+	}
+	groupInfo := wa.wrapGroupInfo(ctx, resp)
+	if params.RoomID != "" {
+		err = portal.UpdateMatrixRoomID(ctx, params.RoomID, bridgev2.UpdateMatrixRoomIDParams{
+			SyncDBMetadata: func() {
+				portal.Name = req.Name
+				portal.NameSet = true
+				portal.ParentKey = ptr.Val(params.Parent)
+				if avatarBytes != nil {
+					portal.AvatarSet = true
+					portal.AvatarHash = sha256.Sum256(avatarBytes)
+					portal.AvatarMXC = avatarMXC
+				}
+				if req.DisappearingTimer > 0 {
+					portal.Disappear = database.DisappearingSetting{
+						Type:  event.DisappearingTypeAfterSend,
+						Timer: time.Duration(req.DisappearingTimer) * time.Second,
+					}
+				}
+			},
+			OverwriteOldPortal: true,
+			TombstoneOldRoom:   true,
+			DeleteOldRoom:      true,
+			ChatInfo:           groupInfo,
+			ChatInfoSource:     wa.UserLogin,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to update room ID after creating group: %w", err)
+		}
+	}
+	changed := false
+	if avatarBytes != nil {
+		avatarID, err := wa.Client.SetGroupPhoto(resp.JID, avatarBytes)
+		if err != nil {
+			zerolog.Ctx(ctx).Warn().Err(err).Msg("Failed to set group avatar after creating group")
+		} else {
+			portal.AvatarID = networkid.AvatarID(avatarID)
+			portal.AvatarHash = sha256.Sum256(avatarBytes)
+			portal.AvatarMXC = avatarMXC
+			groupInfo.Avatar = &bridgev2.Avatar{
+				ID:   portal.AvatarID,
+				MXC:  portal.AvatarMXC,
+				Hash: portal.AvatarHash,
+			}
+			changed = true
+		}
+	}
+	if params.Topic != nil {
+		newTopicID := wa.Client.GenerateMessageID()
+		err = wa.Client.SetGroupTopic(resp.JID, "", newTopicID, params.Topic.Topic)
+		if err != nil {
+			zerolog.Ctx(ctx).Warn().Err(err).Msg("Failed to set group topic after creating group")
+		} else {
+			portal.Topic = params.Topic.Topic
+			portal.TopicSet = params.RoomID != ""
+			portal.Metadata.(*waid.PortalMetadata).TopicID = newTopicID
+			changed = true
+			groupInfo.Topic = &params.Topic.Topic
+		}
+	}
+	if changed {
+		err = portal.Save(ctx)
+		if err != nil {
+			zerolog.Ctx(ctx).Err(err).Msg("Failed to save portal after post-creation updates")
+		}
+	}
+	return &bridgev2.CreateChatResponse{
+		PortalKey:  wa.makeWAPortalKey(resp.JID),
+		Portal:     portal,
+		PortalInfo: groupInfo,
+	}, nil
 }

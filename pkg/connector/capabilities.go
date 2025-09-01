@@ -16,6 +16,32 @@ import (
 var WhatsAppGeneralCaps = &bridgev2.NetworkGeneralCapabilities{
 	DisappearingMessages: true,
 	AggressiveUpdateInfo: true,
+	Provisioning: bridgev2.ProvisioningCapabilities{
+		ResolveIdentifier: bridgev2.ResolveIdentifierCapabilities{
+			CreateDM:    true,
+			LookupPhone: true,
+			ContactList: true,
+		},
+		GroupCreation: map[string]bridgev2.GroupTypeCapabilities{
+			"group": {
+				TypeDescription: "a group chat",
+
+				Name:         bridgev2.GroupFieldCapability{Allowed: true, MaxLength: 100},
+				Disappear:    bridgev2.GroupFieldCapability{Allowed: true, DisappearSettings: waDisappearingCap},
+				Participants: bridgev2.GroupFieldCapability{Allowed: true, Required: true, MinLength: 1},
+				Parent:       bridgev2.GroupFieldCapability{Allowed: true},
+			},
+		},
+	},
+}
+
+var waDisappearingCap = &event.DisappearingTimerCapability{
+	Types: []event.DisappearingType{event.DisappearingTypeAfterSend},
+	Timers: []jsontime.Milliseconds{
+		jsontime.MS(24 * time.Hour),      // 24 hours
+		jsontime.MS(7 * 24 * time.Hour),  // 7 days
+		jsontime.MS(90 * 24 * time.Hour), // 90 days
+	},
 }
 
 func (wa *WhatsAppConnector) GetCapabilities() *bridgev2.NetworkGeneralCapabilities {
@@ -148,14 +174,7 @@ var whatsappCaps = &event.RoomFeatures{
 	ReactionCount:       1,
 	ReadReceipts:        true,
 	TypingNotifications: true,
-	DisappearingTimer: &event.DisappearingTimerCapability{
-		Types: []event.DisappearingType{event.DisappearingTypeAfterSend},
-		Timers: []jsontime.Milliseconds{
-			jsontime.MS(24 * time.Hour),      // 24 hours
-			jsontime.MS(7 * 24 * time.Hour),  // 7 days
-			jsontime.MS(90 * 24 * time.Hour), // 90 days
-		},
-	},
+	DisappearingTimer:   waDisappearingCap,
 }
 
 var whatsappCAGCaps *event.RoomFeatures
