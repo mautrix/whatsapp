@@ -139,8 +139,16 @@ func (mc *MessageConverter) convertEphemeralSettingMessage(ctx context.Context, 
 		content.Body += ", but the change was ignored."
 	}
 	return &bridgev2.ConvertedMessagePart{
-		Type:       event.EventMessage,
-		Content:    content,
+		Type:    event.EventMessage,
+		Content: content,
+		Extra: map[string]any{
+			"com.beeper.action_message": map[string]any{
+				"type":       "disappearing_timer",
+				"timer":      disappear.Timer.Milliseconds(),
+				"timer_type": disappear.Type,
+				"implicit":   false,
+			},
+		},
 		DontBridge: dontBridge,
 	}, nil
 }
