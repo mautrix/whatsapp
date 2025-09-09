@@ -255,9 +255,14 @@ func (mc *MessageConverter) constructMediaMessage(
 			},
 		}
 	case event.MsgFile:
+		fileName := content.FileName
+		if fileName == "" {
+			fileName = content.Body
+		}
+
 		msg := &waE2E.Message{
 			DocumentMessage: &waE2E.DocumentMessage{
-				FileName: proto.String(content.FileName),
+				FileName: proto.String(fileName),
 
 				Caption:       proto.String(caption),
 				JPEGThumbnail: thumbnail,
