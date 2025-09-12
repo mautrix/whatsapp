@@ -23,6 +23,13 @@ var m = mxmain.BridgeMain{
 }
 
 func main() {
+	m.PostStart = func() {
+		if m.Matrix.Provisioning != nil {
+			m.Matrix.Provisioning.Router.HandleFunc("GET /v1/contacts", legacyProvContacts)
+			m.Matrix.Provisioning.Router.HandleFunc("GET /v1/resolve_identifier/{number}", legacyProvResolveIdentifier)
+			m.Matrix.Provisioning.Router.HandleFunc("POST /v1/pm/{number}", legacyProvResolveIdentifier)
+		}
+	}
 	m.InitVersion(Tag, Commit, BuildTime)
 	m.Run()
 }
