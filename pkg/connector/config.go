@@ -148,11 +148,11 @@ type DisplaynameParams struct {
 
 func (c *Config) FormatDisplayname(jid types.JID, phone string, contact types.ContactInfo) string {
 	var nameBuf strings.Builder
-	if phone == "" {
+	if phone == "" && jid.Server == types.DefaultUserServer {
 		phone = "+" + jid.User
-		if jid.Server != types.DefaultUserServer {
-			phone = jid.User
-		}
+	}
+	if contact.RedactedPhone == "" && phone != "" {
+		contact.RedactedPhone = redactPhone(phone)
 	}
 	err := c.displaynameTemplate.Execute(&nameBuf, &DisplaynameParams{
 		ContactInfo: contact,
@@ -169,6 +169,11 @@ func (c *Config) FormatDisplayname(jid types.JID, phone string, contact types.Co
 		panic(err)
 	}
 	return nameBuf.String()
+}
+
+func redactPhone(phone string) string {
+	// This doesn't keep 2+ digit country codes properly, but whatever
+	return phone[:2] + strings.Repeat("∙", len(phone)-4) + phone[len(phone)-2:]
 }
 
 func (wa *WhatsAppConnector) GetConfig() (string, any, up.Upgrader) {
