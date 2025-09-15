@@ -7,9 +7,9 @@ toolchain go1.25.0
 require (
 	github.com/lib/pq v1.10.9
 	github.com/rs/zerolog v1.34.0
-	go.mau.fi/util v0.9.0
+	go.mau.fi/util v0.9.1-0.20250912114103-419604f95907
 	go.mau.fi/webp v0.2.0
-	go.mau.fi/whatsmeow v0.0.0-20250829123043-72d2ed58e998
+	go.mau.fi/whatsmeow v0.0.0-20250912121005-de128e174913
 	golang.org/x/image v0.30.0
 	golang.org/x/net v0.43.0
 	golang.org/x/sync v0.16.0
@@ -20,8 +20,10 @@ require (
 
 require (
 	filippo.io/edwards25519 v1.1.0 // indirect
+	github.com/beeper/argo-go v1.1.2 // indirect
 	github.com/coder/websocket v1.8.13 // indirect
 	github.com/coreos/go-systemd/v22 v22.5.0 // indirect
+	github.com/elliotchance/orderedmap/v3 v3.1.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/gorilla/websocket v1.5.0 // indirect
 	github.com/kr/pretty v0.3.1 // indirect
@@ -36,6 +38,7 @@ require (
 	github.com/tidwall/match v1.1.1 // indirect
 	github.com/tidwall/pretty v1.2.1 // indirect
 	github.com/tidwall/sjson v1.2.5 // indirect
+	github.com/vektah/gqlparser/v2 v2.5.27 // indirect
 	github.com/yuin/goldmark v1.7.13 // indirect
 	go.mau.fi/libsignal v0.2.0 // indirect
 	go.mau.fi/zeroconfig v0.2.0 // indirect
