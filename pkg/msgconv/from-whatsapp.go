@@ -213,6 +213,9 @@ func (mc *MessageConverter) ToMatrix(
 		part, contextInfo = mc.convertGroupInviteMessage(ctx, info, waMsg.GroupInviteMessage)
 	case waMsg.ProtocolMessage != nil && waMsg.ProtocolMessage.GetType() == waE2E.ProtocolMessage_EPHEMERAL_SETTING:
 		part, contextInfo = mc.convertEphemeralSettingMessage(ctx, waMsg.ProtocolMessage, info.Timestamp)
+	case waMsg.ProtocolMessage != nil && waMsg.ProtocolMessage.GetType() == waE2E.ProtocolMessage_MESSAGE_EDIT:
+		_cm := mc.ToMatrix(ctx, portal, client, intent, waMsg.ProtocolMessage.EditedMessage, nil, info, isViewOnce, nil)
+		part = _cm.Parts[0]
 	case waMsg.EncCommentMessage != nil:
 		part = failedCommentPart
 	default:
