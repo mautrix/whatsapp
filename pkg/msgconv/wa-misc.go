@@ -114,7 +114,7 @@ func (mc *MessageConverter) convertGroupInviteMessage(ctx context.Context, info 
 	}, msg.GetContextInfo()
 }
 
-func (mc *MessageConverter) convertEphemeralSettingMessage(ctx context.Context, msg *waE2E.ProtocolMessage, ts time.Time) (*bridgev2.ConvertedMessagePart, *waE2E.ContextInfo) {
+func (mc *MessageConverter) convertEphemeralSettingMessage(ctx context.Context, msg *waE2E.ProtocolMessage, ts time.Time, isBackfill bool) (*bridgev2.ConvertedMessagePart, *waE2E.ContextInfo) {
 	portal := getPortal(ctx)
 	portalMeta := portal.Metadata.(*waid.PortalMetadata)
 	disappear := database.DisappearingSetting{
@@ -126,17 +126,19 @@ func (mc *MessageConverter) convertEphemeralSettingMessage(ctx context.Context, 
 	}
 	dontBridge := portal.Disappear == disappear
 	content := bridgev2.DisappearingMessageNotice(disappear.Timer, false)
-	if msg.EphemeralSettingTimestamp == nil || portalMeta.DisappearingTimerSetAt < msg.GetEphemeralSettingTimestamp() {
-		portalMeta.DisappearingTimerSetAt = msg.GetEphemeralSettingTimestamp()
-		portal.UpdateDisappearingSetting(ctx, disappear, bridgev2.UpdateDisappearingSettingOpts{
-			Sender:     getIntent(ctx),
-			Timestamp:  ts,
-			Implicit:   false,
-			Save:       true,
-			SendNotice: false,
-		})
-	} else {
-		content.Body += ", but the change was ignored."
+	if !isBackfill {
+		if msg.EphemeralSettingTimestamp == nil || portalMeta.DisappearingTimerSetAt < msg.GetEphemeralSettingTimestamp() {
+			portalMeta.DisappearingTimerSetAt = msg.GetEphemeralSettingTimestamp()
+			portal.UpdateDisappearingSetting(ctx, disappear, bridgev2.UpdateDisappearingSettingOpts{
+				Sender:     getIntent(ctx),
+				Timestamp:  ts,
+				Implicit:   false,
+				Save:       true,
+				SendNotice: false,
+			})
+		} else {
+			content.Body += ", but the change was ignored."
+		}
 	}
 	return &bridgev2.ConvertedMessagePart{
 		Type:    event.EventMessage,
@@ -147,6 +149,7 @@ func (mc *MessageConverter) convertEphemeralSettingMessage(ctx context.Context, 
 				"timer":      disappear.Timer.Milliseconds(),
 				"timer_type": disappear.Type,
 				"implicit":   false,
+				"backfill":   isBackfill,
 			},
 		},
 		DontBridge: dontBridge,
