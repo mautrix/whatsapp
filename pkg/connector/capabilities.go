@@ -16,6 +16,7 @@ import (
 var WhatsAppGeneralCaps = &bridgev2.NetworkGeneralCapabilities{
 	DisappearingMessages: true,
 	AggressiveUpdateInfo: true,
+	ImplicitReadReceipts: true,
 	Provisioning: bridgev2.ProvisioningCapabilities{
 		ResolveIdentifier: bridgev2.ResolveIdentifierCapabilities{
 			CreateDM:    true,
