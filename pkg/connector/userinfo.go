@@ -245,7 +245,7 @@ func (wa *WhatsAppClient) contactToUserInfo(ctx context.Context, jid types.JID, 
 
 func updateGhostLastSyncAt(_ context.Context, ghost *bridgev2.Ghost) bool {
 	meta := ghost.Metadata.(*waid.GhostMetadata)
-	forceSave := time.Since(meta.LastSync.Time) > 24*time.Hour
+	forceSave := ResyncMinInterval < 24*time.Hour || time.Since(meta.LastSync.Time) > 24*time.Hour
 	meta.LastSync = jsontime.UnixNow()
 	return forceSave
 }
