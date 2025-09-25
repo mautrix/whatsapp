@@ -22,7 +22,6 @@ import (
 	"fmt"
 	"sync"
 	"sync/atomic"
-	"time"
 
 	"github.com/rs/zerolog"
 	"go.mau.fi/util/exsync"
@@ -49,7 +48,7 @@ func (wa *WhatsAppConnector) LoadUserLogin(ctx context.Context, login *bridgev2.
 
 		historySyncs:       make(chan *waHistorySync.HistorySync, 64),
 		historySyncWakeup:  make(chan struct{}, 1),
-		resyncQueue:        make(map[types.JID]resyncQueueItem),
+		resyncQueueCh:      make(chan resyncQueueItem, 256),
 		directMediaRetries: make(map[networkid.MessageID]*directMediaRetry),
 		mediaRetryLock:     semaphore.NewWeighted(wa.Config.HistorySync.MediaRequests.MaxAsyncHandle),
 		pushNamesSynced:    exsync.NewEvent(),
@@ -107,9 +106,8 @@ type WhatsAppClient struct {
 	historySyncs       chan *waHistorySync.HistorySync
 	historySyncWakeup  chan struct{}
 	stopLoops          atomic.Pointer[context.CancelFunc]
-	resyncQueue        map[types.JID]resyncQueueItem
+	resyncQueueCh      chan resyncQueueItem
 	resyncQueueLock    sync.Mutex
-	nextResync         time.Time
 	directMediaRetries map[networkid.MessageID]*directMediaRetry
 	directMediaLock    sync.Mutex
 	mediaRetryLock     *semaphore.Weighted
@@ -325,7 +323,7 @@ func (wa *WhatsAppClient) startLoops() {
 		(*oldStop)()
 	}
 	go wa.historySyncLoop(ctx)
-	go wa.ghostResyncLoop(ctx)
+	go wa.resyncLoop(ctx)
 	if mrc := wa.Main.Config.HistorySync.MediaRequests; mrc.AutoRequestMedia && mrc.RequestMethod == MediaRequestMethodLocalTime {
 		go wa.mediaRequestLoop(ctx)
 	}
@@ -415,14 +413,11 @@ func (wa *WhatsAppClient) HandleMatrixViewingChat(ctx context.Context, msg *brid
 		}
 	}
 
-	if msg.Portal == nil || msg.Portal.Metadata.(*waid.PortalMetadata).LastSync.Add(5*time.Minute).After(time.Now()) {
-		// If we resynced this portal within the last 5 minutes, don't do it again
+	if msg.Portal == nil {
 		return nil
 	}
 
-	// Reset, but don't save, portal last sync time for immediate sync now
-	msg.Portal.Metadata.(*waid.PortalMetadata).LastSync.Time = time.Time{}
-	// Enqueue for the sync, don't block on it completing
+	// Ask the queue to resync if needed (old or version mismatch). No-op otherwise.
 	wa.EnqueuePortalResync(msg.Portal)
 
 	if msg.Portal.OtherUserID != "" {
@@ -435,8 +430,6 @@ func (wa *WhatsAppClient) HandleMatrixViewingChat(ctx context.Context, msg *brid
 				Str("other_user_id", string(msg.Portal.OtherUserID)).
 				Msg("No ghost found for other user in portal")
 		} else {
-			// Reset, but don't save, portal last sync time for immediate sync now
-			ghost.Metadata.(*waid.GhostMetadata).LastSync.Time = time.Time{}
 			wa.EnqueueGhostResync(ghost)
 		}
 	}

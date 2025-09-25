@@ -5,13 +5,11 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
-	"math/rand/v2"
 	"regexp"
 	"strconv"
 	"time"
 
 	"github.com/rs/zerolog"
-	"go.mau.fi/util/exzerolog"
 	"go.mau.fi/util/jsontime"
 	"go.mau.fi/util/ptr"
 	"go.mau.fi/whatsmeow"
@@ -32,139 +30,97 @@ func (wa *WhatsAppClient) EnqueueGhostResync(ghost *bridgev2.Ghost) {
 	if ghost.Metadata.(*waid.GhostMetadata).LastSync.Add(ResyncMinInterval).After(time.Now()) {
 		return
 	}
-	wa.resyncQueueLock.Lock()
 	jid := waid.ParseUserID(ghost.ID)
-	if _, exists := wa.resyncQueue[jid]; !exists {
-		wa.resyncQueue[jid] = resyncQueueItem{ghost: ghost}
-		nextResyncIn := time.Until(wa.nextResync).String()
-		if wa.nextResync.IsZero() {
-			nextResyncIn = "never"
-		}
-		wa.UserLogin.Log.Debug().
-			Stringer("jid", jid).
-			Str("next_resync_in", nextResyncIn).
-			Msg("Enqueued resync for ghost")
+	wa.UserLogin.Log.Debug().Stringer("jid", jid).Msg("Enqueued resync for ghost")
+	select {
+	case wa.resyncQueueCh <- resyncQueueItem{ghost: ghost}:
+	default:
+		wa.UserLogin.Log.Warn().Stringer("jid", jid).Msg("Resync queue channel full, dropping ghost resync")
 	}
-	wa.resyncQueueLock.Unlock()
 }
 
 func (wa *WhatsAppClient) EnqueuePortalResync(portal *bridgev2.Portal) {
 	jid, _ := waid.ParsePortalID(portal.ID)
-	if jid.Server != types.GroupServer || portal.Metadata.(*waid.PortalMetadata).LastSync.Add(ResyncMinInterval).After(time.Now()) {
+	meta := portal.Metadata.(*waid.PortalMetadata)
+	_, capVer := wa.Main.GetBridgeInfoVersion()
+	isOld := meta.LastSync.Add(ResyncMinInterval).Before(time.Now())
+	versionMismatch := meta.BridgeCapsVersion != capVer
+	if !isOld && !versionMismatch {
 		return
 	}
-	wa.resyncQueueLock.Lock()
-	if _, exists := wa.resyncQueue[jid]; !exists {
-		wa.resyncQueue[jid] = resyncQueueItem{portal: portal}
-		wa.UserLogin.Log.Debug().
-			Stringer("jid", jid).
-			Stringer("next_resync_in", time.Until(wa.nextResync)).
-			Msg("Enqueued resync for portal")
+	wa.UserLogin.Log.Debug().Stringer("jid", jid).Msg("Enqueued resync for portal")
+	select {
+	case wa.resyncQueueCh <- resyncQueueItem{portal: portal}:
+	default:
+		wa.UserLogin.Log.Warn().Stringer("jid", jid).Msg("Resync queue channel full, dropping portal resync")
 	}
-	wa.resyncQueueLock.Unlock()
 }
 
-func (wa *WhatsAppClient) ghostResyncLoop(ctx context.Context) {
-	log := wa.UserLogin.Log.With().Str("action", "ghost resync loop").Logger()
+func (wa *WhatsAppClient) resyncLoop(ctx context.Context) {
+	log := wa.UserLogin.Log.With().Str("action", "resync loop").Logger()
 	ctx = log.WithContext(ctx)
-	wa.nextResync = time.Now().Add(ResyncLoopInterval).Add(-time.Duration(rand.IntN(ResyncJitterSeconds)) * time.Second)
-	timer := time.NewTimer(time.Until(wa.nextResync))
-	log.Info().Time("first_resync", wa.nextResync).Msg("Ghost resync queue starting")
+	log.Info().Msg("Resync queue starting")
 	for {
 		select {
 		case <-ctx.Done():
-			timer.Stop()
 			return
-		case <-timer.C:
-		}
-		queue := wa.rotateResyncQueue()
-		timer.Reset(time.Until(wa.nextResync))
-		if len(queue) > 0 {
-			wa.doGhostResync(ctx, queue)
-		} else {
-			log.Trace().Msg("Nothing in background resync queue")
+		case item := <-wa.resyncQueueCh:
+			// Re-check gating after dequeue
+			if item.ghost != nil {
+				lastSync := item.ghost.Metadata.(*waid.GhostMetadata).LastSync.Time
+				if time.Since(lastSync) < ResyncMinInterval {
+					continue
+				}
+			} else if item.portal != nil {
+				meta := item.portal.Metadata.(*waid.PortalMetadata)
+				_, capVer := wa.Main.GetBridgeInfoVersion()
+				if time.Since(meta.LastSync.Time) < ResyncMinInterval && meta.BridgeCapsVersion == capVer {
+					continue
+				}
+			}
+			wa.doResync(ctx, item)
 		}
 	}
 }
 
-func (wa *WhatsAppClient) rotateResyncQueue() map[types.JID]resyncQueueItem {
-	wa.resyncQueueLock.Lock()
-	defer wa.resyncQueueLock.Unlock()
-	wa.nextResync = time.Now().Add(ResyncLoopInterval)
-	if len(wa.resyncQueue) == 0 {
-		return nil
-	}
-	queue := wa.resyncQueue
-	wa.resyncQueue = make(map[types.JID]resyncQueueItem)
-	return queue
-}
-
-func (wa *WhatsAppClient) doGhostResync(ctx context.Context, queue map[types.JID]resyncQueueItem) {
+func (wa *WhatsAppClient) doResync(ctx context.Context, item resyncQueueItem) {
 	log := zerolog.Ctx(ctx)
 	if !wa.IsLoggedIn() {
-		log.Warn().Msg("Not logged in, skipping background resyncs")
+		log.Warn().Msg("Not logged in, skipping background resync")
 		return
 	}
-	log.Debug().Msg("Starting background resyncs")
-	defer log.Debug().Msg("Background resyncs finished")
-	var ghostJIDs []types.JID
-	var ghosts []*bridgev2.Ghost
-	var portals []*bridgev2.Portal
-	for jid, item := range queue {
-		var lastSync time.Time
-		if item.ghost != nil {
-			lastSync = item.ghost.Metadata.(*waid.GhostMetadata).LastSync.Time
-		} else if item.portal != nil {
-			lastSync = item.portal.Metadata.(*waid.PortalMetadata).LastSync.Time
-		}
-		if lastSync.Add(ResyncMinInterval).After(time.Now()) {
-			log.Debug().
-				Stringer("jid", jid).
-				Time("last_sync", lastSync).
-				Msg("Not resyncing, last sync was too recent")
-			continue
-		}
-		if item.ghost != nil {
-			ghosts = append(ghosts, item.ghost)
-			ghostJIDs = append(ghostJIDs, jid)
-		} else if item.portal != nil {
-			portals = append(portals, item.portal)
-		}
-	}
-	for _, portal := range portals {
+	log.Debug().Msg("Starting background resync")
+	defer log.Debug().Msg("Background resync finished")
+	if item.portal != nil {
+		portal := item.portal
 		wa.UserLogin.QueueRemoteEvent(&simplevent.ChatResync{
 			EventMeta: simplevent.EventMeta{
-				Type: bridgev2.RemoteEventChatResync,
-				LogContext: func(c zerolog.Context) zerolog.Context {
-					return c.Str("sync_reason", "queue")
-				},
-				PortalKey: portal.PortalKey,
+				Type:       bridgev2.RemoteEventChatResync,
+				LogContext: func(c zerolog.Context) zerolog.Context { return c.Str("sync_reason", "resync_queue") },
+				PortalKey:  portal.PortalKey,
 			},
 			GetChatInfoFunc: wa.GetChatInfo,
 		})
-	}
-	if len(ghostJIDs) == 0 {
 		return
 	}
-	log.Debug().Array("jids", exzerolog.ArrayOfStringers(ghostJIDs)).Msg("Doing background sync for users")
-	infos, err := wa.Client.GetUserInfo(ghostJIDs)
-	if err != nil {
-		log.Err(err).Msg("Failed to get user info for background sync")
-		return
-	}
-	for _, ghost := range ghosts {
-		jid := waid.ParseUserID(ghost.ID)
+	if item.ghost != nil {
+		jid := waid.ParseUserID(item.ghost.ID)
+		infos, err := wa.Client.GetUserInfo([]types.JID{jid})
+		if err != nil {
+			log.Err(err).Stringer("jid", jid).Msg("Failed to get user info for background sync")
+			return
+		}
 		info, ok := infos[jid]
 		if !ok {
 			log.Warn().Stringer("jid", jid).Msg("Didn't get info for puppet in background sync")
-			continue
+			return
 		}
-		userInfo, err := wa.getUserInfo(ctx, jid, info.PictureID != "" && string(ghost.AvatarID) != info.PictureID)
+		userInfo, err := wa.getUserInfo(ctx, jid, info.PictureID != "" && string(item.ghost.AvatarID) != info.PictureID)
 		if err != nil {
 			log.Err(err).Stringer("jid", jid).Msg("Failed to get user info for puppet in background sync")
-			continue
+			return
 		}
-		ghost.UpdateInfo(ctx, userInfo)
+		item.ghost.UpdateInfo(ctx, userInfo)
 		wa.syncAltGhostWithInfo(ctx, jid, userInfo)
 	}
 }
@@ -243,9 +199,8 @@ func (wa *WhatsAppClient) contactToUserInfo(ctx context.Context, jid types.JID, 
 
 func updateGhostLastSyncAt(_ context.Context, ghost *bridgev2.Ghost) bool {
 	meta := ghost.Metadata.(*waid.GhostMetadata)
-	forceSave := time.Since(meta.LastSync.Time) > 24*time.Hour
 	meta.LastSync = jsontime.UnixNow()
-	return forceSave
+	return true
 }
 
 var expiryRegex = regexp.MustCompile("oe=([0-9A-Fa-f]+)")

@@ -119,9 +119,10 @@ func fnSync(ce *commands.Event) {
 			ce.Reply("Failed to get joined groups: %v", err)
 			return
 		}
+		_, capVer := wa.Main.GetBridgeInfoVersion()
 		for _, group := range groups {
 			wrapped := wa.wrapGroupInfo(ce.Ctx, group)
-			wrapped.ExtraUpdates = bridgev2.MergeExtraUpdaters(wrapped.ExtraUpdates, updatePortalLastSyncAt)
+			wrapped.ExtraUpdates = bridgev2.MergeExtraUpdaters(wrapped.ExtraUpdates, updatePortalSyncMeta(capVer))
 			wa.addExtrasToWrapped(ce.Ctx, group.JID, wrapped, nil)
 			login.QueueRemoteEvent(&simplevent.ChatResync{
 				EventMeta: simplevent.EventMeta{

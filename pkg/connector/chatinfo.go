@@ -45,7 +45,6 @@ func (wa *WhatsAppClient) getChatInfo(ctx context.Context, portalJID types.JID, 
 			return nil, err
 		}
 		wrapped = wa.wrapGroupInfo(ctx, info)
-		wrapped.ExtraUpdates = bridgev2.MergeExtraUpdaters(wrapped.ExtraUpdates, updatePortalLastSyncAt)
 	case types.NewsletterServer:
 		info, err := wa.Client.GetNewsletterInfo(portalJID)
 		if err != nil {
@@ -60,6 +59,9 @@ func (wa *WhatsAppClient) getChatInfo(ctx context.Context, portalJID types.JID, 
 }
 
 func (wa *WhatsAppClient) addExtrasToWrapped(ctx context.Context, portalJID types.JID, wrapped *bridgev2.ChatInfo, conv *wadb.Conversation) {
+	_, capVer := wa.Main.GetBridgeInfoVersion()
+	wrapped.ExtraUpdates = bridgev2.MergeExtraUpdaters(wrapped.ExtraUpdates, updatePortalSyncMeta(capVer))
+
 	if conv == nil {
 		var err error
 		conv, err = wa.Main.DB.Conversation.Get(ctx, wa.UserLogin.ID, portalJID)
@@ -73,11 +75,15 @@ func (wa *WhatsAppClient) addExtrasToWrapped(ctx context.Context, portalJID type
 	wa.applyChatSettings(ctx, portalJID, wrapped)
 }
 
-func updatePortalLastSyncAt(_ context.Context, portal *bridgev2.Portal) bool {
-	meta := portal.Metadata.(*waid.PortalMetadata)
-	forceSave := time.Since(meta.LastSync.Time) > 24*time.Hour
-	meta.LastSync = jsontime.UnixNow()
-	return forceSave
+func updatePortalSyncMeta(expectedCapVer int) bridgev2.ExtraUpdater[*bridgev2.Portal] {
+	return func(_ context.Context, portal *bridgev2.Portal) bool {
+		meta := portal.Metadata.(*waid.PortalMetadata)
+		meta.LastSync = jsontime.UnixNow()
+		if meta.BridgeCapsVersion != expectedCapVer {
+			meta.BridgeCapsVersion = expectedCapVer
+		}
+		return true
+	}
 }
 
 func updateDisappearingTimerSetAt(ts int64) bridgev2.ExtraUpdater[*bridgev2.Portal] {

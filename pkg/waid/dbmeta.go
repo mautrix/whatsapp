@@ -111,6 +111,9 @@ type PortalMetadata struct {
 	CommunityAnnouncementGroup bool                 `json:"is_cag,omitempty"`
 	AddressingMode             types.AddressingMode `json:"addressing_mode,omitempty"`
 	LIDMigrationAttempted      bool                 `json:"lid_migration_attempted,omitempty"`
+	// BridgeCapsVersion stores the last seen capabilities version for this portal,
+	// used to decide if a lazy resync-on-view is needed when the bridge version changes.
+	BridgeCapsVersion int `json:"bridge_caps_version,omitempty"`
 }
 
 type GhostMetadata struct {
