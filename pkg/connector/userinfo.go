@@ -48,9 +48,11 @@ func (wa *WhatsAppClient) EnqueueGhostResync(ghost *bridgev2.Ghost) {
 	wa.resyncQueueLock.Unlock()
 }
 
-func (wa *WhatsAppClient) EnqueuePortalResync(portal *bridgev2.Portal) {
+func (wa *WhatsAppClient) EnqueuePortalResync(portal *bridgev2.Portal, allowDM bool) {
 	jid, _ := waid.ParsePortalID(portal.ID)
-	if jid.Server != types.GroupServer || portal.Metadata.(*waid.PortalMetadata).LastSync.Add(ResyncMinInterval).After(time.Now()) {
+	if portal.Metadata.(*waid.PortalMetadata).LastSync.Add(ResyncMinInterval).After(time.Now()) {
+		return
+	} else if !allowDM && jid.Server != types.GroupServer {
 		return
 	}
 	wa.resyncQueueLock.Lock()
@@ -243,7 +245,7 @@ func (wa *WhatsAppClient) contactToUserInfo(ctx context.Context, jid types.JID, 
 
 func updateGhostLastSyncAt(_ context.Context, ghost *bridgev2.Ghost) bool {
 	meta := ghost.Metadata.(*waid.GhostMetadata)
-	forceSave := time.Since(meta.LastSync.Time) > 24*time.Hour
+	forceSave := ResyncMinInterval < 24*time.Hour || time.Since(meta.LastSync.Time) > 24*time.Hour
 	meta.LastSync = jsontime.UnixNow()
 	return forceSave
 }

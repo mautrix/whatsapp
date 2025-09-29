@@ -137,6 +137,7 @@ func (mc *MessageConverter) ToMatrix(
 	rawWaMsg *waE2E.Message,
 	info *types.MessageInfo,
 	isViewOnce bool,
+	isBackfill bool,
 	previouslyConvertedPart *bridgev2.ConvertedMessagePart,
 ) *bridgev2.ConvertedMessage {
 	ctx = context.WithValue(ctx, contextKeyClient, client)
@@ -212,7 +213,7 @@ func (mc *MessageConverter) ToMatrix(
 	case waMsg.GroupInviteMessage != nil:
 		part, contextInfo = mc.convertGroupInviteMessage(ctx, info, waMsg.GroupInviteMessage)
 	case waMsg.ProtocolMessage != nil && waMsg.ProtocolMessage.GetType() == waE2E.ProtocolMessage_EPHEMERAL_SETTING:
-		part, contextInfo = mc.convertEphemeralSettingMessage(ctx, waMsg.ProtocolMessage, info.Timestamp)
+		part, contextInfo = mc.convertEphemeralSettingMessage(ctx, waMsg.ProtocolMessage, info.Timestamp, isBackfill)
 	case waMsg.ProtocolMessage != nil && waMsg.ProtocolMessage.GetType() == waE2E.ProtocolMessage_MESSAGE_EDIT:
 		_cm := mc.ToMatrix(ctx, portal, client, intent, waMsg.ProtocolMessage.EditedMessage, nil, info, isViewOnce, nil)
 		part = _cm.Parts[0]
