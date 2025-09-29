@@ -27,6 +27,7 @@ import (
 	"github.com/rs/zerolog"
 	"go.mau.fi/util/exerrors"
 	"go.mau.fi/util/ptr"
+	"go.mau.fi/whatsmeow/proto/waAICommon"
 	"go.mau.fi/whatsmeow/proto/waE2E"
 	"go.mau.fi/whatsmeow/types"
 	"google.golang.org/protobuf/proto"
@@ -264,7 +265,7 @@ func (mc *MessageConverter) convertRichResponseMessage(ctx context.Context, msg 
 	var body strings.Builder
 
 	for i, submsg := range msg.GetSubmessages() {
-		if submsg.GetMessageType() == waE2E.AIRichResponseMessage_AI_RICH_RESPONSE_TEXT {
+		if submsg.GetMessageType() == waAICommon.AIRichResponseSubMessageType_AI_RICH_RESPONSE_TEXT {
 			if i > 0 {
 				body.WriteString("\n")
 			}
