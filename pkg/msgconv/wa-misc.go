@@ -158,7 +158,7 @@ func (mc *MessageConverter) convertEphemeralSettingMessage(ctx context.Context, 
 
 const eventMessageTemplate = `
 {{- if .Name -}}
-	<h4>{{ .Name }}</h4>
+	<h4>{{ .Name }} {{- if .IsCanceled -}}<span> (Canceled)</span>{{- end -}}</h4>
 {{- end -}}
 {{- if .StartTime -}}
 	<p>
@@ -184,6 +184,7 @@ var eventMessageTplParsed = exerrors.Must(template.New("eventmessage").Parse(str
 
 type eventMessageParams struct {
 	Name            string
+	IsCanceled      bool
 	JoinLink        string
 	StartTimeISO    string
 	StartTime       string
@@ -196,6 +197,7 @@ type eventMessageParams struct {
 func (mc *MessageConverter) convertEventMessage(ctx context.Context, msg *waE2E.EventMessage) (*bridgev2.ConvertedMessagePart, *waE2E.ContextInfo) {
 	params := &eventMessageParams{
 		Name:            msg.GetName(),
+		IsCanceled:      msg.GetIsCanceled(),
 		JoinLink:        msg.GetJoinLink(),
 		Location:        msg.GetLocation().GetName(),
 		DescriptionHTML: template.HTML(parseWAFormattingToHTML(msg.GetDescription(), false)),

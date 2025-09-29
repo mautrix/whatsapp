@@ -340,6 +340,16 @@ func (wa *WhatsAppClient) handleWAMessage(ctx context.Context, evt *events.Messa
 			evt.Message = decrypted
 		}
 	}
+	if encMessage := evt.Message.GetSecretEncryptedMessage(); encMessage != nil {
+		decrypted, err := wa.Client.DecryptSecretEncryptedMessage(ctx, evt)
+		if err != nil {
+			wa.UserLogin.Log.Err(err).Str("message_id", evt.Info.ID).Msg("Failed to decrypt message")
+			return
+		}
+		evt.RawMessage = decrypted
+		evt.UnwrapRaw()
+		parsedMessageType = getMessageType(evt.Message)
+	}
 	res := wa.UserLogin.QueueRemoteEvent(&WAMessageEvent{
 		MessageInfoWrapper: &MessageInfoWrapper{
 			Info: evt.Info,
