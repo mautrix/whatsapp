@@ -9,7 +9,7 @@ require (
 	github.com/rs/zerolog v1.34.0
 	go.mau.fi/util v0.9.1
 	go.mau.fi/webp v0.2.0
-	go.mau.fi/whatsmeow v0.0.0-20250929162548-7c04e9b206b1
+	go.mau.fi/whatsmeow v0.0.0-20250930215512-38f9aaa3ba7c
 	golang.org/x/image v0.31.0
 	golang.org/x/net v0.44.0
 	golang.org/x/sync v0.17.0
