@@ -88,9 +88,9 @@ func (wa *WhatsAppClient) handleWAEvent(rawEvt any) (success bool) {
 		success = wa.handleWAUndecryptableMessage(ctx, evt)
 
 	case *events.CallOffer:
-		success = wa.handleWACallStart(ctx, evt.GroupJID, evt.CallCreator, evt.CallID, "", evt.Timestamp)
+		success = wa.handleWACallStart(ctx, evt.GroupJID, evt.CallCreator, evt.CallCreatorAlt, evt.CallID, "", evt.Timestamp)
 	case *events.CallOfferNotice:
-		success = wa.handleWACallStart(ctx, evt.GroupJID, evt.CallCreator, evt.CallID, evt.Type, evt.Timestamp)
+		success = wa.handleWACallStart(ctx, evt.GroupJID, evt.CallCreator, evt.CallCreatorAlt, evt.CallID, evt.Type, evt.Timestamp)
 	case *events.CallTerminate, *events.CallRelayLatency, *events.CallAccept, *events.UnknownCallEvent:
 		// ignore
 	case *events.IdentityChange:
@@ -340,6 +340,16 @@ func (wa *WhatsAppClient) handleWAMessage(ctx context.Context, evt *events.Messa
 			evt.Message = decrypted
 		}
 	}
+	if encMessage := evt.Message.GetSecretEncryptedMessage(); encMessage != nil {
+		decrypted, err := wa.Client.DecryptSecretEncryptedMessage(ctx, evt)
+		if err != nil {
+			wa.UserLogin.Log.Err(err).Str("message_id", evt.Info.ID).Msg("Failed to decrypt message")
+			return
+		}
+		evt.RawMessage = decrypted
+		evt.UnwrapRaw()
+		parsedMessageType = getMessageType(evt.Message)
+	}
 	res := wa.UserLogin.QueueRemoteEvent(&WAMessageEvent{
 		MessageInfoWrapper: &MessageInfoWrapper{
 			Info: evt.Info,
@@ -475,9 +485,17 @@ func (wa *WhatsAppClient) handleWALogout(reason events.ConnectFailureReason, onC
 
 const callEventMaxAge = 15 * time.Minute
 
-func (wa *WhatsAppClient) handleWACallStart(ctx context.Context, group, sender types.JID, id, callType string, ts time.Time) bool {
+func (wa *WhatsAppClient) handleWACallStart(ctx context.Context, group, sender, senderAlt types.JID, id, callType string, ts time.Time) bool {
 	if !wa.Main.Config.CallStartNotices || time.Since(ts) > callEventMaxAge {
 		return true
+	}
+	if sender.Server == types.HiddenUserServer && senderAlt.Server == types.DefaultUserServer {
+		wa.UserLogin.Log.Debug().
+			Stringer("lid", sender).
+			Stringer("pn", senderAlt).
+			Str("call_id", id).
+			Msg("Forced LID caller to phone number in incoming call")
+		sender, senderAlt = senderAlt, sender
 	}
 	chat := group
 	if chat.IsEmpty() {

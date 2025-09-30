@@ -27,6 +27,7 @@ import (
 	"github.com/rs/zerolog"
 	"go.mau.fi/util/exerrors"
 	"go.mau.fi/util/ptr"
+	"go.mau.fi/whatsmeow/proto/waAICommon"
 	"go.mau.fi/whatsmeow/proto/waE2E"
 	"go.mau.fi/whatsmeow/types"
 	"google.golang.org/protobuf/proto"
@@ -114,7 +115,7 @@ func (mc *MessageConverter) convertGroupInviteMessage(ctx context.Context, info 
 	}, msg.GetContextInfo()
 }
 
-func (mc *MessageConverter) convertEphemeralSettingMessage(ctx context.Context, msg *waE2E.ProtocolMessage, ts time.Time) (*bridgev2.ConvertedMessagePart, *waE2E.ContextInfo) {
+func (mc *MessageConverter) convertEphemeralSettingMessage(ctx context.Context, msg *waE2E.ProtocolMessage, ts time.Time, isBackfill bool) (*bridgev2.ConvertedMessagePart, *waE2E.ContextInfo) {
 	portal := getPortal(ctx)
 	portalMeta := portal.Metadata.(*waid.PortalMetadata)
 	disappear := database.DisappearingSetting{
@@ -126,17 +127,19 @@ func (mc *MessageConverter) convertEphemeralSettingMessage(ctx context.Context, 
 	}
 	dontBridge := portal.Disappear == disappear
 	content := bridgev2.DisappearingMessageNotice(disappear.Timer, false)
-	if msg.EphemeralSettingTimestamp == nil || portalMeta.DisappearingTimerSetAt < msg.GetEphemeralSettingTimestamp() {
-		portalMeta.DisappearingTimerSetAt = msg.GetEphemeralSettingTimestamp()
-		portal.UpdateDisappearingSetting(ctx, disappear, bridgev2.UpdateDisappearingSettingOpts{
-			Sender:     getIntent(ctx),
-			Timestamp:  ts,
-			Implicit:   false,
-			Save:       true,
-			SendNotice: false,
-		})
-	} else {
-		content.Body += ", but the change was ignored."
+	if !isBackfill {
+		if msg.EphemeralSettingTimestamp == nil || portalMeta.DisappearingTimerSetAt < msg.GetEphemeralSettingTimestamp() {
+			portalMeta.DisappearingTimerSetAt = msg.GetEphemeralSettingTimestamp()
+			portal.UpdateDisappearingSetting(ctx, disappear, bridgev2.UpdateDisappearingSettingOpts{
+				Sender:     getIntent(ctx),
+				Timestamp:  ts,
+				Implicit:   false,
+				Save:       true,
+				SendNotice: false,
+			})
+		} else {
+			content.Body += ", but the change was ignored."
+		}
 	}
 	return &bridgev2.ConvertedMessagePart{
 		Type:    event.EventMessage,
@@ -147,6 +150,7 @@ func (mc *MessageConverter) convertEphemeralSettingMessage(ctx context.Context, 
 				"timer":      disappear.Timer.Milliseconds(),
 				"timer_type": disappear.Type,
 				"implicit":   false,
+				"backfill":   isBackfill,
 			},
 		},
 		DontBridge: dontBridge,
@@ -155,7 +159,7 @@ func (mc *MessageConverter) convertEphemeralSettingMessage(ctx context.Context, 
 
 const eventMessageTemplate = `
 {{- if .Name -}}
-	<h4>{{ .Name }}</h4>
+	<h4>{{ .Name }} {{- if .IsCanceled -}}<span> (Canceled)</span>{{- end -}}</h4>
 {{- end -}}
 {{- if .StartTime -}}
 	<p>
@@ -181,6 +185,7 @@ var eventMessageTplParsed = exerrors.Must(template.New("eventmessage").Parse(str
 
 type eventMessageParams struct {
 	Name            string
+	IsCanceled      bool
 	JoinLink        string
 	StartTimeISO    string
 	StartTime       string
@@ -193,6 +198,7 @@ type eventMessageParams struct {
 func (mc *MessageConverter) convertEventMessage(ctx context.Context, msg *waE2E.EventMessage) (*bridgev2.ConvertedMessagePart, *waE2E.ContextInfo) {
 	params := &eventMessageParams{
 		Name:            msg.GetName(),
+		IsCanceled:      msg.GetIsCanceled(),
 		JoinLink:        msg.GetJoinLink(),
 		Location:        msg.GetLocation().GetName(),
 		DescriptionHTML: template.HTML(parseWAFormattingToHTML(msg.GetDescription(), false)),
@@ -259,7 +265,7 @@ func (mc *MessageConverter) convertRichResponseMessage(ctx context.Context, msg 
 	var body strings.Builder
 
 	for i, submsg := range msg.GetSubmessages() {
-		if submsg.GetMessageType() == waE2E.AIRichResponseMessage_AI_RICH_RESPONSE_TEXT {
+		if submsg.GetMessageType() == waAICommon.AIRichResponseSubMessageType_AI_RICH_RESPONSE_TEXT {
 			if i > 0 {
 				body.WriteString("\n")
 			}

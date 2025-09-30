@@ -533,7 +533,7 @@ func (wa *WhatsAppClient) convertHistorySyncMessage(
 	backfillCtx = context.WithValue(backfillCtx, "skip_media", wa.Main.Config.HistorySync.SkipMediaDuringSync)
 
 	wrapped := &bridgev2.BackfillMessage{
-		ConvertedMessage: wa.Main.MsgConv.ToMatrix(backfillCtx, portal, wa.Client, intent, msg, rawMsg, info, isViewOnce, nil),
+		ConvertedMessage: wa.Main.MsgConv.ToMatrix(backfillCtx, portal, wa.Client, intent, msg, rawMsg, info, isViewOnce, true, nil),
 		Sender:           wa.makeEventSender(ctx, info.Sender),
 		ID:               waid.MakeMessageID(info.Chat, info.Sender, info.ID),
 		TxnID:            networkid.TransactionID(waid.MakeMessageID(info.Chat, info.Sender, info.ID)),

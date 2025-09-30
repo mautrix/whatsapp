@@ -423,7 +423,7 @@ func (wa *WhatsAppClient) HandleMatrixViewingChat(ctx context.Context, msg *brid
 	// Reset, but don't save, portal last sync time for immediate sync now
 	msg.Portal.Metadata.(*waid.PortalMetadata).LastSync.Time = time.Time{}
 	// Enqueue for the sync, don't block on it completing
-	wa.EnqueuePortalResync(msg.Portal)
+	wa.EnqueuePortalResync(msg.Portal, true)
 
 	if msg.Portal.OtherUserID != "" {
 		// If this is a DM, also sync the ghost of the other user immediately
