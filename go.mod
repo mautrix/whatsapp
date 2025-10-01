@@ -7,7 +7,7 @@ toolchain go1.25.1
 require (
 	github.com/lib/pq v1.10.9
 	github.com/rs/zerolog v1.34.0
-	go.mau.fi/util v0.9.1
+	go.mau.fi/util v0.9.2-0.20251001114608-d99877b9cc10
 	go.mau.fi/webp v0.2.0
 	go.mau.fi/whatsmeow v0.0.0-20250930215512-38f9aaa3ba7c
 	golang.org/x/image v0.31.0
@@ -15,7 +15,7 @@ require (
 	golang.org/x/sync v0.17.0
 	google.golang.org/protobuf v1.36.9
 	gopkg.in/yaml.v3 v3.0.1
-	maunium.net/go/mautrix v0.25.2-0.20250924172949-cf29b07f32ce
+	maunium.net/go/mautrix v0.25.2-0.20251001115535-dd778ae0cdaf
 )
 
 require (
