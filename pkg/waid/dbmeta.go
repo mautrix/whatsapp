@@ -106,6 +106,7 @@ type ReactionMetadata struct {
 
 type PortalMetadata struct {
 	DisappearingTimerSetAt     int64                `json:"disappearing_timer_set_at,omitempty"`
+	TopicID                    string               `json:"topic_id,omitempty"`
 	LastSync                   jsontime.Unix        `json:"last_sync,omitempty"`
 	CommunityAnnouncementGroup bool                 `json:"is_cag,omitempty"`
 	AddressingMode             types.AddressingMode `json:"addressing_mode,omitempty"`

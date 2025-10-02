@@ -114,7 +114,7 @@ func fnSync(ce *commands.Event) {
 		})
 		ce.React("✅")
 	case "groups":
-		groups, err := wa.Client.GetJoinedGroups()
+		groups, err := wa.Client.GetJoinedGroups(ce.Ctx)
 		if err != nil {
 			ce.Reply("Failed to get joined groups: %v", err)
 			return

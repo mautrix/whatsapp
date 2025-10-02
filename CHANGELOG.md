@@ -1,3 +1,26 @@
+# v0.12.5 (2025-09-16)
+
+* Removed legacy provisioning API and database legacy migration.
+  Upgrading directly from versions prior to v0.11.0 is not supported.
+  * If you've been using the bridge since before v0.11.0 and have prevented the
+    bridge from writing to the config, you must either update the config
+    manually or allow the bridge to update it for you **before** upgrading to
+    this release (i.e. run v0.12.4 once with config writing allowed).
+* Added support for changing group name/topic/avatar from Matrix
+  (thanks to [@Petersmit27] in [#834]).
+* Added `RedactedPhone` placeholder for displayname templates. This allows
+  community announcement groups (where you can't see participants phone numbers)
+  to have better names than random numbers.
+* Added support for `com.beeper.disappearing_timer` state event, which stores
+  the disappearing setting of chats and allows changing the setting from Matrix.
+* Added lottieconverter to Docker images to enable converting animated stickers
+  from WhatsApp.
+* Added support for creating WhatsApp groups.
+* Fixed sent PNGs not being rendered on WhatsApp iOS.
+
+[@Petersmit27]: https://github.com/Petersmit27
+[#834]: https://github.com/mautrix/whatsapp/pull/834
+
 # v0.12.4 (2025-08-16)
 
 * Deprecated legacy provisioning API. The `/_matrix/provision/v1` endpoints will

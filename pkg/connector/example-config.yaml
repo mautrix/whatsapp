@@ -13,11 +13,12 @@ get_proxy_url: null
 proxy_only_login: false
 
 # Displayname template for WhatsApp users.
-# {{.PushName}}     - nickname set by the WhatsApp user
-# {{.BusinessName}} - validated WhatsApp business name
-# {{.Phone}}        - phone number (international format)
-# {{.FullName}}     - Name you set in the contacts list
-displayname_template: "{{or .BusinessName .PushName .Phone}} (WA)"
+# {{.PushName}}      - nickname set by the WhatsApp user
+# {{.BusinessName}}  - validated WhatsApp business name
+# {{.Phone}}         - phone number (international format)
+# {{.RedactedPhone}} - phone number with middle digits replaced by "∙"
+# {{.FullName}}      - Name you set in the contacts list
+displayname_template: '{{or .BusinessName .PushName .Phone .RedactedPhone "Unknown user"}} (WA)'
 
 # Should incoming calls send a message to the Matrix room?
 call_start_notices: true

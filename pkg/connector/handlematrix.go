@@ -1,9 +1,13 @@
 package connector
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
+	"image"
+	"image/jpeg"
 	"strings"
 	"time"
 
@@ -13,6 +17,7 @@ import (
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/proto/waE2E"
 	"go.mau.fi/whatsmeow/types"
+	"golang.org/x/image/draw"
 	"google.golang.org/protobuf/proto"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
@@ -24,12 +29,17 @@ import (
 )
 
 var (
-	_ bridgev2.TypingHandlingNetworkAPI      = (*WhatsAppClient)(nil)
-	_ bridgev2.EditHandlingNetworkAPI        = (*WhatsAppClient)(nil)
-	_ bridgev2.ReactionHandlingNetworkAPI    = (*WhatsAppClient)(nil)
-	_ bridgev2.RedactionHandlingNetworkAPI   = (*WhatsAppClient)(nil)
-	_ bridgev2.ReadReceiptHandlingNetworkAPI = (*WhatsAppClient)(nil)
-	_ bridgev2.PollHandlingNetworkAPI        = (*WhatsAppClient)(nil)
+	_ bridgev2.TypingHandlingNetworkAPI         = (*WhatsAppClient)(nil)
+	_ bridgev2.EditHandlingNetworkAPI           = (*WhatsAppClient)(nil)
+	_ bridgev2.ReactionHandlingNetworkAPI       = (*WhatsAppClient)(nil)
+	_ bridgev2.RedactionHandlingNetworkAPI      = (*WhatsAppClient)(nil)
+	_ bridgev2.ReadReceiptHandlingNetworkAPI    = (*WhatsAppClient)(nil)
+	_ bridgev2.PollHandlingNetworkAPI           = (*WhatsAppClient)(nil)
+	_ bridgev2.DisappearTimerChangingNetworkAPI = (*WhatsAppClient)(nil)
+	_ bridgev2.MembershipHandlingNetworkAPI     = (*WhatsAppClient)(nil)
+	_ bridgev2.RoomNameHandlingNetworkAPI       = (*WhatsAppClient)(nil)
+	_ bridgev2.RoomTopicHandlingNetworkAPI      = (*WhatsAppClient)(nil)
+	_ bridgev2.RoomAvatarHandlingNetworkAPI     = (*WhatsAppClient)(nil)
 )
 
 func (wa *WhatsAppClient) HandleMatrixPollStart(ctx context.Context, msg *bridgev2.MatrixPollStart) (*bridgev2.MatrixMessageResponse, error) {
@@ -344,6 +354,36 @@ func (wa *WhatsAppClient) HandleMatrixTyping(ctx context.Context, msg *bridgev2.
 	return wa.Client.SendChatPresence(portalJID, chatPresence, mediaPresence)
 }
 
+var errUnsupportedDisappearingTimer = bridgev2.WrapErrorInStatus(errors.New("invalid value for disappearing timer")).WithErrorAsMessage().WithIsCertain(true).WithSendNotice(true)
+
+func (wa *WhatsAppClient) HandleMatrixDisappearingTimer(ctx context.Context, msg *bridgev2.MatrixDisappearingTimer) (bool, error) {
+	portalJID, err := waid.ParsePortalID(msg.Portal.ID)
+	if err != nil {
+		return false, err
+	}
+
+	switch msg.Content.Timer.Duration {
+	case whatsmeow.DisappearingTimerOff, whatsmeow.DisappearingTimer24Hours, whatsmeow.DisappearingTimer7Days, whatsmeow.DisappearingTimer90Days:
+	default:
+		return false, fmt.Errorf("%w (%s)", errUnsupportedDisappearingTimer, msg.Content.Timer.Duration)
+	}
+
+	settingTS := time.UnixMilli(msg.Event.Timestamp)
+	err = wa.Client.SetDisappearingTimer(portalJID, msg.Content.Timer.Duration, settingTS)
+	if err != nil {
+		return false, err
+	}
+	msg.Portal.Metadata.(*waid.PortalMetadata).DisappearingTimerSetAt = settingTS.Unix()
+	msg.Portal.Disappear = database.DisappearingSetting{
+		Type:  event.DisappearingTypeAfterSend,
+		Timer: msg.Content.Timer.Duration,
+	}
+	if msg.Portal.Disappear.Timer == 0 {
+		msg.Portal.Disappear.Type = event.DisappearingTypeNone
+	}
+	return true, nil
+}
+
 func (wa *WhatsAppClient) HandleMatrixMembership(ctx context.Context, msg *bridgev2.MatrixMembershipChange) (bool, error) {
 	portalJID, err := waid.ParsePortalID(msg.Portal.ID)
 	if err != nil {
@@ -390,4 +430,139 @@ func (wa *WhatsAppClient) HandleMatrixMembership(ctx context.Context, msg *bridg
 	}
 
 	return true, nil
+}
+
+func (wa *WhatsAppClient) HandleMatrixRoomName(ctx context.Context, msg *bridgev2.MatrixRoomName) (bool, error) {
+	portalJID, err := waid.ParsePortalID(msg.Portal.ID)
+	if err != nil {
+		return false, err
+	}
+
+	if msg.Portal.RoomType == database.RoomTypeDM {
+		return false, fmt.Errorf("cannot set room name for DM")
+	}
+
+	err = wa.Client.SetGroupName(portalJID, msg.Content.Name)
+	if err != nil {
+		return false, err
+	}
+
+	msg.Portal.Name = msg.Content.Name
+	msg.Portal.NameSet = true
+
+	return true, nil
+}
+
+func (wa *WhatsAppClient) HandleMatrixRoomTopic(ctx context.Context, msg *bridgev2.MatrixRoomTopic) (bool, error) {
+	portalJID, err := waid.ParsePortalID(msg.Portal.ID)
+	if err != nil {
+		return false, err
+	}
+
+	if msg.Portal.RoomType == database.RoomTypeDM {
+		return false, fmt.Errorf("cannot set room topic for DM")
+	}
+
+	newID := wa.Client.GenerateMessageID()
+	oldID := msg.Portal.Metadata.(*waid.PortalMetadata).TopicID
+	err = wa.Client.SetGroupTopic(portalJID, oldID, newID, msg.Content.Topic)
+	if err != nil {
+		return false, err
+	}
+
+	msg.Portal.Topic = msg.Content.Topic
+	msg.Portal.TopicSet = true
+	msg.Portal.Metadata.(*waid.PortalMetadata).TopicID = newID
+
+	return true, nil
+}
+
+func (wa *WhatsAppClient) HandleMatrixRoomAvatar(ctx context.Context, msg *bridgev2.MatrixRoomAvatar) (bool, error) {
+	portalJID, err := waid.ParsePortalID(msg.Portal.ID)
+	if err != nil {
+		return false, err
+	}
+
+	if msg.Portal.RoomType == database.RoomTypeDM {
+		return false, fmt.Errorf("cannot set room avatar for DM")
+	}
+
+	var data []byte
+	if msg.Content.URL != "" || msg.Content.MSC3414File != nil {
+		data, err = msg.Portal.Bridge.Bot.DownloadMedia(ctx, msg.Content.URL, msg.Content.MSC3414File)
+		if err != nil {
+			return false, fmt.Errorf("failed to download avatar: %w", err)
+		}
+
+		data, err = convertRoomAvatar(data)
+		if err != nil {
+			return false, err
+		}
+	}
+
+	avatarID, err := wa.Client.SetGroupPhoto(portalJID, data)
+	if err != nil {
+		return false, err
+	}
+
+	msg.Portal.AvatarMXC = msg.Content.URL
+	if data == nil {
+		msg.Portal.AvatarHash = [32]byte{}
+		msg.Portal.AvatarID = "remove"
+	} else {
+		msg.Portal.AvatarHash = sha256.Sum256(data)
+		msg.Portal.AvatarID = networkid.AvatarID(avatarID)
+	}
+	msg.Portal.AvatarSet = true
+
+	return true, nil
+}
+
+const avatarMaxSize = 720
+const avatarMinSize = 190
+
+func convertRoomAvatar(data []byte) ([]byte, error) {
+	cfg, imageType, err := image.DecodeConfig(bytes.NewReader(data))
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode avatar: %w", err)
+	}
+	width, height := cfg.Width, cfg.Height
+	isCorrectSize := width == height && avatarMinSize < width && width < avatarMaxSize
+	if isCorrectSize && imageType == "jpeg" {
+		return data, nil
+	} else if len(data) > 10*1024*1024 || width > 12000 || height > 12000 {
+		return nil, fmt.Errorf("avatar is too large for re-encoding")
+	}
+
+	img, _, err := image.Decode(bytes.NewReader(data))
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode avatar: %w", err)
+	}
+
+	if !isCorrectSize {
+		var squareCrop image.Rectangle
+		var dstSize int
+		if width > height {
+			dstSize = max(avatarMinSize, min(height, avatarMaxSize))
+
+			offset := (width - height) / 2
+			squareCrop = image.Rect(offset, 0, width-offset, height)
+		} else {
+			dstSize = max(avatarMinSize, min(width, avatarMaxSize))
+
+			offset := (height - width) / 2
+			squareCrop = image.Rect(0, offset, width, height-offset)
+		}
+
+		cropped := image.NewRGBA(image.Rect(0, 0, dstSize, dstSize))
+		draw.BiLinear.Scale(cropped, cropped.Rect, img, squareCrop, draw.Src, nil)
+		img = cropped
+	}
+
+	var buf bytes.Buffer
+	err = jpeg.Encode(&buf, img, &jpeg.Options{Quality: jpeg.DefaultQuality})
+	if err != nil {
+		return nil, fmt.Errorf("failed to re-encode avatar: %w", err)
+	}
+	return buf.Bytes(), nil
 }
