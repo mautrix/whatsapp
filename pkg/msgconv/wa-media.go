@@ -340,8 +340,8 @@ func (mc *MessageConverter) reuploadWhatsAppAttachment(
 	part *PreparedMedia,
 ) error {
 	// Check if media should be skipped during backfill
-	if isBackfill, ok := ctx.Value("is_backfill").(bool); ok && isBackfill {
-		if skipMedia, ok := ctx.Value("skip_media").(bool); ok && skipMedia {
+	if isBackfill, ok := ctx.Value(ContextKeyIsBackfill).(bool); ok && isBackfill {
+		if skipMedia, ok := ctx.Value(ContextKeySkipMedia).(bool); ok && skipMedia {
 			return nil
 		}
 	}

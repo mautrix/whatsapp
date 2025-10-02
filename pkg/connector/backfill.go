@@ -24,6 +24,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2/simplevent"
 
 	"go.mau.fi/mautrix-whatsapp/pkg/connector/wadb"
+	"go.mau.fi/mautrix-whatsapp/pkg/msgconv"
 	"go.mau.fi/mautrix-whatsapp/pkg/waid"
 )
 
@@ -529,8 +530,8 @@ func (wa *WhatsAppClient) convertHistorySyncMessage(
 	intent := wa.Main.Bridge.Bot
 
 	// Add backfill context to indicate this is from history sync
-	backfillCtx := context.WithValue(ctx, "is_backfill", true)
-	backfillCtx = context.WithValue(backfillCtx, "skip_media", wa.Main.Config.HistorySync.SkipMediaDuringSync)
+	backfillCtx := context.WithValue(ctx, msgconv.ContextKeyIsBackfill, true)
+	backfillCtx = context.WithValue(backfillCtx, msgconv.ContextKeySkipMedia, wa.Main.Config.HistorySync.SkipMediaDuringSync)
 
 	wrapped := &bridgev2.BackfillMessage{
 		ConvertedMessage: wa.Main.MsgConv.ToMatrix(backfillCtx, portal, wa.Client, intent, msg, rawMsg, info, isViewOnce, true, nil),

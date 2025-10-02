@@ -47,6 +47,8 @@ const (
 	contextKeyIntent
 	contextKeyPortal
 	ContextKeyEditTargetID
+	ContextKeyIsBackfill
+	ContextKeySkipMedia
 )
 
 func getClient(ctx context.Context) *whatsmeow.Client {
