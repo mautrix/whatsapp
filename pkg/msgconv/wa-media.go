@@ -545,18 +545,3 @@ func ExtractAnimatedSticker(data []byte) ([]byte, error) {
 	}
 	return data, nil
 }
-
-func (mc *MessageConverter) createMediaPlaceholder(part *PreparedMedia) error {
-	// Create a placeholder message for skipped media
-	part.MessageEventContent = &event.MessageEventContent{
-		MsgType: event.MsgNotice,
-		Body:    fmt.Sprintf("📎 %s (media skipped during sync)", part.TypeDescription),
-		Info:    &event.FileInfo{},
-	}
-
-	// Clear media-specific fields
-	part.URL = ""
-	part.File = nil
-
-	return nil
-}
