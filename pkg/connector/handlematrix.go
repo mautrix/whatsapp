@@ -15,6 +15,8 @@ import (
 	"go.mau.fi/util/ptr"
 	"go.mau.fi/util/variationselector"
 	"go.mau.fi/whatsmeow"
+	"go.mau.fi/whatsmeow/appstate"
+	"go.mau.fi/whatsmeow/proto/waCommon"
 	"go.mau.fi/whatsmeow/proto/waE2E"
 	"go.mau.fi/whatsmeow/types"
 	"golang.org/x/image/draw"
@@ -40,6 +42,9 @@ var (
 	_ bridgev2.RoomNameHandlingNetworkAPI       = (*WhatsAppClient)(nil)
 	_ bridgev2.RoomTopicHandlingNetworkAPI      = (*WhatsAppClient)(nil)
 	_ bridgev2.RoomAvatarHandlingNetworkAPI     = (*WhatsAppClient)(nil)
+	_ bridgev2.MuteHandlingNetworkAPI           = (*WhatsAppClient)(nil)
+	_ bridgev2.TagHandlingNetworkAPI            = (*WhatsAppClient)(nil)
+	_ bridgev2.MarkedUnreadHandlingNetworkAPI   = (*WhatsAppClient)(nil)
 )
 
 func (wa *WhatsAppClient) HandleMatrixPollStart(ctx context.Context, msg *bridgev2.MatrixPollStart) (*bridgev2.MatrixMessageResponse, error) {
@@ -565,4 +570,58 @@ func convertRoomAvatar(data []byte) ([]byte, error) {
 		return nil, fmt.Errorf("failed to re-encode avatar: %w", err)
 	}
 	return buf.Bytes(), nil
+}
+
+func (wa *WhatsAppClient) HandleMute(ctx context.Context, msg *bridgev2.MatrixMute) error {
+	chatJID, err := waid.ParsePortalID(msg.Portal.ID)
+	if err != nil {
+		return err
+	}
+	mutedUntil := msg.Content.GetMutedUntilTime()
+	muted := mutedUntil.After(time.Now())
+	muteTS := ptr.Ptr(mutedUntil.UnixMilli())
+	if !muted || mutedUntil == event.MutedForever {
+		muteTS = nil
+	}
+	return wa.Client.SendAppState(ctx, appstate.BuildMuteAbs(chatJID, muted, muteTS))
+}
+
+func (wa *WhatsAppClient) HandleRoomTag(ctx context.Context, msg *bridgev2.MatrixRoomTag) error {
+	chatJID, err := waid.ParsePortalID(msg.Portal.ID)
+	if err != nil {
+		return err
+	}
+	_, isFavorite := msg.Content.Tags[event.RoomTagFavourite]
+	return wa.Client.SendAppState(ctx, appstate.BuildPin(chatJID, isFavorite))
+}
+
+func (wa *WhatsAppClient) HandleMarkedUnread(ctx context.Context, msg *bridgev2.MatrixMarkedUnread) error {
+	chatJID, err := waid.ParsePortalID(msg.Portal.ID)
+	if err != nil {
+		return err
+	}
+	msgs, err := wa.Main.Bridge.DB.Message.GetLastNInPortal(ctx, msg.Portal.PortalKey, 1)
+	if err != nil {
+		return fmt.Errorf("failed to get last message in portal: %w", err)
+	}
+	var lastTS time.Time
+	var lastKey *waCommon.MessageKey
+	if len(msgs) == 1 {
+		lastTS = msgs[0].Timestamp
+		parsed, _ := waid.ParseMessageID(msgs[0].ID)
+		if parsed != nil {
+			fromMe := parsed.Sender.ToNonAD() == wa.JID.ToNonAD() || parsed.Sender.ToNonAD() == wa.GetStore().GetLID().ToNonAD()
+			var participant *string
+			if chatJID.Server == types.GroupServer {
+				participant = ptr.Ptr(parsed.Sender.String())
+			}
+			lastKey = &waCommon.MessageKey{
+				RemoteJID:   ptr.Ptr(chatJID.String()),
+				FromMe:      &fromMe,
+				ID:          &parsed.ID,
+				Participant: participant,
+			}
+		}
+	}
+	return wa.Client.SendAppState(ctx, appstate.BuildMarkChatAsRead(chatJID, msg.Content.Unread, lastTS, lastKey))
 }
