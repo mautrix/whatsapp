@@ -24,6 +24,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/lib/pq"
 	"go.mau.fi/util/dbutil"
 	"go.mau.fi/util/random"
 	"go.mau.fi/whatsmeow"
@@ -56,6 +57,10 @@ type WhatsAppConnector struct {
 	mediaEditCache         MediaEditCache
 	mediaEditCacheLock     sync.RWMutex
 	stopMediaEditCacheLoop atomic.Pointer[context.CancelFunc]
+}
+
+func init() {
+	sqlstore.PostgresArrayWrapper = pq.Array
 }
 
 var (
