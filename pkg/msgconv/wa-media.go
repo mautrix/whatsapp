@@ -54,13 +54,10 @@ func (mc *MessageConverter) convertMediaMessage(
 	cachedPart *bridgev2.ConvertedMessagePart,
 ) (part *bridgev2.ConvertedMessagePart, contextInfo *waE2E.ContextInfo) {
 	if mc.DisableViewOnce && isViewOnce {
-		verb := "sent"
-		suffix := ""
-		if !messageInfo.IsFromMe {
-			verb = "received"
-			suffix = " For added privacy, you can only open it on the WhatsApp app."
+		body := "You received a view once message. For added privacy, you can only open it on the WhatsApp app."
+		if messageInfo.IsFromMe {
+			body = "You sent a view once message from another device."
 		}
-		body := fmt.Sprintf("You %s a view once %s.%s", verb, typeName, suffix)
 		return &bridgev2.ConvertedMessagePart{
 			Type: event.EventMessage,
 			Content: &event.MessageEventContent{
