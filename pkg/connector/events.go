@@ -341,12 +341,12 @@ func (evt *WAUndecryptableMessage) ConvertMessage(ctx context.Context, portal *b
 	content := &undecryptableMessageContent
 	if evt.Type == events.UnavailableTypeViewOnce {
 		verb := "sent"
-		extra := ""
+		suffix := ""
 		if !evt.Info.IsFromMe {
 			verb = "received"
-			extra = " For added privacy, you can only open it on the WhatsApp app."
+			suffix = " For added privacy, you can only open it on the WhatsApp app."
 		}
-		body := fmt.Sprintf("You %s a view once message.%s", verb, extra)
+		body := fmt.Sprintf("You %s a view once message.%s", verb, suffix)
 		content = &event.MessageEventContent{
 			MsgType: event.MsgNotice,
 			Body:    body,
