@@ -58,11 +58,15 @@ func (mc *MessageConverter) convertMediaMessage(
 		if messageInfo.IsFromMe {
 			verb = "sent"
 		}
+		body := fmt.Sprintf("You %s a view once %s.", verb, typeName)
+		if !messageInfo.IsFromMe {
+			body += " For added privacy, you can only open it on the WhatsApp app."
+		}
 		return &bridgev2.ConvertedMessagePart{
 			Type: event.EventMessage,
 			Content: &event.MessageEventContent{
 				MsgType: event.MsgNotice,
-				Body:    fmt.Sprintf("You %s a view once %s. For added privacy, you can only open it on the WhatsApp app.", verb, typeName),
+				Body:    body,
 			},
 		}, nil
 	}
