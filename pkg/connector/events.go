@@ -340,9 +340,13 @@ func (evt *WAUndecryptableMessage) ConvertMessage(ctx context.Context, portal *b
 	}
 	content := &undecryptableMessageContent
 	if evt.Type == events.UnavailableTypeViewOnce {
+		verb := "received"
+		if evt.Info.IsFromMe {
+			verb = "sent"
+		}
 		content = &event.MessageEventContent{
 			MsgType: event.MsgNotice,
-			Body:    "You received a view once message. For added privacy, you can only open it on the WhatsApp app.",
+			Body:    fmt.Sprintf("You %s a view once message. For added privacy, you can only open it on the WhatsApp app.", verb),
 		}
 	}
 	// TODO thread root for comments
