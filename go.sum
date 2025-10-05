@@ -81,8 +81,8 @@ go.mau.fi/util v0.9.2-0.20251001114608-d99877b9cc10 h1:EvX/di02gOriKN0xGDJuQ5mgi
 go.mau.fi/util v0.9.2-0.20251001114608-d99877b9cc10/go.mod h1:M0bM9SyaOWJniaHs9hxEzz91r5ql6gYq6o1q5O1SsjQ=
 go.mau.fi/webp v0.2.0 h1:QVMenHw7JDb4vall5sV75JNBQj9Hw4u8AKbi1QetHvg=
 go.mau.fi/webp v0.2.0/go.mod h1:VSg9MyODn12Mb5pyG0NIyNFhujrmoFSsZBs8syOZD1Q=
-go.mau.fi/whatsmeow v0.0.0-20251004173248-359e39387ad3 h1:dgZ3Pz/AIsx3Yc70wnD9WsgtkD/FrokTY7ACCI7JhO0=
-go.mau.fi/whatsmeow v0.0.0-20251004173248-359e39387ad3/go.mod h1:Erq9GGhe5DuIGL9i2gp2LH4nEYkBB+lsgdu3i4KcvPU=
+go.mau.fi/whatsmeow v0.0.0-20251005083110-4fe97da162dc h1:O19PRYoEZJyC7BgUM9PSillFLAkABiBK7AMORNwwK3Q=
+go.mau.fi/whatsmeow v0.0.0-20251005083110-4fe97da162dc/go.mod h1:Erq9GGhe5DuIGL9i2gp2LH4nEYkBB+lsgdu3i4KcvPU=
 go.mau.fi/zeroconfig v0.2.0 h1:e/OGEERqVRRKlgaro7E6bh8xXiKFSXB3eNNIud7FUjU=
 go.mau.fi/zeroconfig v0.2.0/go.mod h1:J0Vn0prHNOm493oZoQ84kq83ZaNCYZnq+noI1b1eN8w=
 golang.org/x/crypto v0.42.0 h1:chiH31gIWm57EkTXpwnqf8qeuMUi0yekh6mT2AvFlqI=
