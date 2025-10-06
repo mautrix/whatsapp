@@ -1,3 +1,11 @@
+# v25.10 (unreleased)
+
+* Switched to calendar versioning.
+* Added support for bridging event edits.
+* Fixed backfill creating incorrect disappearing timer change notices.
+* Fixed previous messages not being marked as read when sending a new message.
+* Fixed incoming call notices with LID addressing going into different DM room.
+
 # v0.12.5 (2025-09-16)
 
 * Removed legacy provisioning API and database legacy migration.
