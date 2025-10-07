@@ -128,6 +128,11 @@ func (wl *WALogin) Start(ctx context.Context) (*bridgev2.LoginStep, error) {
 	wl.Client.EnableAutoReconnect = false
 	wl.Client.DisableLoginAutoReconnect = true
 	wl.EventHandlerID = wl.Client.AddEventHandler(wl.handleEvent)
+	if wl.Main.ExternalEventHandler != nil {
+		wl.Client.AddEventHandler(func(evt any) {
+			wl.Main.ExternalEventHandler(wl.Client, evt)
+		})
+	}
 	if err := wl.Main.updateProxy(ctx, wl.Client, true); err != nil {
 		return nil, err
 	}

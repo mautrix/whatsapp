@@ -57,6 +57,8 @@ type WhatsAppConnector struct {
 	mediaEditCache         MediaEditCache
 	mediaEditCacheLock     sync.RWMutex
 	stopMediaEditCacheLoop atomic.Pointer[context.CancelFunc]
+
+	ExternalEventHandler func(client *whatsmeow.Client, rawEvt any)
 }
 
 func init() {

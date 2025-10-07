@@ -73,6 +73,11 @@ func (wa *WhatsAppConnector) LoadUserLogin(ctx context.Context, login *bridgev2.
 		log := w.UserLogin.Log.With().Str("component", "whatsmeow").Logger()
 		w.Client = whatsmeow.NewClient(w.Device, waLog.Zerolog(log))
 		w.Client.AddEventHandlerWithSuccessStatus(w.handleWAEvent)
+		if wa.ExternalEventHandler != nil {
+			w.Client.AddEventHandler(func(evt any) {
+				wa.ExternalEventHandler(w.Client, evt)
+			})
+		}
 		w.Client.SynchronousAck = true
 		if bridgev2.PortalEventBuffer == 0 {
 			w.Client.EnableDecryptedEventBuffer = true
