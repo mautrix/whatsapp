@@ -7,9 +7,9 @@ toolchain go1.25.1
 require (
 	github.com/lib/pq v1.10.9
 	github.com/rs/zerolog v1.34.0
-	go.mau.fi/util v0.9.2-0.20251001114608-d99877b9cc10
+	go.mau.fi/util v0.9.2-0.20251005111801-c13b66219cee
 	go.mau.fi/webp v0.2.0
-	go.mau.fi/whatsmeow v0.0.0-20251005083110-4fe97da162dc
+	go.mau.fi/whatsmeow v0.0.0-20251010113933-5806d60827b0
 	golang.org/x/image v0.31.0
 	golang.org/x/net v0.44.0
 	golang.org/x/sync v0.17.0
