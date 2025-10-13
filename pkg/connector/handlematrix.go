@@ -45,6 +45,7 @@ var (
 	_ bridgev2.MuteHandlingNetworkAPI           = (*WhatsAppClient)(nil)
 	_ bridgev2.TagHandlingNetworkAPI            = (*WhatsAppClient)(nil)
 	_ bridgev2.MarkedUnreadHandlingNetworkAPI   = (*WhatsAppClient)(nil)
+	_ bridgev2.DeleteChatHandlingNetworkAPI     = (*WhatsAppClient)(nil)
 )
 
 func (wa *WhatsAppClient) HandleMatrixPollStart(ctx context.Context, msg *bridgev2.MatrixPollStart) (*bridgev2.MatrixMessageResponse, error) {
@@ -624,4 +625,36 @@ func (wa *WhatsAppClient) HandleMarkedUnread(ctx context.Context, msg *bridgev2.
 		}
 	}
 	return wa.Client.SendAppState(ctx, appstate.BuildMarkChatAsRead(chatJID, msg.Content.Unread, lastTS, lastKey))
+}
+
+func (wa *WhatsAppClient) HandleMatrixDeleteChat(ctx context.Context, msg *bridgev2.MatrixDeleteChat) error {
+	chatJID, err := waid.ParsePortalID(msg.Portal.ID)
+	if err != nil {
+		return err
+	}
+	messages, err := wa.Main.Bridge.DB.Message.GetLastNInPortal(ctx, msg.Portal.PortalKey, 1)
+	if err != nil {
+		return fmt.Errorf("failed to get last message in portal: %w", err)
+	}
+	if len(messages) < 1 {
+		return fmt.Errorf("failed to delete chat: no messages found")
+	}
+	message := messages[0]
+	lastTS := messages[0].Timestamp
+	parsed, err := waid.ParseMessageID(message.ID)
+	if err != nil {
+		return fmt.Errorf("failed to parse last message ID: %w", err)
+	}
+	fromMe := parsed.Sender.ToNonAD() == wa.JID.ToNonAD() || parsed.Sender.ToNonAD() == wa.GetStore().GetLID().ToNonAD()
+	var participant *string
+	if chatJID.Server == types.GroupServer {
+		participant = ptr.Ptr(parsed.Sender.String())
+	}
+	lastKey := &waCommon.MessageKey{
+		RemoteJID:   ptr.Ptr(chatJID.String()),
+		FromMe:      &fromMe,
+		ID:          &parsed.ID,
+		Participant: participant,
+	}
+	return wa.Client.SendAppState(ctx, appstate.BuildDeleteChat(chatJID, lastTS, lastKey))
 }
