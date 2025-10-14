@@ -81,8 +81,6 @@ go.mau.fi/util v0.9.2-0.20251005111801-c13b66219cee h1:wk1XGP/E1UH3YBqXbb9dajWdO
 go.mau.fi/util v0.9.2-0.20251005111801-c13b66219cee/go.mod h1:M0bM9SyaOWJniaHs9hxEzz91r5ql6gYq6o1q5O1SsjQ=
 go.mau.fi/webp v0.2.0 h1:QVMenHw7JDb4vall5sV75JNBQj9Hw4u8AKbi1QetHvg=
 go.mau.fi/webp v0.2.0/go.mod h1:VSg9MyODn12Mb5pyG0NIyNFhujrmoFSsZBs8syOZD1Q=
-go.mau.fi/whatsmeow v0.0.0-20251010113933-5806d60827b0 h1:Q4gIHMOPglOvX8JQ7ewWhoHMhveew2pwnBzmepgJi1w=
-go.mau.fi/whatsmeow v0.0.0-20251010113933-5806d60827b0/go.mod h1:CSdGU471Ss7bWunGomSe9RObY0MRxQDvxFH8i5Ndfk4=
 go.mau.fi/whatsmeow v0.0.0-20251014132254-6048f61ae25b h1:T0+Fhr2eaIOPW2M3xJW4qGzYLLa63aCsAnBFd/2GLhU=
 go.mau.fi/whatsmeow v0.0.0-20251014132254-6048f61ae25b/go.mod h1:CSdGU471Ss7bWunGomSe9RObY0MRxQDvxFH8i5Ndfk4=
 go.mau.fi/zeroconfig v0.2.0 h1:e/OGEERqVRRKlgaro7E6bh8xXiKFSXB3eNNIud7FUjU=

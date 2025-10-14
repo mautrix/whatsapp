@@ -596,14 +596,10 @@ func (wa *WhatsAppClient) HandleRoomTag(ctx context.Context, msg *bridgev2.Matri
 	return wa.Client.SendAppState(ctx, appstate.BuildPin(chatJID, isFavorite))
 }
 
-func (wa *WhatsAppClient) HandleMarkedUnread(ctx context.Context, msg *bridgev2.MatrixMarkedUnread) error {
-	chatJID, err := waid.ParsePortalID(msg.Portal.ID)
+func (wa *WhatsAppClient) getLastMessageInfo(ctx context.Context, chatJID types.JID, portalKey networkid.PortalKey) (time.Time, *waCommon.MessageKey, error) {
+	msgs, err := wa.Main.Bridge.DB.Message.GetLastNInPortal(ctx, portalKey, 1)
 	if err != nil {
-		return err
-	}
-	msgs, err := wa.Main.Bridge.DB.Message.GetLastNInPortal(ctx, msg.Portal.PortalKey, 1)
-	if err != nil {
-		return fmt.Errorf("failed to get last message in portal: %w", err)
+		return time.Time{}, nil, fmt.Errorf("failed to get last message in portal: %w", err)
 	}
 	var lastTS time.Time
 	var lastKey *waCommon.MessageKey
@@ -624,6 +620,18 @@ func (wa *WhatsAppClient) HandleMarkedUnread(ctx context.Context, msg *bridgev2.
 			}
 		}
 	}
+	return lastTS, lastKey, nil
+}
+
+func (wa *WhatsAppClient) HandleMarkedUnread(ctx context.Context, msg *bridgev2.MatrixMarkedUnread) error {
+	chatJID, err := waid.ParsePortalID(msg.Portal.ID)
+	if err != nil {
+		return err
+	}
+	lastTS, lastKey, err := wa.getLastMessageInfo(ctx, chatJID, msg.Portal.PortalKey)
+	if err != nil {
+		return err
+	}
 	return wa.Client.SendAppState(ctx, appstate.BuildMarkChatAsRead(chatJID, msg.Content.Unread, lastTS, lastKey))
 }
 
@@ -632,29 +640,12 @@ func (wa *WhatsAppClient) HandleMatrixDeleteChat(ctx context.Context, msg *bridg
 	if err != nil {
 		return err
 	}
-	messages, err := wa.Main.Bridge.DB.Message.GetLastNInPortal(ctx, msg.Portal.PortalKey, 1)
+	lastTS, lastKey, err := wa.getLastMessageInfo(ctx, chatJID, msg.Portal.PortalKey)
 	if err != nil {
-		return fmt.Errorf("failed to get last message in portal: %w", err)
+		return err
 	}
-	if len(messages) < 1 {
+	if lastKey == nil {
 		return fmt.Errorf("failed to delete chat: no messages found")
-	}
-	message := messages[0]
-	lastTS := messages[0].Timestamp
-	parsed, err := waid.ParseMessageID(message.ID)
-	if err != nil {
-		return fmt.Errorf("failed to parse last message ID: %w", err)
-	}
-	fromMe := parsed.Sender.ToNonAD() == wa.JID.ToNonAD() || parsed.Sender.ToNonAD() == wa.GetStore().GetLID().ToNonAD()
-	var participant *string
-	if chatJID.Server == types.GroupServer {
-		participant = ptr.Ptr(parsed.Sender.String())
-	}
-	lastKey := &waCommon.MessageKey{
-		RemoteJID:   ptr.Ptr(chatJID.String()),
-		FromMe:      &fromMe,
-		ID:          &parsed.ID,
-		Participant: participant,
 	}
 	return wa.Client.SendAppState(ctx, appstate.BuildDeleteChat(chatJID, lastTS, lastKey))
 }
