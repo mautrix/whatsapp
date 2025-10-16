@@ -1,4 +1,4 @@
-# v25.10 (unreleased)
+# v25.10
 
 * Switched to calendar versioning.
 * Added support for bridging event edits.
