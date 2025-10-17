@@ -316,6 +316,8 @@ func (wa *WhatsAppClient) handleWAMessage(ctx context.Context, evt *events.Messa
 		evt.Message = &waE2E.Message{
 			ProtocolMessage: protocolMsg,
 		}
+	} else if assocType == waE2E.MessageAssociation_MOTION_PHOTO {
+		evt.Message = evt.Message.GetAssociatedChildMessage().GetMessage()
 	}
 
 	parsedMessageType := getMessageType(evt.Message)
