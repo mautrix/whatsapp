@@ -1,0 +1,22 @@
+FROM golang:1-alpine3.20 AS builder
+
+RUN apk add --no-cache git ca-certificates build-base su-exec olm-dev ffmpeg su-exec \
+    ca-certificates olm bash jq yq curl
+
+COPY . /build
+WORKDIR /build
+RUN ./build.sh
+
+ENV UID=1337 \
+    GID=1337
+
+COPY ./mautrix-whatsapp /usr/bin/mautrix-whatsapp
+COPY ./docker-run.sh /docker-run.sh
+
+RUN go install github.com/mitranim/gow@latest
+RUN echo 'cd /build && gow run ./cmd/mautrix-whatsapp $@' > /usr/bin/mautrix-whatsapp \
+&& chmod +x /usr/bin/mautrix-whatsapp
+
+VOLUME /data
+
+CMD ["/docker-run.sh", "dev"]
