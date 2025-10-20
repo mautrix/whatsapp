@@ -109,7 +109,7 @@ func (wa *WhatsAppConnector) ValidateUserID(id networkid.UserID) bool {
 
 func (wa *WhatsAppClient) startChatLIDToPN(ctx context.Context, jid types.JID) (types.JID, error) {
 	if jid.Server == types.HiddenUserServer {
-		pn, err := wa.Device.LIDs.GetPNForLID(ctx, jid)
+		pn, err := wa.GetStore().LIDs.GetPNForLID(ctx, jid)
 		if err != nil {
 			return jid, fmt.Errorf("failed to get phone number for lid: %w", err)
 		} else if pn.IsEmpty() {

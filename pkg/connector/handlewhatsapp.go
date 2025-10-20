@@ -264,7 +264,7 @@ func (wa *WhatsAppClient) rerouteWAMessage(ctx context.Context, info *types.Mess
 			Msg("Forced LID DM sender to phone number in own message sent from another device")
 		info.Chat = info.RecipientAlt.ToNonAD()
 	} else if info.Sender.Server == types.BotServer && info.Chat.Server == types.HiddenUserServer {
-		chatPN, err := wa.Device.LIDs.GetPNForLID(ctx, info.Chat)
+		chatPN, err := wa.GetStore().LIDs.GetPNForLID(ctx, info.Chat)
 		if err != nil {
 			wa.UserLogin.Log.Err(err).
 				Str("message_id", info.ID).
@@ -423,7 +423,7 @@ func (wa *WhatsAppClient) handleWAReceipt(ctx context.Context, evt *events.Recei
 	if !evt.MessageSender.IsEmpty() {
 		messageSender = evt.MessageSender
 	} else if evt.Chat.Server == types.GroupServer && evt.Sender.Server == types.HiddenUserServer {
-		lid := wa.Device.GetLID()
+		lid := wa.GetStore().GetLID()
 		if !lid.IsEmpty() {
 			messageSender = lid
 		}

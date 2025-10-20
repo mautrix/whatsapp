@@ -378,9 +378,9 @@ func (wa *WhatsAppClient) syncAltGhostWithInfo(ctx context.Context, jid types.JI
 	var altJID types.JID
 	var err error
 	if jid.Server == types.HiddenUserServer {
-		altJID, err = wa.Device.LIDs.GetPNForLID(ctx, jid)
+		altJID, err = wa.GetStore().LIDs.GetPNForLID(ctx, jid)
 	} else if jid.Server == types.DefaultUserServer {
-		altJID, err = wa.Device.LIDs.GetLIDForPN(ctx, jid)
+		altJID, err = wa.GetStore().LIDs.GetLIDForPN(ctx, jid)
 	}
 	if err != nil {
 		log.Warn().Err(err).

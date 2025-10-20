@@ -39,7 +39,7 @@ func (wa *WhatsAppClient) makeEventSender(ctx context.Context, id types.JID) bri
 	} else if id.Server == types.DefaultUserServer {
 		senderLoginJID = id
 	} else if id.Server == types.HiddenUserServer {
-		pn, err := wa.Device.LIDs.GetPNForLID(ctx, id)
+		pn, err := wa.GetStore().LIDs.GetPNForLID(ctx, id)
 		if err != nil {
 			zerolog.Ctx(ctx).Err(err).
 				Stringer("lid", id).
