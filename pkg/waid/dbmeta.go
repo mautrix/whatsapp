@@ -68,6 +68,9 @@ type GroupInviteMeta struct {
 	Code       string    `json:"code"`
 	Expiration int64     `json:"expiration,string"`
 	Inviter    types.JID `json:"inviter"`
+
+	GroupName     string `json:"group_name,omitempty"`
+	IsParentGroup bool   `json:"is_parent_group,omitempty"`
 }
 
 type MessageMetadata struct {

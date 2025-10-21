@@ -35,6 +35,7 @@ import (
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 
+	"go.mau.fi/mautrix-whatsapp/pkg/msgconv"
 	"go.mau.fi/mautrix-whatsapp/pkg/waid"
 )
 
@@ -249,6 +250,38 @@ func (wa *WhatsAppClient) CreateGroup(ctx context.Context, params *bridgev2.Grou
 	if err != nil {
 		return nil, fmt.Errorf("failed to create group: %w", err)
 	}
+	failedParticipants := make(map[networkid.UserID]bridgev2.CreateChatFailedParticipant)
+	filteredParticipants := resp.Participants[:0]
+	for _, pcp := range resp.Participants {
+		if pcp.Error != 0 {
+			var inviteContent *event.Content
+			if pcp.AddRequest != nil {
+				inviteContent = &event.Content{
+					Raw: map[string]any{
+						msgconv.GroupInviteMetaField: &waid.GroupInviteMeta{
+							JID:           resp.JID,
+							Code:          pcp.AddRequest.Code,
+							Expiration:    pcp.AddRequest.Expiration.Unix(),
+							Inviter:       wa.JID.ToNonAD(),
+							GroupName:     resp.Name,
+							IsParentGroup: resp.IsParent,
+						},
+					},
+					Parsed: &event.MessageEventContent{
+						Body:    "Invitation to join my WhatsApp group",
+						MsgType: event.MsgText,
+					},
+				}
+			}
+			failedParticipants[waid.MakeUserID(pcp.JID)] = bridgev2.CreateChatFailedParticipant{
+				Reason:        fmt.Sprintf("error %d", pcp.Error),
+				InviteContent: inviteContent,
+			}
+		} else {
+			filteredParticipants = append(filteredParticipants, pcp)
+		}
+	}
+	resp.Participants = filteredParticipants
 	portal, err := wa.Main.Bridge.GetPortalByKey(ctx, wa.makeWAPortalKey(resp.JID))
 	if err != nil {
 		return nil, fmt.Errorf("failed to get portal: %w", err)
@@ -322,5 +355,7 @@ func (wa *WhatsAppClient) CreateGroup(ctx context.Context, params *bridgev2.Grou
 		PortalKey:  wa.makeWAPortalKey(resp.JID),
 		Portal:     portal,
 		PortalInfo: groupInfo,
+
+		FailedParticipants: failedParticipants,
 	}, nil
 }

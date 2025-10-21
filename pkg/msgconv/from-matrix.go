@@ -19,6 +19,7 @@ package msgconv
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"image"
@@ -99,7 +100,11 @@ func (mc *MessageConverter) ToWhatsApp(
 
 	switch content.MsgType {
 	case event.MsgText, event.MsgNotice, event.MsgEmote:
-		message = mc.constructTextMessage(ctx, content, contextInfo)
+		var err error
+		message, err = mc.constructTextMessage(ctx, content, evt.Content.Raw, contextInfo)
+		if err != nil {
+			return nil, nil, err
+		}
 	case event.MessageType(event.EventSticker.Type), event.MsgImage, event.MsgVideo, event.MsgAudio, event.MsgFile:
 		uploaded, thumbnail, mime, err := mc.reuploadFileToWhatsApp(ctx, content)
 		if err != nil {
@@ -304,7 +309,16 @@ func (mc *MessageConverter) parseText(ctx context.Context, content *event.Messag
 	return
 }
 
-func (mc *MessageConverter) constructTextMessage(ctx context.Context, content *event.MessageEventContent, contextInfo *waE2E.ContextInfo) *waE2E.Message {
+func (mc *MessageConverter) constructTextMessage(
+	ctx context.Context,
+	content *event.MessageEventContent,
+	raw map[string]any,
+	contextInfo *waE2E.ContextInfo,
+) (*waE2E.Message, error) {
+	groupInvite, ok := raw[GroupInviteMetaField].(map[string]any)
+	if ok {
+		return mc.constructGroupInviteMessage(ctx, content, groupInvite, contextInfo)
+	}
 	text, mentions := mc.parseText(ctx, content)
 	if len(mentions) > 0 {
 		contextInfo.MentionedJID = mentions
@@ -315,7 +329,44 @@ func (mc *MessageConverter) constructTextMessage(ctx context.Context, content *e
 	}
 	mc.convertURLPreviewToWhatsApp(ctx, content, etm)
 
-	return &waE2E.Message{ExtendedTextMessage: etm}
+	return &waE2E.Message{ExtendedTextMessage: etm}, nil
+}
+
+func (mc *MessageConverter) constructGroupInviteMessage(
+	ctx context.Context,
+	content *event.MessageEventContent,
+	inviteMeta map[string]any,
+	contextInfo *waE2E.ContextInfo,
+) (*waE2E.Message, error) {
+	payload, err := json.Marshal(inviteMeta)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal invite meta: %w", err)
+	}
+	var parsedInviteMeta waid.GroupInviteMeta
+	err = json.Unmarshal(payload, &parsedInviteMeta)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse invite meta: %w", err)
+	}
+	text, mentions := mc.parseText(ctx, content)
+	if len(mentions) > 0 {
+		contextInfo.MentionedJID = mentions
+	}
+	groupType := waE2E.GroupInviteMessage_DEFAULT
+	if parsedInviteMeta.IsParentGroup {
+		groupType = waE2E.GroupInviteMessage_PARENT
+	}
+	return &waE2E.Message{
+		GroupInviteMessage: &waE2E.GroupInviteMessage{
+			GroupJID:         proto.String(parsedInviteMeta.JID.String()),
+			InviteCode:       proto.String(parsedInviteMeta.Code),
+			InviteExpiration: proto.Int64(parsedInviteMeta.Expiration),
+			GroupName:        proto.String(parsedInviteMeta.GroupName),
+			JPEGThumbnail:    nil,
+			Caption:          proto.String(text),
+			ContextInfo:      contextInfo,
+			GroupType:        groupType.Enum(),
+		},
+	}, nil
 }
 
 func (mc *MessageConverter) convertPill(displayname, mxid, eventID string, ctx format.Context) string {

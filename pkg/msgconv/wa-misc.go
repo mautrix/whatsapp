@@ -88,10 +88,12 @@ func (mc *MessageConverter) convertGroupInviteMessage(ctx context.Context, info 
 		template = inviteMsgBroken
 	} else {
 		inviteMeta = &waid.GroupInviteMeta{
-			JID:        groupJID,
-			Code:       msg.GetInviteCode(),
-			Expiration: msg.GetInviteExpiration(),
-			Inviter:    info.Sender.ToNonAD(),
+			JID:           groupJID,
+			Code:          msg.GetInviteCode(),
+			Expiration:    msg.GetInviteExpiration(),
+			Inviter:       info.Sender.ToNonAD(),
+			GroupName:     msg.GetGroupName(),
+			IsParentGroup: msg.GetGroupType() == waE2E.GroupInviteMessage_PARENT,
 		}
 		extraAttrs = map[string]any{
 			GroupInviteMetaField: inviteMeta,
