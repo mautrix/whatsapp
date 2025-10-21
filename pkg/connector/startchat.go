@@ -164,11 +164,11 @@ func (wa *WhatsAppClient) ResolveIdentifier(ctx context.Context, identifier stri
 }
 
 func (wa *WhatsAppClient) GetContactList(ctx context.Context) ([]*bridgev2.ResolveIdentifierResponse, error) {
-	return wa.getContactList(ctx, "")
+	return wa.getContactList(ctx, "", true)
 }
 
 func (wa *WhatsAppClient) SearchUsers(ctx context.Context, query string) ([]*bridgev2.ResolveIdentifierResponse, error) {
-	return wa.getContactList(ctx, strings.ToLower(query))
+	return wa.getContactList(ctx, strings.ToLower(query), false)
 }
 
 func matchesQuery(str string, query string) bool {
@@ -178,7 +178,7 @@ func matchesQuery(str string, query string) bool {
 	return strings.Contains(strings.ToLower(str), query)
 }
 
-func (wa *WhatsAppClient) getContactList(ctx context.Context, filter string) ([]*bridgev2.ResolveIdentifierResponse, error) {
+func (wa *WhatsAppClient) getContactList(ctx context.Context, filter string, onlyContacts bool) ([]*bridgev2.ResolveIdentifierResponse, error) {
 	if !wa.IsLoggedIn() {
 		return nil, mautrix.MForbidden.WithMessage("You must be logged in to list contacts")
 	}
@@ -188,6 +188,9 @@ func (wa *WhatsAppClient) getContactList(ctx context.Context, filter string) ([]
 	}
 	resp := make([]*bridgev2.ResolveIdentifierResponse, 0, len(contacts))
 	for jid, contactInfo := range contacts {
+		if onlyContacts && contactInfo.FirstName == "" {
+			continue
+		}
 		if !matchesQuery(contactInfo.PushName, filter) && !matchesQuery(contactInfo.FullName, filter) && !matchesQuery(jid.User, filter) {
 			continue
 		}
