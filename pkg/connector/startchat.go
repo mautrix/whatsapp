@@ -250,7 +250,7 @@ func (wa *WhatsAppClient) CreateGroup(ctx context.Context, params *bridgev2.Grou
 	if err != nil {
 		return nil, fmt.Errorf("failed to create group: %w", err)
 	}
-	failedParticipants := make(map[networkid.UserID]bridgev2.CreateChatFailedParticipant)
+	failedParticipants := make(map[networkid.UserID]*bridgev2.CreateChatFailedParticipant)
 	filteredParticipants := resp.Participants[:0]
 	for _, pcp := range resp.Participants {
 		if pcp.Error != 0 {
@@ -273,9 +273,10 @@ func (wa *WhatsAppClient) CreateGroup(ctx context.Context, params *bridgev2.Grou
 					},
 				}
 			}
-			failedParticipants[waid.MakeUserID(pcp.JID)] = bridgev2.CreateChatFailedParticipant{
-				Reason:        fmt.Sprintf("error %d", pcp.Error),
-				InviteContent: inviteContent,
+			failedParticipants[waid.MakeUserID(pcp.JID)] = &bridgev2.CreateChatFailedParticipant{
+				Reason:          fmt.Sprintf("error %d", pcp.Error),
+				InviteEventType: event.EventMessage.Type,
+				InviteContent:   inviteContent,
 			}
 		} else {
 			filteredParticipants = append(filteredParticipants, pcp)

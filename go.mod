@@ -15,7 +15,7 @@ require (
 	golang.org/x/sync v0.17.0
 	google.golang.org/protobuf v1.36.10
 	gopkg.in/yaml.v3 v3.0.1
-	maunium.net/go/mautrix v0.25.3-0.20251021144018-1aacf6e987b1
+	maunium.net/go/mautrix v0.25.3-0.20251021155549-ef31dae082e5
 )
 
 require (
