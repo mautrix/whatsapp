@@ -579,6 +579,7 @@ func (wa *WhatsAppClient) handleWADeleteChat(evt *events.DeleteChat) bool {
 			Timestamp: evt.Timestamp,
 		},
 		OnlyForMe: true,
+		Children:  true,
 	}).Success
 }
 
