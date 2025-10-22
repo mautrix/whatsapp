@@ -9,13 +9,13 @@ require (
 	github.com/rs/zerolog v1.34.0
 	go.mau.fi/util v0.9.2
 	go.mau.fi/webp v0.2.0
-	go.mau.fi/whatsmeow v0.0.0-20251016095441-02c50743e601
+	go.mau.fi/whatsmeow v0.0.0-20251022100208-a81333ed9f79
 	golang.org/x/image v0.32.0
 	golang.org/x/net v0.46.0
 	golang.org/x/sync v0.17.0
 	google.golang.org/protobuf v1.36.10
 	gopkg.in/yaml.v3 v3.0.1
-	maunium.net/go/mautrix v0.25.3-0.20251021155549-ef31dae082e5
+	maunium.net/go/mautrix v0.25.3-0.20251022100332-e805815e4120
 )
 
 require (

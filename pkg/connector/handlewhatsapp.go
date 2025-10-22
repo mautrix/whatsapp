@@ -744,7 +744,7 @@ func (wa *WhatsAppClient) handleWAMute(evt *events.Mute) bool {
 	var mutedUntil time.Time
 	if evt.Action.GetMuted() {
 		mutedUntil = event.MutedForever
-		if evt.Action.GetMuteEndTimestamp() != 0 {
+		if evt.Action.GetMuteEndTimestamp() > 0 {
 			mutedUntil = time.Unix(evt.Action.GetMuteEndTimestamp(), 0)
 		}
 	} else {
