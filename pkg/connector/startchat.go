@@ -217,7 +217,13 @@ func (wa *WhatsAppClient) CreateGroup(ctx context.Context, params *bridgev2.Grou
 		CreateKey:    createKey,
 	}
 	for i, participant := range params.Participants {
-		req.Participants[i] = waid.ParseUserID(participant)
+		jid := waid.ParseUserID(participant)
+		// Normalize to PN if it's a LID
+		jid, err := wa.startChatLIDToPN(ctx, jid)
+		if err != nil {
+			return nil, fmt.Errorf("failed to normalize participant %s: %w", participant, err)
+		}
+		req.Participants[i] = jid
 	}
 	if params.Parent != nil {
 		var err error
