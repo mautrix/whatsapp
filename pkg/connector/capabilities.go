@@ -50,7 +50,8 @@ func (wa *WhatsAppConnector) GetCapabilities() *bridgev2.NetworkGeneralCapabilit
 }
 
 func (wa *WhatsAppConnector) GetBridgeInfoVersion() (info, caps int) {
-	return 1, 5
+	// Bump caps version to resend room features after adding room management capabilities
+	return 1, 6
 }
 
 const WAMaxFileSize = 2000 * 1024 * 1024
@@ -177,6 +178,11 @@ var whatsappCaps = &event.RoomFeatures{
 	TypingNotifications: true,
 	DisappearingTimer:   waDisappearingCap,
 	DeleteChat:          true,
+
+	// Room management capabilities
+	ManageMembers: true,
+	SetRoomAvatar: true,
+	SetRoomTitle:  true,
 }
 
 var whatsappCAGCaps *event.RoomFeatures
