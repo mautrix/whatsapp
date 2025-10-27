@@ -237,6 +237,8 @@ type MediaMessageWithDuration interface {
 	GetSeconds() uint32
 }
 
+const WhatsAppStickerSize = 190
+
 func prepareMediaMessage(rawMsg MediaMessage) *PreparedMedia {
 	extraInfo := map[string]any{}
 	data := &PreparedMedia{
@@ -248,6 +250,22 @@ func prepareMediaMessage(rawMsg MediaMessage) *PreparedMedia {
 			"info": extraInfo,
 		},
 	}
+	if durationMsg, ok := rawMsg.(MediaMessageWithDuration); ok {
+		data.Info.Duration = int(durationMsg.GetSeconds() * 1000)
+	}
+	if dimensionMsg, ok := rawMsg.(MediaMessageWithDimensions); ok {
+		data.Info.Width = int(dimensionMsg.GetWidth())
+		data.Info.Height = int(dimensionMsg.GetHeight())
+	}
+	if captionMsg, ok := rawMsg.(MediaMessageWithCaption); ok && captionMsg.GetCaption() != "" {
+		data.Body = captionMsg.GetCaption()
+	} else {
+		data.Body = data.FileName
+	}
+	data.Info.Size = int(rawMsg.GetFileLength())
+	data.Info.MimeType = rawMsg.GetMimetype()
+	data.ContextInfo = rawMsg.GetContextInfo()
+
 	switch msg := rawMsg.(type) {
 	case *waE2E.ImageMessage:
 		data.MsgType = event.MsgImage
@@ -272,6 +290,16 @@ func prepareMediaMessage(rawMsg MediaMessage) *PreparedMedia {
 		if msg.GetMimetype() == "application/was" && data.FileName == "sticker" {
 			data.FileName = "sticker.json"
 		}
+		if data.Info.Width == data.Info.Height {
+			data.Info.Width = WhatsAppStickerSize
+			data.Info.Height = WhatsAppStickerSize
+		} else if data.Info.Width > data.Info.Height {
+			data.Info.Height /= data.Info.Width / WhatsAppStickerSize
+			data.Info.Width = WhatsAppStickerSize
+		} else {
+			data.Info.Width /= data.Info.Height / WhatsAppStickerSize
+			data.Info.Height = WhatsAppStickerSize
+		}
 	case *waE2E.VideoMessage:
 		data.MsgType = event.MsgVideo
 		if msg.GetGifPlayback() {
@@ -285,22 +313,7 @@ func prepareMediaMessage(rawMsg MediaMessage) *PreparedMedia {
 	default:
 		panic(fmt.Errorf("unknown media message type %T", rawMsg))
 	}
-	if durationMsg, ok := rawMsg.(MediaMessageWithDuration); ok {
-		data.Info.Duration = int(durationMsg.GetSeconds() * 1000)
-	}
-	if dimensionMsg, ok := rawMsg.(MediaMessageWithDimensions); ok {
-		data.Info.Width = int(dimensionMsg.GetWidth())
-		data.Info.Height = int(dimensionMsg.GetHeight())
-	}
-	if captionMsg, ok := rawMsg.(MediaMessageWithCaption); ok && captionMsg.GetCaption() != "" {
-		data.Body = captionMsg.GetCaption()
-	} else {
-		data.Body = data.FileName
-	}
 
-	data.Info.Size = int(rawMsg.GetFileLength())
-	data.Info.MimeType = rawMsg.GetMimetype()
-	data.ContextInfo = rawMsg.GetContextInfo()
 	return data
 }
 
