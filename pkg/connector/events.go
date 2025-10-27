@@ -139,7 +139,7 @@ func (evt *WAMessageEvent) PreHandle(ctx context.Context, portal *bridgev2.Porta
 	log := zerolog.Ctx(ctx).With().Str("action", "group lid migration").Logger()
 	ctx = log.WithContext(ctx)
 	meta.LIDMigrationAttempted = true
-	info, err := evt.wa.Client.GetGroupInfo(portalJID)
+	info, err := evt.wa.Client.GetGroupInfo(ctx, portalJID)
 	if err != nil {
 		log.Err(err).Msg("Failed to get group info for lid migration")
 		return

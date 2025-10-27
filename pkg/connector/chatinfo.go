@@ -40,14 +40,14 @@ func (wa *WhatsAppClient) getChatInfo(ctx context.Context, portalJID types.JID, 
 			return nil, fmt.Errorf("broadcast list bridging is currently not supported")
 		}
 	case types.GroupServer:
-		info, err := wa.Client.GetGroupInfo(portalJID)
+		info, err := wa.Client.GetGroupInfo(ctx, portalJID)
 		if err != nil {
 			return nil, err
 		}
 		wrapped = wa.wrapGroupInfo(ctx, info)
 		wrapped.ExtraUpdates = bridgev2.MergeExtraUpdaters(wrapped.ExtraUpdates, updatePortalLastSyncAt)
 	case types.NewsletterServer:
-		info, err := wa.Client.GetNewsletterInfo(portalJID)
+		info, err := wa.Client.GetNewsletterInfo(ctx, portalJID)
 		if err != nil {
 			return nil, err
 		}
@@ -419,7 +419,7 @@ func (wa *WhatsAppClient) makePortalAvatarFetcher(avatarID string, sender types.
 			existingID = ""
 		}
 		var wrappedAvatar *bridgev2.Avatar
-		avatar, err := wa.Client.GetProfilePictureInfo(jid, &whatsmeow.GetProfilePictureParams{
+		avatar, err := wa.Client.GetProfilePictureInfo(ctx, jid, &whatsmeow.GetProfilePictureParams{
 			ExistingID:  existingID,
 			IsCommunity: portal.RoomType == database.RoomTypeSpace,
 		})
@@ -492,7 +492,7 @@ func (wa *WhatsAppClient) wrapNewsletterInfo(ctx context.Context, info *types.Ne
 	} else if info.ThreadMeta.Preview.ID != "" {
 		avatar.ID = networkid.AvatarID(info.ThreadMeta.Preview.ID)
 		avatar.Get = func(ctx context.Context) ([]byte, error) {
-			meta, err := wa.Client.GetNewsletterInfo(info.ID)
+			meta, err := wa.Client.GetNewsletterInfo(ctx, info.ID)
 			if err != nil {
 				return nil, fmt.Errorf("failed to fetch full res avatar info: %w", err)
 			} else if meta.ThreadMeta.Picture == nil {

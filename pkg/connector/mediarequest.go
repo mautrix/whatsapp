@@ -137,7 +137,7 @@ func (wa *WhatsAppClient) sendMediaRequest(ctx context.Context, req *wadb.MediaR
 		req.Status = wadb.MediaBackfillRequestStatusRequestSkipped
 		return
 	}
-	err = wa.sendMediaRequestDirect(req.MessageID, req.MediaKey)
+	err = wa.sendMediaRequestDirect(ctx, req.MessageID, req.MediaKey)
 	if err != nil {
 		log.Err(err).Msg("Failed to send media retry request")
 		req.Status = wadb.MediaBackfillRequestStatusRequestFailed
@@ -148,12 +148,12 @@ func (wa *WhatsAppClient) sendMediaRequest(ctx context.Context, req *wadb.MediaR
 	}
 }
 
-func (wa *WhatsAppClient) sendMediaRequestDirect(rawMsgID networkid.MessageID, key []byte) error {
+func (wa *WhatsAppClient) sendMediaRequestDirect(ctx context.Context, rawMsgID networkid.MessageID, key []byte) error {
 	msgID, err := waid.ParseMessageID(rawMsgID)
 	if err != nil {
 		return fmt.Errorf("failed to parse message ID: %w", err)
 	}
-	return wa.Client.SendMediaRetryReceipt(&types.MessageInfo{
+	return wa.Client.SendMediaRetryReceipt(ctx, &types.MessageInfo{
 		ID: msgID.ID,
 		MessageSource: types.MessageSource{
 			IsFromMe: msgID.Sender.User == wa.JID.User,

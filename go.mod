@@ -9,7 +9,7 @@ require (
 	github.com/rs/zerolog v1.34.0
 	go.mau.fi/util v0.9.2
 	go.mau.fi/webp v0.2.0
-	go.mau.fi/whatsmeow v0.0.0-20251023183934-2ced35dd7e8c
+	go.mau.fi/whatsmeow v0.0.0-20251027141726-3d82d3101dd1
 	golang.org/x/image v0.32.0
 	golang.org/x/net v0.46.0
 	golang.org/x/sync v0.17.0
@@ -25,7 +25,6 @@ require (
 	github.com/coreos/go-systemd/v22 v22.5.0 // indirect
 	github.com/elliotchance/orderedmap/v3 v3.1.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
-	github.com/gorilla/websocket v1.5.0 // indirect
 	github.com/kr/pretty v0.3.1 // indirect
 	github.com/mattn/go-colorable v0.1.14 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect

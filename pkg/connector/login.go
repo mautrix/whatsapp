@@ -352,7 +352,7 @@ func (wl *WALogin) Wait(ctx context.Context) (*bridgev2.LoginStep, error) {
 	}
 
 	ul.Client.(*WhatsAppClient).isNewLogin = true
-	ul.Client.Connect(ul.Log.WithContext(context.Background()))
+	ul.Client.Connect(ul.Log.WithContext(wl.Main.Bridge.BackgroundCtx))
 
 	return &bridgev2.LoginStep{
 		Type:         bridgev2.LoginStepTypeComplete,

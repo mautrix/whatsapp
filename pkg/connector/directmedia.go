@@ -90,7 +90,7 @@ func (wa *WhatsAppConnector) downloadAvatarDirectMedia(ctx context.Context, pars
 		zerolog.Ctx(ctx).Debug().
 			Str("avatar_id", parsedID.Avatar.AvatarID).
 			Msg("Refreshing avatar URL from WhatsApp servers")
-		avatar, err := waClient.Client.GetProfilePictureInfo(parsedID.Avatar.TargetJID, &whatsmeow.GetProfilePictureParams{
+		avatar, err := waClient.Client.GetProfilePictureInfo(ctx, parsedID.Avatar.TargetJID, &whatsmeow.GetProfilePictureParams{
 			IsCommunity: parsedID.Avatar.Community,
 		})
 		if errors.Is(err, whatsmeow.ErrProfilePictureNotSet) ||
@@ -262,7 +262,7 @@ func (wa *WhatsAppClient) requestDirectMedia(ctx context.Context, rawMsgID netwo
 	defer state.Unlock()
 	if !state.requested {
 		zerolog.Ctx(ctx).Debug().Msg("Sending request for missing media in direct download")
-		err := wa.sendMediaRequestDirect(rawMsgID, key)
+		err := wa.sendMediaRequestDirect(ctx, rawMsgID, key)
 		if err != nil {
 			return nil, fmt.Errorf("failed to send media retry request: %w", err)
 		}

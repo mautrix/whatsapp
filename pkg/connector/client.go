@@ -196,9 +196,12 @@ func (wa *WhatsAppClient) Connect(ctx context.Context) {
 	if err := wa.Main.updateProxy(ctx, wa.Client, false); err != nil {
 		zerolog.Ctx(ctx).Err(err).Msg("Failed to update proxy")
 	}
+	if ctx.Err() != nil {
+		return
+	}
 	wa.startLoops()
 	wa.Client.BackgroundEventCtx = wa.UserLogin.Log.WithContext(wa.Main.Bridge.BackgroundCtx)
-	if err := wa.Client.Connect(); err != nil {
+	if err := wa.Client.ConnectContext(ctx); err != nil {
 		zerolog.Ctx(ctx).Err(err).Msg("Failed to connect to WhatsApp")
 		state := status.BridgeState{
 			StateEvent: status.StateUnknownError,
@@ -281,7 +284,7 @@ func (wa *WhatsAppClient) ConnectBackground(ctx context.Context, params *bridgev
 
 func (wa *WhatsAppClient) sendPNData(ctx context.Context, pn string) error {
 	//lint:ignore SA1019 this is supposed to be dangerous
-	resp, err := wa.Client.DangerousInternals().SendIQ(whatsmeow.DangerousInfoQuery{
+	resp, err := wa.Client.DangerousInternals().SendIQ(ctx, whatsmeow.DangerousInfoQuery{
 		Namespace: "urn:xmpp:whatsapp:push",
 		Type:      "get",
 		To:        types.ServerJID,
@@ -289,7 +292,6 @@ func (wa *WhatsAppClient) sendPNData(ctx context.Context, pn string) error {
 			Tag:     "pn",
 			Content: pn,
 		}},
-		Context: ctx,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to send pn: %w", err)
@@ -304,7 +306,7 @@ func (wa *WhatsAppClient) sendPNData(ctx context.Context, pn string) error {
 	}
 	zerolog.Ctx(ctx).Debug().Str("cat_data", string(catContentBytes)).Msg("Received cat response from sending pn data")
 	//lint:ignore SA1019 this is supposed to be dangerous
-	err = wa.Client.DangerousInternals().SendNode(waBinary.Node{
+	err = wa.Client.DangerousInternals().SendNode(ctx, waBinary.Node{
 		Tag: "ib",
 		Content: []waBinary.Node{{
 			Tag:     "cat",
@@ -319,7 +321,7 @@ func (wa *WhatsAppClient) sendPNData(ctx context.Context, pn string) error {
 }
 
 func (wa *WhatsAppClient) startLoops() {
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(wa.Main.Bridge.BackgroundCtx)
 	oldStop := wa.stopLoops.Swap(&cancel)
 	if oldStop != nil {
 		(*oldStop)()
@@ -409,7 +411,7 @@ func (wa *WhatsAppClient) HandleMatrixViewingChat(ctx context.Context, msg *brid
 	}
 
 	if wa.lastPresence != presence {
-		err := wa.updatePresence(presence)
+		err := wa.updatePresence(ctx, presence)
 		if err != nil {
 			zerolog.Ctx(ctx).Warn().Err(err).Msg("Failed to set presence when viewing chat")
 		}
@@ -444,8 +446,8 @@ func (wa *WhatsAppClient) HandleMatrixViewingChat(ctx context.Context, msg *brid
 	return nil
 }
 
-func (wa *WhatsAppClient) updatePresence(presence types.Presence) error {
-	err := wa.Client.SendPresence(presence)
+func (wa *WhatsAppClient) updatePresence(ctx context.Context, presence types.Presence) error {
+	err := wa.Client.SendPresence(ctx, presence)
 	if err == nil {
 		wa.lastPresence = presence
 	}
