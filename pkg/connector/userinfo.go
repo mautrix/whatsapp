@@ -194,29 +194,30 @@ func (wa *WhatsAppClient) contactToUserInfo(ctx context.Context, jid types.JID, 
 	} else if jid == types.LegacyPSAJID || jid == types.PSAJID {
 		contact.PushName = "WhatsApp"
 	}
-	var phone string
-	if jid.Server == types.DefaultUserServer {
-		phone = "+" + jid.User
-	} else if jid.Server == types.HiddenUserServer {
-		pnJID, err := wa.GetStore().LIDs.GetPNForLID(ctx, jid)
+	var altJID types.JID
+	if jid.Server == types.DefaultUserServer || jid.Server == types.HiddenUserServer {
+		var err error
+		altJID, err = wa.GetStore().GetAltJID(ctx, jid)
 		if err != nil {
-			zerolog.Ctx(ctx).Err(err).Stringer("lid", jid).Msg("Failed to get PN for LID")
-		} else if pnJID.IsEmpty() {
-			zerolog.Ctx(ctx).Debug().Stringer("lid", jid).Msg("Phone number not found for LID in contactToUserInfo")
+			zerolog.Ctx(ctx).Err(err).Stringer("source_jid", jid).Msg("Failed to get alt JID")
+		} else if altJID.IsEmpty() {
+			zerolog.Ctx(ctx).Debug().Stringer("source_jid", jid).Msg("Alternate JID not found in contactToUserInfo")
 		} else {
-			phone = "+" + pnJID.User
-			extraContact, err := wa.GetStore().Contacts.GetContact(ctx, pnJID)
+			extraContact, err := wa.GetStore().Contacts.GetContact(ctx, altJID)
 			if err != nil {
 				zerolog.Ctx(ctx).Err(err).
-					Stringer("lid", jid).
-					Stringer("pn_jid", pnJID).
-					Msg("Failed to get contact info from PN")
+					Stringer("source_jid", jid).
+					Stringer("alt_jid", altJID).
+					Msg("Failed to get contact info from alternate JID")
 			} else {
-				if contact.FirstName == "" {
-					contact.FirstName = extraContact.FirstName
-				}
-				if contact.FullName == "" {
-					contact.FullName = extraContact.FullName
+				// Phone contact info should only be stored for phone number JIDs
+				if altJID.Server == types.DefaultUserServer {
+					if contact.FirstName == "" {
+						contact.FirstName = extraContact.FirstName
+					}
+					if contact.FullName == "" {
+						contact.FullName = extraContact.FullName
+					}
 				}
 				if contact.PushName == "" {
 					contact.PushName = extraContact.PushName
@@ -226,6 +227,12 @@ func (wa *WhatsAppClient) contactToUserInfo(ctx context.Context, jid types.JID, 
 				}
 			}
 		}
+	}
+	var phone string
+	if jid.Server == types.DefaultUserServer {
+		phone = "+" + jid.User
+	} else if altJID.Server == types.DefaultUserServer {
+		phone = "+" + altJID.User
 	}
 	ui := &bridgev2.UserInfo{
 		Name:         ptr.Ptr(wa.Main.Config.FormatDisplayname(jid, phone, contact)),

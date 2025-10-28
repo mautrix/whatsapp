@@ -150,6 +150,10 @@ func (wa *WhatsAppClient) handleWAEvent(rawEvt any) (success bool) {
 		if err != nil {
 			log.Err(err).Msg("Failed to update push name in store")
 		}
+		_, _, err = wa.GetStore().Contacts.PutPushName(ctx, wa.GetStore().GetLID().ToNonAD(), evt.Action.GetName())
+		if err != nil {
+			log.Err(err).Msg("Failed to update push name in store")
+		}
 		go wa.syncGhost(wa.JID.ToNonAD(), "push name setting", nil)
 	case *events.Contact:
 		go wa.syncGhost(evt.JID, "contact event", nil)
