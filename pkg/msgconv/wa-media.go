@@ -302,7 +302,8 @@ func prepareMediaMessage(rawMsg MediaMessage) *PreparedMedia {
 		}
 	case *waE2E.VideoMessage:
 		data.MsgType = event.MsgVideo
-		if msg.GetGifPlayback() {
+		pairedMediaType := msg.GetContextInfo().GetPairedMediaType()
+		if msg.GetGifPlayback() || pairedMediaType == waE2E.ContextInfo_MOTION_PHOTO_PARENT || pairedMediaType == waE2E.ContextInfo_MOTION_PHOTO_CHILD {
 			extraInfo["fi.mau.gif"] = true
 			extraInfo["fi.mau.loop"] = true
 			extraInfo["fi.mau.autoplay"] = true
