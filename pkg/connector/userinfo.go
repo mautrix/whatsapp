@@ -225,6 +225,28 @@ func (wa *WhatsAppClient) contactToUserInfo(ctx context.Context, jid types.JID, 
 				if contact.BusinessName == "" {
 					contact.BusinessName = extraContact.BusinessName
 				}
+				if contact.PushName != "" && extraContact.PushName != "" && contact.PushName != extraContact.PushName {
+					zerolog.Ctx(ctx).Debug().
+						Stringer("source_jid", jid).
+						Stringer("alt_jid", altJID).
+						Str("source_push_name", contact.PushName).
+						Str("alt_push_name", extraContact.PushName).
+						Msg("Conflicting push names between JIDs")
+					if altJID.Server == types.DefaultUserServer {
+						contact.PushName = extraContact.PushName
+					}
+				}
+				if contact.BusinessName != "" && extraContact.BusinessName != "" && contact.BusinessName != extraContact.BusinessName {
+					zerolog.Ctx(ctx).Debug().
+						Stringer("source_jid", jid).
+						Stringer("alt_jid", altJID).
+						Str("source_push_name", contact.BusinessName).
+						Str("alt_push_name", extraContact.BusinessName).
+						Msg("Conflicting business names between JIDs")
+					if altJID.Server == types.DefaultUserServer {
+						contact.BusinessName = extraContact.BusinessName
+					}
+				}
 			}
 		}
 	}
