@@ -321,7 +321,12 @@ func (wa *WhatsAppClient) handleWAMessage(ctx context.Context, evt *events.Messa
 			ProtocolMessage: protocolMsg,
 		}
 	} else if assocType == waE2E.MessageAssociation_MOTION_PHOTO {
-		evt.Message = evt.Message.GetAssociatedChildMessage().GetMessage()
+		//evt.Message = evt.Message.GetAssociatedChildMessage().GetMessage()
+		wa.UserLogin.Log.Debug().
+			Str("message_id", evt.Info.ID).
+			Str("parent_id", messageAssoc.GetParentMessageKey().GetID()).
+			Msg("Ignoring motion photo update")
+		return
 	}
 
 	parsedMessageType := getMessageType(evt.Message)
