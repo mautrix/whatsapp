@@ -170,7 +170,7 @@ func (wa *WhatsAppConnector) downloadMessageDirectMedia(ctx context.Context, par
 	return &mediaproxy.GetMediaResponseFile{
 		Callback: func(f *os.File) error {
 			err := waClient.Client.DownloadToFile(ctx, keys, f)
-			if errors.Is(err, whatsmeow.ErrMediaDownloadFailedWith403) || errors.Is(err, whatsmeow.ErrMediaDownloadFailedWith404) || errors.Is(err, whatsmeow.ErrMediaDownloadFailedWith410) {
+			if errors.Is(err, whatsmeow.ErrMediaDownloadFailedWith403) || errors.Is(err, whatsmeow.ErrMediaDownloadFailedWith404) || errors.Is(err, whatsmeow.ErrMediaDownloadFailedWith410) || errors.Is(err, whatsmeow.ErrNoURLPresent) {
 				val := params["fi.mau.whatsapp.reload_media"]
 				if val == "false" || (!wa.Config.DirectMediaAutoRequest && val != "true") {
 					return ErrReloadNeeded
