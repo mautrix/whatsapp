@@ -120,11 +120,12 @@ func (wa *WhatsAppConnector) Init(bridge *bridgev2.Bridge) {
 	store.DeviceProps.Os = proto.String(wa.Config.OSName)
 	store.DeviceProps.RequireFullSync = proto.Bool(wa.Config.HistorySync.RequestFullSync)
 	if fsc := wa.Config.HistorySync.FullSyncConfig; fsc.DaysLimit > 0 && fsc.SizeLimit > 0 && fsc.StorageQuota > 0 {
-		store.DeviceProps.HistorySyncConfig = &waCompanionReg.DeviceProps_HistorySyncConfig{
-			FullSyncDaysLimit:   proto.Uint32(fsc.DaysLimit),
-			FullSyncSizeMbLimit: proto.Uint32(fsc.SizeLimit),
-			StorageQuotaMb:      proto.Uint32(fsc.StorageQuota),
+		if store.DeviceProps.HistorySyncConfig == nil {
+			store.DeviceProps.HistorySyncConfig = &waCompanionReg.DeviceProps_HistorySyncConfig{}
 		}
+		store.DeviceProps.HistorySyncConfig.FullSyncDaysLimit = proto.Uint32(fsc.DaysLimit)
+		store.DeviceProps.HistorySyncConfig.FullSyncSizeMbLimit = proto.Uint32(fsc.SizeLimit)
+		store.DeviceProps.HistorySyncConfig.StorageQuotaMb = proto.Uint32(fsc.StorageQuota)
 	}
 	platformID, ok := waCompanionReg.DeviceProps_PlatformType_value[strings.ToUpper(wa.Config.BrowserName)]
 	if ok {
