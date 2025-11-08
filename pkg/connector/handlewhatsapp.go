@@ -399,6 +399,9 @@ func (wa *WhatsAppClient) handleWAUndecryptableMessage(ctx context.Context, evt 
 }
 
 func (wa *WhatsAppClient) handleWAReceipt(ctx context.Context, evt *events.Receipt) (success bool) {
+	if evt.Chat.Server == types.HiddenUserServer && evt.SenderAlt.IsEmpty() {
+		evt.SenderAlt, _ = wa.GetStore().LIDs.GetPNForLID(ctx, evt.Sender)
+	}
 	if evt.Chat.Server == types.HiddenUserServer && evt.Sender.ToNonAD() == evt.Chat && evt.SenderAlt.Server == types.DefaultUserServer {
 		wa.UserLogin.Log.Debug().
 			Stringer("lid", evt.Sender).
@@ -455,6 +458,15 @@ func (wa *WhatsAppClient) handleWAReceipt(ctx context.Context, evt *events.Recei
 }
 
 func (wa *WhatsAppClient) handleWAChatPresence(ctx context.Context, evt *events.ChatPresence) {
+	if evt.Chat.Server == types.HiddenUserServer && evt.Sender.ToNonAD() == evt.Chat {
+		if evt.SenderAlt.IsEmpty() {
+			evt.SenderAlt, _ = wa.GetStore().LIDs.GetPNForLID(ctx, evt.Sender)
+		}
+		if evt.SenderAlt.Server == types.DefaultUserServer {
+			evt.Sender, evt.SenderAlt = evt.SenderAlt, evt.Sender
+			evt.Chat = evt.Sender.ToNonAD()
+		}
+	}
 	typingType := bridgev2.TypingTypeText
 	timeout := 15 * time.Second
 	if evt.Media == types.ChatPresenceMediaAudio {
