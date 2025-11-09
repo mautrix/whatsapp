@@ -258,10 +258,23 @@ func (mc *MessageConverter) ToMatrix(
 			chat, _ = waid.ParsePortalID(portal.ID)
 		}
 		// We reroute all DMs to the phone number JID, so reroute reply participants too
-		if store := getClient(ctx).Store; store != nil && chat.Server == types.DefaultUserServer {
+		if store := getClient(ctx).Store; store != nil && chat.Server == types.DefaultUserServer && pcp.Server == types.HiddenUserServer {
 			pcpPN, _ := store.LIDs.GetPNForLID(ctx, pcp)
+			zerolog.Ctx(ctx).Debug().
+				Stringer("orig_participant", pcp).
+				Stringer("rerouted_participant", pcpPN).
+				Msg("Rerouting reply target (PN recipient in LID DM)")
 			if !pcpPN.IsEmpty() {
 				pcp = pcpPN
+			}
+		} else if store != nil && chat.Server == types.GroupServer && pcp.Server == types.DefaultUserServer && getPortal(ctx).Metadata.(*waid.PortalMetadata).AddressingMode == types.AddressingModeLID {
+			pcpLID, _ := store.LIDs.GetLIDForPN(ctx, pcp)
+			zerolog.Ctx(ctx).Debug().
+				Stringer("orig_participant", pcp).
+				Stringer("rerouted_participant", pcpLID).
+				Msg("Rerouting reply target (PN recipient in LID group)")
+			if !pcpLID.IsEmpty() {
+				pcp = pcpLID
 			}
 		}
 		cm.ReplyTo = &networkid.MessageOptionalPartID{
