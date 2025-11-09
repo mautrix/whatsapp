@@ -257,6 +257,13 @@ func (mc *MessageConverter) ToMatrix(
 		if chat.IsEmpty() {
 			chat, _ = waid.ParsePortalID(portal.ID)
 		}
+		// We reroute all DMs to the phone number JID, so reroute reply participants too
+		if store := getClient(ctx).Store; store != nil && chat.Server == types.DefaultUserServer {
+			pcpPN, _ := store.LIDs.GetPNForLID(ctx, pcp)
+			if !pcpPN.IsEmpty() {
+				pcp = pcpPN
+			}
+		}
 		cm.ReplyTo = &networkid.MessageOptionalPartID{
 			MessageID: waid.MakeMessageID(chat, pcp, contextInfo.GetStanzaID()),
 		}
