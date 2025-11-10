@@ -1,3 +1,24 @@
+# v25.11 (unreleased)
+
+* Added interface support for notifying about failed invites when creating a
+  group and sending the invites via DM (only applicable to provisioning API).
+* Changed contact list API to only include actual phone contacts.
+* Removed extra unrecognized message notice when receiving live photos
+  (bridging the live photo video is not currently planned).
+* Fixed pairing not working with latest WhatsApp Android version.
+* Fixed replies, read receipts and typing notifications not being bridged
+  correctly after DM LID migration.
+* Fixed some cases of LID and phone number user infos getting out of sync.
+* Fixed muting chat forever not being bridged correctly from WhatsApp.
+* Fixed space not being deleted when leaving community on WhatsApp.
+* Fixed sticker size metadata on Matrix not matching how native WhatsApp Web
+  renders them.
+* Fixed ratelimit errors in login not being exposed to the user properly
+  (thanks to [@dead8309] in [#852]).
+
+[@dead8309]: https://github.com/dead8309
+[#852]: https://github.com/mautrix/whatsapp/pull/852
+
 # v25.10
 
 * Switched to calendar versioning.
