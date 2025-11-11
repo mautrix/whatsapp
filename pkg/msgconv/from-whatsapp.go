@@ -258,6 +258,7 @@ func (mc *MessageConverter) ToMatrix(
 			chat, _ = waid.ParsePortalID(portal.ID)
 		}
 		// We reroute all DMs to the phone number JID, so reroute reply participants too
+		pcp = rerouteMessageKey(ctx, chat, pcp, getPortal(ctx).Metadata.(*waid.PortalMetadata).AddressingMode == types.AddressingModeLID)
 		if store := getClient(ctx).Store; store != nil && chat.Server == types.DefaultUserServer && pcp.Server == types.HiddenUserServer {
 			pcpPN, _ := store.LIDs.GetPNForLID(ctx, pcp)
 			zerolog.Ctx(ctx).Debug().

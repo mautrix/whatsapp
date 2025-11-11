@@ -209,9 +209,15 @@ func (evt *WAMessageEvent) ConvertEdit(ctx context.Context, portal *bridgev2.Por
 
 func (evt *WAMessageEvent) GetTargetMessage() networkid.MessageID {
 	if reactionMsg := evt.Message.GetReactionMessage(); reactionMsg != nil {
-		return msgconv.KeyToMessageID(evt.wa.Client, evt.Info.Chat, evt.Info.Sender, reactionMsg.GetKey())
+		ctx := evt.wa.UserLogin.Log.
+			With().Str("action", "get reaction target message").Str("message_id", evt.Info.ID).Logger().
+			WithContext(evt.wa.Main.Bridge.BackgroundCtx)
+		return msgconv.KeyToMessageID(ctx, evt.wa.Client, evt.Info.Chat, evt.Info.Sender, reactionMsg.GetKey())
 	} else if protocolMsg := evt.Message.GetProtocolMessage(); protocolMsg != nil {
-		return msgconv.KeyToMessageID(evt.wa.Client, evt.Info.Chat, evt.Info.Sender, protocolMsg.GetKey())
+		ctx := evt.wa.UserLogin.Log.
+			With().Str("action", "get edit target message").Str("message_id", evt.Info.ID).Logger().
+			WithContext(evt.wa.Main.Bridge.BackgroundCtx)
+		return msgconv.KeyToMessageID(ctx, evt.wa.Client, evt.Info.Chat, evt.Info.Sender, protocolMsg.GetKey())
 	}
 	return ""
 }

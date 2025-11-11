@@ -24,7 +24,6 @@ import (
 	"strings"
 
 	"github.com/rs/zerolog"
-	"go.mau.fi/util/ptr"
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/proto/waCommon"
 	"go.mau.fi/whatsmeow/proto/waE2E"
@@ -95,7 +94,31 @@ func (mc *MessageConverter) convertPollCreationMessage(ctx context.Context, msg 
 	}, msg.GetContextInfo()
 }
 
-func KeyToMessageID(client *whatsmeow.Client, chat, sender types.JID, key *waCommon.MessageKey) networkid.MessageID {
+func rerouteMessageKey(ctx context.Context, chat, sender types.JID, groupLIDAddressing bool) types.JID {
+	if store := getClient(ctx).Store; store != nil && chat.Server == types.DefaultUserServer && sender.Server == types.HiddenUserServer {
+		senderPN, _ := store.LIDs.GetPNForLID(ctx, sender)
+		zerolog.Ctx(ctx).Debug().
+			Stringer("orig_participant", sender).
+			Stringer("rerouted_participant", senderPN).
+			Msg("Rerouting message key (PN recipient in LID DM)")
+		if !senderPN.IsEmpty() {
+			return senderPN
+		}
+	} else if store != nil && chat.Server == types.GroupServer && sender.Server == types.DefaultUserServer && groupLIDAddressing {
+		senderLID, _ := store.LIDs.GetLIDForPN(ctx, sender)
+		zerolog.Ctx(ctx).Debug().
+			Stringer("orig_participant", sender).
+			Stringer("rerouted_participant", senderLID).
+			Msg("Rerouting message key (PN recipient in LID group)")
+		if !senderLID.IsEmpty() {
+			return senderLID
+		}
+	}
+	return sender
+}
+
+func KeyToMessageID(ctx context.Context, client *whatsmeow.Client, chat, sender types.JID, key *waCommon.MessageKey) networkid.MessageID {
+	groupLIDAddressing := sender.Server == types.HiddenUserServer
 	sender = sender.ToNonAD()
 	var err error
 	if !key.GetFromMe() {
@@ -109,14 +132,21 @@ func KeyToMessageID(client *whatsmeow.Client, chat, sender types.JID, key *waCom
 				sender.Server = types.DefaultUserServer
 			}
 		} else if chat.Server == types.DefaultUserServer || chat.Server == types.BotServer {
-			ownID := ptr.Val(client.Store.ID).ToNonAD()
-			if sender.User == ownID.User {
+			if sender.User == client.Store.GetJID().User || sender.User == client.Store.GetLID().User {
+				// Message key is not from the sender, but message sender (containing key) is me,
+				// so message key sender is the other user in the DM
 				sender = chat
 			} else {
-				sender = ownID
+				// Message key is not from the sender, but message sender (containing key) is not me,
+				// so message key sender is me
+				sender = client.Store.GetJID().ToNonAD()
 			}
 		} else {
-			// TODO log somehow?
+			zerolog.Ctx(ctx).Warn().
+				Stringer("chat", chat).
+				Stringer("sender", sender).
+				Any("key", key).
+				Msg("Failed to get message ID from key")
 			return ""
 		}
 	}
@@ -127,6 +157,10 @@ func KeyToMessageID(client *whatsmeow.Client, chat, sender types.JID, key *waCom
 			chat = remoteJID
 		}
 	}
+	sender = rerouteMessageKey(
+		context.WithValue(ctx, contextKeyClient, client),
+		chat, sender, groupLIDAddressing,
+	)
 	return waid.MakeMessageID(chat, sender, key.GetID())
 }
 
@@ -138,7 +172,7 @@ var failedPollUpdatePart = &bridgev2.ConvertedMessagePart{
 
 func (mc *MessageConverter) convertPollUpdateMessage(ctx context.Context, info *types.MessageInfo, msg *waE2E.PollUpdateMessage) (*bridgev2.ConvertedMessagePart, *waE2E.ContextInfo) {
 	log := zerolog.Ctx(ctx)
-	pollMessageID := KeyToMessageID(getClient(ctx), info.Chat, info.Sender, msg.PollCreationMessageKey)
+	pollMessageID := KeyToMessageID(ctx, getClient(ctx), info.Chat, info.Sender, msg.PollCreationMessageKey)
 	pollMessage, err := mc.Bridge.DB.Message.GetPartByID(ctx, getPortal(ctx).Receiver, pollMessageID, "")
 	if err != nil {
 		log.Err(err).Msg("Failed to get poll update target message")

@@ -112,7 +112,7 @@ func (wa *WhatsAppClient) handleConvertedMatrixMessage(ctx context.Context, msg 
 		return nil, err
 	}
 	var pickedMessageID networkid.MessageID
-	if resp.Sender == wa.GetStore().GetLID() {
+	if resp.Sender == wa.GetStore().GetLID() && chatJID.Server != types.DefaultUserServer {
 		pickedMessageID = wrappedMsgID2
 		msg.RemovePending(networkid.TransactionID(wrappedMsgID))
 	} else {
