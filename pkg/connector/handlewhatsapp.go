@@ -275,7 +275,7 @@ func (wa *WhatsAppClient) rerouteWAMessage(ctx context.Context, evtType string, 
 		if info.Sender.Server == types.HiddenUserServer {
 			info.Sender, info.SenderAlt = info.SenderAlt, info.Sender
 			if info.Sender.IsEmpty() {
-				info.Sender = wa.Device.GetJID()
+				info.Sender = wa.GetStore().GetJID()
 				info.Sender.Device = info.SenderAlt.Device
 			}
 		}

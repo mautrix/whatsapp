@@ -193,6 +193,20 @@ func (wa *WhatsAppClient) handleWAHistorySync(ctx context.Context, evt *waHistor
 			log.Debug().Stringer("chat_jid", jid).Msg("Skipping broadcast list in history sync")
 			continue
 		}
+		if jid.Server == types.HiddenUserServer {
+			pn, err := wa.GetStore().LIDs.GetPNForLID(ctx, jid)
+			if err != nil {
+				log.Err(err).Stringer("lid", jid).Msg("Failed to get PN for LID in history sync")
+			} else if pn.IsEmpty() {
+				log.Warn().Stringer("lid", jid).Msg("No PN found for LID in history sync")
+			} else {
+				log.Debug().
+					Stringer("lid", jid).
+					Stringer("pn", pn).
+					Msg("Rerouting LID DM to phone number in history sync")
+				jid = pn
+			}
+		}
 		totalMessageCount += len(conv.GetMessages())
 		log := log.With().
 			Stringer("chat_jid", jid).
