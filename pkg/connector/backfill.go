@@ -548,10 +548,10 @@ func (wa *WhatsAppClient) convertHistorySyncMessage(
 		TxnID:            networkid.TransactionID(waid.MakeMessageID(info.Chat, info.Sender, info.ID)),
 		Timestamp:        info.Timestamp,
 		StreamOrder:      info.Timestamp.Unix(),
-		Reactions:        make([]*bridgev2.BackfillReaction, len(reactions)),
+		Reactions:        make([]*bridgev2.BackfillReaction, 0, len(reactions)),
 	}
 	mediaReq := wa.processFailedMedia(ctx, portal.PortalKey, wrapped.ID, wrapped.ConvertedMessage, true)
-	for i, reaction := range reactions {
+	for _, reaction := range reactions {
 		var sender types.JID
 		if reaction.GetKey().GetFromMe() {
 			sender = wa.JID
@@ -563,12 +563,12 @@ func (wa *WhatsAppClient) convertHistorySyncMessage(
 		if sender.IsEmpty() {
 			continue
 		}
-		wrapped.Reactions[i] = &bridgev2.BackfillReaction{
+		wrapped.Reactions = append(wrapped.Reactions, &bridgev2.BackfillReaction{
 			TargetPart: ptr.Ptr(networkid.PartID("")),
 			Timestamp:  time.UnixMilli(reaction.GetSenderTimestampMS()),
 			Sender:     wa.makeEventSender(ctx, sender),
 			Emoji:      reaction.GetText(),
-		}
+		})
 	}
 	return wrapped, mediaReq
 }
