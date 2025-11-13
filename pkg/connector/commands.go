@@ -17,6 +17,7 @@
 package connector
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"html"
@@ -120,9 +121,6 @@ func fnSync(ce *commands.Event) {
 			return
 		}
 		for _, group := range groups {
-			wrapped := wa.wrapGroupInfo(ce.Ctx, group)
-			wrapped.ExtraUpdates = bridgev2.MergeExtraUpdaters(wrapped.ExtraUpdates, updatePortalLastSyncAt)
-			wa.addExtrasToWrapped(ce.Ctx, group.JID, wrapped, nil)
 			login.QueueRemoteEvent(&simplevent.ChatResync{
 				EventMeta: simplevent.EventMeta{
 					Type:         bridgev2.RemoteEventChatResync,
@@ -130,7 +128,12 @@ func fnSync(ce *commands.Event) {
 					LogContext:   logContext,
 					CreatePortal: true,
 				},
-				ChatInfo: wrapped,
+				GetChatInfoFunc: func(ctx context.Context, portal *bridgev2.Portal) (*bridgev2.ChatInfo, error) {
+					wrapped := wa.wrapGroupInfo(ce.Ctx, group)
+					wrapped.ExtraUpdates = bridgev2.MergeExtraUpdaters(wrapped.ExtraUpdates, updatePortalLastSyncAt)
+					wa.addExtrasToWrapped(ce.Ctx, group.JID, wrapped, nil, portal.MXID == "")
+					return wrapped, nil
+				},
 			})
 		}
 		ce.Reply("Queued syncs for %d groups", len(groups))

@@ -356,7 +356,7 @@ func (wa *WhatsAppClient) createPortalsFromHistorySync(ctx context.Context) {
 			log.Warn().Err(ctx.Err()).Msg("Context cancelled, stopping history sync portal creation")
 			return
 		}
-		wrappedInfo, err := wa.getChatInfo(ctx, conv.ChatJID, conv)
+		wrappedInfo, err := wa.getChatInfo(ctx, conv.ChatJID, conv, true)
 		if errors.Is(err, whatsmeow.ErrNotInGroup) {
 			log.Debug().Stringer("chat_jid", conv.ChatJID).
 				Msg("Skipping creating room because the user is not a participant")

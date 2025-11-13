@@ -26,10 +26,10 @@ func (wa *WhatsAppClient) GetChatInfo(ctx context.Context, portal *bridgev2.Port
 	if err != nil {
 		return nil, err
 	}
-	return wa.getChatInfo(ctx, portalJID, nil)
+	return wa.getChatInfo(ctx, portalJID, nil, portal.MXID == "")
 }
 
-func (wa *WhatsAppClient) getChatInfo(ctx context.Context, portalJID types.JID, conv *wadb.Conversation) (wrapped *bridgev2.ChatInfo, err error) {
+func (wa *WhatsAppClient) getChatInfo(ctx context.Context, portalJID types.JID, conv *wadb.Conversation, isNew bool) (wrapped *bridgev2.ChatInfo, err error) {
 	switch portalJID.Server {
 	case types.DefaultUserServer, types.HiddenUserServer, types.BotServer:
 		wrapped = wa.wrapDMInfo(ctx, portalJID)
@@ -55,20 +55,22 @@ func (wa *WhatsAppClient) getChatInfo(ctx context.Context, portalJID types.JID, 
 	default:
 		return nil, fmt.Errorf("unsupported server %s", portalJID.Server)
 	}
-	wa.addExtrasToWrapped(ctx, portalJID, wrapped, conv)
+	wa.addExtrasToWrapped(ctx, portalJID, wrapped, conv, isNew)
 	return wrapped, nil
 }
 
-func (wa *WhatsAppClient) addExtrasToWrapped(ctx context.Context, portalJID types.JID, wrapped *bridgev2.ChatInfo, conv *wadb.Conversation) {
-	if conv == nil {
-		var err error
-		conv, err = wa.Main.DB.Conversation.Get(ctx, wa.UserLogin.ID, portalJID)
-		if err != nil {
-			zerolog.Ctx(ctx).Warn().Err(err).Msg("Failed to get history sync conversation info")
+func (wa *WhatsAppClient) addExtrasToWrapped(ctx context.Context, portalJID types.JID, wrapped *bridgev2.ChatInfo, conv *wadb.Conversation, isNew bool) {
+	if isNew {
+		if conv == nil {
+			var err error
+			conv, err = wa.Main.DB.Conversation.Get(ctx, wa.UserLogin.ID, portalJID)
+			if err != nil {
+				zerolog.Ctx(ctx).Warn().Err(err).Msg("Failed to get history sync conversation info")
+			}
 		}
-	}
-	if conv != nil {
-		wa.applyHistoryInfo(wrapped, conv)
+		if conv != nil {
+			wa.applyHistoryInfo(wrapped, conv)
+		}
 	}
 	wa.applyChatSettings(ctx, portalJID, wrapped)
 }
