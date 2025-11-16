@@ -1,15 +1,21 @@
-# v25.11 (unreleased)
+# v25.11
 
 * Added interface support for notifying about failed invites when creating a
   group and sending the invites via DM (only applicable to provisioning API).
+* Added migration to automatically delete duplicate LID DM portals that were
+  created earlier.
 * Changed contact list API to only include actual phone contacts.
 * Removed extra unrecognized message notice when receiving live photos
   (bridging the live photo video is not currently planned).
 * Fixed pairing not working with latest WhatsApp Android version.
 * Fixed replies, read receipts and typing notifications not being bridged
   correctly after DM LID migration.
+* Fixed backfill creating duplicate portals if history sync contains both LID
+  and phone number DM data.
 * Fixed some cases of LID and phone number user infos getting out of sync.
 * Fixed muting chat forever not being bridged correctly from WhatsApp.
+* Fixed old mutes being re-applied on chat resync in some cases.
+* Fixed backfilling failing if some reactions were missing sender info.
 * Fixed space not being deleted when leaving community on WhatsApp.
 * Fixed sticker size metadata on Matrix not matching how native WhatsApp Web
   renders them.
