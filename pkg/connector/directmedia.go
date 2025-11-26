@@ -29,6 +29,7 @@ import (
 
 	"github.com/rs/zerolog"
 	"go.mau.fi/util/exsync"
+	"go.mau.fi/util/ptr"
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/proto/waMmsRetry"
 	"go.mau.fi/whatsmeow/types/events"
@@ -85,7 +86,7 @@ func (wa *WhatsAppConnector) downloadAvatarDirectMedia(ctx context.Context, pars
 		return nil, fmt.Errorf("failed to get avatar cache entry: %w", err)
 	}
 	if cachedInfo != nil && cachedInfo.Gone {
-		return nil, mautrix.MNotFound.WithMessage("Avatar is no longer available")
+		return nil, mautrix.MNotFound.WithMessage("Avatar is no longer available (cached response)")
 	} else if cachedInfo == nil || cachedInfo.Expiry.Time.Before(time.Now().Add(5*time.Minute)) {
 		zerolog.Ctx(ctx).Debug().
 			Str("avatar_id", parsedID.Avatar.AvatarID).
@@ -96,6 +97,13 @@ func (wa *WhatsAppConnector) downloadAvatarDirectMedia(ctx context.Context, pars
 		if errors.Is(err, whatsmeow.ErrProfilePictureNotSet) ||
 			errors.Is(err, whatsmeow.ErrProfilePictureUnauthorized) ||
 			(err == nil && (avatar == nil || avatar.ID != parsedID.Avatar.AvatarID)) {
+			zerolog.Ctx(ctx).Debug().
+				Err(err).
+				Stringer("target_jid", parsedID.Avatar.TargetJID).
+				Bool("is_community", parsedID.Avatar.Community).
+				Str("wanted_avatar_id", parsedID.Avatar.AvatarID).
+				Str("got_avatar_id", ptr.Val(avatar).ID).
+				Msg("Avatar is no longer available")
 			err = wa.DB.AvatarCache.Put(ctx, &wadb.AvatarCacheEntry{
 				EntityJID: parsedID.Avatar.TargetJID,
 				AvatarID:  parsedID.Avatar.AvatarID,
