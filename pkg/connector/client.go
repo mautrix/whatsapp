@@ -244,7 +244,6 @@ func (wa *WhatsAppClient) ConnectBackground(ctx context.Context, params *bridgev
 	if wa.Client == nil {
 		return bridgev2.ErrNotLoggedIn
 	}
-	wa.UserLogin.BridgeState.Send(status.BridgeState{StateEvent: status.StateConnecting})
 	wa.Client.BackgroundEventCtx = wa.UserLogin.Log.WithContext(wa.Main.Bridge.BackgroundCtx)
 	ch := make(chan error, 1)
 	wa.offlineSyncWaiter.Store(&ch)
