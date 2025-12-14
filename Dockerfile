@@ -1,4 +1,4 @@
-FROM golang:1-alpine3.22 AS builder
+FROM golang:1-alpine3.23 AS builder
 
 RUN apk add --no-cache git ca-certificates build-base su-exec olm-dev
 
@@ -6,7 +6,7 @@ COPY . /build
 WORKDIR /build
 RUN ./build.sh
 
-FROM alpine:3.22
+FROM alpine:3.23
 
 ENV UID=1337 \
     GID=1337
