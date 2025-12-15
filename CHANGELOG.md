@@ -1,3 +1,9 @@
+# v25.12 (unreleased)
+
+* Updated Docker image to Alpine 3.23.
+* Fixed group member invites from Matrix not automatically disinviting the phone
+  number ghost when the invite is redirected to a LID ghost.
+
 # v25.11
 
 * Added interface support for notifying about failed invites when creating a
