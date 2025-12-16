@@ -1,4 +1,4 @@
-# v25.12 (unreleased)
+# v25.12
 
 * Updated Docker image to Alpine 3.23.
 * Fixed group member invites from Matrix not automatically disinviting the phone
