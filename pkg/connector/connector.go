@@ -20,9 +20,12 @@ import (
 	"context"
 	"encoding/hex"
 	"fmt"
+	"net"
+	"net/http"
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/lib/pq"
 	"github.com/rs/zerolog"
@@ -256,8 +259,17 @@ func (wa *WhatsAppConnector) onFirstBackgroundConnect() {
 }
 
 func (wa *WhatsAppConnector) onFirstClientConnect() {
+	wa.Bridge.Log.Debug().Msg("Fetching latest WhatsApp web version number")
 	ctx := wa.Bridge.BackgroundCtx
-	ver, err := whatsmeow.GetLatestVersion(ctx, nil)
+	ver, err := whatsmeow.GetLatestVersion(ctx, &http.Client{
+		Transport: &http.Transport{
+			DialContext:           (&net.Dialer{Timeout: 5 * time.Second}).DialContext,
+			TLSHandshakeTimeout:   5 * time.Second,
+			ResponseHeaderTimeout: 5 * time.Second,
+			ForceAttemptHTTP2:     true,
+		},
+		Timeout: 10 * time.Second,
+	})
 	if err != nil {
 		wa.Bridge.Log.Err(err).Msg("Failed to get latest WhatsApp web version number")
 	} else {
