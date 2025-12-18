@@ -647,6 +647,18 @@ func (wa *WhatsAppClient) HandleMatrixDeleteChat(ctx context.Context, msg *bridg
 	if err != nil {
 		return err
 	}
+	if chatJID.Server == types.GroupServer {
+		memberInfo, err := wa.Main.Bridge.Matrix.GetMemberInfo(ctx, msg.Portal.MXID, wa.UserLogin.UserMXID)
+		if err != nil {
+			return fmt.Errorf("failed to get own member info: %w", err)
+		} else if memberInfo.Membership == event.MembershipJoin {
+			err = wa.Client.LeaveGroup(ctx, chatJID)
+			if err != nil {
+				// TODO ignore errors saying you already left the group?
+				return fmt.Errorf("failed to leave group before deleting chat: %w", err)
+			}
+		}
+	}
 	lastTS, lastKey, err := wa.getLastMessageInfo(ctx, chatJID, msg.Portal.PortalKey)
 	if err != nil {
 		return err
