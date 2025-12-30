@@ -501,8 +501,8 @@ func (wa *WhatsAppClient) HandleMatrixRoomAvatar(ctx context.Context, msg *bridg
 	}
 
 	var data []byte
-	if msg.Content.URL != "" || msg.Content.MSC3414File != nil {
-		data, err = msg.Portal.Bridge.Bot.DownloadMedia(ctx, msg.Content.URL, msg.Content.MSC3414File)
+	if msg.Content.URL != "" {
+		data, err = msg.Portal.Bridge.Bot.DownloadMedia(ctx, msg.Content.URL, nil)
 		if err != nil {
 			return false, fmt.Errorf("failed to download avatar: %w", err)
 		}
