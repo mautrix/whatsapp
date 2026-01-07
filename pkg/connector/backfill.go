@@ -181,17 +181,21 @@ func (wa *WhatsAppClient) handleWAHistorySync(ctx context.Context, evt *waHistor
 	failedToSaveTotal := 0
 	totalMessageCount := 0
 	for _, conv := range evt.GetConversations() {
+		log := log.With().
+			Int("msg_count", len(conv.GetMessages())).
+			Logger()
 		jid, err := types.ParseJID(conv.GetID())
 		if err != nil {
 			totalMessageCount += len(conv.GetMessages())
 			log.Warn().Err(err).
 				Str("chat_jid", conv.GetID()).
-				Int("msg_count", len(conv.GetMessages())).
 				Msg("Failed to parse chat JID in history sync")
 			continue
 		} else if jid.Server == types.BroadcastServer {
 			log.Debug().Stringer("chat_jid", jid).Msg("Skipping broadcast list in history sync")
 			continue
+		} else {
+			totalMessageCount += len(conv.GetMessages())
 		}
 		if jid.Server == types.HiddenUserServer {
 			pn, err := wa.GetStore().LIDs.GetPNForLID(ctx, jid)
@@ -207,11 +211,9 @@ func (wa *WhatsAppClient) handleWAHistorySync(ctx context.Context, evt *waHistor
 				jid = pn
 			}
 		}
-		totalMessageCount += len(conv.GetMessages())
-		log := log.With().
-			Stringer("chat_jid", jid).
-			Int("msg_count", len(conv.GetMessages())).
-			Logger()
+		log.UpdateContext(func(c zerolog.Context) zerolog.Context {
+			return c.Stringer("chat_jid", jid)
+		})
 
 		var minTime, maxTime time.Time
 		var minTimeIndex, maxTimeIndex int
