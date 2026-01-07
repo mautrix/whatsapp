@@ -1,4 +1,4 @@
--- v0 -> v8 (compatible with v3+): Latest revision
+-- v0 -> v9 (compatible with v3+): Latest revision
 
 CREATE TABLE whatsapp_poll_option_id (
     bridge_id TEXT  NOT NULL,
