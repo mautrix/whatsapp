@@ -74,10 +74,8 @@ func (wa *WhatsAppConnector) LoadUserLogin(ctx context.Context, login *bridgev2.
 		w.Client = whatsmeow.NewClient(w.Device, waLog.Zerolog(log))
 		w.Client.AddEventHandlerWithSuccessStatus(w.handleWAEvent)
 		w.Client.SynchronousAck = true
-		if bridgev2.PortalEventBuffer == 0 {
-			w.Client.EnableDecryptedEventBuffer = true
-			w.Client.ManualHistorySyncDownload = true
-		}
+		w.Client.EnableDecryptedEventBuffer = bridgev2.PortalEventBuffer == 0
+		w.Client.ManualHistorySyncDownload = true
 		w.Client.SendReportingTokens = true
 		w.Client.AutomaticMessageRerequestFromPhone = true
 		w.Client.GetMessageForRetry = w.trackNotFoundRetry
