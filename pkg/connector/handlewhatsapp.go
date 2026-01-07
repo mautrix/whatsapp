@@ -252,7 +252,8 @@ func (wa *WhatsAppClient) handleWAEvent(rawEvt any) (success bool) {
 }
 
 func (wa *WhatsAppClient) rerouteWAMessage(ctx context.Context, evtType string, info *types.MessageSource, msgID any) {
-	if info.Chat.Server == types.HiddenUserServer && info.SenderAlt.IsEmpty() {
+	if (info.Chat.Server == types.HiddenUserServer || info.Chat.Server == types.BroadcastServer) &&
+		info.Sender.Server == types.HiddenUserServer && info.SenderAlt.IsEmpty() {
 		info.SenderAlt, _ = wa.GetStore().LIDs.GetPNForLID(ctx, info.Sender)
 	}
 	if info.Chat.Server == types.HiddenUserServer && info.Sender.ToNonAD() == info.Chat && info.SenderAlt.Server == types.DefaultUserServer {
@@ -279,6 +280,15 @@ func (wa *WhatsAppClient) rerouteWAMessage(ctx context.Context, evtType string, 
 				info.Sender.Device = info.SenderAlt.Device
 			}
 		}
+	} else if info.Chat.Server == types.BroadcastServer && info.Sender.Server == types.HiddenUserServer && info.SenderAlt.Server == types.DefaultUserServer {
+		wa.UserLogin.Log.Debug().
+			Stringer("lid", info.Sender).
+			Stringer("pn", info.SenderAlt).
+			Stringer("chat", info.Chat).
+			Any("message_id", msgID).
+			Str("evt_type", evtType).
+			Msg("Forced LID broadcast list sender to phone number in incoming message")
+		info.Sender, info.SenderAlt = info.SenderAlt, info.Sender
 	} else if info.Sender.Server == types.BotServer && info.Chat.Server == types.HiddenUserServer {
 		chatPN, err := wa.GetStore().LIDs.GetPNForLID(ctx, info.Chat)
 		if err != nil {
