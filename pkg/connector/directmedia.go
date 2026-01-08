@@ -254,12 +254,16 @@ func (wa *WhatsAppClient) requestAndWaitDirectMedia(ctx context.Context, rawMsgI
 		}
 		switch state.resultType {
 		case waMmsRetry.MediaRetryNotification_NOT_FOUND:
-			return mautrix.MNotFound.WithMessage("Media not found on phone")
+			return mautrix.MNotFound.WithMessage("This media was not found on your phone.")
+		case waMmsRetry.MediaRetryNotification_DECRYPTION_ERROR:
+			return mautrix.MNotFound.WithMessage("Unable to retrieve media: phone reported a decryption error. The original message may have been deleted.")
+		case waMmsRetry.MediaRetryNotification_GENERAL_ERROR:
+			return mautrix.MNotFound.WithMessage("Unable to retrieve media: phone returned an error. Please ensure your phone is connected to the internet and WhatsApp is running.")
 		default:
-			return mautrix.MNotFound.WithMessage("Phone returned error response")
+			return mautrix.MNotFound.WithMessage(fmt.Sprintf("Unable to retrieve media: phone returned error code %d", state.resultType))
 		}
 	case <-time.After(30 * time.Second):
-		return mautrix.MNotFound.WithMessage("Phone did not respond in time").WithStatus(http.StatusGatewayTimeout)
+		return mautrix.MNotFound.WithMessage("Phone did not respond in time. Please ensure your phone is connected to the internet and WhatsApp is open.").WithStatus(http.StatusGatewayTimeout)
 	case <-ctx.Done():
 		return ctx.Err()
 	}
