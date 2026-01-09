@@ -168,7 +168,7 @@ func (wa *WhatsAppConnector) downloadMessageDirectMedia(ctx context.Context, par
 		}
 	}
 	if ul == nil || !ul.Client.IsLoggedIn() {
-		return nil, fmt.Errorf("no logged in user found")
+		return nil, bridgev2.ErrNotLoggedIn
 	}
 	waClient := ul.Client.(*WhatsAppClient)
 	if waClient.Client == nil {
