@@ -71,9 +71,10 @@ func init() {
 }
 
 var (
-	_ bridgev2.NetworkConnector      = (*WhatsAppConnector)(nil)
-	_ bridgev2.MaxFileSizeingNetwork = (*WhatsAppConnector)(nil)
-	_ bridgev2.StoppableNetwork      = (*WhatsAppConnector)(nil)
+	_ bridgev2.NetworkConnector        = (*WhatsAppConnector)(nil)
+	_ bridgev2.MaxFileSizeingNetwork   = (*WhatsAppConnector)(nil)
+	_ bridgev2.StoppableNetwork        = (*WhatsAppConnector)(nil)
+	_ bridgev2.NetworkResettingNetwork = (*WhatsAppConnector)(nil)
 )
 
 func (wa *WhatsAppConnector) SetMaxFileSize(maxSize int64) {
@@ -289,4 +290,14 @@ func (wa *WhatsAppConnector) GenerateTransactionID(_ id.UserID, _ id.RoomID, _ e
 	// The "proper" way would be a hash of the user ID among other things, but the hash includes random bytes too,
 	// so nobody can tell the difference if we just generate random bytes.
 	return networkid.RawTransactionID(whatsmeow.WebMessageIDPrefix + strings.ToUpper(hex.EncodeToString(random.Bytes(9))))
+}
+
+func (wa *WhatsAppConnector) ResetHTTPTransport() {
+	// No-op for now, whatsmeow doesn't use the shared transport config yet
+}
+
+func (wa *WhatsAppConnector) ResetNetworkConnections() {
+	for _, login := range wa.Bridge.GetAllCachedUserLogins() {
+		login.Client.(*WhatsAppClient).Client.ResetConnection()
+	}
 }

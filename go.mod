@@ -9,15 +9,15 @@ tool go.mau.fi/util/cmd/maubuild
 require (
 	github.com/lib/pq v1.10.9
 	github.com/rs/zerolog v1.34.0
-	go.mau.fi/util v0.9.4
+	go.mau.fi/util v0.9.5-0.20260114152041-9f2e2b82b503
 	go.mau.fi/webp v0.2.0
-	go.mau.fi/whatsmeow v0.0.0-20251217143725-11cf47c62d32
+	go.mau.fi/whatsmeow v0.0.0-20260115125149-20f0273af4c4
 	golang.org/x/image v0.34.0
 	golang.org/x/net v0.48.0
 	golang.org/x/sync v0.19.0
 	google.golang.org/protobuf v1.36.11
 	gopkg.in/yaml.v3 v3.0.1
-	maunium.net/go/mautrix v0.26.1
+	maunium.net/go/mautrix v0.26.2-0.20260115120200-34bcd027e54c
 )
 
 require (

@@ -58,6 +58,8 @@ func (wa *WhatsAppConnector) updateProxy(ctx context.Context, client *whatsmeow.
 	}
 	if proxy, err := wa.getProxy(reason); err != nil {
 		return fmt.Errorf("failed to get proxy address: %w", err)
+	} else if proxy == "" {
+		return nil
 	} else if err = client.SetProxyAddress(proxy, whatsmeow.SetProxyOptions{
 		OnlyLogin: wa.Config.ProxyOnlyLogin,
 		NoMedia:   wa.Config.ProxyOnlyLogin,
