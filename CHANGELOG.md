@@ -1,3 +1,9 @@
+# v26.01
+
+* Fixed broadcast list messages to LIDs causing split DMs.
+* Fixed read receipts not working correctly in LID DMs.
+* Fixed backfill sometimes racing with receiving LID mappings.
+
 # v25.12
 
 * Updated Docker image to Alpine 3.23.
