@@ -38,6 +38,8 @@ type UserLoginMetadata struct {
 	LoggedInAt      jsontime.Unix `json:"logged_in_at,omitempty"`
 
 	HistorySyncPortalsNeedCreating bool `json:"history_sync_portals_need_creating,omitempty"`
+
+	MData json.RawMessage `json:"mdata,omitempty"`
 }
 
 type PushKeys struct {

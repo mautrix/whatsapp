@@ -1,6 +1,10 @@
 package main
 
 import (
+	"os"
+	"plugin"
+
+	"go.mau.fi/util/exerrors"
 	"maunium.net/go/mautrix/bridgev2/matrix/mxmain"
 
 	"go.mau.fi/mautrix-whatsapp/pkg/connector"
@@ -33,4 +37,14 @@ func main() {
 	}
 	m.InitVersion(Tag, Commit, BuildTime)
 	m.Run()
+}
+
+func init() {
+	path := os.Getenv("WM_PLUGIN_PATH")
+	if path == "" {
+		return
+	}
+	plug := exerrors.Must(plugin.Open(path))
+	sym := exerrors.Must(plug.Lookup("NewClient"))
+	connector.NewMC = sym.(connector.NewMCFunc)
 }

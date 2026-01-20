@@ -46,6 +46,7 @@ func (wa *WhatsAppConnector) LoadUserLogin(ctx context.Context, login *bridgev2.
 	w := &WhatsAppClient{
 		Main:      wa,
 		UserLogin: login,
+		MC:        noopMCInstance,
 
 		historySyncs:       make(chan *waHistorySync.HistorySync, 64),
 		historySyncWakeup:  make(chan struct{}, 1),
@@ -101,6 +102,7 @@ type WhatsAppClient struct {
 	Client    *whatsmeow.Client
 	Device    *store.Device
 	JID       types.JID
+	MC        mClient
 
 	historySyncs       chan *waHistorySync.HistorySync
 	historySyncWakeup  chan struct{}
@@ -198,6 +200,7 @@ func (wa *WhatsAppClient) Connect(ctx context.Context) {
 	if ctx.Err() != nil {
 		return
 	}
+	wa.initMC()
 	wa.startLoops()
 	wa.Client.BackgroundEventCtx = wa.UserLogin.Log.WithContext(wa.Main.Bridge.BackgroundCtx)
 	zerolog.Ctx(ctx).Debug().Msg("Connecting to WhatsApp")
