@@ -21,9 +21,11 @@ import (
 	"errors"
 	"fmt"
 	"html"
+	"slices"
 	"strings"
 
 	"github.com/rs/zerolog"
+	"go.mau.fi/util/exslices"
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/appstate"
 	"go.mau.fi/whatsmeow/types"
@@ -144,7 +146,17 @@ func fnSync(ce *commands.Event) {
 		wa.resyncContacts(true, false)
 		ce.React("✅")
 	case "appstate":
-		for _, name := range appstate.AllPatchNames {
+		names := appstate.AllPatchNames[:]
+		if len(ce.Args) > 1 {
+			names = exslices.CastFuncFilter(ce.Args[1:], func(name string) (appstate.WAPatchName, bool) {
+				if !slices.Contains(appstate.AllPatchNames[:], appstate.WAPatchName(name)) {
+					ce.Reply("Invalid app state name `%s`", name)
+					return "", false
+				}
+				return appstate.WAPatchName(name), true
+			})
+		}
+		for _, name := range names {
 			err := wa.Client.FetchAppState(ce.Ctx, name, true, false)
 			if errors.Is(err, appstate.ErrKeyNotFound) {
 				ce.Reply("Key not found error syncing app state %s: %v\n\nKey requests are sent automatically, and the sync should happen in the background after your phone responds.", name, err)
