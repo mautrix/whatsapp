@@ -567,7 +567,7 @@ func convertCallStart(ctx context.Context, portal *bridgev2.Portal, intent bridg
 				Body:    text,
 				BeeperActionMessage: &event.BeeperActionMessage{
 					Type:     "call",
-					CallType: callType,
+					CallType: event.BeeperActionMessageCallType(callType),
 				},
 			},
 		}},
