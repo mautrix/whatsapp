@@ -664,13 +664,13 @@ func (wa *WhatsAppClient) syncGhost(jid types.JID, reason string, pictureID *str
 	if pictureID != nil && *pictureID != "" && ghost.AvatarID == networkid.AvatarID(*pictureID) {
 		return
 	}
-	userInfo, err := wa.getUserInfo(ctx, jid, pictureID != nil)
+	userInfo, quality, err := wa.getUserInfo(ctx, jid, pictureID != nil)
 	if err != nil {
 		log.Err(err).Msg("Failed to get user info")
 	} else {
-		ghost.UpdateInfo(ctx, userInfo)
+		updateGhostWithQualityCheck(ctx, ghost, userInfo, quality)
 		log.Debug().Msg("Synced ghost info")
-		wa.syncAltGhostWithInfo(ctx, jid, userInfo)
+		wa.syncAltGhostWithInfo(ctx, jid, userInfo, quality)
 	}
 	go wa.syncRemoteProfile(ctx, ghost)
 }
