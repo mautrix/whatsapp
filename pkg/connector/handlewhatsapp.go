@@ -99,9 +99,9 @@ func (wa *WhatsAppClient) handleWAEvent(rawEvt any) (success bool) {
 	case *events.MarkChatAsRead:
 		success = wa.handleWAMarkChatAsRead(ctx, evt)
 	case *events.DeleteForMe:
-		success = wa.handleWADeleteForMe(evt)
+		success = wa.handleWADeleteForMe(ctx, evt)
 	case *events.DeleteChat:
-		success = wa.handleWADeleteChat(evt)
+		success = wa.handleWADeleteChat(ctx, evt)
 	case *events.Mute:
 		success = wa.handleWAMute(evt)
 	case *events.Archive:
@@ -611,11 +611,12 @@ func convertIdentityChange(ctx context.Context, portal *bridgev2.Portal, intent 
 	}, nil
 }
 
-func (wa *WhatsAppClient) handleWADeleteChat(evt *events.DeleteChat) bool {
+func (wa *WhatsAppClient) handleWADeleteChat(ctx context.Context, evt *events.DeleteChat) bool {
+	chatJID := wa.maybeConvertJIDToLID(ctx, evt.JID)
 	return wa.UserLogin.QueueRemoteEvent(&simplevent.ChatDelete{
 		EventMeta: simplevent.EventMeta{
 			Type:      bridgev2.RemoteEventChatDelete,
-			PortalKey: wa.makeWAPortalKey(evt.JID),
+			PortalKey: wa.makeWAPortalKey(chatJID),
 			Timestamp: evt.Timestamp,
 		},
 		OnlyForMe: true,
@@ -623,24 +624,25 @@ func (wa *WhatsAppClient) handleWADeleteChat(evt *events.DeleteChat) bool {
 	}).Success
 }
 
-func (wa *WhatsAppClient) handleWADeleteForMe(evt *events.DeleteForMe) bool {
-	// FIXME this doesn't handle IsFromMe properly, might also need LID fixes
+func (wa *WhatsAppClient) handleWADeleteForMe(ctx context.Context, evt *events.DeleteForMe) bool {
+	chatJID := wa.maybeConvertJIDToLID(ctx, evt.ChatJID)
 	return wa.UserLogin.QueueRemoteEvent(&simplevent.MessageRemove{
 		EventMeta: simplevent.EventMeta{
 			Type:      bridgev2.RemoteEventMessageRemove,
-			PortalKey: wa.makeWAPortalKey(evt.ChatJID),
+			PortalKey: wa.makeWAPortalKey(chatJID),
 			Timestamp: evt.Timestamp,
 		},
-		TargetMessage: waid.MakeMessageID(evt.ChatJID, evt.SenderJID, evt.MessageID),
+		TargetMessage: waid.MakeMessageID(chatJID, evt.SenderJID, evt.MessageID),
 		OnlyForMe:     true,
 	}).Success
 }
 
 func (wa *WhatsAppClient) handleWAMarkChatAsRead(ctx context.Context, evt *events.MarkChatAsRead) bool {
+	chatJID := wa.maybeConvertJIDToLID(ctx, evt.JID)
 	return wa.UserLogin.QueueRemoteEvent(&simplevent.Receipt{
 		EventMeta: simplevent.EventMeta{
 			Type:      bridgev2.RemoteEventReadReceipt,
-			PortalKey: wa.makeWAPortalKey(evt.JID),
+			PortalKey: wa.makeWAPortalKey(chatJID),
 			Sender:    wa.makeEventSender(ctx, wa.JID),
 			Timestamp: evt.Timestamp,
 		},
