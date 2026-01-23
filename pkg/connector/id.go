@@ -68,3 +68,16 @@ func (wa *WhatsAppClient) messageIDToKey(id *waid.ParsedMessageID) *waCommon.Mes
 	}
 	return key
 }
+
+func (wa *WhatsAppClient) maybeConvertJIDToLID(ctx context.Context, chatJID types.JID) types.JID {
+	if chatJID.Server == types.HiddenUserServer {
+		if pn, err := wa.GetStore().LIDs.GetPNForLID(ctx, chatJID); err != nil {
+			wa.UserLogin.Log.Err(err).
+				Stringer("lid", chatJID).
+				Msg("Failed to get phone number for LID chat")
+		} else if !pn.IsEmpty() {
+			return pn.ToNonAD()
+		}
+	}
+	return chatJID
+}

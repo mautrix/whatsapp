@@ -6,7 +6,9 @@ import (
 
 	"github.com/rs/zerolog/hlog"
 	"go.mau.fi/util/exhttp"
+	"go.mau.fi/whatsmeow/appstate"
 	"go.mau.fi/whatsmeow/types"
+	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/matrix"
 	"maunium.net/go/mautrix/id"
@@ -109,4 +111,24 @@ func legacyProvResolveIdentifier(w http.ResponseWriter, r *http.Request) {
 			Avatar: resp.Ghost.AvatarMXC,
 		},
 	})
+}
+
+func provAppStateDebug(w http.ResponseWriter, r *http.Request) {
+	userLogin := m.Matrix.Provisioning.GetLoginForRequest(w, r)
+	if userLogin == nil {
+		return
+	}
+	client := userLogin.Client.(*connector.WhatsAppClient)
+	if client.Client == nil {
+		mautrix.MNotFound.WithMessage("WhatsApp client not connected").Write(w)
+		return
+	}
+	client.Client.AppStateDebugLogs = true
+	err := client.Client.FetchAppState(r.Context(), appstate.WAPatchName(r.PathValue("patch")), r.URL.Query().Get("full") == "1", false)
+	client.Client.AppStateDebugLogs = false
+	if err != nil {
+		mautrix.MUnknown.WithMessage("Failed to fetch app state: %v", err).Write(w)
+	} else {
+		exhttp.WriteEmptyJSONResponse(w, http.StatusOK)
+	}
 }
