@@ -80,7 +80,6 @@ func (wa *WhatsAppConnector) LoadUserLogin(ctx context.Context, login *bridgev2.
 		w.Client.AutomaticMessageRerequestFromPhone = true
 		w.Client.GetMessageForRetry = w.trackNotFoundRetry
 		w.Client.PreRetryCallback = w.trackFoundRetry
-		w.Client.BackgroundEventCtx = w.UserLogin.Log.WithContext(wa.Bridge.BackgroundCtx)
 		w.Client.SetForceActiveDeliveryReceipts(wa.Config.ForceActiveDeliveryReceipts)
 		w.Client.InitialAutoReconnect = wa.Config.InitialAutoReconnect
 	} else {
