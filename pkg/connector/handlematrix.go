@@ -663,5 +663,5 @@ func (wa *WhatsAppClient) HandleMatrixDeleteChat(ctx context.Context, msg *bridg
 	if err != nil {
 		return err
 	}
-	return wa.Client.SendAppState(ctx, appstate.BuildDeleteChat(chatJID, lastTS, lastKey))
+	return wa.Client.SendAppState(ctx, appstate.BuildDeleteChat(chatJID, lastTS, lastKey, true))
 }
