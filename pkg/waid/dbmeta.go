@@ -20,10 +20,12 @@ import (
 	"crypto/ecdh"
 	"crypto/rand"
 	"encoding/json"
+	"time"
 
 	"go.mau.fi/util/exerrors"
 	"go.mau.fi/util/jsontime"
 	"go.mau.fi/util/random"
+	"go.mau.fi/whatsmeow/appstate"
 	"go.mau.fi/whatsmeow/types"
 )
 
@@ -36,6 +38,8 @@ type UserLoginMetadata struct {
 	APNSEncPubKey   []byte        `json:"apns_enc_pubkey,omitempty"`
 	APNSEncPrivKey  []byte        `json:"apns_enc_privkey,omitempty"`
 	LoggedInAt      jsontime.Unix `json:"logged_in_at,omitempty"`
+
+	AppStateRecoveryAttempted map[appstate.WAPatchName]time.Time `json:"app_state_recovery_attempted,omitempty"`
 
 	HistorySyncPortalsNeedCreating bool `json:"history_sync_portals_need_creating,omitempty"`
 
