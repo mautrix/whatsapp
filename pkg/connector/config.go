@@ -21,6 +21,16 @@ const (
 	MediaRequestMethodLocalTime MediaRequestMethod = "local_time"
 )
 
+// NameQuality represents the quality/priority of a display name source.
+// Higher values are better quality and should not be overwritten by lower quality names.
+const (
+	NameQualityNone         int = 0 // No name available
+	NameQualityPushName     int = 1 // User's self-set push name (can change frequently)
+	NameQualityPhone        int = 2 // Phone number (stable but not human-readable)
+	NameQualityBusinessName int = 3 // WhatsApp Business account name (stable)
+	NameQualityFullName     int = 4 // Contact list name (stable and user-preferred)
+)
+
 //go:embed example-config.yaml
 var ExampleConfig string
 
@@ -187,4 +197,23 @@ func (wa *WhatsAppConnector) GetConfig() (string, any, up.Upgrader) {
 		},
 		Base: ExampleConfig,
 	}
+}
+
+// GetNameQuality determines the quality of the display name based on available data.
+// This is used to prevent overwriting high-quality names (like contact list names)
+// with lower-quality names (like push names that can change frequently).
+func GetNameQuality(contact types.ContactInfo, phone string) int {
+	if contact.FullName != "" {
+		return NameQualityFullName
+	}
+	if contact.BusinessName != "" {
+		return NameQualityBusinessName
+	}
+	if phone != "" {
+		return NameQualityPhone
+	}
+	if contact.PushName != "" {
+		return NameQualityPushName
+	}
+	return NameQualityNone
 }
