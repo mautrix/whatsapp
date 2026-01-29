@@ -133,6 +133,14 @@ func (evt *WAMessageEvent) PreHandle(ctx context.Context, portal *bridgev2.Porta
 		return
 	}
 	meta := portal.Metadata.(*waid.PortalMetadata)
+	if meta.AddressingMode == types.AddressingModeLID && evt.Info.Sender.Server == types.DefaultUserServer {
+		evt.Info.Sender, evt.Info.SenderAlt = evt.Info.SenderAlt, evt.Info.Sender
+		zerolog.Ctx(ctx).Debug().
+			Stringer("lid", evt.Info.Sender).
+			Stringer("pn", evt.Info.SenderAlt).
+			Str("message_id", evt.Info.ID).
+			Msg("Forced phone number sender to LID in group message")
+	}
 	if meta.AddressingMode == types.AddressingModeLID || meta.LIDMigrationAttempted {
 		return
 	}
