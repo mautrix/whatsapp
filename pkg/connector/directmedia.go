@@ -116,7 +116,7 @@ func (wa *WhatsAppConnector) downloadAvatarDirectMedia(ctx context.Context, pars
 			}
 			return nil, mautrix.MNotFound.WithMessage("Avatar is no longer available")
 		} else if err != nil {
-			return nil, fmt.Errorf("failed to refresh avatar url: %w", err)
+			return nil, mautrix.MUnknown.WithMessage("failed to refresh avatar url: %w", err).WithCanRetry(true)
 		}
 		cachedInfo = avatarInfoToCacheEntry(ctx, parsedID.Avatar.TargetJID, avatar)
 		err = wa.DB.AvatarCache.Put(ctx, cachedInfo)
@@ -258,12 +258,12 @@ func (wa *WhatsAppClient) requestAndWaitDirectMedia(ctx context.Context, rawMsgI
 		case waMmsRetry.MediaRetryNotification_DECRYPTION_ERROR:
 			return mautrix.MNotFound.WithMessage("Unable to retrieve media: phone reported a decryption error. The original message may have been deleted.")
 		case waMmsRetry.MediaRetryNotification_GENERAL_ERROR:
-			return mautrix.MNotFound.WithMessage("Unable to retrieve media: phone returned an error. Please ensure your phone is connected to the internet and WhatsApp is running.")
+			return mautrix.MNotFound.WithMessage("Unable to retrieve media: phone returned an error. Please ensure your phone is connected to the internet and WhatsApp is running.").WithCanRetry(true)
 		default:
-			return mautrix.MNotFound.WithMessage(fmt.Sprintf("Unable to retrieve media: phone returned error code %d", state.resultType))
+			return mautrix.MNotFound.WithMessage(fmt.Sprintf("Unable to retrieve media: phone returned error code %d", state.resultType)).WithCanRetry(true)
 		}
 	case <-time.After(30 * time.Second):
-		return mautrix.MNotFound.WithMessage("Phone did not respond in time. Please ensure your phone is connected to the internet and WhatsApp is open.").WithStatus(http.StatusGatewayTimeout)
+		return mautrix.MNotFound.WithMessage("Phone did not respond in time. Please ensure your phone is connected to the internet and WhatsApp is open.").WithStatus(http.StatusGatewayTimeout).WithCanRetry(true)
 	case <-ctx.Done():
 		return ctx.Err()
 	}
