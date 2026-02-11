@@ -1,8 +1,8 @@
 module go.mau.fi/mautrix-whatsapp
 
-go 1.24.0
+go 1.25.0
 
-toolchain go1.25.6
+toolchain go1.26.0
 
 tool go.mau.fi/util/cmd/maubuild
 
