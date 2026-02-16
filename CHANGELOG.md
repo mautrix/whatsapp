@@ -1,3 +1,9 @@
+# v26.02
+
+* Bumped minimum Go version to 1.25.
+* Added automatic recovery for WhatsApp app state sync issues.
+* Fixed LID redirects for some non-message events.
+
 # v26.01
 
 * Fixed broadcast list messages to LIDs causing split DMs.
