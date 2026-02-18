@@ -50,6 +50,7 @@ type Config struct {
 	ForceActiveDeliveryReceipts bool          `yaml:"force_active_delivery_receipts"`
 	DirectMediaAutoRequest      bool          `yaml:"direct_media_auto_request"`
 	InitialAutoReconnect        bool          `yaml:"initial_auto_reconnect"`
+	UseWhatsAppRetryStore       bool          `yaml:"use_whatsapp_retry_store"`
 
 	AnimatedSticker msgconv.AnimatedStickerConfig `yaml:"animated_sticker"`
 
@@ -116,6 +117,7 @@ func upgradeConfig(helper up.Helper) {
 	helper.Copy(up.Bool, "force_active_delivery_receipts")
 	helper.Copy(up.Bool, "direct_media_auto_request")
 	helper.Copy(up.Bool, "initial_auto_reconnect")
+	helper.Copy(up.Bool, "use_whatsapp_retry_store")
 
 	helper.Copy(up.Str, "animated_sticker", "target")
 	helper.Copy(up.Int, "animated_sticker", "args", "width")
