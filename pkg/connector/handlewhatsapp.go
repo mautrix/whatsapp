@@ -406,18 +406,17 @@ func (wa *WhatsAppClient) handleWAUndecryptableMessage(ctx context.Context, evt 
 		Str("decrypt_fail", string(evt.DecryptFailMode)).
 		Msg("Received undecryptable WhatsApp message")
 	wa.trackUndecryptable(evt)
-	if evt.DecryptFailMode == events.DecryptFailHide {
-		return true
-	}
 	if evt.Info.Chat == types.StatusBroadcastJID && !wa.Main.Config.EnableStatusBroadcast {
 		return true
 	}
+	hidden := evt.DecryptFailMode == events.DecryptFailHide
 	res := wa.UserLogin.QueueRemoteEvent(&WAUndecryptableMessage{
 		MessageInfoWrapper: &MessageInfoWrapper{
 			Info: evt.Info,
 			wa:   wa,
 		},
-		Type: evt.UnavailableType,
+		Type:   evt.UnavailableType,
+		Hidden: hidden,
 	})
 	return res.Success
 }
