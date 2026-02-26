@@ -264,6 +264,18 @@ func (evt *WAMessageEvent) GetType() bridgev2.RemoteEventType {
 func (evt *WAMessageEvent) HandleExisting(ctx context.Context, portal *bridgev2.Portal, intent bridgev2.MatrixAPI, existing []*database.Message) (bridgev2.UpsertResult, error) {
 	if existing[0].Metadata.(*waid.MessageMetadata).Error == waid.MsgErrDecryptionFailed {
 		evt.wa.trackUndecryptableResolved(evt.MsgEvent)
+		if existing[0].HasFakeMXID() {
+			// The undecryptable message was hidden (decrypt_fail=hide), so no Matrix
+			// event was sent. Delete the placeholder DB entry and let the framework
+			// handle this as a brand-new message so a real Matrix event is created.
+			zerolog.Ctx(ctx).Debug().
+				Msg("Received decryptable version of previously hidden undecryptable message, re-handling as new message")
+			err := portal.Bridge.DB.Message.DeleteAllParts(ctx, portal.Receiver, evt.GetID())
+			if err != nil {
+				return bridgev2.UpsertResult{}, fmt.Errorf("failed to delete hidden placeholder message: %w", err)
+			}
+			return bridgev2.UpsertResult{ContinueMessageHandling: true}, nil
+		}
 		zerolog.Ctx(ctx).Debug().
 			Stringer("existing_mxid", existing[0].MXID).
 			Msg("Received decryptable version of previously undecryptable message")
@@ -319,7 +331,8 @@ func (evt *WANowDecryptableMessage) GetType() bridgev2.RemoteEventType {
 
 type WAUndecryptableMessage struct {
 	*MessageInfoWrapper
-	Type events.UnavailableType
+	Type   events.UnavailableType
+	Hidden bool
 }
 
 var (
@@ -366,9 +379,10 @@ func (evt *WAUndecryptableMessage) ConvertMessage(ctx context.Context, portal *b
 	// TODO thread root for comments
 	return &bridgev2.ConvertedMessage{
 		Parts: []*bridgev2.ConvertedMessagePart{{
-			Type:    event.EventMessage,
-			Content: content,
-			Extra:   extra,
+			Type:       event.EventMessage,
+			Content:    content,
+			Extra:      extra,
+			DontBridge: evt.Hidden,
 			DBMetadata: &waid.MessageMetadata{
 				SenderDeviceID:   evt.Info.Sender.Device,
 				Error:            waid.MsgErrDecryptionFailed,
