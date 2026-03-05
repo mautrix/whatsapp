@@ -27,7 +27,7 @@ import (
 	"github.com/rs/zerolog"
 	"go.mau.fi/util/exerrors"
 	"go.mau.fi/util/ptr"
-	"go.mau.fi/whatsmeow/proto/waAICommon"
+	"go.mau.fi/whatsmeow/proto/waAICommonDeprecated"
 	"go.mau.fi/whatsmeow/proto/waE2E"
 	"go.mau.fi/whatsmeow/types"
 	"google.golang.org/protobuf/proto"
@@ -266,8 +266,9 @@ func (mc *MessageConverter) convertKeepInChatMessage(ctx context.Context, msg *w
 func (mc *MessageConverter) convertRichResponseMessage(ctx context.Context, msg *waE2E.AIRichResponseMessage) (*bridgev2.ConvertedMessagePart, *waE2E.ContextInfo) {
 	var body strings.Builder
 
+	// TODO switch to new format?
 	for i, submsg := range msg.GetSubmessages() {
-		if submsg.GetMessageType() == waAICommon.AIRichResponseSubMessageType_AI_RICH_RESPONSE_TEXT {
+		if submsg.GetMessageType() == waAICommonDeprecated.AIRichResponseSubMessageType_AI_RICH_RESPONSE_TEXT {
 			if i > 0 {
 				body.WriteString("\n")
 			}
