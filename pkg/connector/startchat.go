@@ -189,7 +189,7 @@ func (wa *WhatsAppClient) getContactList(ctx context.Context, filter string, onl
 	}
 	resp := make([]*bridgev2.ResolveIdentifierResponse, 0, len(contacts))
 	for jid, contactInfo := range contacts {
-		if onlyContacts && contactInfo.FirstName == "" {
+		if onlyContacts && (contactInfo.FirstName == "" && contactInfo.FullName == "") {
 			continue
 		}
 		if !matchesQuery(contactInfo.PushName, filter) && !matchesQuery(contactInfo.FullName, filter) && !matchesQuery(jid.User, filter) {
