@@ -66,10 +66,10 @@ func (mc *MessageConverter) convertTemplateMessage(ctx context.Context, info *ty
 		if addButtonText {
 			description += "\nUse the WhatsApp app to click buttons"
 		}
-		content = fmt.Sprintf("%s\n\n%s", content, description)
+		content = strings.TrimSpace(fmt.Sprintf("%s\n\n%s", content, description))
 	}
 	if footer := tpl.GetHydratedFooterText(); footer != "" {
-		content = fmt.Sprintf("%s\n\n%s", content, footer)
+		content = strings.TrimSpace(fmt.Sprintf("%s\n\n%s", content, footer))
 	}
 
 	var convertedTitle *bridgev2.ConvertedMessagePart
@@ -239,7 +239,7 @@ func (mc *MessageConverter) postProcessBusinessMessage(content string, headerMed
 			converted.Content.Body += content
 			contentHTML := parseWAFormattingToHTML(content, true)
 			if contentHTML != event.TextToHTML(content) || converted.Content.FormattedBody != "" {
-				converted.Content.EnsureHasHTML()
+				converted.Content.Format = event.FormatHTML
 				if converted.Content.FormattedBody != "" {
 					converted.Content.FormattedBody += "<br><br>"
 				}
