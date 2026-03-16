@@ -1,3 +1,10 @@
+# v26.03
+
+* Added option to save outgoing messages in the database to allow encryption
+  retries to work across restarts.
+* Fixed contact list API not returning some contacts.
+* Fixed business template messages with media duplicating the text part.
+
 # v26.02
 
 * Bumped minimum Go version to 1.25.

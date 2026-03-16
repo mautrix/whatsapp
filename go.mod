@@ -2,22 +2,22 @@ module go.mau.fi/mautrix-whatsapp
 
 go 1.25.0
 
-toolchain go1.26.0
+toolchain go1.26.1
 
 tool go.mau.fi/util/cmd/maubuild
 
 require (
 	github.com/lib/pq v1.11.2
 	github.com/rs/zerolog v1.34.0
-	go.mau.fi/util v0.9.6
+	go.mau.fi/util v0.9.7
 	go.mau.fi/webp v0.2.0
 	go.mau.fi/whatsmeow v0.0.0-20260305215846-fc65416c22c4
-	golang.org/x/image v0.36.0
-	golang.org/x/net v0.50.0
-	golang.org/x/sync v0.19.0
+	golang.org/x/image v0.37.0
+	golang.org/x/net v0.52.0
+	golang.org/x/sync v0.20.0
 	google.golang.org/protobuf v1.36.11
 	gopkg.in/yaml.v3 v3.0.1
-	maunium.net/go/mautrix v0.26.4-0.20260305215735-7836f35a1a74
+	maunium.net/go/mautrix v0.26.4
 )
 
 require (
@@ -31,7 +31,7 @@ require (
 	github.com/mattn/go-colorable v0.1.14 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/mattn/go-sqlite3 v1.14.34 // indirect
-	github.com/petermattis/goid v0.0.0-20260113132338-7c7de50cc741 // indirect
+	github.com/petermattis/goid v0.0.0-20260226131333-17d1149c6ac6 // indirect
 	github.com/rogpeppe/go-internal v1.10.0 // indirect
 	github.com/rs/xid v1.6.0 // indirect
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e // indirect
@@ -43,11 +43,11 @@ require (
 	github.com/yuin/goldmark v1.7.16 // indirect
 	go.mau.fi/libsignal v0.2.1 // indirect
 	go.mau.fi/zeroconfig v0.2.0 // indirect
-	golang.org/x/crypto v0.48.0 // indirect
-	golang.org/x/exp v0.0.0-20260218203240-3dfff04db8fa // indirect
-	golang.org/x/mod v0.33.0 // indirect
-	golang.org/x/sys v0.41.0 // indirect
-	golang.org/x/text v0.34.0 // indirect
+	golang.org/x/crypto v0.49.0 // indirect
+	golang.org/x/exp v0.0.0-20260312153236-7ab1446f8b90 // indirect
+	golang.org/x/mod v0.34.0 // indirect
+	golang.org/x/sys v0.42.0 // indirect
+	golang.org/x/text v0.35.0 // indirect
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
 	maunium.net/go/mauflag v1.0.0 // indirect
