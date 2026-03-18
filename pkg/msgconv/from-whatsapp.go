@@ -234,6 +234,9 @@ func (mc *MessageConverter) ToMatrix(
 		part.Extra["fi.mau.whatsapp.source_broadcast_list"] = info.Chat.String()
 	}
 	mc.addMentions(ctx, contextInfo.GetMentionedJID(), part.Content)
+	if contextInfo.GetNonJIDMentions() == 1 {
+		part.Content.Mentions.Room = true
+	}
 
 	cm := &bridgev2.ConvertedMessage{
 		Parts: []*bridgev2.ConvertedMessagePart{part},

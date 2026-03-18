@@ -49,7 +49,13 @@ import (
 	"go.mau.fi/mautrix-whatsapp/pkg/waid"
 )
 
-func (mc *MessageConverter) generateContextInfo(ctx context.Context, replyTo *database.Message, portal *bridgev2.Portal, perMessageTimer *event.BeeperDisappearingTimer) *waE2E.ContextInfo {
+func (mc *MessageConverter) generateContextInfo(
+	ctx context.Context,
+	replyTo *database.Message,
+	portal *bridgev2.Portal,
+	perMessageTimer *event.BeeperDisappearingTimer,
+	roomMention bool,
+) *waE2E.ContextInfo {
 	contextInfo := &waE2E.ContextInfo{}
 	if replyTo != nil {
 		msgID, err := waid.ParseMessageID(replyTo.ID)
@@ -57,6 +63,7 @@ func (mc *MessageConverter) generateContextInfo(ctx context.Context, replyTo *da
 			contextInfo.StanzaID = proto.String(msgID.ID)
 			contextInfo.Participant = proto.String(msgID.Sender.String())
 			contextInfo.QuotedMessage = &waE2E.Message{Conversation: proto.String("")}
+			contextInfo.QuotedType = waE2E.ContextInfo_EXPLICIT.Enum()
 		} else {
 			zerolog.Ctx(ctx).Warn().Err(err).
 				Stringer("reply_to_event_id", replyTo.MXID).
@@ -77,6 +84,9 @@ func (mc *MessageConverter) generateContextInfo(ctx context.Context, replyTo *da
 	if setAt > 0 && contextInfo.Expiration != nil {
 		contextInfo.EphemeralSettingTimestamp = ptr.Ptr(setAt)
 	}
+	if roomMention {
+		contextInfo.NonJIDMentions = proto.Uint32(1)
+	}
 	return contextInfo
 }
 
@@ -96,7 +106,7 @@ func (mc *MessageConverter) ToWhatsApp(
 	}
 
 	message := &waE2E.Message{}
-	contextInfo := mc.generateContextInfo(ctx, replyTo, portal, content.BeeperDisappearingTimer)
+	contextInfo := mc.generateContextInfo(ctx, replyTo, portal, content.BeeperDisappearingTimer, content.Mentions != nil && content.Mentions.Room)
 
 	switch content.MsgType {
 	case event.MsgText, event.MsgNotice, event.MsgEmote:
