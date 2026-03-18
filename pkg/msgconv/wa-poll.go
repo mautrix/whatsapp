@@ -177,6 +177,9 @@ func (mc *MessageConverter) convertPollUpdateMessage(ctx context.Context, info *
 	if err != nil {
 		log.Err(err).Msg("Failed to get poll update target message")
 		return failedPollUpdatePart, nil
+	} else if pollMessage == nil {
+		log.Warn().Str("target_message_id", string(pollMessageID)).Msg("Poll update target message not found")
+		return failedPollUpdatePart, nil
 	}
 	vote, err := getClient(ctx).DecryptPollVote(ctx, &events.Message{
 		Info:    *info,
