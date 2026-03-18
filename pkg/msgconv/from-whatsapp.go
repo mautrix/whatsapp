@@ -140,6 +140,9 @@ func (mc *MessageConverter) ToMatrix(
 	isBackfill bool,
 	previouslyConvertedPart *bridgev2.ConvertedMessagePart,
 ) *bridgev2.ConvertedMessage {
+	if waMsg == nil {
+		waMsg = &waE2E.Message{}
+	}
 	ctx = context.WithValue(ctx, contextKeyClient, client)
 	ctx = context.WithValue(ctx, contextKeyIntent, intent)
 	ctx = context.WithValue(ctx, contextKeyPortal, portal)
