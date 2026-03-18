@@ -266,7 +266,9 @@ func (wa *WhatsAppClient) ConnectBackground(ctx context.Context, params *bridgev
 		return payload
 	}
 	defer func() {
-		wa.Client.GetClientPayload = nil
+		if cli := wa.Client; cli != nil {
+			cli.GetClientPayload = nil
+		}
 	}()
 	err := wa.Client.ConnectContext(ctx)
 	if err != nil {
