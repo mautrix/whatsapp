@@ -454,10 +454,17 @@ func (wa *WhatsAppClient) FetchMessages(ctx context.Context, params bridgev2.Fet
 	} else if params.AnchorMessage != nil {
 		endTime = ptr.Ptr(params.AnchorMessage.Timestamp)
 	}
+	var anchorID types.MessageID
+	if params.AnchorMessage != nil {
+		parsedID, _ := waid.ParseMessageID(params.AnchorMessage.ID)
+		if parsedID != nil {
+			anchorID = parsedID.ID
+		}
+	}
 	messages, err := wa.Main.DB.Message.GetBetween(ctx, wa.UserLogin.ID, portalJID, startTime, endTime, params.Count+1)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load messages from database: %w", err)
-	} else if len(messages) == 0 {
+	} else if len(messages) == 0 || (len(messages) == 1 && anchorID != "" && messages[0].GetKey().GetID() == anchorID) {
 		return &bridgev2.FetchMessagesResponse{
 			HasMore: false,
 			Forward: params.Forward,
