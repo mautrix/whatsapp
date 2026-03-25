@@ -507,7 +507,7 @@ func (wa *WhatsAppClient) handleWALogout(reason events.ConnectFailureReason, onC
 	} else if reason == events.ConnectFailureMainDeviceGone {
 		errorCode = WAMainDeviceGone
 	}
-	wa.Client.Disconnect()
+	wa.Disconnect()
 	wa.Client = nil
 	wa.JID = types.EmptyJID
 	wa.UserLogin.Metadata.(*waid.UserLoginMetadata).WADeviceID = 0

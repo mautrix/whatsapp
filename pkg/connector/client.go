@@ -211,6 +211,7 @@ func (wa *WhatsAppClient) Connect(ctx context.Context) {
 	wa.Client.BackgroundEventCtx = wa.UserLogin.Log.WithContext(wa.Main.Bridge.BackgroundCtx)
 	zerolog.Ctx(ctx).Debug().Msg("Connecting to WhatsApp")
 	if err := wa.Client.ConnectContext(ctx); err != nil {
+		wa.callStopLoops()
 		zerolog.Ctx(ctx).Err(err).Msg("Failed to connect to WhatsApp")
 		state := status.BridgeState{
 			StateEvent: status.StateUnknownError,
@@ -337,6 +338,7 @@ func (wa *WhatsAppClient) startLoops() {
 	if oldStop != nil {
 		(*oldStop)()
 	}
+	ctx = wa.UserLogin.Log.WithContext(ctx)
 	go wa.historySyncLoop(ctx)
 	go wa.ghostResyncLoop(ctx)
 	if mrc := wa.Main.Config.HistorySync.MediaRequests; mrc.AutoRequestMedia && mrc.RequestMethod == MediaRequestMethodLocalTime {
@@ -354,10 +356,14 @@ func (wa *WhatsAppClient) GetStore() *store.Device {
 	return store.NoopDevice
 }
 
-func (wa *WhatsAppClient) Disconnect() {
+func (wa *WhatsAppClient) callStopLoops() {
 	if stopHistorySyncLoop := wa.stopLoops.Swap(nil); stopHistorySyncLoop != nil {
 		(*stopHistorySyncLoop)()
 	}
+}
+
+func (wa *WhatsAppClient) Disconnect() {
+	wa.callStopLoops()
 	if cli := wa.Client; cli != nil {
 		cli.Disconnect()
 	}
