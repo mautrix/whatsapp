@@ -63,11 +63,6 @@ func (wa *WhatsAppClient) historySyncLoop(ctx context.Context) {
 	for {
 		var resetTimer bool
 		select {
-		case evt := <-wa.historySyncs:
-			// The timer is stopped unconditionally and restarted if either handleWAHistorySync had conversations,
-			// or if the timer was previously started and hadn't reached the loop above yet.
-			dispatchTimer.Stop()
-			resetTimer, _ = wa.handleWAHistorySync(ctx, evt, false)
 		case <-wa.historySyncWakeup:
 			dispatchTimer.Stop()
 			notif, rowid, err := wa.Main.DB.HSNotif.GetNext(ctx, wa.UserLogin.ID)
@@ -127,7 +122,7 @@ func (wa *WhatsAppClient) downloadAndSaveWAHistorySyncData(ctx context.Context, 
 		return
 	}
 	err = wa.Main.DB.DoTxn(ctx, nil, func(ctx context.Context) (innerErr error) {
-		resetTimer, innerErr = wa.handleWAHistorySync(ctx, blob, true)
+		resetTimer, innerErr = wa.handleWAHistorySync(ctx, evt, blob, true)
 		if innerErr != nil {
 			return
 		}
@@ -143,7 +138,12 @@ func (wa *WhatsAppClient) downloadAndSaveWAHistorySyncData(ctx context.Context, 
 	return
 }
 
-func (wa *WhatsAppClient) handleWAHistorySync(ctx context.Context, evt *waHistorySync.HistorySync, stopOnError bool) (bool, error) {
+func (wa *WhatsAppClient) handleWAHistorySync(
+	ctx context.Context,
+	notif *waE2E.HistorySyncNotification,
+	evt *waHistorySync.HistorySync,
+	stopOnError bool,
+) (bool, error) {
 	if evt == nil || evt.SyncType == nil {
 		return false, nil
 	}
@@ -175,6 +175,10 @@ func (wa *WhatsAppClient) handleWAHistorySync(ctx context.Context, evt *waHistor
 	log.Info().
 		Int("conversation_count", len(evt.GetConversations())).
 		Int("past_participant_count", len(evt.GetPastParticipants())).
+		Dict("notification_metadata", zerolog.Dict().
+			Int64("oldest_msg_in_chunk_ts", notif.GetOldestMsgInChunkTimestampSec()).
+			Any("full_request_meta", notif.GetFullHistorySyncOnDemandRequestMetadata()).
+			Any("access_status", notif.GetMessageAccessStatus())).
 		Msg("Storing history sync")
 	start := time.Now()
 	successfullySavedTotal := 0

@@ -111,9 +111,7 @@ func (wa *WhatsAppClient) handleWAEvent(rawEvt any) (success bool) {
 		success = wa.handleWAPin(evt)
 
 	case *events.HistorySync:
-		if wa.Main.Bridge.Config.Backfill.Enabled {
-			wa.historySyncs <- evt.Data
-		}
+		wa.UserLogin.Log.Warn().Msg("Unexpected history sync event received")
 	case *events.MediaRetry:
 		wa.phoneSeen(evt.Timestamp)
 		success = wa.UserLogin.QueueRemoteEvent(&WAMediaRetry{MediaRetry: evt, wa: wa}).Success

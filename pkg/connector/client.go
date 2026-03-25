@@ -29,7 +29,6 @@ import (
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/appstate"
 	waBinary "go.mau.fi/whatsmeow/binary"
-	"go.mau.fi/whatsmeow/proto/waHistorySync"
 	"go.mau.fi/whatsmeow/proto/waWa6"
 	"go.mau.fi/whatsmeow/store"
 	"go.mau.fi/whatsmeow/types"
@@ -49,7 +48,6 @@ func (wa *WhatsAppConnector) LoadUserLogin(ctx context.Context, login *bridgev2.
 		UserLogin: login,
 		MC:        noopMCInstance,
 
-		historySyncs:              make(chan *waHistorySync.HistorySync, 64),
 		historySyncWakeup:         make(chan struct{}, 1),
 		resyncQueue:               make(map[types.JID]resyncQueueItem),
 		directMediaRetries:        make(map[networkid.MessageID]*directMediaRetry),
@@ -107,7 +105,6 @@ type WhatsAppClient struct {
 	JID       types.JID
 	MC        mClient
 
-	historySyncs       chan *waHistorySync.HistorySync
 	historySyncWakeup  chan struct{}
 	stopLoops          atomic.Pointer[context.CancelFunc]
 	resyncQueue        map[types.JID]resyncQueueItem
