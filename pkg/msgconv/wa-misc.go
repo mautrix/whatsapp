@@ -21,6 +21,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"html/template"
+	"slices"
 	"strings"
 	"time"
 
@@ -71,6 +72,86 @@ func (mc *MessageConverter) convertPlaceholderMessage(ctx context.Context, rawMs
 	} else {
 		return mc.convertUnknownMessage(ctx, rawMsg)
 	}
+}
+
+func joinNaturalNames(names []string) string {
+	names = slices.DeleteFunc(names, func(name string) bool {
+		return name == ""
+	})
+	switch len(names) {
+	case 0:
+		return ""
+	case 1:
+		return names[0]
+	case 2:
+		return names[0] + " and " + names[1]
+	default:
+		return strings.Join(names[:len(names)-1], ", ") + ", and " + names[len(names)-1]
+	}
+}
+
+func (mc *MessageConverter) getHistoryReceiverName(ctx context.Context, receiver string) string {
+	jid, err := types.ParseJID(receiver)
+	if err != nil {
+		zerolog.Ctx(ctx).Err(err).Str("receiver_jid", receiver).Msg("Failed to parse message history receiver JID")
+		return receiver
+	}
+	_, displayname, err := mc.getBasicUserInfo(ctx, jid)
+	if err != nil {
+		zerolog.Ctx(ctx).Err(err).Stringer("receiver_jid", jid).Msg("Failed to resolve message history receiver")
+		if jid.User != "" {
+			return jid.User
+		}
+		return receiver
+	}
+	return displayname
+}
+
+func messageHistoryStartTime(metadata *waE2E.MessageHistoryMetadata, fallback time.Time) time.Time {
+	if metadata == nil {
+		return fallback
+	}
+	if ts := metadata.GetOldestMessageTimestamp(); ts > 0 {
+		return time.Unix(ts, 0).Local()
+	}
+	return fallback
+}
+
+func (mc *MessageConverter) convertMessageHistoryShare(ctx context.Context, info *types.MessageInfo, metadata *waE2E.MessageHistoryMetadata, contextInfo *waE2E.ContextInfo) (*bridgev2.ConvertedMessagePart, *waE2E.ContextInfo) {
+	names := make([]string, 0, len(metadata.GetHistoryReceivers()))
+	for _, receiver := range metadata.GetHistoryReceivers() {
+		names = append(names, mc.getHistoryReceiverName(ctx, receiver))
+	}
+
+	receivers := joinNaturalNames(names)
+	var fallback time.Time
+	if info != nil {
+		fallback = info.Timestamp
+	}
+	startAt := messageHistoryStartTime(metadata, fallback)
+	body := "Message history shared."
+	if !startAt.IsZero() {
+		startTime := startAt.Format("Jan 2, 2006 at 3:04 PM")
+		body = fmt.Sprintf("Message history shared starting on %s.", startTime)
+		switch {
+		case info != nil && info.IsFromMe && receivers != "":
+			body = fmt.Sprintf("You sent %s message history that starts on %s.", receivers, startTime)
+		case receivers != "":
+			body = fmt.Sprintf("Sent %s message history that starts on %s.", receivers, startTime)
+		}
+	} else if info != nil && info.IsFromMe && receivers != "" {
+		body = fmt.Sprintf("You sent %s message history.", receivers)
+	} else if receivers != "" {
+		body = fmt.Sprintf("Sent %s message history.", receivers)
+	}
+
+	return &bridgev2.ConvertedMessagePart{
+		Type: event.EventMessage,
+		Content: &event.MessageEventContent{
+			MsgType: event.MsgNotice,
+			Body:    body,
+		},
+	}, contextInfo
 }
 
 const inviteMsg = `%s<hr/>This invitation to join "%s" expires at %s. Reply to this message with <code>%s accept</code> to accept the invite.`

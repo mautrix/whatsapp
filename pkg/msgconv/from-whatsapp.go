@@ -217,6 +217,10 @@ func (mc *MessageConverter) ToMatrix(
 		part, contextInfo = mc.convertGroupInviteMessage(ctx, info, waMsg.GroupInviteMessage)
 	case waMsg.ProtocolMessage != nil && waMsg.ProtocolMessage.GetType() == waE2E.ProtocolMessage_EPHEMERAL_SETTING:
 		part, contextInfo = mc.convertEphemeralSettingMessage(ctx, waMsg.ProtocolMessage, info.Timestamp, isBackfill)
+	case waMsg.MessageHistoryBundle != nil:
+		part, contextInfo = mc.convertMessageHistoryShare(ctx, info, waMsg.MessageHistoryBundle.GetMessageHistoryMetadata(), waMsg.MessageHistoryBundle.GetContextInfo())
+	case waMsg.MessageHistoryNotice != nil:
+		part, contextInfo = mc.convertMessageHistoryShare(ctx, info, waMsg.MessageHistoryNotice.GetMessageHistoryMetadata(), waMsg.MessageHistoryNotice.GetContextInfo())
 	case waMsg.EncCommentMessage != nil:
 		part = failedCommentPart
 	default:
