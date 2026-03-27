@@ -156,7 +156,7 @@ func (c *Config) FormatDisplayname(jid types.JID, phone string, contact types.Co
 	if contact.RedactedPhone == "" && phone != "" {
 		contact.RedactedPhone = redactPhone(phone)
 	}
-	err := c.displaynameTemplate.Execute(&nameBuf, &DisplaynameParams{
+	params := &DisplaynameParams{
 		ContactInfo: contact,
 		Phone:       phone,
 
@@ -166,9 +166,10 @@ func (c *Config) FormatDisplayname(jid types.JID, phone string, contact types.Co
 		VName:  contact.BusinessName,
 		Name:   contact.FullName,
 		Short:  contact.FirstName,
-	})
+	}
+	err := c.displaynameTemplate.Execute(&nameBuf, params)
 	if err != nil {
-		panic(err)
+		return params.Phone
 	}
 	return nameBuf.String()
 }
