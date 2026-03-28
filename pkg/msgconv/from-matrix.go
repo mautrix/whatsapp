@@ -107,6 +107,9 @@ func (mc *MessageConverter) fetchQuotedMessage(ctx context.Context, portal *brid
 			return &waE2E.Message{Conversation: proto.String("")}
 		}
 	}
+	if pollContent, ok := evt.Content.Parsed.(*event.PollStartEventContent); ok {
+		return &waE2E.Message{Conversation: proto.String(pollContent.PollStart.Question.Text)}
+	}
 	content, ok := evt.Content.Parsed.(*event.MessageEventContent)
 	if !ok {
 		zerolog.Ctx(ctx).Debug().
@@ -114,10 +117,24 @@ func (mc *MessageConverter) fetchQuotedMessage(ctx context.Context, portal *brid
 			Msg("Quoted event is not a message, using empty quoted message")
 		return &waE2E.Message{Conversation: proto.String("")}
 	}
+	if evt.Type == event.EventSticker {
+		stickerMsg := &waE2E.StickerMessage{
+			Mimetype: proto.String(content.GetInfo().MimeType),
+		}
+		data, err := mc.Bridge.Bot.DownloadMedia(ctx, content.URL, content.File)
+		if err != nil {
+			zerolog.Ctx(ctx).Warn().Err(err).
+				Stringer("reply_to_event_id", replyTo.MXID).
+				Msg("Failed to download sticker for quoted message")
+		} else {
+			stickerMsg.PngThumbnail = data
+		}
+		return &waE2E.Message{StickerMessage: stickerMsg}
+	}
 	switch content.MsgType {
 	case event.MsgText, event.MsgNotice, event.MsgEmote:
 		return &waE2E.Message{Conversation: proto.String(content.Body)}
-	case event.MsgImage, event.MessageType(event.EventSticker.Type):
+	case event.MsgImage:
 		return &waE2E.Message{ImageMessage: &waE2E.ImageMessage{
 			Caption:  proto.String(content.Body),
 			Mimetype: proto.String(content.GetInfo().MimeType),
