@@ -109,6 +109,9 @@ func (mc *MessageConverter) fetchQuotedMessage(ctx context.Context, portal *brid
 	}
 	content, ok := evt.Content.Parsed.(*event.MessageEventContent)
 	if !ok {
+		zerolog.Ctx(ctx).Debug().
+			Stringer("reply_to_event_id", replyTo.MXID).
+			Msg("Quoted event is not a message, using empty quoted message")
 		return &waE2E.Message{Conversation: proto.String("")}
 	}
 	switch content.MsgType {
