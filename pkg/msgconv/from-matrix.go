@@ -62,7 +62,7 @@ func (mc *MessageConverter) generateContextInfo(
 		if err == nil {
 			contextInfo.StanzaID = proto.String(msgID.ID)
 			contextInfo.Participant = proto.String(msgID.Sender.String())
-			contextInfo.QuotedMessage = &waE2E.Message{Conversation: proto.String("")}
+			contextInfo.QuotedMessage = mc.fetchQuotedMessage(ctx, portal, replyTo)
 			contextInfo.QuotedType = waE2E.ContextInfo_EXPLICIT.Enum()
 		} else {
 			zerolog.Ctx(ctx).Warn().Err(err).
@@ -88,6 +88,63 @@ func (mc *MessageConverter) generateContextInfo(
 		contextInfo.NonJIDMentions = proto.Uint32(1)
 	}
 	return contextInfo
+}
+
+func (mc *MessageConverter) fetchQuotedMessage(ctx context.Context, portal *bridgev2.Portal, replyTo *database.Message) *waE2E.Message {
+	evt, err := mc.Bridge.Matrix.BotIntent().GetEvent(ctx, portal.MXID, replyTo.MXID)
+	if err != nil {
+		zerolog.Ctx(ctx).Warn().Err(err).
+			Stringer("reply_to_event_id", replyTo.MXID).
+			Msg("Failed to fetch quoted event from Matrix")
+		return &waE2E.Message{Conversation: proto.String("")}
+	}
+	if evt.Content.Parsed == nil {
+		err = evt.Content.ParseRaw(evt.Type)
+		if err != nil {
+			zerolog.Ctx(ctx).Warn().Err(err).
+				Stringer("reply_to_event_id", replyTo.MXID).
+				Msg("Failed to parse quoted event content")
+			return &waE2E.Message{Conversation: proto.String("")}
+		}
+	}
+	content, ok := evt.Content.Parsed.(*event.MessageEventContent)
+	if !ok {
+		return &waE2E.Message{Conversation: proto.String("")}
+	}
+	switch content.MsgType {
+	case event.MsgText, event.MsgNotice, event.MsgEmote:
+		return &waE2E.Message{Conversation: proto.String(content.Body)}
+	case event.MsgImage, event.MessageType(event.EventSticker.Type):
+		return &waE2E.Message{ImageMessage: &waE2E.ImageMessage{
+			Caption:  proto.String(content.Body),
+			Mimetype: proto.String(content.GetInfo().MimeType),
+		}}
+	case event.MsgVideo:
+		return &waE2E.Message{VideoMessage: &waE2E.VideoMessage{
+			Caption:  proto.String(content.Body),
+			Mimetype: proto.String(content.GetInfo().MimeType),
+		}}
+	case event.MsgAudio:
+		return &waE2E.Message{AudioMessage: &waE2E.AudioMessage{
+			Mimetype: proto.String(content.GetInfo().MimeType),
+		}}
+	case event.MsgFile:
+		return &waE2E.Message{DocumentMessage: &waE2E.DocumentMessage{
+			Title:    proto.String(content.Body),
+			Mimetype: proto.String(content.GetInfo().MimeType),
+		}}
+	case event.MsgLocation:
+		lat, long, geoErr := parseGeoURI(content.GeoURI)
+		if geoErr != nil {
+			return &waE2E.Message{Conversation: proto.String(content.Body)}
+		}
+		return &waE2E.Message{LocationMessage: &waE2E.LocationMessage{
+			DegreesLatitude:  &lat,
+			DegreesLongitude: &long,
+		}}
+	default:
+		return &waE2E.Message{Conversation: proto.String(content.Body)}
+	}
 }
 
 func (mc *MessageConverter) ToWhatsApp(
