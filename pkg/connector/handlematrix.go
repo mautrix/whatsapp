@@ -391,6 +391,10 @@ func (wa *WhatsAppClient) HandleMatrixDisappearingTimer(ctx context.Context, msg
 }
 
 func (wa *WhatsAppClient) HandleMatrixMembership(ctx context.Context, msg *bridgev2.MatrixMembershipChange) (*bridgev2.MatrixMembershipResult, error) {
+	if msg.Type.IsSelf && msg.OrigSender != nil {
+		return nil, nil
+	}
+
 	portalJID, err := waid.ParsePortalID(msg.Portal.ID)
 	if err != nil {
 		return nil, err
