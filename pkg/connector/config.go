@@ -70,6 +70,8 @@ type Config struct {
 			RequestLocalTime int                `yaml:"request_local_time"`
 			MaxAsyncHandle   int64              `yaml:"max_async_handle"`
 		} `yaml:"media_requests"`
+
+		BackwardsOnDemand bool `yaml:"backwards_on_demand"`
 	} `yaml:"history_sync"`
 
 	displaynameTemplate *template.Template `yaml:"-"`
@@ -134,6 +136,7 @@ func upgradeConfig(helper up.Helper) {
 	helper.Copy(up.Str, "history_sync", "media_requests", "request_method")
 	helper.Copy(up.Int, "history_sync", "media_requests", "request_local_time")
 	helper.Copy(up.Int, "history_sync", "media_requests", "max_async_handle")
+	helper.Copy(up.Bool, "history_sync", "backwards_on_demand")
 }
 
 type DisplaynameParams struct {
