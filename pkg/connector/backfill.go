@@ -509,7 +509,14 @@ func (wa *WhatsAppClient) FetchMessages(ctx context.Context, params bridgev2.Fet
 	if err != nil {
 		return nil, fmt.Errorf("failed to load messages from database: %w", err)
 	} else if len(messages) == 0 || (len(messages) == 1 && anchorID != "" && messages[0].GetKey().GetID() == anchorID) {
-		if hasMore {
+		wa.deleteHistorySyncMessages(ctx, portalJID, 0, 0)
+		if hasMore && !params.AllowSlowFetch {
+			return &bridgev2.FetchMessagesResponse{
+				MoreRequiresSlowFetch: true,
+				HasMore:               true,
+				Forward:               params.Forward,
+			}, nil
+		} else if hasMore {
 			return wa.fetchMessagesFromPhone(ctx, params)
 		}
 		return &bridgev2.FetchMessagesResponse{
@@ -541,7 +548,7 @@ func (wa *WhatsAppClient) FetchMessages(ctx context.Context, params bridgev2.Fet
 
 func (wa *WhatsAppClient) deleteHistorySyncMessages(ctx context.Context, portalJID types.JID, newestTS, oldestTS uint64) {
 	var err error
-	if (newestTS == 0 && oldestTS == 0) || (!wa.Main.Bridge.Config.Backfill.Queue.Enabled && !wa.Main.Bridge.Config.Backfill.WillPaginateManually) {
+	if (newestTS == 0 && oldestTS == 0) || !wa.Main.Bridge.Config.Backfill.Queue.AnyEnabled() {
 		// If the backfill queue isn't enabled, delete all messages after backfilling a batch.
 		err = wa.Main.DB.Message.DeleteAllInChat(ctx, wa.UserLogin.ID, portalJID)
 	} else {
