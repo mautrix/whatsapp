@@ -548,12 +548,13 @@ func (wa *WhatsAppClient) FetchMessages(ctx context.Context, params bridgev2.Fet
 
 func (wa *WhatsAppClient) deleteHistorySyncMessages(ctx context.Context, portalJID types.JID, newestTS, oldestTS uint64) {
 	var err error
+	var rows int64
 	if (newestTS == 0 && oldestTS == 0) || !wa.Main.Bridge.Config.Backfill.Queue.AnyEnabled() {
 		// If the backfill queue isn't enabled, delete all messages after backfilling a batch.
-		err = wa.Main.DB.Message.DeleteAllInChat(ctx, wa.UserLogin.ID, portalJID)
+		rows, err = wa.Main.DB.Message.DeleteAllInChat(ctx, wa.UserLogin.ID, portalJID)
 	} else {
 		// Otherwise just delete the messages that got backfilled
-		err = wa.Main.DB.Message.DeleteBetween(ctx, wa.UserLogin.ID, portalJID, newestTS, oldestTS)
+		rows, err = wa.Main.DB.Message.DeleteBetween(ctx, wa.UserLogin.ID, portalJID, newestTS, oldestTS)
 	}
 	if err != nil {
 		zerolog.Ctx(ctx).Warn().Err(err).
@@ -566,6 +567,7 @@ func (wa *WhatsAppClient) deleteHistorySyncMessages(ctx context.Context, portalJ
 			Stringer("portal_jid", portalJID).
 			Uint64("newest_ts", newestTS).
 			Uint64("oldest_ts", oldestTS).
+			Int64("rows_affected", rows).
 			Msg("Deleted history sync messages from database")
 	}
 }

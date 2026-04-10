@@ -116,9 +116,12 @@ func (mq *MessageQuery) GetBetween(ctx context.Context, loginID networkid.UserLo
 		AsList()
 }
 
-func (mq *MessageQuery) DeleteBetween(ctx context.Context, loginID networkid.UserLoginID, chatJID types.JID, before, after uint64) error {
-	_, err := mq.Exec(ctx, deleteHistorySyncMessagesBetweenQuery, mq.BridgeID, loginID, chatJID, before, after)
-	return err
+func (mq *MessageQuery) DeleteBetween(ctx context.Context, loginID networkid.UserLoginID, chatJID types.JID, before, after uint64) (int64, error) {
+	res, err := mq.Exec(ctx, deleteHistorySyncMessagesBetweenQuery, mq.BridgeID, loginID, chatJID, before, after)
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
 }
 
 func (mq *MessageQuery) DeleteAll(ctx context.Context, loginID networkid.UserLoginID) error {
@@ -126,9 +129,12 @@ func (mq *MessageQuery) DeleteAll(ctx context.Context, loginID networkid.UserLog
 	return err
 }
 
-func (mq *MessageQuery) DeleteAllInChat(ctx context.Context, loginID networkid.UserLoginID, chatJID types.JID) error {
-	_, err := mq.Exec(ctx, deleteHistorySyncMessagesForPortalQuery, mq.BridgeID, loginID, chatJID)
-	return err
+func (mq *MessageQuery) DeleteAllInChat(ctx context.Context, loginID networkid.UserLoginID, chatJID types.JID) (int64, error) {
+	res, err := mq.Exec(ctx, deleteHistorySyncMessagesForPortalQuery, mq.BridgeID, loginID, chatJID)
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
 }
 
 func (mq *MessageQuery) ConversationHasMessages(ctx context.Context, loginID networkid.UserLoginID, chatJID types.JID) (exists bool, err error) {
