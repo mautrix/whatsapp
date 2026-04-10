@@ -549,7 +549,17 @@ func (wa *WhatsAppClient) deleteHistorySyncMessages(ctx context.Context, portalJ
 		err = wa.Main.DB.Message.DeleteBetween(ctx, wa.UserLogin.ID, portalJID, newestTS, oldestTS)
 	}
 	if err != nil {
-		zerolog.Ctx(ctx).Warn().Err(err).Msg("Failed to delete messages from database after backfill")
+		zerolog.Ctx(ctx).Warn().Err(err).
+			Stringer("portal_jid", portalJID).
+			Uint64("newest_ts", newestTS).
+			Uint64("oldest_ts", oldestTS).
+			Msg("Failed to delete messages from database after backfill")
+	} else {
+		zerolog.Ctx(ctx).Debug().
+			Stringer("portal_jid", portalJID).
+			Uint64("newest_ts", newestTS).
+			Uint64("oldest_ts", oldestTS).
+			Msg("Deleted history sync messages from database")
 	}
 }
 
