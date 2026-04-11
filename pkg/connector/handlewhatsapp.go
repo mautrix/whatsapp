@@ -19,6 +19,7 @@ package connector
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -36,7 +37,9 @@ import (
 	"maunium.net/go/mautrix/bridgev2/simplevent"
 	"maunium.net/go/mautrix/bridgev2/status"
 	"maunium.net/go/mautrix/event"
+	"maunium.net/go/mautrix/id"
 
+	"go.mau.fi/mautrix-whatsapp/pkg/msgconv"
 	"go.mau.fi/mautrix-whatsapp/pkg/waid"
 )
 
@@ -354,6 +357,9 @@ func (wa *WhatsAppClient) handleWAMessage(ctx context.Context, evt *events.Messa
 	parsedMessageType := getMessageType(evt.Message)
 	if parsedMessageType == "ignore" || strings.HasPrefix(parsedMessageType, "unknown_protocol_") {
 		return
+	}
+	if parsedMessageType == "pin in chat" {
+		return wa.handleWAPinInChat(ctx, evt)
 	}
 	if encReact := evt.Message.GetEncReactionMessage(); encReact != nil {
 		decrypted, err := wa.Client.DecryptReaction(ctx, evt)
@@ -814,6 +820,75 @@ func (wa *WhatsAppClient) handleWAPin(evt *events.Pin) bool {
 	return wa.handleWAUserLocalPortalInfo(evt.JID, evt.Timestamp, &bridgev2.UserLocalPortalInfo{
 		Tag: &tag,
 	})
+}
+
+func (wa *WhatsAppClient) handleWAPinInChat(ctx context.Context, evt *events.Message) bool {
+	log := zerolog.Ctx(ctx)
+	pinMsg := evt.Message.GetPinInChatMessage()
+	if pinMsg == nil || pinMsg.GetKey() == nil {
+		log.Warn().Msg("Received pin in chat message with no key")
+		return true
+	}
+	isPin := pinMsg.GetType() != waE2E.PinInChatMessage_UNPIN_FOR_ALL
+	targetMsgID := msgconv.KeyToMessageID(ctx, wa.Client, evt.Info.Chat, evt.Info.Sender, pinMsg.GetKey())
+	if targetMsgID == "" {
+		log.Warn().Msg("Failed to determine target message ID for pin in chat")
+		return true
+	}
+	portalKey := wa.makeWAPortalKey(evt.Info.Chat)
+	portal, err := wa.Main.Bridge.GetPortalByKey(ctx, portalKey)
+	if err != nil || portal == nil || portal.MXID == "" {
+		log.Warn().Err(err).Msg("Failed to get portal for pin in chat")
+		return true
+	}
+	targetMsg, err := wa.Main.Bridge.DB.Message.GetFirstPartByID(ctx, wa.UserLogin.ID, targetMsgID)
+	if err != nil {
+		log.Warn().Err(err).Msg("Failed to look up target message for pin in chat")
+		return true
+	}
+	if targetMsg == nil {
+		log.Debug().Str("target_message_id", string(targetMsgID)).Msg("Target message for pin not found in database, ignoring")
+		return true
+	}
+	mx, ok := wa.Main.Bridge.Matrix.(bridgev2.MatrixConnectorWithArbitraryRoomState)
+	if !ok {
+		log.Warn().Msg("Matrix connector does not support reading room state, can't update pinned events")
+		return true
+	}
+	var pinned []id.EventID
+	stateEvt, err := mx.GetStateEvent(ctx, portal.MXID, event.StatePinnedEvents, "")
+	if err != nil {
+		log.Debug().Err(err).Msg("Failed to get current pinned events state, assuming empty")
+	} else if stateEvt != nil {
+		content, ok := stateEvt.Content.Parsed.(*event.PinnedEventsEventContent)
+		if ok && content != nil {
+			pinned = content.Pinned
+		}
+	}
+	if isPin {
+		if slices.Contains(pinned, targetMsg.MXID) {
+			return true
+		}
+		pinned = append(pinned, targetMsg.MXID)
+	} else {
+		idx := slices.Index(pinned, targetMsg.MXID)
+		if idx < 0 {
+			return true
+		}
+		pinned = slices.Delete(pinned, idx, idx+1)
+	}
+	_, err = wa.Main.Bridge.Bot.SendState(ctx, portal.MXID, event.StatePinnedEvents, "", &event.Content{
+		Parsed: &event.PinnedEventsEventContent{Pinned: pinned},
+	}, evt.Info.Timestamp)
+	if err != nil {
+		log.Err(err).Msg("Failed to update pinned events state")
+		return false
+	}
+	log.Info().
+		Bool("is_pin", isPin).
+		Stringer("target_event_id", targetMsg.MXID).
+		Msg("Updated pinned events in Matrix room")
+	return true
 }
 
 func (wa *WhatsAppClient) handleWAAppStateSyncComplete(ctx context.Context, evt *events.AppStateSyncComplete) {

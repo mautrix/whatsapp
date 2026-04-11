@@ -134,6 +134,8 @@ func getMessageType(waMsg *waE2E.Message) string {
 		return "message history bundle"
 	case waMsg.RequestPhoneNumberMessage != nil:
 		return "request phone number"
+	case waMsg.PinInChatMessage != nil:
+		return "pin in chat"
 	case waMsg.KeepInChatMessage != nil:
 		return "keep in chat"
 	case waMsg.StatusMentionMessage != nil:
