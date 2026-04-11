@@ -636,14 +636,41 @@ func (wa *WhatsAppClient) handleWADeleteForMe(ctx context.Context, evt *events.D
 
 func (wa *WhatsAppClient) handleWAMarkChatAsRead(ctx context.Context, evt *events.MarkChatAsRead) bool {
 	chatJID := wa.maybeConvertJIDToLID(ctx, evt.JID)
-	return wa.UserLogin.QueueRemoteEvent(&simplevent.Receipt{
+	if evt.Action.GetRead() {
+		// Suppress ReadReceipts that arrive right after a MarkUnread for the same room.
+		// WhatsApp sends both a mark-as-unread and a read-receipt AppState patch when
+		// processing a mark-as-unread request. The read-receipt is spurious and would
+		// undo the mark-as-unread on the Matrix side.
+		wa.recentlyMarkedUnreadLock.Lock()
+		markedAt, wasRecent := wa.recentlyMarkedUnread[chatJID]
+		wa.recentlyMarkedUnreadLock.Unlock()
+		if wasRecent && time.Since(markedAt) < 5*time.Second {
+			zerolog.Ctx(ctx).Debug().
+				Stringer("chat_jid", chatJID).
+				Msg("Suppressing spurious ReadReceipt after MarkUnread")
+			return true
+		}
+		return wa.UserLogin.QueueRemoteEvent(&simplevent.Receipt{
+			EventMeta: simplevent.EventMeta{
+				Type:      bridgev2.RemoteEventReadReceipt,
+				PortalKey: wa.makeWAPortalKey(chatJID),
+				Sender:    wa.makeEventSender(ctx, wa.JID),
+				Timestamp: evt.Timestamp,
+			},
+			ReadUpTo: evt.Timestamp,
+		}).Success
+	}
+	wa.recentlyMarkedUnreadLock.Lock()
+	wa.recentlyMarkedUnread[chatJID] = time.Now()
+	wa.recentlyMarkedUnreadLock.Unlock()
+	return wa.UserLogin.QueueRemoteEvent(&simplevent.MarkUnread{
 		EventMeta: simplevent.EventMeta{
-			Type:      bridgev2.RemoteEventReadReceipt,
+			Type:      bridgev2.RemoteEventMarkUnread,
 			PortalKey: wa.makeWAPortalKey(chatJID),
 			Sender:    wa.makeEventSender(ctx, wa.JID),
 			Timestamp: evt.Timestamp,
 		},
-		ReadUpTo: evt.Timestamp,
+		Unread: true,
 	}).Success
 }
 

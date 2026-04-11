@@ -639,11 +639,27 @@ func (wa *WhatsAppClient) HandleMarkedUnread(ctx context.Context, msg *bridgev2.
 	if err != nil {
 		return err
 	}
-	lastTS, lastKey, err := wa.getLastMessageInfo(ctx, chatJID, msg.Portal.PortalKey)
+	// Use LID as AppState target when available, as WhatsApp may use LID-indexed
+	// AppState entries for contacts that have been migrated.
+	targetJID := chatJID
+	if chatJID.Server == types.DefaultUserServer {
+		if lid, err := wa.GetStore().LIDs.GetLIDForPN(ctx, chatJID); err == nil && !lid.IsEmpty() {
+			targetJID = lid.ToNonAD()
+		}
+	}
+	lastTS, lastKey, err := wa.getLastMessageInfo(ctx, targetJID, msg.Portal.PortalKey)
 	if err != nil {
 		return err
 	}
-	return wa.Client.SendAppState(ctx, appstate.BuildMarkChatAsRead(chatJID, msg.Content.Unread, lastTS, lastKey))
+	// Track mark-as-unread BEFORE sending to WhatsApp so the spurious ReadReceipt
+	// that WhatsApp sends in response is suppressed. Use the phone JID as key
+	// since handleWAMarkChatAsRead converts LIDs to phone JIDs.
+	if msg.Content.Unread {
+		wa.recentlyMarkedUnreadLock.Lock()
+		wa.recentlyMarkedUnread[chatJID] = time.Now()
+		wa.recentlyMarkedUnreadLock.Unlock()
+	}
+	return wa.Client.SendAppState(ctx, appstate.BuildMarkChatAsRead(targetJID, !msg.Content.Unread, lastTS, lastKey))
 }
 
 func (wa *WhatsAppClient) HandleMatrixDeleteChat(ctx context.Context, msg *bridgev2.MatrixDeleteChat) error {
