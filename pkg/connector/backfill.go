@@ -138,7 +138,7 @@ func (wa *WhatsAppClient) downloadAndSaveWAHistorySyncData(ctx context.Context, 
 		return
 	}
 	err = wa.Main.DB.DoTxn(ctx, nil, func(ctx context.Context) (innerErr error) {
-		resetTimer, innerErr = wa.handleWAHistorySync(ctx, evt, blob, true)
+		innerErr = wa.handleWAHistorySync(ctx, evt, blob, true)
 		if innerErr != nil {
 			return
 		}
@@ -151,6 +151,9 @@ func (wa *WhatsAppClient) downloadAndSaveWAHistorySyncData(ctx context.Context, 
 	if err != nil {
 		log.Err(err).Msg("Failed to store history sync notification data")
 	} else {
+		resetTimer = blob.GetSyncType() == waHistorySync.HistorySync_INITIAL_BOOTSTRAP ||
+			blob.GetSyncType() == waHistorySync.HistorySync_RECENT ||
+			blob.GetSyncType() == waHistorySync.HistorySync_FULL
 		err = wa.Client.DeleteMedia(ctx, whatsmeow.MediaHistory, evt.GetDirectPath(), evt.GetFileEncSHA256(), evt.GetEncHandle())
 		if err != nil {
 			log.Err(err).Msg("Failed to delete history sync blob from server")
@@ -166,9 +169,9 @@ func (wa *WhatsAppClient) handleWAHistorySync(
 	notif *waE2E.HistorySyncNotification,
 	evt *waHistorySync.HistorySync,
 	stopOnError bool,
-) (bool, error) {
+) error {
 	if evt == nil || evt.SyncType == nil {
-		return false, nil
+		return nil
 	}
 	log := wa.UserLogin.Log.With().
 		Str("action", "store history sync").
@@ -193,7 +196,7 @@ func (wa *WhatsAppClient) handleWAHistorySync(
 			Int("recent_sticker_count", len(evt.GetRecentStickers())).
 			Int("past_participant_count", len(evt.GetPastParticipants())).
 			Msg("Ignoring history sync")
-		return false, nil
+		return nil
 	}
 	log.Info().
 		Int("conversation_count", len(evt.GetConversations())).
@@ -309,7 +312,7 @@ func (wa *WhatsAppClient) handleWAHistorySync(
 			err = wa.Main.DB.Conversation.Put(ctx, wadb.NewConversation(wa.UserLogin.ID, jid, conv, maxTime))
 			if err != nil {
 				if stopOnError {
-					return false, fmt.Errorf("failed to save conversation metadata for %s: %w", jid, err)
+					return fmt.Errorf("failed to save conversation metadata for %s: %w", jid, err)
 				}
 				log.Err(err).Msg("Failed to save conversation metadata")
 				continue
@@ -317,7 +320,7 @@ func (wa *WhatsAppClient) handleWAHistorySync(
 			err = wa.Main.DB.Message.Put(ctx, wa.UserLogin.ID, jid, messages)
 			if err != nil {
 				if stopOnError {
-					return false, fmt.Errorf("failed to save messages in %s: %w", jid, err)
+					return fmt.Errorf("failed to save messages in %s: %w", jid, err)
 				}
 				log.Err(err).Msg("Failed to save messages")
 				failedToSaveTotal += len(messages)
@@ -327,7 +330,7 @@ func (wa *WhatsAppClient) handleWAHistorySync(
 			err = wa.Main.Bridge.DB.BackfillTask.MarkNotDone(ctx, wa.makeWAPortalKey(jid), wa.UserLogin.ID)
 			if err != nil {
 				if stopOnError {
-					return false, fmt.Errorf("failed to mark backfill task as not done for %s: %w", jid, err)
+					return fmt.Errorf("failed to mark backfill task as not done for %s: %w", jid, err)
 				}
 				log.Err(err).Msg("Failed to mark backfill task as not done")
 			}
@@ -339,9 +342,7 @@ func (wa *WhatsAppClient) handleWAHistorySync(
 		Int("total_message_count", totalMessageCount).
 		Dur("duration", time.Since(start)).
 		Msg("Finished storing history sync")
-	resetTimer := evt.GetSyncType() == waHistorySync.HistorySync_RECENT ||
-		evt.GetSyncType() == waHistorySync.HistorySync_FULL
-	return resetTimer, nil
+	return nil
 }
 
 func (wa *WhatsAppClient) createPortalsFromHistorySync(ctx context.Context) {
