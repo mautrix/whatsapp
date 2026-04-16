@@ -1,3 +1,10 @@
+# v26.04
+
+* Added support for @room mentions in both directions.
+* Changed initial backfill to happen even if WhatsApp doesn't send full history.
+* Fixed panic when handling updates to unknown polls from WhatsApp.
+* Fixed some background loops not stopping when a user is logged out.
+
 # v26.03
 
 * Added option to save outgoing messages in the database to allow encryption
