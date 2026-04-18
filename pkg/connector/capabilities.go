@@ -166,6 +166,7 @@ var whatsappCaps = &event.RoomFeatures{
 		event.StateRoomName.Type:                {Level: event.CapLevelFullySupported},
 		event.StateRoomAvatar.Type:              {Level: event.CapLevelFullySupported},
 		event.StateTopic.Type:                   {Level: event.CapLevelFullySupported},
+		event.StatePinnedEvents.Type:            {Level: event.CapLevelFullySupported},
 		event.StateBeeperDisappearingTimer.Type: {Level: event.CapLevelFullySupported},
 	},
 	MemberActions: event.MemberFeatureMap{

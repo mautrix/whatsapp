@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"image"
 	"image/jpeg"
+	"slices"
 	"strings"
 	"time"
 
@@ -25,6 +26,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/event"
+	"maunium.net/go/mautrix/id"
 
 	"go.mau.fi/mautrix-whatsapp/pkg/msgconv"
 	"go.mau.fi/mautrix-whatsapp/pkg/waid"
@@ -46,6 +48,7 @@ var (
 	_ bridgev2.TagHandlingNetworkAPI            = (*WhatsAppClient)(nil)
 	_ bridgev2.MarkedUnreadHandlingNetworkAPI   = (*WhatsAppClient)(nil)
 	_ bridgev2.DeleteChatHandlingNetworkAPI     = (*WhatsAppClient)(nil)
+	_ bridgev2.PinHandlingNetworkAPI            = (*WhatsAppClient)(nil)
 )
 
 func (wa *WhatsAppClient) HandleMatrixPollStart(ctx context.Context, msg *bridgev2.MatrixPollStart) (*bridgev2.MatrixMessageResponse, error) {
@@ -605,6 +608,65 @@ func (wa *WhatsAppClient) HandleRoomTag(ctx context.Context, msg *bridgev2.Matri
 	}
 	_, isFavorite := msg.Content.Tags[event.RoomTagFavourite]
 	return wa.Client.SendAppState(ctx, appstate.BuildPin(chatJID, isFavorite))
+}
+
+func (wa *WhatsAppClient) HandleMatrixPinChange(ctx context.Context, msg *bridgev2.MatrixPinChange) (bool, error) {
+	log := zerolog.Ctx(ctx)
+	chatJID, err := waid.ParsePortalID(msg.Portal.ID)
+	if err != nil {
+		return false, err
+	}
+	var oldPinned []id.EventID
+	if msg.PrevContent != nil {
+		oldPinned = msg.PrevContent.Pinned
+	}
+	for _, evtID := range msg.Content.Pinned {
+		if !slices.Contains(oldPinned, evtID) {
+			if err := wa.sendPinInChat(ctx, chatJID, evtID, waE2E.PinInChatMessage_PIN_FOR_ALL); err != nil {
+				log.Err(err).Stringer("event_id", evtID).Msg("Failed to send pin to WhatsApp")
+			}
+		}
+	}
+	for _, evtID := range oldPinned {
+		if !slices.Contains(msg.Content.Pinned, evtID) {
+			if err := wa.sendPinInChat(ctx, chatJID, evtID, waE2E.PinInChatMessage_UNPIN_FOR_ALL); err != nil {
+				log.Err(err).Stringer("event_id", evtID).Msg("Failed to send unpin to WhatsApp")
+			}
+		}
+	}
+	return false, nil
+}
+
+func (wa *WhatsAppClient) sendPinInChat(ctx context.Context, chatJID types.JID, evtID id.EventID, pinType waE2E.PinInChatMessage_Type) error {
+	msg, err := wa.Main.Bridge.DB.Message.GetPartByMXID(ctx, evtID)
+	if err != nil {
+		return fmt.Errorf("failed to get message by MXID: %w", err)
+	}
+	if msg == nil {
+		return fmt.Errorf("message %s not found in database", evtID)
+	}
+	parsed, err := waid.ParseMessageID(msg.ID)
+	if err != nil {
+		return fmt.Errorf("failed to parse message ID: %w", err)
+	}
+	fromMe := parsed.Sender.ToNonAD() == wa.JID.ToNonAD() || parsed.Sender.ToNonAD() == wa.GetStore().GetLID().ToNonAD()
+	var participant *string
+	if chatJID.Server == types.GroupServer {
+		participant = ptr.Ptr(parsed.Sender.String())
+	}
+	_, err = wa.Client.SendMessage(ctx, chatJID, &waE2E.Message{
+		PinInChatMessage: &waE2E.PinInChatMessage{
+			Key: &waCommon.MessageKey{
+				RemoteJID:   ptr.Ptr(chatJID.String()),
+				FromMe:      &fromMe,
+				ID:          &parsed.ID,
+				Participant: participant,
+			},
+			Type:              pinType.Enum(),
+			SenderTimestampMS: proto.Int64(time.Now().UnixMilli()),
+		},
+	})
+	return err
 }
 
 func (wa *WhatsAppClient) getLastMessageInfo(ctx context.Context, chatJID types.JID, portalKey networkid.PortalKey) (time.Time, *waCommon.MessageKey, error) {
