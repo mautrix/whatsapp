@@ -246,7 +246,7 @@ func (wa *WhatsAppClient) handleWAHistorySync(
 			return c.Stringer("chat_jid", jid)
 		})
 
-		var minTime, maxTime time.Time
+		var minTime, maxTime, firstItemTime, lastItemTime time.Time
 		var minTimeIndex, maxTimeIndex int
 
 		ignoredTypes := 0
@@ -262,6 +262,10 @@ func (wa *WhatsAppClient) handleWAHistorySync(
 					Msg("Dropping historical message due to parse error")
 				continue
 			}
+			if firstItemTime.IsZero() {
+				firstItemTime = msgEvt.Info.Timestamp
+			}
+			lastItemTime = msgEvt.Info.Timestamp
 			if minTime.IsZero() || msgEvt.Info.Timestamp.Before(minTime) {
 				minTime = msgEvt.Info.Timestamp
 				minTimeIndex = i
@@ -294,6 +298,9 @@ func (wa *WhatsAppClient) handleWAHistorySync(
 			Int("lowest_time_index", minTimeIndex).
 			Time("highest_time", maxTime).
 			Int("highest_time_index", maxTimeIndex).
+			Time("first_item_time", firstItemTime).
+			Time("last_item_time", lastItemTime).
+			Bool("highest_time_mismatch", firstItemTime != maxTime).
 			Dict("metadata", zerolog.Dict().
 				Uint32("ephemeral_expiration", conv.GetEphemeralExpiration()).
 				Int64("ephemeral_setting_timestamp", conv.GetEphemeralSettingTimestamp()).
