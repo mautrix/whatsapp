@@ -53,9 +53,9 @@ jobs:
           file: ./Dockerfile
           push: true
           tags: |
-            ghcr.io/jlxq0/mautrix-whatsapp:name-quality
-            ghcr.io/jlxq0/mautrix-whatsapp:sha-${{ steps.base.outputs.short }}
-            ghcr.io/jlxq0/mautrix-whatsapp:${{ steps.base.outputs.base }}-name-quality
+            ghcr.io/jlxq0/whatsapp:name-quality
+            ghcr.io/jlxq0/whatsapp:sha-${{ steps.base.outputs.short }}
+            ghcr.io/jlxq0/whatsapp:${{ steps.base.outputs.base }}-name-quality
           labels: |
             org.opencontainers.image.source=https://github.com/jlxq0/whatsapp
             org.opencontainers.image.description=mautrix-whatsapp with name-quality-tracking patch
