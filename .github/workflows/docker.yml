@@ -50,7 +50,7 @@ jobs:
       - uses: docker/build-push-action@v5
         with:
           context: .
-          file: ./Dockerfile.ci
+          file: ./Dockerfile
           push: true
           tags: |
             ghcr.io/jlxq0/mautrix-whatsapp:name-quality
