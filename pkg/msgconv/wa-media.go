@@ -17,8 +17,6 @@
 package msgconv
 
 import (
-	"archive/zip"
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -26,15 +24,11 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"path/filepath"
-	"strconv"
 	"strings"
 
 	"github.com/rs/zerolog"
 	"go.mau.fi/util/exmime"
 	"go.mau.fi/util/exslices"
-	"go.mau.fi/util/lottie"
-	"go.mau.fi/util/random"
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/proto/waE2E"
 	"go.mau.fi/whatsmeow/types"
@@ -198,7 +192,9 @@ type PreparedMedia struct {
 }
 
 func (pm *PreparedMedia) FillFileName() *PreparedMedia {
-	if pm.FileName == "" {
+	if pm.Type == event.EventSticker {
+		pm.FileName = ""
+	} else if pm.FileName == "" {
 		pm.FileName = strings.TrimPrefix(string(pm.MsgType), "m.") + exmime.ExtensionFromMimetype(pm.Info.MimeType)
 	}
 	return pm
@@ -287,9 +283,6 @@ func prepareMediaMessage(rawMsg MediaMessage) *PreparedMedia {
 	case *waE2E.StickerMessage:
 		data.Type = event.EventSticker
 		data.FileName = "sticker" + exmime.ExtensionFromMimetype(msg.GetMimetype())
-		if msg.GetMimetype() == "application/was" && data.FileName == "sticker" {
-			data.FileName = "sticker.json"
-		}
 		if data.Info.Width == data.Info.Height {
 			data.Info.Width = WhatsAppStickerSize
 			data.Info.Height = WhatsAppStickerSize
@@ -397,6 +390,8 @@ func (mc *MessageConverter) reuploadWhatsAppAttachment(
 			if err != nil {
 				return err
 			}
+		} else if part.Type == event.EventSticker && part.Info.MimeType == "image/webp" {
+			mc.fillWebPStickerInfo(ctx, part, data)
 		}
 		if part.Info.MimeType == "" {
 			part.Info.MimeType = http.DetectContentType(data)
@@ -423,68 +418,6 @@ func (mc *MessageConverter) reuploadWhatsAppAttachment(
 		}
 	}
 	return nil
-}
-
-func (mc *MessageConverter) extractAnimatedSticker(fileInfo *PreparedMedia, data []byte) ([]byte, error) {
-	data, err := ExtractAnimatedSticker(data)
-	if err != nil {
-		return nil, err
-	}
-	fileInfo.Info.MimeType = "video/lottie+json"
-	fileInfo.FileName = "sticker.json"
-	return data, nil
-}
-
-func (mc *MessageConverter) convertAnimatedSticker(ctx context.Context, fileInfo *PreparedMedia, data []byte) ([]byte, []byte, *event.FileInfo, error) {
-	data, err := mc.extractAnimatedSticker(fileInfo, data)
-	if err != nil {
-		return nil, nil, nil, err
-	}
-	c := mc.AnimatedStickerConfig
-	if c.Target == "disable" {
-		return data, nil, nil, nil
-	} else if !lottie.Supported() {
-		zerolog.Ctx(ctx).Warn().Msg("Animated sticker conversion is enabled, but lottieconverter is not installed")
-		return data, nil, nil, nil
-	}
-	input := bytes.NewReader(data)
-	fileInfo.Info.MimeType = "image/" + c.Target
-	fileInfo.FileName = "sticker." + c.Target
-	switch c.Target {
-	case "png":
-		var output bytes.Buffer
-		err = lottie.Convert(ctx, input, "", &output, c.Target, c.Args.Width, c.Args.Height, "1")
-		return output.Bytes(), nil, nil, err
-	case "gif":
-		var output bytes.Buffer
-		err = lottie.Convert(ctx, input, "", &output, c.Target, c.Args.Width, c.Args.Height, strconv.Itoa(c.Args.FPS))
-		return output.Bytes(), nil, nil, err
-	case "webm", "webp":
-		tmpFile := filepath.Join(os.TempDir(), fmt.Sprintf("mautrix-whatsapp-lottieconverter-%s.%s", random.String(10), c.Target))
-		defer func() {
-			_ = os.Remove(tmpFile)
-		}()
-		thumbnailData, err := lottie.FFmpegConvert(ctx, input, tmpFile, c.Args.Width, c.Args.Height, c.Args.FPS)
-		if err != nil {
-			return nil, nil, nil, err
-		}
-		data, err = os.ReadFile(tmpFile)
-		if err != nil {
-			return nil, nil, nil, fmt.Errorf("failed to read converted file: %w", err)
-		}
-		var thumbnailInfo *event.FileInfo
-		if thumbnailData != nil {
-			thumbnailInfo = &event.FileInfo{
-				MimeType: "image/png",
-				Width:    c.Args.Width,
-				Height:   c.Args.Height,
-				Size:     len(thumbnailData),
-			}
-		}
-		return data, thumbnailData, thumbnailInfo, nil
-	default:
-		return nil, nil, nil, fmt.Errorf("unsupported target format %s", c.Target)
-	}
 }
 
 func (mc *MessageConverter) makeMediaFailure(ctx context.Context, mediaInfo *PreparedMedia, keys *FailedMediaKeys, err error) *bridgev2.ConvertedMessagePart {
@@ -530,29 +463,4 @@ func (mc *MessageConverter) makeMediaFailure(ctx context.Context, mediaInfo *Pre
 		part.Content.Body += "\n\n" + mediaInfo.Body
 	}
 	return part
-}
-
-func ExtractAnimatedSticker(data []byte) ([]byte, error) {
-	zipReader, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
-	if err != nil {
-		return nil, fmt.Errorf("failed to read sticker zip: %w", err)
-	}
-	animationFile, err := zipReader.Open("animation/animation.json")
-	if err != nil {
-		return nil, fmt.Errorf("failed to open animation.json: %w", err)
-	}
-	animationFileInfo, err := animationFile.Stat()
-	if err != nil {
-		_ = animationFile.Close()
-		return nil, fmt.Errorf("failed to stat animation.json: %w", err)
-	} else if animationFileInfo.Size() > uploadFileThreshold {
-		_ = animationFile.Close()
-		return nil, fmt.Errorf("animation.json is too large (%.2f MiB)", float64(animationFileInfo.Size())/1024/1024)
-	}
-	data, err = io.ReadAll(animationFile)
-	_ = animationFile.Close()
-	if err != nil {
-		return nil, fmt.Errorf("failed to read animation.json: %w", err)
-	}
-	return data, nil
 }

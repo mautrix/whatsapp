@@ -9,15 +9,16 @@ tool go.mau.fi/util/cmd/maubuild
 require (
 	github.com/lib/pq v1.12.3
 	github.com/rs/zerolog v1.35.0
-	go.mau.fi/util v0.9.8
+	github.com/tidwall/gjson v1.18.0
+	go.mau.fi/util v0.9.9-0.20260428124215-c47a7212562e
 	go.mau.fi/webp v0.2.0
-	go.mau.fi/whatsmeow v0.0.0-20260416104156-3ff20cd3462a
+	go.mau.fi/whatsmeow v0.0.0-20260427122815-7514259253a7
 	golang.org/x/image v0.39.0
 	golang.org/x/net v0.53.0
 	golang.org/x/sync v0.20.0
 	google.golang.org/protobuf v1.36.11
 	gopkg.in/yaml.v3 v3.0.1
-	maunium.net/go/mautrix v0.27.0
+	maunium.net/go/mautrix v0.27.1-0.20260428110059-49a05bf06436
 )
 
 require (
@@ -35,7 +36,6 @@ require (
 	github.com/rogpeppe/go-internal v1.10.0 // indirect
 	github.com/rs/xid v1.6.0 // indirect
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e // indirect
-	github.com/tidwall/gjson v1.18.0 // indirect
 	github.com/tidwall/match v1.2.0 // indirect
 	github.com/tidwall/pretty v1.2.1 // indirect
 	github.com/tidwall/sjson v1.2.5 // indirect
