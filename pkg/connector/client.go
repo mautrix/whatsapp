@@ -55,6 +55,7 @@ func (wa *WhatsAppConnector) LoadUserLogin(ctx context.Context, login *bridgev2.
 		pushNamesSynced:           exsync.NewEvent(),
 		createDedup:               exsync.NewSet[types.MessageID](),
 		appStateFullSyncAttempted: make(map[appstate.WAPatchName]time.Time),
+		recentlyMarkedUnread:      make(map[types.JID]time.Time),
 	}
 	login.Client = w
 
@@ -121,6 +122,12 @@ type WhatsAppClient struct {
 
 	appStateRecoveryLock      sync.Mutex
 	appStateFullSyncAttempted map[appstate.WAPatchName]time.Time
+
+	// recentlyMarkedUnread tracks rooms recently marked as unread via WhatsApp
+	// AppState, so that the spurious ReadReceipt that WhatsApp sends immediately
+	// after a mark-as-unread can be suppressed.
+	recentlyMarkedUnread     map[types.JID]time.Time
+	recentlyMarkedUnreadLock sync.Mutex
 }
 
 var (
