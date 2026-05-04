@@ -239,6 +239,10 @@ func (mc *MessageConverter) ToMatrix(
 	mc.addMentions(ctx, contextInfo.GetMentionedJID(), part.Content)
 	if contextInfo.GetNonJIDMentions() == 1 {
 		part.Content.Mentions.Room = true
+		part.Content.Body = strings.Replace(part.Content.Body, "@all", "@room", 1)
+		if part.Content.FormattedBody != "" {
+			part.Content.FormattedBody = strings.Replace(part.Content.FormattedBody, "@all", "@room", 1)
+		}
 	}
 
 	cm := &bridgev2.ConvertedMessage{

@@ -181,6 +181,7 @@ func (mc *MessageConverter) constructMediaMessage(
 	var caption string
 	if content.FileName != "" && content.Body != content.FileName {
 		caption, contextInfo.MentionedJID = mc.parseText(ctx, content)
+		caption = replaceRoomMention(caption, content.Mentions)
 	}
 	switch content.MsgType {
 	case event.MessageType(event.EventSticker.Type):
@@ -305,6 +306,13 @@ func (mc *MessageConverter) constructMediaMessage(
 	}
 }
 
+func replaceRoomMention(text string, mentions *event.Mentions) string {
+	if mentions != nil && mentions.Room {
+		text = strings.Replace(text, "@room", "@all", 1)
+	}
+	return text
+}
+
 func (mc *MessageConverter) parseText(ctx context.Context, content *event.MessageEventContent) (text string, mentions []string) {
 	mentions = make([]string, 0)
 
@@ -330,6 +338,7 @@ func (mc *MessageConverter) constructTextMessage(
 		return mc.constructGroupInviteMessage(ctx, content, groupInvite, contextInfo)
 	}
 	text, mentions := mc.parseText(ctx, content)
+	text = replaceRoomMention(text, content.Mentions)
 	if len(mentions) > 0 {
 		contextInfo.MentionedJID = mentions
 	}
@@ -358,6 +367,7 @@ func (mc *MessageConverter) constructGroupInviteMessage(
 		return nil, fmt.Errorf("failed to parse invite meta: %w", err)
 	}
 	text, mentions := mc.parseText(ctx, content)
+	text = replaceRoomMention(text, content.Mentions)
 	if len(mentions) > 0 {
 		contextInfo.MentionedJID = mentions
 	}
