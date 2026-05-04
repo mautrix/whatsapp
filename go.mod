@@ -8,17 +8,17 @@ tool go.mau.fi/util/cmd/maubuild
 
 require (
 	github.com/lib/pq v1.12.3
-	github.com/rs/zerolog v1.35.0
+	github.com/rs/zerolog v1.35.1
 	github.com/tidwall/gjson v1.18.0
-	go.mau.fi/util v0.9.9-0.20260428124215-c47a7212562e
+	go.mau.fi/util v0.9.9-0.20260501211038-7535d5590b78
 	go.mau.fi/webp v0.2.0
-	go.mau.fi/whatsmeow v0.0.0-20260427122815-7514259253a7
+	go.mau.fi/whatsmeow v0.0.0-20260504140538-51dcc5e33be0
 	golang.org/x/image v0.39.0
 	golang.org/x/net v0.53.0
 	golang.org/x/sync v0.20.0
 	google.golang.org/protobuf v1.36.11
 	gopkg.in/yaml.v3 v3.0.1
-	maunium.net/go/mautrix v0.27.1-0.20260429160319-674a25f9b6ee
+	maunium.net/go/mautrix v0.27.1-0.20260502202615-25947505f4a2
 )
 
 require (
