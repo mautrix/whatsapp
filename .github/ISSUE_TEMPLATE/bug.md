@@ -15,4 +15,4 @@ type: Bug
 
 * [ ] This is an actual bug, not just a setup issue (see the [troubleshooting docs](https://docs.mau.fi/bridges/general/troubleshooting.html) or ask in the Matrix room for setup help).
 * [ ] I am certain that sufficient information is included. Ask in the Matrix room first if not.
-* [ ] The bug is still present on the main branch.
+* [ ] The bug is still present on the main branch. The `!wa version` command output is: ``
