@@ -20,10 +20,13 @@ import (
 	"archive/zip"
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -34,8 +37,157 @@ import (
 	"go.mau.fi/util/exstrings"
 	"go.mau.fi/util/lottie"
 	"go.mau.fi/util/random"
+	"go.mau.fi/whatsmeow"
+	"go.mau.fi/whatsmeow/types"
+	"maunium.net/go/mautrix"
+	"maunium.net/go/mautrix/bridgev2"
+	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/event"
+
+	"go.mau.fi/mautrix-whatsapp/pkg/waid"
 )
+
+func (mc *MessageConverter) GetCachedStickerPack(ctx context.Context, client *whatsmeow.Client, packID string) (*types.StickerPack, error) {
+	mc.stickerPackCacheLock.Lock()
+	defer mc.stickerPackCacheLock.Unlock()
+	cached, ok := mc.stickerPackCache[packID]
+	if ok {
+		if cached == nil {
+			return nil, bridgev2.RespError(mautrix.MNotFound.WithMessage("sticker pack not found (cached)"))
+		}
+		return cached, nil
+	}
+
+	pack, err := client.FetchStickerPack(ctx, packID)
+	if errors.Is(err, whatsmeow.ErrMediaDownloadFailedWith404) {
+		mc.stickerPackCache[packID] = nil
+		return nil, bridgev2.WrapRespErr(err, mautrix.MNotFound)
+	} else if err != nil {
+		return nil, err
+	}
+	mc.stickerPackCache[packID] = pack
+	if packID != pack.StickerPackID {
+		mc.stickerPackCache[pack.StickerPackID] = pack
+	}
+	return pack, nil
+}
+
+func (mc *MessageConverter) GetCachedSticker(ctx context.Context, client *whatsmeow.Client, packID string, hash []byte) (*types.StickerPackItem, error) {
+	pack, err := mc.GetCachedStickerPack(ctx, client, packID)
+	if err != nil {
+		return nil, err
+	}
+	for _, sticker := range pack.Stickers {
+		if bytes.Equal(sticker.FileHash, hash) {
+			return sticker, nil
+		}
+	}
+	return nil, nil
+}
+
+func (mc *MessageConverter) DownloadImagePack(ctx context.Context, userLoginID networkid.UserLoginID, client *whatsmeow.Client, inputURL string) (*bridgev2.ImportedImagePack, error) {
+	parsedURL, err := url.Parse(inputURL)
+	if err != nil {
+		return nil, bridgev2.WrapRespErr(err, mautrix.MNotFound)
+	} else if parsedURL.Host != "api.whatsapp.com" && parsedURL.Host != "wa.me" {
+		return nil, bridgev2.WrapRespErr(fmt.Errorf("invalid host %q", parsedURL.Host), mautrix.MNotFound)
+	} else if !strings.HasPrefix(parsedURL.Path, "/stickerpack/") {
+		return nil, bridgev2.WrapRespErr(fmt.Errorf("invalid path %q", parsedURL.Path), mautrix.MNotFound)
+	}
+	packName := strings.Split(strings.TrimPrefix(parsedURL.Path, "/stickerpack/"), "/")[0]
+	if packName == "" {
+		return nil, bridgev2.WrapRespErr(fmt.Errorf("empty pack name"), mautrix.MNotFound)
+	}
+	pack, err := mc.GetCachedStickerPack(ctx, client, packName)
+	if err != nil {
+		return nil, err
+	}
+	canonicalURL := "https://wa.me/stickerpack/" + pack.StickerPackID
+	topLevelExtra := map[string]any{
+		"fi.mau.whatsapp.stickerpack": map[string]any{
+			"id":          pack.StickerPackID,
+			"name":        pack.Name,
+			"description": pack.Description,
+			"publisher":   pack.Publisher,
+			"animated":    pack.Animated > 0,
+			"lottie":      pack.Lottie > 0,
+		},
+	}
+	content := &event.ImagePackEventContent{
+		Images: make(map[string]*event.ImagePackImage, len(pack.Stickers)),
+		Metadata: event.ImagePackMetadata{
+			DisplayName: pack.Name,
+			AvatarURL:   "",
+			Usage:       []event.ImagePackUsage{event.ImagePackUsageSticker},
+			Attribution: fmt.Sprintf("By %s on WhatsApp %s", pack.Publisher, canonicalURL),
+			BridgedPack: &event.BridgedStickerPack{
+				Network: StickerSourceID,
+				URL:     canonicalURL,
+			},
+		},
+	}
+	ctx = context.WithValue(ctx, contextKeyClient, client)
+	ctx = context.WithValue(ctx, contextKeyIntent, mc.Bridge.Bot)
+	ctx = context.WithValue(ctx, contextKeyPortal, (*bridgev2.Portal)(nil))
+	for i, sticker := range pack.Stickers {
+		shortcode := sticker.PreviewWebpID
+		if shortcode == "" {
+			shortcode = fmt.Sprintf("%s_img%d", pack.StickerPackID, i+1)
+		}
+		body := sticker.AccessibilityText
+		var emoji string
+		if len(sticker.Emojis) > 0 {
+			emoji = sticker.Emojis[0]
+			if body == "" {
+				body = strings.Join(sticker.Emojis, " ")
+			}
+		}
+		part := &PreparedMedia{
+			Type: event.EventSticker,
+			MessageEventContent: &event.MessageEventContent{
+				Body: body,
+				Info: &event.FileInfo{
+					MimeType: sticker.MimeType,
+					Width:    sticker.Width,
+					Height:   sticker.Height,
+					Size:     int(sticker.FileSize),
+					BridgedSticker: &event.BridgedSticker{
+						Network: StickerSourceID,
+						ID:      base64.StdEncoding.EncodeToString(sticker.FileHash),
+						Emoji:   emoji,
+						PackURL: canonicalURL,
+					},
+				},
+			},
+			TypeDescription: "sticker",
+		}
+		if mc.DirectMedia {
+			if part.Info.MimeType == "application/was" {
+				part.Info.MimeType = "video/lottie+json"
+			}
+			part.URL, err = mc.Bridge.Matrix.GenerateContentURI(ctx, waid.MakeStickerPackMediaID(pack.StickerPackID, sticker.FileHash, userLoginID))
+			if err != nil {
+				panic(fmt.Errorf("failed to generate content URI: %w", err))
+			}
+		} else {
+			err = mc.reuploadWhatsAppAttachment(ctx, sticker, part)
+			if err != nil {
+				return nil, fmt.Errorf("failed to reupload sticker %q: %w", sticker.GetDirectPath(), err)
+			}
+		}
+		content.Images[shortcode] = &event.ImagePackImage{
+			URL:  part.URL,
+			Body: part.Body,
+			Info: part.Info,
+		}
+	}
+
+	return &bridgev2.ImportedImagePack{
+		Content:   content,
+		Extra:     topLevelExtra,
+		Shortcode: pack.StickerPackID,
+	}, nil
+}
 
 type StickerMetadata struct {
 	StickerPackID       string   `json:"sticker-pack-id"`
@@ -48,7 +200,7 @@ func (sm *StickerMetadata) ToMatrix(content *event.MessageEventContent) {
 	if sm == nil {
 		return
 	}
-	if sm.StickerPackID != "" {
+	if sm.StickerPackID != "" && content.Info.BridgedSticker == nil {
 		content.Info.BridgedSticker = &event.BridgedSticker{
 			Network: StickerSourceID,
 			PackURL: StickerPackURLPrefix + sm.StickerPackID,
@@ -66,6 +218,24 @@ func (sm *StickerMetadata) ToMatrix(content *event.MessageEventContent) {
 
 const StickerSourceID = "whatsapp"
 const StickerPackURLPrefix = "https://wa.me/stickerpack/"
+
+func PackAnimatedSticker(data []byte) ([]byte, error) {
+	var buf bytes.Buffer
+	zipWriter := zip.NewWriter(&buf)
+	f, err := zipWriter.Create("animation/animation.json")
+	if err != nil {
+		return nil, fmt.Errorf("failed to create zip entry: %w", err)
+	}
+	_, err = f.Write(data)
+	if err != nil {
+		return nil, fmt.Errorf("failed to write zip entry: %w", err)
+	}
+	err = zipWriter.Close()
+	if err != nil {
+		return nil, fmt.Errorf("failed to close zip writer: %w", err)
+	}
+	return buf.Bytes(), nil
+}
 
 func ExtractAnimatedSticker(data []byte) ([]byte, *StickerMetadata, error) {
 	zipReader, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))

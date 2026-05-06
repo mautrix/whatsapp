@@ -38,6 +38,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/bridgev2/status"
+	"maunium.net/go/mautrix/event"
 
 	"go.mau.fi/mautrix-whatsapp/pkg/waid"
 )
@@ -128,6 +129,7 @@ var (
 	_ bridgev2.PushableNetworkAPI          = (*WhatsAppClient)(nil)
 	_ bridgev2.BackgroundSyncingNetworkAPI = (*WhatsAppClient)(nil)
 	_ bridgev2.ChatViewingNetworkAPI       = (*WhatsAppClient)(nil)
+	_ bridgev2.StickerImportingNetworkAPI  = (*WhatsAppClient)(nil)
 )
 
 var pushCfg = &bridgev2.PushConfig{
@@ -466,4 +468,13 @@ func (wa *WhatsAppClient) updatePresence(ctx context.Context, presence types.Pre
 		wa.lastPresence = presence
 	}
 	return err
+}
+
+func (wa *WhatsAppClient) DownloadImagePack(ctx context.Context, url string) (*bridgev2.ImportedImagePack, error) {
+	return wa.Main.MsgConv.DownloadImagePack(ctx, wa.UserLogin.ID, wa.Client, url)
+}
+
+func (wa *WhatsAppClient) ListImagePacks(ctx context.Context) ([]*event.ImagePackMetadata, error) {
+	// TODO
+	return nil, nil
 }

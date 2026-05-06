@@ -125,10 +125,10 @@ var whatsappCaps = &event.RoomFeatures{
 		event.CapMsgSticker: {
 			MimeTypes: map[string]event.CapabilitySupportLevel{
 				"image/webp": event.CapLevelFullySupported,
-				// TODO see if sending lottie is possible
-				//"video/lottie+json": event.CapLevelFullySupported,
 				"image/png":  event.CapLevelPartialSupport,
 				"image/jpeg": event.CapLevelPartialSupport,
+				// This will only be accepted if it was imported from WhatsApp
+				"video/lottie+json": event.CapLevelPartialSupport,
 			},
 			Caption: event.CapLevelDropped,
 			MaxSize: WAMaxFileSize,

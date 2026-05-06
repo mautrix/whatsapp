@@ -17,6 +17,9 @@
 package msgconv
 
 import (
+	"sync"
+
+	"go.mau.fi/whatsmeow/types"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/format"
 
@@ -43,12 +46,16 @@ type MessageConverter struct {
 	DisableViewOnce       bool
 	DirectMedia           bool
 	OldMediaSuffix        string
+
+	stickerPackCache     map[string]*types.StickerPack
+	stickerPackCacheLock sync.Mutex
 }
 
 func New(br *bridgev2.Bridge) *MessageConverter {
 	mc := &MessageConverter{
-		Bridge:      br,
-		MaxFileSize: 50 * 1024 * 1024,
+		Bridge:           br,
+		MaxFileSize:      50 * 1024 * 1024,
+		stickerPackCache: make(map[string]*types.StickerPack),
 	}
 	mc.HTMLParser = &format.HTMLParser{
 		PillConverter: mc.convertPill,

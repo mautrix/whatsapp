@@ -35,6 +35,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/event"
+	"maunium.net/go/mautrix/id"
 
 	"go.mau.fi/mautrix-whatsapp/pkg/waid"
 )
@@ -81,11 +82,11 @@ func (mc *MessageConverter) convertMediaMessage(
 		MimeType:  msg.GetMimetype(),
 	}
 	if mc.DirectMedia {
-		preparedMedia.FillFileName()
 		if preparedMedia.Info.MimeType == "application/was" {
 			preparedMedia.Info.MimeType = "video/lottie+json"
 			preparedMedia.FileName = "sticker.json"
 		}
+		preparedMedia.FillFileName()
 		var err error
 		portal := getPortal(ctx)
 		idOverride := getEditTargetID(ctx)
@@ -352,12 +353,15 @@ func (mc *MessageConverter) reuploadWhatsAppAttachment(
 ) error {
 	client := getClient(ctx)
 	intent := getIntent(ctx)
-	portal := getPortal(ctx)
+	var roomID id.RoomID
+	if portal := getPortal(ctx); portal != nil {
+		roomID = portal.MXID
+	}
 	var thumbnailData []byte
 	var thumbnailInfo *event.FileInfo
 	if part.Info.Size > uploadFileThreshold {
 		var err error
-		part.URL, part.File, err = intent.UploadMediaStream(ctx, portal.MXID, -1, true, func(file io.Writer) (*bridgev2.FileStreamResult, error) {
+		part.URL, part.File, err = intent.UploadMediaStream(ctx, roomID, -1, true, func(file io.Writer) (*bridgev2.FileStreamResult, error) {
 			err := client.DownloadToFile(ctx, message, file.(*os.File))
 			if errors.Is(err, whatsmeow.ErrFileLengthMismatch) || errors.Is(err, whatsmeow.ErrInvalidMediaSHA256) {
 				zerolog.Ctx(ctx).Warn().Err(err).Msg("Mismatching media checksums in message. Ignoring because WhatsApp seems to ignore them too")
@@ -397,7 +401,7 @@ func (mc *MessageConverter) reuploadWhatsAppAttachment(
 			part.Info.MimeType = http.DetectContentType(data)
 		}
 		part.FillFileName()
-		part.URL, part.File, err = intent.UploadMedia(ctx, portal.MXID, data, part.FileName, part.Info.MimeType)
+		part.URL, part.File, err = intent.UploadMedia(ctx, roomID, data, part.FileName, part.Info.MimeType)
 		if err != nil {
 			return fmt.Errorf("%w: %w", bridgev2.ErrMediaReuploadFailed, err)
 		}
@@ -406,7 +410,7 @@ func (mc *MessageConverter) reuploadWhatsAppAttachment(
 		var err error
 		part.Info.ThumbnailURL, part.Info.ThumbnailFile, err = intent.UploadMedia(
 			ctx,
-			portal.MXID,
+			roomID,
 			thumbnailData,
 			"thumbnail"+exmime.ExtensionFromMimetype(thumbnailInfo.MimeType),
 			thumbnailInfo.MimeType,
