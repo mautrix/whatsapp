@@ -506,16 +506,20 @@ func (mc *MessageConverter) reuploadFileToWhatsApp(
 	var data []byte
 	var err error
 	var sticker *types.StickerPackItem
-	if sticker, err = mc.getOriginalBridgedSticker(ctx, content.Info.BridgedSticker); sticker != nil && sticker.MimeType == "application/was" {
-		data, err = getClient(ctx).Download(ctx, sticker)
-		mime = sticker.MimeType
+	if sticker, err = mc.getOriginalBridgedSticker(ctx, content.Info.BridgedSticker); err != nil {
+		zerolog.Ctx(ctx).Warn().Err(err).
+			Msg("Failed to get original bridged sticker, falling back to downloading from URL")
+		data, err = mc.Bridge.Bot.DownloadMedia(ctx, content.URL, content.File)
+	} else if sticker != nil {
+		if sticker.MimeType == "application/was" {
+			data, err = getClient(ctx).Download(ctx, sticker)
+			mime = sticker.MimeType
+		} else {
+			data, err = mc.Bridge.Bot.DownloadMedia(ctx, content.URL, content.File)
+		}
 		content.Info.Width = sticker.Width
 		content.Info.Height = sticker.Height
 	} else {
-		if err != nil {
-			zerolog.Ctx(ctx).Warn().Err(err).
-				Msg("Failed to get original bridged sticker, falling back to downloading from URL")
-		}
 		data, err = mc.Bridge.Bot.DownloadMedia(ctx, content.URL, content.File)
 	}
 	if err != nil {

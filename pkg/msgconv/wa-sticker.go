@@ -161,6 +161,7 @@ func (mc *MessageConverter) DownloadImagePack(ctx context.Context, userLoginID n
 			},
 			TypeDescription: "sticker",
 		}
+		fixStickerDimensions(part.Info)
 		if mc.DirectMedia {
 			if part.Info.MimeType == "application/was" {
 				part.Info.MimeType = "video/lottie+json"

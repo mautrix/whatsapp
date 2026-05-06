@@ -236,6 +236,19 @@ type MediaMessageWithDuration interface {
 
 const WhatsAppStickerSize = 190
 
+func fixStickerDimensions(info *event.FileInfo) {
+	if info.Width == info.Height {
+		info.Width = WhatsAppStickerSize
+		info.Height = WhatsAppStickerSize
+	} else if info.Width > info.Height {
+		info.Height /= info.Width / WhatsAppStickerSize
+		info.Width = WhatsAppStickerSize
+	} else {
+		info.Width /= info.Height / WhatsAppStickerSize
+		info.Height = WhatsAppStickerSize
+	}
+}
+
 func prepareMediaMessage(rawMsg MediaMessage) *PreparedMedia {
 	extraInfo := map[string]any{}
 	data := &PreparedMedia{
@@ -284,16 +297,7 @@ func prepareMediaMessage(rawMsg MediaMessage) *PreparedMedia {
 	case *waE2E.StickerMessage:
 		data.Type = event.EventSticker
 		data.FileName = "sticker" + exmime.ExtensionFromMimetype(msg.GetMimetype())
-		if data.Info.Width == data.Info.Height {
-			data.Info.Width = WhatsAppStickerSize
-			data.Info.Height = WhatsAppStickerSize
-		} else if data.Info.Width > data.Info.Height {
-			data.Info.Height /= data.Info.Width / WhatsAppStickerSize
-			data.Info.Width = WhatsAppStickerSize
-		} else {
-			data.Info.Width /= data.Info.Height / WhatsAppStickerSize
-			data.Info.Height = WhatsAppStickerSize
-		}
+		fixStickerDimensions(data.Info)
 	case *waE2E.VideoMessage:
 		data.MsgType = event.MsgVideo
 		pairedMediaType := msg.GetContextInfo().GetPairedMediaType()
