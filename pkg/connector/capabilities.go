@@ -19,6 +19,7 @@ var WhatsAppGeneralCaps = &bridgev2.NetworkGeneralCapabilities{
 	AggressiveUpdateInfo: true,
 	ImplicitReadReceipts: true,
 	Provisioning: bridgev2.ProvisioningCapabilities{
+		ImagePackImport: true,
 		ResolveIdentifier: bridgev2.ResolveIdentifierCapabilities{
 			CreateDM:    true,
 			LookupPhone: true,
