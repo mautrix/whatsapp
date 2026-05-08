@@ -41,6 +41,7 @@ import (
 	"go.mau.fi/whatsmeow/types"
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/bridgev2"
+	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/event"
 
@@ -161,8 +162,11 @@ func (mc *MessageConverter) DownloadImagePack(ctx context.Context, userLoginID n
 			},
 			TypeDescription: "sticker",
 		}
+		dbKey := database.Key(fmt.Sprintf("stickercache:%x", part.Info.BridgedSticker.ID))
 		fixStickerDimensions(part.Info)
+		var packed *event.ImagePackImage
 		if mc.DirectMedia {
+			dbKey = ""
 			if part.Info.MimeType == "application/was" {
 				part.Info.MimeType = "video/lottie+json"
 			}
@@ -170,17 +174,31 @@ func (mc *MessageConverter) DownloadImagePack(ctx context.Context, userLoginID n
 			if err != nil {
 				panic(fmt.Errorf("failed to generate content URI: %w", err))
 			}
+		} else if cached := mc.Bridge.DB.KV.Get(ctx, dbKey); cached != "" {
+			err = json.Unmarshal([]byte(cached), &packed)
+			if err != nil {
+				return nil, fmt.Errorf("failed to unmarshal cached sticker data: %w", err)
+			}
 		} else {
 			err = mc.reuploadWhatsAppAttachment(ctx, sticker, part)
 			if err != nil {
 				return nil, fmt.Errorf("failed to reupload sticker %q: %w", sticker.GetDirectPath(), err)
 			}
 		}
-		content.Images[shortcode] = &event.ImagePackImage{
-			URL:  part.URL,
-			Body: part.Body,
-			Info: part.Info,
+		if packed == nil {
+			packed = &event.ImagePackImage{
+				URL:  part.URL,
+				Body: part.Body,
+				Info: part.Info,
+			}
+			if dbKey != "" {
+				data, _ := json.Marshal(packed)
+				if data != nil {
+					mc.Bridge.DB.KV.Set(ctx, dbKey, string(data))
+				}
+			}
 		}
+		content.Images[shortcode] = packed
 	}
 
 	return &bridgev2.ImportedImagePack{
