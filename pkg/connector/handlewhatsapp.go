@@ -317,6 +317,10 @@ func (wa *WhatsAppClient) handleWAMessage(ctx context.Context, evt *events.Messa
 	if evt.Info.Chat == types.StatusBroadcastJID && !wa.Main.Config.EnableStatusBroadcast {
 		return
 	}
+	if wa.Main.Config.IgnoreGroupChats && evt.Info.Chat.Server == types.GroupServer {
+		wa.UserLogin.Log.Debug().Msg("Ignoring group chat message (disabled in config)")
+		return
+	}
 	if evt.Info.IsFromMe &&
 		evt.Message.GetProtocolMessage().GetHistorySyncNotification() != nil &&
 		wa.Main.Bridge.Config.Backfill.Enabled &&
@@ -423,6 +427,10 @@ func (wa *WhatsAppClient) handleWAUndecryptableMessage(ctx context.Context, evt 
 func (wa *WhatsAppClient) handleWAReceipt(ctx context.Context, evt *events.Receipt) (success bool) {
 	origChat := evt.Chat
 	wa.rerouteWAMessage(ctx, "receipt", &evt.MessageSource, evt.MessageIDs)
+	if wa.Main.Config.IgnoreGroupChats && evt.Chat.Server == types.GroupServer {
+		wa.UserLogin.Log.Debug().Msg("Ignoring group chat receipt (disabled in config)")
+		return true
+	}
 	if evt.IsFromMe && evt.Sender.Device == 0 {
 		wa.phoneSeen(evt.Timestamp)
 	}
@@ -707,6 +715,10 @@ func (wa *WhatsAppClient) handleWAPictureUpdate(ctx context.Context, evt *events
 }
 
 func (wa *WhatsAppClient) handleWAGroupInfoChange(ctx context.Context, evt *events.GroupInfo) bool {
+	if wa.Main.Config.IgnoreGroupChats && evt.JID.Server == types.GroupServer {
+		wa.UserLogin.Log.Debug().Stringer("group_jid", evt.JID).Msg("Ignoring group info change (disabled in config)")
+		return true
+	}
 	eventMeta := simplevent.EventMeta{
 		Type:         bridgev2.RemoteEventChatInfoChange,
 		LogContext:   nil,
@@ -729,6 +741,10 @@ func (wa *WhatsAppClient) handleWAGroupInfoChange(ctx context.Context, evt *even
 }
 
 func (wa *WhatsAppClient) handleWAJoinedGroup(ctx context.Context, evt *events.JoinedGroup) bool {
+	if wa.Main.Config.IgnoreGroupChats {
+		wa.UserLogin.Log.Debug().Stringer("group_jid", evt.JID).Msg("Ignoring joined group event (disabled in config)")
+		return true
+	}
 	if wa.createDedup.Pop(evt.CreateKey) {
 		return true
 	}

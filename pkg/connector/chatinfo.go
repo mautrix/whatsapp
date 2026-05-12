@@ -40,6 +40,9 @@ func (wa *WhatsAppClient) getChatInfo(ctx context.Context, portalJID types.JID, 
 			return nil, fmt.Errorf("broadcast list bridging is currently not supported")
 		}
 	case types.GroupServer:
+		if wa.Main.Config.IgnoreGroupChats {
+			return nil, fmt.Errorf("group chat bridging is disabled")
+		}
 		info, err := wa.Client.GetGroupInfo(ctx, portalJID)
 		if err != nil {
 			return nil, err
