@@ -98,6 +98,10 @@ history_sync:
     # If this is too low, the backfill may happen with incomplete history
     # and backfill less messages than what is configured in the backfill section.
     dispatch_wait: 1m
+    # Hard limit on message age in days. Messages older than this will be filtered out during history sync.
+    # Set to 0 to disable filtering. This applies to all types of history sync (initial, full, on-demand).
+    # For example, setting this to 30 will only sync messages from the last 30 days.
+    hard_days_limit: 0
     # Configuration parameters that are sent to the phone along with the request full sync flag.
     # By default, (when the values are null or 0), the config isn't sent at all.
     full_sync_config:

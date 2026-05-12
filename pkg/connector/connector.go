@@ -115,6 +115,13 @@ func (wa *WhatsAppConnector) Init(bridge *bridgev2.Bridge) {
 	)
 	wa.mediaEditCache = make(MediaEditCache)
 
+	// Log history sync configuration
+	bridge.Log.Info().
+		Int("hard_days_limit", wa.Config.HistorySync.HardDaysLimit).
+		Bool("request_full_sync", wa.Config.HistorySync.RequestFullSync).
+		Int("max_initial_conversations", wa.Config.HistorySync.MaxInitialConversations).
+		Msg("History sync configuration loaded")
+
 	whatsmeowDBLog := bridge.Log.With().Str("db_section", "whatsmeow").Logger()
 	wa.DeviceStore = sqlstore.NewWithWrappedDB(
 		bridge.DB.Child(

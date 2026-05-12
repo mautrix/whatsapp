@@ -58,6 +58,7 @@ type Config struct {
 		MaxInitialConversations int           `yaml:"max_initial_conversations"`
 		RequestFullSync         bool          `yaml:"request_full_sync"`
 		DispatchWait            time.Duration `yaml:"dispatch_wait"`
+		HardDaysLimit           int           `yaml:"hard_days_limit"`
 		FullSyncConfig          struct {
 			DaysLimit    uint32 `yaml:"days_limit"`
 			SizeLimit    uint32 `yaml:"size_mb_limit"`
@@ -129,6 +130,7 @@ func upgradeConfig(helper up.Helper) {
 	helper.Copy(up.Int, "history_sync", "max_initial_conversations")
 	helper.Copy(up.Bool, "history_sync", "request_full_sync")
 	helper.Copy(up.Str|up.Int, "history_sync", "dispatch_wait")
+	helper.Copy(up.Int, "history_sync", "hard_days_limit")
 	helper.Copy(up.Int|up.Null, "history_sync", "full_sync_config", "days_limit")
 	helper.Copy(up.Int|up.Null, "history_sync", "full_sync_config", "size_mb_limit")
 	helper.Copy(up.Int|up.Null, "history_sync", "full_sync_config", "storage_quota_mb")
