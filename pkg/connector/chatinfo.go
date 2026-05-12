@@ -156,6 +156,7 @@ func (wa *WhatsAppClient) wrapDMInfo(ctx context.Context, jid types.JID) *bridge
 					event.StateRoomName:                0,
 					event.StateRoomAvatar:              0,
 					event.StateTopic:                   0,
+					event.StatePinnedEvents:            0,
 					event.StateBeeperDisappearingTimer: 0,
 				},
 			},
@@ -266,11 +267,12 @@ func (wa *WhatsAppClient) wrapGroupInfo(ctx context.Context, info *types.GroupIn
 				Ban:           ptr.Ptr(nobodyPL),
 				// TODO allow invites if bridge config says to allow them, or maybe if relay mode is enabled?
 				Events: map[event.Type]int{
-					event.StateRoomName:   metaChangePL,
-					event.StateRoomAvatar: metaChangePL,
-					event.StateTopic:      metaChangePL,
-					event.EventReaction:   defaultPL,
-					event.EventRedaction:  defaultPL,
+					event.StateRoomName:     metaChangePL,
+					event.StateRoomAvatar:   metaChangePL,
+					event.StateTopic:        metaChangePL,
+					event.StatePinnedEvents: defaultPL,
+					event.EventReaction:     defaultPL,
+					event.EventRedaction:    defaultPL,
 
 					event.StateBeeperDisappearingTimer: metaChangePL,
 					// TODO always allow poll responses
