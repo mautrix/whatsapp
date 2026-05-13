@@ -233,15 +233,16 @@ func fnResolveLink(ce *commands.Event) {
 		return
 	}
 	wa := login.Client.(*WhatsAppClient)
-	if strings.HasPrefix(ce.Args[0], whatsmeow.InviteLinkPrefix) {
-		group, err := wa.Client.GetGroupInfoFromLink(ce.Ctx, ce.Args[0])
+	link := stripLinkQuery(ce.Args[0])
+	if strings.HasPrefix(link, whatsmeow.InviteLinkPrefix) {
+		group, err := wa.Client.GetGroupInfoFromLink(ce.Ctx, link)
 		if err != nil {
 			ce.Reply("Failed to get group info: %v", err)
 			return
 		}
 		ce.Reply("That invite link points at %s (`%s`)", group.Name, group.JID)
-	} else if strings.HasPrefix(ce.Args[0], whatsmeow.BusinessMessageLinkPrefix) || strings.HasPrefix(ce.Args[0], whatsmeow.BusinessMessageLinkDirectPrefix) {
-		target, err := wa.Client.ResolveBusinessMessageLink(ce.Ctx, ce.Args[0])
+	} else if strings.HasPrefix(link, whatsmeow.BusinessMessageLinkPrefix) || strings.HasPrefix(link, whatsmeow.BusinessMessageLinkDirectPrefix) {
+		target, err := wa.Client.ResolveBusinessMessageLink(ce.Ctx, link)
 		if err != nil {
 			ce.Reply("Failed to get business info: %v", err)
 			return
@@ -255,8 +256,8 @@ func fnResolveLink(ce *commands.Event) {
 			message = fmt.Sprintf(" The following prefilled message is attached:\n\n%s", strings.Join(parts, "\n"))
 		}
 		ce.Reply("That link points at %s (+%s).%s", target.PushName, target.JID.User, message)
-	} else if strings.HasPrefix(ce.Args[0], whatsmeow.ContactQRLinkPrefix) || strings.HasPrefix(ce.Args[0], whatsmeow.ContactQRLinkDirectPrefix) {
-		target, err := wa.Client.ResolveContactQRLink(ce.Ctx, ce.Args[0])
+	} else if strings.HasPrefix(link, whatsmeow.ContactQRLinkPrefix) || strings.HasPrefix(link, whatsmeow.ContactQRLinkDirectPrefix) {
+		target, err := wa.Client.ResolveContactQRLink(ce.Ctx, link)
 		if err != nil {
 			ce.Reply("Failed to get contact info: %v", err)
 			return
@@ -269,6 +270,22 @@ func fnResolveLink(ce *commands.Event) {
 	} else {
 		ce.Reply("That doesn't look like a group invite link nor a business message link.")
 	}
+}
+
+// stripLinkQuery removes the query string and fragment from a WhatsApp
+// invite, business, contact, or newsletter link. Links shared from the
+// WhatsApp mobile app sometimes carry a trailing `?mode=gi_t` (or similar
+// tracking suffix) which causes the whatsmeow client to fail to parse the
+// link. The query and fragment are not part of the canonical link and can
+// be safely dropped before handing the string to whatsmeow.
+func stripLinkQuery(link string) string {
+	if i := strings.IndexByte(link, '?'); i >= 0 {
+		link = link[:i]
+	}
+	if i := strings.IndexByte(link, '#'); i >= 0 {
+		link = link[:i]
+	}
+	return link
 }
 
 var cmdJoin = &commands.FullHandler{
@@ -294,16 +311,17 @@ func fnJoin(ce *commands.Event) {
 	}
 	wa := login.Client.(*WhatsAppClient)
 
-	if strings.HasPrefix(ce.Args[0], whatsmeow.InviteLinkPrefix) {
-		jid, err := wa.Client.JoinGroupWithLink(ce.Ctx, ce.Args[0])
+	link := stripLinkQuery(ce.Args[0])
+	if strings.HasPrefix(link, whatsmeow.InviteLinkPrefix) {
+		jid, err := wa.Client.JoinGroupWithLink(ce.Ctx, link)
 		if err != nil {
 			ce.Reply("Failed to join group: %v", err)
 			return
 		}
 		ce.Log.Debug().Stringer("group_jid", jid).Msg("User successfully joined WhatsApp group with link")
 		ce.Reply("Successfully joined group `%s`, the portal should be created momentarily", jid)
-	} else if strings.HasPrefix(ce.Args[0], whatsmeow.NewsletterLinkPrefix) {
-		info, err := wa.Client.GetNewsletterInfoWithInvite(ce.Ctx, ce.Args[0])
+	} else if strings.HasPrefix(link, whatsmeow.NewsletterLinkPrefix) {
+		info, err := wa.Client.GetNewsletterInfoWithInvite(ce.Ctx, link)
 		if err != nil {
 			ce.Reply("Failed to get channel info: %v", err)
 			return
