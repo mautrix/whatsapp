@@ -10,7 +10,7 @@ require (
 	github.com/lib/pq v1.12.3
 	github.com/rs/zerolog v1.35.1
 	github.com/tidwall/gjson v1.18.0
-	go.mau.fi/util v0.9.9-0.20260505143909-8e67f0d355e0
+	go.mau.fi/util v0.9.9-0.20260511124621-9241e81bdf25
 	go.mau.fi/webp v0.2.0
 	go.mau.fi/whatsmeow v0.0.0-20260511155711-eb05d94dea7d
 	golang.org/x/image v0.39.0
@@ -18,7 +18,7 @@ require (
 	golang.org/x/sync v0.20.0
 	google.golang.org/protobuf v1.36.11
 	gopkg.in/yaml.v3 v3.0.1
-	maunium.net/go/mautrix v0.27.1-0.20260507135742-7ec18e08eac3
+	maunium.net/go/mautrix v0.27.1-0.20260513120123-5fba7e3afae4
 )
 
 require (
