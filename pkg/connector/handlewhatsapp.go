@@ -313,9 +313,6 @@ func (wa *WhatsAppClient) handleWAMessage(ctx context.Context, evt *events.Messa
 		return
 	}
 	parsedMessageType := getMessageType(evt.Message)
-	if parsedMessageType == "ignore" || strings.HasPrefix(parsedMessageType, "unknown_protocol_") {
-		return
-	}
 	if encReact := evt.Message.GetEncReactionMessage(); encReact != nil {
 		decrypted, err := wa.Client.DecryptReaction(ctx, evt)
 		if err != nil {
@@ -355,9 +352,11 @@ func (wa *WhatsAppClient) handleWAMessage(ctx context.Context, evt *events.Messa
 		Msg("Received WhatsApp message")
 	if evt.Info.IsFromMe &&
 		evt.Message.GetProtocolMessage().GetHistorySyncNotification() != nil &&
-		wa.Main.Bridge.Config.Backfill.Enabled &&
-		wa.Client.ManualHistorySyncDownload {
+		wa.Main.Bridge.Config.Backfill.Enabled {
 		wa.saveWAHistorySyncNotification(ctx, evt.Message.ProtocolMessage.HistorySyncNotification)
+	}
+	if parsedMessageType == "ignore" || strings.HasPrefix(parsedMessageType, "unknown_protocol_") {
+		return
 	}
 
 	messageAssoc := evt.Message.GetMessageContextInfo().GetMessageAssociation()
