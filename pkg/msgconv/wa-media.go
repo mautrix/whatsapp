@@ -81,7 +81,7 @@ func (mc *MessageConverter) convertMediaMessage(
 		EncSHA256: msg.GetFileEncSHA256(),
 		MimeType:  msg.GetMimetype(),
 	}
-	if mc.DirectMedia {
+	if mc.DirectMedia && !getForceMediaUpload(ctx) {
 		if preparedMedia.Info.MimeType == "application/was" {
 			preparedMedia.Info.MimeType = "video/lottie+json"
 			preparedMedia.FileName = "sticker.json"

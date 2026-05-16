@@ -47,6 +47,7 @@ const (
 	contextKeyIntent
 	contextKeyPortal
 	ContextKeyEditTargetID
+	ContextKeyForceMediaUpload
 )
 
 func getClient(ctx context.Context) *whatsmeow.Client {
@@ -64,6 +65,11 @@ func getPortal(ctx context.Context) *bridgev2.Portal {
 func getEditTargetID(ctx context.Context) types.MessageID {
 	editID, _ := ctx.Value(ContextKeyEditTargetID).(types.MessageID)
 	return editID
+}
+
+func getForceMediaUpload(ctx context.Context) bool {
+	forceMediaUpload, _ := ctx.Value(ContextKeyForceMediaUpload).(bool)
+	return forceMediaUpload
 }
 
 func (mc *MessageConverter) getBasicUserInfo(ctx context.Context, user types.JID) (id.UserID, string, error) {
