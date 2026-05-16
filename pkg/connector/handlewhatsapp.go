@@ -360,7 +360,6 @@ func (wa *WhatsAppClient) handleWAMessage(ctx context.Context, evt *events.Messa
 	}
 
 	dontRenderEdited := false
-	forceMediaReupload := false
 	messageAssoc := evt.Message.GetMessageContextInfo().GetMessageAssociation()
 	if assocType := messageAssoc.GetAssociationType(); assocType == waE2E.MessageAssociation_HD_IMAGE_DUAL_UPLOAD || assocType == waE2E.MessageAssociation_HD_VIDEO_DUAL_UPLOAD {
 		parentKey := messageAssoc.GetParentMessageKey()
@@ -381,7 +380,6 @@ func (wa *WhatsAppClient) handleWAMessage(ctx context.Context, evt *events.Messa
 		}
 		parsedMessageType = getMessageType(evt.Message)
 		dontRenderEdited = true
-		forceMediaReupload = true
 	} else if assocType == waE2E.MessageAssociation_MOTION_PHOTO {
 		//evt.Message = evt.Message.GetAssociatedChildMessage().GetMessage()
 		wa.UserLogin.Log.Debug().
@@ -399,9 +397,8 @@ func (wa *WhatsAppClient) handleWAMessage(ctx context.Context, evt *events.Messa
 		Message:  evt.Message,
 		MsgEvent: evt,
 
-		parsedMessageType:  parsedMessageType,
-		dontRenderEdited:   dontRenderEdited,
-		forceMediaReupload: forceMediaReupload,
+		parsedMessageType: parsedMessageType,
+		dontRenderEdited:  dontRenderEdited,
 	})
 	return res.Success
 }

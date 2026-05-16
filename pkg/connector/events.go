@@ -92,7 +92,6 @@ type WAMessageEvent struct {
 	parsedMessageType             string
 	isUndecryptableUpsertSubEvent bool
 	dontRenderEdited              bool
-	forceMediaReupload            bool
 	postHandle                    func()
 }
 
@@ -188,9 +187,7 @@ func (evt *WAMessageEvent) ConvertEdit(ctx context.Context, portal *bridgev2.Por
 		editedMsg = evt.Message
 	} else {
 		editedMsg = evt.Message.GetProtocolMessage().GetEditedMessage()
-		if !evt.forceMediaReupload {
-			previouslyConvertedPart = evt.wa.Main.GetMediaEditCache(portal, evt.GetTargetMessage())
-		}
+		previouslyConvertedPart = evt.wa.Main.GetMediaEditCache(portal, evt.GetTargetMessage())
 		meta := existing[0].Metadata.(*waid.MessageMetadata)
 		if slices.Contains(meta.Edits, evt.Info.ID) {
 			return nil, fmt.Errorf("%w: edit already handled", bridgev2.ErrIgnoringRemoteEvent)
@@ -199,9 +196,6 @@ func (evt *WAMessageEvent) ConvertEdit(ctx context.Context, portal *bridgev2.Por
 	}
 
 	ctx = context.WithValue(ctx, msgconv.ContextKeyEditTargetID, evt.Message.GetProtocolMessage().GetKey().GetID())
-	if evt.forceMediaReupload {
-		ctx = context.WithValue(ctx, msgconv.ContextKeyForceMediaUpload, true)
-	}
 	cm := evt.wa.Main.MsgConv.ToMatrix(
 		ctx, portal, evt.wa.Client, intent, editedMsg, evt.MsgEvent.RawMessage, &evt.Info, evt.isViewOnce(), false, previouslyConvertedPart,
 	)
