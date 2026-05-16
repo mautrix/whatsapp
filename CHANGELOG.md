@@ -1,3 +1,8 @@
+# v26.05
+
+* Added support for importing sticker packs from WhatsApp.
+* Added support for WhatsApp's new message edit encryption scheme.
+
 # v26.04
 
 * Added support for @room mentions in both directions.
