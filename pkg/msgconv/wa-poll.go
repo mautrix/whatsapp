@@ -96,10 +96,7 @@ func (mc *MessageConverter) convertPollCreationMessage(ctx context.Context, msg 
 
 func rerouteMessageKey(ctx context.Context, chat, sender types.JID, groupLIDAddressing bool) types.JID {
 	if store := getClient(ctx).Store; store != nil && chat.Server == types.DefaultUserServer && sender.Server == types.HiddenUserServer {
-		senderPN := store.GetJID()
-		if sender.User != store.GetLID().User {
-			senderPN, _ = store.LIDs.GetPNForLID(ctx, sender)
-		}
+		senderPN, _ := store.LIDs.GetPNForLID(ctx, sender)
 		zerolog.Ctx(ctx).Debug().
 			Stringer("orig_participant", sender).
 			Stringer("rerouted_participant", senderPN).
@@ -126,18 +123,12 @@ func KeyToMessageID(ctx context.Context, client *whatsmeow.Client, chat, sender 
 	var err error
 	remoteJID, err := types.ParseJID(key.GetRemoteJID())
 	if err == nil && !remoteJID.IsEmpty() {
-		if remoteJID.Server == types.LegacyUserServer {
-			remoteJID.Server = types.DefaultUserServer
-		}
-		switch remoteJID.Server {
-		case types.GroupServer, types.DefaultUserServer, types.BotServer:
-			chat = remoteJID.ToNonAD()
-		case types.HiddenUserServer:
+		if remoteJID.Server == types.GroupServer {
+			chat = remoteJID
+		} else if remoteJID.Server == types.HiddenUserServer {
 			chatPN, _ := client.Store.LIDs.GetPNForLID(ctx, remoteJID)
 			if !chatPN.IsEmpty() {
-				chat = chatPN.ToNonAD()
-			} else if chat.Server != types.DefaultUserServer && chat.Server != types.BotServer {
-				chat = remoteJID.ToNonAD()
+				chat = chatPN
 			}
 		}
 	}
@@ -151,7 +142,7 @@ func KeyToMessageID(ctx context.Context, client *whatsmeow.Client, chat, sender 
 			if sender.Server == types.LegacyUserServer {
 				sender.Server = types.DefaultUserServer
 			}
-		} else if chat.Server == types.DefaultUserServer || chat.Server == types.HiddenUserServer || chat.Server == types.BotServer {
+		} else if chat.Server == types.DefaultUserServer || chat.Server == types.BotServer {
 			if sender.User == client.Store.GetJID().User || sender.User == client.Store.GetLID().User {
 				// Message key is not from the sender, but message sender (containing key) is me,
 				// so message key sender is the other user in the DM
