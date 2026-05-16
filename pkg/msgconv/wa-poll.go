@@ -121,17 +121,6 @@ func KeyToMessageID(ctx context.Context, client *whatsmeow.Client, chat, sender 
 	groupLIDAddressing := sender.Server == types.HiddenUserServer
 	sender = sender.ToNonAD()
 	var err error
-	remoteJID, err := types.ParseJID(key.GetRemoteJID())
-	if err == nil && !remoteJID.IsEmpty() {
-		if remoteJID.Server == types.GroupServer {
-			chat = remoteJID
-		} else if remoteJID.Server == types.HiddenUserServer {
-			chatPN, _ := client.Store.LIDs.GetPNForLID(ctx, remoteJID)
-			if !chatPN.IsEmpty() {
-				chat = chatPN
-			}
-		}
-	}
 	if !key.GetFromMe() {
 		if key.GetParticipant() != "" {
 			sender, err = types.ParseJID(key.GetParticipant())
@@ -159,6 +148,13 @@ func KeyToMessageID(ctx context.Context, client *whatsmeow.Client, chat, sender 
 				Any("key", key).
 				Msg("Failed to get message ID from key")
 			return ""
+		}
+	}
+	remoteJID, err := types.ParseJID(key.GetRemoteJID())
+	if err == nil && !remoteJID.IsEmpty() {
+		// TODO use remote jid in other cases?
+		if remoteJID.Server == types.GroupServer {
+			chat = remoteJID
 		}
 	}
 	sender = rerouteMessageKey(
