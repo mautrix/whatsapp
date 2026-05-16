@@ -59,6 +59,16 @@ func MakeMediaID(messageInfo *types.MessageInfo, idOverride types.MessageID, rec
 	return mediaID
 }
 
+// MakeMediaIDWithVersion appends opaque version bytes after the parsed message fields.
+// This keeps downloads resolvable by the original message ID while giving edited media a distinct MXC URI.
+func MakeMediaIDWithVersion(messageInfo *types.MessageInfo, idOverride types.MessageID, receiver networkid.UserLoginID, version []byte) networkid.MediaID {
+	mediaID := MakeMediaID(messageInfo, idOverride, receiver)
+	if len(version) > 0 {
+		mediaID = append(mediaID, version...)
+	}
+	return mediaID
+}
+
 func MakeAvatarMediaID(targetJID types.JID, id string, receiver networkid.UserLoginID, community bool) networkid.MediaID {
 	compactTarget := compactJID(targetJID.ToNonAD())
 	receiverID := compactJID(ParseUserLoginID(receiver, 0))
