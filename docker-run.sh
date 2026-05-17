@@ -33,4 +33,9 @@ fi
 
 cd /data
 fixperms
+
+if [[ "${1}" == "dev" ]]; then
+	/usr/bin/mautrix-whatsapp -c /data/config.yaml -r /data/registration.yaml
+fi
+
 exec su-exec $UID:$GID /usr/bin/mautrix-whatsapp
