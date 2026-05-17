@@ -20,6 +20,7 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"html"
 	"html/template"
 	"strings"
 	"time"
@@ -100,7 +101,7 @@ func (mc *MessageConverter) convertGroupInviteMessage(ctx context.Context, info 
 		}
 	}
 
-	htmlMessage := fmt.Sprintf(template, event.TextToHTML(msg.GetCaption()), msg.GetGroupName(), expiry, mc.Bridge.Config.CommandPrefix)
+	htmlMessage := fmt.Sprintf(template, event.TextToHTML(msg.GetCaption()), html.EscapeString(msg.GetGroupName()), expiry, mc.Bridge.Config.CommandPrefix)
 	content := &event.MessageEventContent{
 		MsgType:       event.MsgText,
 		Body:          format.HTMLToText(htmlMessage),
