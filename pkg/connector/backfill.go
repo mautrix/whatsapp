@@ -211,6 +211,16 @@ func (wa *WhatsAppClient) handleWAHistorySync(
 	successfullySavedTotal := 0
 	failedToSaveTotal := 0
 	totalMessageCount := 0
+	filteredByTimeCount := 0
+	// Calculate cutoff time based on hard_days_limit configuration
+	var cutoffTime time.Time
+	if wa.Main.Config.HistorySync.HardDaysLimit > 0 {
+		cutoffTime = time.Now().AddDate(0, 0, -wa.Main.Config.HistorySync.HardDaysLimit)
+		log.Info().
+			Int("hard_days_limit", wa.Main.Config.HistorySync.HardDaysLimit).
+			Time("cutoff_time", cutoffTime).
+			Msg("Hard days limit is set, messages older than specified days will be filtered out")
+	}
 	for _, conv := range evt.GetConversations() {
 		log := log.With().
 			Int("msg_count", len(conv.GetMessages())).
@@ -273,6 +283,12 @@ func (wa *WhatsAppClient) handleWAHistorySync(
 			if maxTime.IsZero() || msgEvt.Info.Timestamp.After(maxTime) {
 				maxTime = msgEvt.Info.Timestamp
 				maxTimeIndex = i
+			}
+
+			// Filter messages older than hard_days_limit if configured
+			if !cutoffTime.IsZero() && msgEvt.Info.Timestamp.Before(cutoffTime) {
+				filteredByTimeCount++
+				continue
 			}
 
 			msgType := getMessageType(msgEvt.Message)
@@ -343,12 +359,15 @@ func (wa *WhatsAppClient) handleWAHistorySync(
 			}
 		}
 	}
-	log.Info().
+	logEvent := log.Info().
 		Int("total_saved_count", successfullySavedTotal).
 		Int("total_failed_count", failedToSaveTotal).
 		Int("total_message_count", totalMessageCount).
-		Dur("duration", time.Since(start)).
-		Msg("Finished storing history sync")
+		Dur("duration", time.Since(start))
+	if filteredByTimeCount > 0 {
+		logEvent = logEvent.Int("filtered_by_time_count", filteredByTimeCount)
+	}
+	logEvent.Msg("Finished storing history sync")
 	return nil
 }
 
@@ -714,14 +733,31 @@ func (wa *WhatsAppClient) handleOnDemandHistorySync(ctx context.Context, blob *w
 				if len(conv.GetMessages()) == 0 {
 					return &bridgev2.FetchMessagesResponse{}, nil
 				}
-				messages := make([]*waWeb.WebMessageInfo, len(conv.GetMessages()))
-				for i, rawMsg := range conv.GetMessages() {
-					messages[i] = rawMsg.Message
+				messages := make([]*waWeb.WebMessageInfo, 0, len(conv.GetMessages()))
+				// Filter messages older than hard_days_limit if configured
+				var cutoffTime time.Time
+				var filteredCount int
+				if wa.Main.Config.HistorySync.HardDaysLimit > 0 {
+					cutoffTime = time.Now().AddDate(0, 0, -wa.Main.Config.HistorySync.HardDaysLimit)
 				}
-				zerolog.Ctx(ctx).Debug().
+				for _, rawMsg := range conv.GetMessages() {
+					// Check message timestamp if filtering is enabled
+					if !cutoffTime.IsZero() {
+						msgEvt, err := wa.Client.ParseWebMessage(portalJID, rawMsg.Message)
+						if err == nil && msgEvt.Info.Timestamp.Before(cutoffTime) {
+							filteredCount++
+							continue
+						}
+					}
+					messages = append(messages, rawMsg.Message)
+				}
+				logEvent := zerolog.Ctx(ctx).Debug().
 					Int("message_count", len(messages)).
-					Stringer("end_of_history_type", conv.GetEndOfHistoryTransferType()).
-					Msg("Converting messages to bridge from on-demand history sync")
+					Stringer("end_of_history_type", conv.GetEndOfHistoryTransferType())
+				if filteredCount > 0 {
+					logEvent = logEvent.Int("filtered_by_time_count", filteredCount)
+				}
+				logEvent.Msg("Converting messages to bridge from on-demand history sync")
 				resp, err := wa.convertHistorySyncMessages(ctx, portal, portalJID, messages, false)
 				if err != nil {
 					return nil, err
