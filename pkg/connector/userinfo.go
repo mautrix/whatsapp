@@ -161,13 +161,13 @@ func (wa *WhatsAppClient) doGhostResync(ctx context.Context, queue map[types.JID
 			log.Warn().Stringer("jid", jid).Msg("Didn't get info for puppet in background sync")
 			continue
 		}
-		userInfo, err := wa.getUserInfo(ctx, jid, info.PictureID != "" && string(ghost.AvatarID) != info.PictureID)
+		userInfo, quality, err := wa.getUserInfo(ctx, jid, info.PictureID != "" && string(ghost.AvatarID) != info.PictureID)
 		if err != nil {
 			log.Err(err).Stringer("jid", jid).Msg("Failed to get user info for puppet in background sync")
 			continue
 		}
-		ghost.UpdateInfo(ctx, userInfo)
-		wa.syncAltGhostWithInfo(ctx, jid, userInfo)
+		updateGhostWithQualityCheck(ctx, ghost, userInfo, quality)
+		wa.syncAltGhostWithInfo(ctx, jid, userInfo, quality)
 	}
 }
 
@@ -177,18 +177,27 @@ func (wa *WhatsAppClient) GetUserInfo(ctx context.Context, ghost *bridgev2.Ghost
 		return nil, nil
 	}
 	jid := waid.ParseUserID(ghost.ID)
-	return wa.getUserInfo(ctx, jid, ghost.AvatarID == "")
-}
-
-func (wa *WhatsAppClient) getUserInfo(ctx context.Context, jid types.JID, fetchAvatar bool) (*bridgev2.UserInfo, error) {
-	contact, err := wa.GetStore().Contacts.GetContact(ctx, jid)
+	ui, quality, err := wa.getUserInfo(ctx, jid, ghost.AvatarID == "")
 	if err != nil {
 		return nil, err
 	}
-	return wa.contactToUserInfo(ctx, jid, contact, fetchAvatar), nil
+	// For initial fetch, always set the quality (no existing quality to compare against)
+	if ui != nil {
+		ui.ExtraUpdates = bridgev2.MergeExtraUpdaters(ui.ExtraUpdates, makeQualityUpdater(quality))
+	}
+	return ui, nil
 }
 
-func (wa *WhatsAppClient) contactToUserInfo(ctx context.Context, jid types.JID, contact types.ContactInfo, getAvatar bool) *bridgev2.UserInfo {
+func (wa *WhatsAppClient) getUserInfo(ctx context.Context, jid types.JID, fetchAvatar bool) (*bridgev2.UserInfo, int, error) {
+	contact, err := wa.GetStore().Contacts.GetContact(ctx, jid)
+	if err != nil {
+		return nil, 0, err
+	}
+	ui, quality := wa.contactToUserInfo(ctx, jid, contact, fetchAvatar)
+	return ui, quality, nil
+}
+
+func (wa *WhatsAppClient) contactToUserInfo(ctx context.Context, jid types.JID, contact types.ContactInfo, getAvatar bool) (*bridgev2.UserInfo, int) {
 	if jid == types.MetaAIJID && contact.PushName == jid.User {
 		contact.PushName = "Meta AI"
 	} else if jid == types.LegacyPSAJID || jid == types.PSAJID {
@@ -256,6 +265,7 @@ func (wa *WhatsAppClient) contactToUserInfo(ctx context.Context, jid types.JID, 
 	} else if altJID.Server == types.DefaultUserServer {
 		phone = "+" + altJID.User
 	}
+	nameQuality := GetNameQuality(contact, phone)
 	ui := &bridgev2.UserInfo{
 		Name:         ptr.Ptr(wa.Main.Config.FormatDisplayname(jid, phone, contact)),
 		IsBot:        ptr.Ptr(jid.IsBot()),
@@ -269,7 +279,7 @@ func (wa *WhatsAppClient) contactToUserInfo(ctx context.Context, jid types.JID, 
 	if getAvatar {
 		ui.ExtraUpdates = bridgev2.MergeExtraUpdaters(ui.ExtraUpdates, wa.fetchGhostAvatar)
 	}
-	return ui
+	return ui, nameQuality
 }
 
 func updateGhostLastSyncAt(_ context.Context, ghost *bridgev2.Ghost) bool {
@@ -277,6 +287,48 @@ func updateGhostLastSyncAt(_ context.Context, ghost *bridgev2.Ghost) bool {
 	forceSave := ResyncMinInterval < 24*time.Hour || time.Since(meta.LastSync.Time) > 24*time.Hour
 	meta.LastSync = jsontime.UnixNow()
 	return forceSave
+}
+
+// makeQualityUpdater creates an ExtraUpdater that stores the name quality in ghost metadata.
+func makeQualityUpdater(quality int) bridgev2.ExtraUpdater[*bridgev2.Ghost] {
+	return func(_ context.Context, ghost *bridgev2.Ghost) bool {
+		meta := ghost.Metadata.(*waid.GhostMetadata)
+		if meta.NameQuality != quality {
+			meta.NameQuality = quality
+			return true // force save
+		}
+		return false
+	}
+}
+
+// shouldUpdateName checks if a name update should proceed based on quality comparison.
+// Returns true if the new quality is equal to or better than the current quality.
+// Never allows updating to an empty name (quality 0).
+func shouldUpdateName(ghost *bridgev2.Ghost, newQuality int) bool {
+	// Never update to empty name
+	if newQuality == NameQualityNone {
+		return false
+	}
+	meta := ghost.Metadata.(*waid.GhostMetadata)
+	return newQuality >= meta.NameQuality
+}
+
+// updateGhostWithQualityCheck updates a ghost's info while checking name quality.
+// If the new name quality is lower than the current quality, the name update is skipped.
+func updateGhostWithQualityCheck(ctx context.Context, ghost *bridgev2.Ghost, ui *bridgev2.UserInfo, quality int) {
+	if !shouldUpdateName(ghost, quality) {
+		// Skip name update by setting Name to nil, but keep other updates
+		ui.Name = nil
+		zerolog.Ctx(ctx).Debug().
+			Str("ghost_id", string(ghost.ID)).
+			Int("current_quality", ghost.Metadata.(*waid.GhostMetadata).NameQuality).
+			Int("new_quality", quality).
+			Msg("Skipping name update due to lower quality")
+	} else {
+		// Include quality updater if we're updating the name
+		ui.ExtraUpdates = bridgev2.MergeExtraUpdaters(ui.ExtraUpdates, makeQualityUpdater(quality))
+	}
+	ghost.UpdateInfo(ctx, ui)
 }
 
 var expiryRegex = regexp.MustCompile("oe=([0-9A-Fa-f]+)")
@@ -395,14 +447,14 @@ func (wa *WhatsAppClient) resyncContacts(forceAvatarSync, automatic bool) {
 		} else if contact, err := contactStore.GetContact(ctx, jid); err != nil {
 			log.Err(err).Stringer("jid", jid).Msg("Failed to get contact info")
 		} else {
-			userInfo := wa.contactToUserInfo(ctx, jid, contact, forceAvatarSync || ghost.AvatarID == "")
-			ghost.UpdateInfo(ctx, userInfo)
-			wa.syncAltGhostWithInfo(ctx, jid, userInfo)
+			userInfo, quality := wa.contactToUserInfo(ctx, jid, contact, forceAvatarSync || ghost.AvatarID == "")
+			updateGhostWithQualityCheck(ctx, ghost, userInfo, quality)
+			wa.syncAltGhostWithInfo(ctx, jid, userInfo, quality)
 		}
 	}
 }
 
-func (wa *WhatsAppClient) syncAltGhostWithInfo(ctx context.Context, jid types.JID, info *bridgev2.UserInfo) {
+func (wa *WhatsAppClient) syncAltGhostWithInfo(ctx context.Context, jid types.JID, info *bridgev2.UserInfo, quality int) {
 	log := zerolog.Ctx(ctx)
 	var altJID types.JID
 	var err error
@@ -427,7 +479,7 @@ func (wa *WhatsAppClient) syncAltGhostWithInfo(ctx context.Context, jid types.JI
 			Msg("Failed to get ghost for alternate JID")
 		return
 	}
-	ghost.UpdateInfo(ctx, info)
+	updateGhostWithQualityCheck(ctx, ghost, info, quality)
 	log.Debug().
 		Stringer("jid", jid).
 		Stringer("alternate_jid", altJID).
