@@ -88,9 +88,10 @@ func MakeFakeMessageID(chat, sender types.JID, data string) networkid.MessageID 
 }
 
 type ParsedMessageID struct {
-	Chat   types.JID
-	Sender types.JID
-	ID     types.MessageID
+	Chat    types.JID
+	Sender  types.JID
+	ID      types.MessageID
+	Version []byte
 }
 
 func (pmi *ParsedMessageID) String() networkid.MessageID {

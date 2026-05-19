@@ -91,6 +91,7 @@ type WAMessageEvent struct {
 
 	parsedMessageType             string
 	isUndecryptableUpsertSubEvent bool
+	dontRenderEdited              bool
 	postHandle                    func()
 }
 
@@ -204,7 +205,7 @@ func (evt *WAMessageEvent) ConvertEdit(ctx context.Context, portal *bridgev2.Por
 		}
 	}
 	editPart := cm.Parts[0].ToEditPart(existing[0])
-	if evt.isUndecryptableUpsertSubEvent {
+	if evt.isUndecryptableUpsertSubEvent || evt.dontRenderEdited {
 		if editPart.TopLevelExtra == nil {
 			editPart.TopLevelExtra = make(map[string]any)
 		}
