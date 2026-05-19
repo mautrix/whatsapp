@@ -36,7 +36,7 @@ const (
 	mediaIDTypeStickerPackItem = 252
 )
 
-func MakeMediaID(messageInfo *types.MessageInfo, idOverride types.MessageID, receiver networkid.UserLoginID) networkid.MediaID {
+func MakeMediaID(messageInfo *types.MessageInfo, idOverride types.MessageID, receiver networkid.UserLoginID, version []byte) networkid.MediaID {
 	compactChat := compactJID(messageInfo.Chat.ToNonAD())
 	compactSender := compactJID(messageInfo.Sender.ToNonAD())
 	receiverID := compactJID(ParseUserLoginID(receiver, 0))
@@ -46,7 +46,7 @@ func MakeMediaID(messageInfo *types.MessageInfo, idOverride types.MessageID, rec
 	} else {
 		compactID = compactMsgID(messageInfo.ID)
 	}
-	mediaID := make([]byte, 0, 5+len(compactChat)+len(compactSender)+len(receiverID)+len(compactID))
+	mediaID := make([]byte, 0, 6+len(compactChat)+len(compactSender)+len(receiverID)+len(compactID)+len(version))
 	mediaID = append(mediaID, mediaIDTypeMessage)
 	mediaID = append(mediaID, byte(len(compactChat)))
 	mediaID = append(mediaID, compactChat...)
@@ -56,16 +56,8 @@ func MakeMediaID(messageInfo *types.MessageInfo, idOverride types.MessageID, rec
 	mediaID = append(mediaID, receiverID...)
 	mediaID = append(mediaID, byte(len(compactID)))
 	mediaID = append(mediaID, compactID...)
-	return mediaID
-}
-
-// MakeMediaIDWithVersion appends opaque version bytes after the parsed message fields.
-// This keeps downloads resolvable by the original message ID while giving edited media a distinct MXC URI.
-func MakeMediaIDWithVersion(messageInfo *types.MessageInfo, idOverride types.MessageID, receiver networkid.UserLoginID, version []byte) networkid.MediaID {
-	mediaID := MakeMediaID(messageInfo, idOverride, receiver)
-	if len(version) > 0 {
-		mediaID = append(mediaID, version...)
-	}
+	mediaID = append(mediaID, byte(len(version)))
+	mediaID = append(mediaID, version...)
 	return mediaID
 }
 
@@ -147,6 +139,12 @@ func ParseMediaID(mediaID networkid.MediaID) (*ParsedMediaID, error) {
 			Chat:   chatJID,
 			Sender: senderJID,
 			ID:     id,
+		}
+		if len(mediaID) > 0 {
+			parsed.Message.Version, err = readCompact(&mediaID, rawBytes)
+			if err != nil {
+				return nil, fmt.Errorf("failed to parse version: %w", err)
+			}
 		}
 		parsed.UserLogin = MakeUserLoginID(receiverID)
 	case mediaIDTypeAvatar, mediaIDTypeCommunityAvatar:

@@ -17,6 +17,7 @@
 package connector
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -170,6 +171,9 @@ func (wa *WhatsAppConnector) downloadMessageDirectMedia(ctx context.Context, par
 	err = json.Unmarshal(dmm, &keys)
 	if err != nil {
 		return nil, fmt.Errorf("failed to unmarshal media keys: %w", err)
+	}
+	if version := parsedID.Message.Version; len(version) > 0 && !bytes.Equal(version, keys.EncSHA256) && !bytes.Equal(version, keys.SHA256) {
+		return nil, mautrix.MNotFound.WithMessage("Version mismatch, media was likely replaced")
 	}
 	var ul *bridgev2.UserLogin
 	if parsedID.UserLogin != "" {
