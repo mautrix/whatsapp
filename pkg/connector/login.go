@@ -76,8 +76,8 @@ var (
 	}
 	ErrRateLimitedByWhatsApp = bridgev2.RespError{
 		ErrCode:    "FI.MAU.WHATSAPP.RATE_LIMITED",
-		Err:        "Rate limited by WhatsApp",
-		StatusCode: http.StatusTooManyRequests,
+		Err:        "Rate limited by WhatsApp. Try again later.",
+		StatusCode: http.StatusBadRequest,
 	}
 )
 
