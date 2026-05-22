@@ -162,10 +162,7 @@ func (mc *MessageConverter) messageHistoryNoticeLocation(ctx context.Context) *t
 func (mc *MessageConverter) convertMessageHistoryNotice(ctx context.Context, info *types.MessageInfo, msg *waE2E.MessageHistoryNotice) (*bridgev2.ConvertedMessagePart, *waE2E.ContextInfo) {
 	metadata := msg.GetMessageHistoryMetadata()
 	receivers := metadata.GetHistoryReceivers()
-	receiverLimit := len(receivers)
-	if receiverLimit > maxMessageHistoryNoticeReceivers {
-		receiverLimit = maxMessageHistoryNoticeReceivers
-	}
+	receiverLimit := min(len(receivers), maxMessageHistoryNoticeReceivers)
 	receiverNames := make([]string, 0, receiverLimit)
 	for _, receiver := range receivers[:receiverLimit] {
 		receiverNames = append(receiverNames, mc.formatMessageHistoryNoticeReceiver(ctx, receiver))
