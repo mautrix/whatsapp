@@ -130,6 +130,8 @@ func getMessageType(waMsg *waE2E.Message) string {
 		return "secret encrypted"
 	case waMsg.PollResultSnapshotMessage != nil:
 		return "poll result snapshot"
+	case waMsg.MessageHistoryNotice != nil:
+		return "message history notice"
 	case waMsg.MessageHistoryBundle != nil:
 		return "message history bundle"
 	case waMsg.RequestPhoneNumberMessage != nil:

@@ -117,6 +117,95 @@ func (mc *MessageConverter) convertGroupInviteMessage(ctx context.Context, info 
 	}, msg.GetContextInfo()
 }
 
+const maxMessageHistoryNoticeReceivers = 5
+
+func (mc *MessageConverter) formatMessageHistoryNoticeJID(ctx context.Context, jid types.JID) string {
+	_, displayName, err := mc.getBasicUserInfo(ctx, jid)
+	if err != nil {
+		zerolog.Ctx(ctx).Err(err).Stringer("jid", jid).Msg("Failed to get user info for message history notice")
+		return jid.String()
+	} else if displayName == "" {
+		return jid.String()
+	}
+	return displayName
+}
+
+func (mc *MessageConverter) formatMessageHistoryNoticeReceiver(ctx context.Context, receiver string) string {
+	jid, err := types.ParseJID(receiver)
+	if err != nil {
+		zerolog.Ctx(ctx).Err(err).Str("receiver", receiver).Msg("Failed to parse message history receiver JID")
+		return receiver
+	}
+	return mc.formatMessageHistoryNoticeJID(ctx, jid)
+}
+
+func (mc *MessageConverter) messageHistoryNoticeLocation(ctx context.Context) *time.Location {
+	portal := getPortal(ctx)
+	loginID := portal.Receiver
+	if loginID == "" {
+		loginID = waid.MakeUserLoginID(getClient(ctx).Store.GetJID().ToNonAD())
+	}
+	if login := mc.Bridge.GetCachedUserLoginByID(loginID); login != nil {
+		meta, _ := login.Metadata.(*waid.UserLoginMetadata)
+		if meta != nil && meta.Timezone != "" {
+			loc, err := time.LoadLocation(meta.Timezone)
+			if err != nil {
+				zerolog.Ctx(ctx).Err(err).Str("timezone", meta.Timezone).Msg("Failed to load user timezone for message history notice")
+			} else {
+				return loc
+			}
+		}
+	}
+	return time.Local
+}
+
+func (mc *MessageConverter) convertMessageHistoryNotice(ctx context.Context, info *types.MessageInfo, msg *waE2E.MessageHistoryNotice) (*bridgev2.ConvertedMessagePart, *waE2E.ContextInfo) {
+	metadata := msg.GetMessageHistoryMetadata()
+	receivers := metadata.GetHistoryReceivers()
+	receiverLimit := len(receivers)
+	if receiverLimit > maxMessageHistoryNoticeReceivers {
+		receiverLimit = maxMessageHistoryNoticeReceivers
+	}
+	receiverNames := make([]string, 0, receiverLimit)
+	for _, receiver := range receivers[:receiverLimit] {
+		receiverNames = append(receiverNames, mc.formatMessageHistoryNoticeReceiver(ctx, receiver))
+	}
+	receiverText := strings.Join(receiverNames, ", ")
+	if remainingReceivers := len(receivers) - receiverLimit; remainingReceivers > 0 {
+		otherWord := "others"
+		if remainingReceivers == 1 {
+			otherWord = "other"
+		}
+		receiverText = fmt.Sprintf("%s + %d %s", receiverText, remainingReceivers, otherWord)
+	}
+
+	sender := mc.formatMessageHistoryNoticeJID(ctx, info.Sender)
+	body := fmt.Sprintf("%s sent message history", sender)
+	if receiverText != "" {
+		body = fmt.Sprintf("%s to %s", body, receiverText)
+	}
+	if count := metadata.GetMessageCount(); count > 0 {
+		messageWord := "messages"
+		if count == 1 {
+			messageWord = "message"
+		}
+		body = fmt.Sprintf("%s (%d %s)", body, count, messageWord)
+	}
+	if metadata != nil && metadata.OldestMessageTimestampInWindow != nil {
+		oldestTS := time.Unix(metadata.GetOldestMessageTimestampInWindow(), 0).In(mc.messageHistoryNoticeLocation(ctx))
+		body = fmt.Sprintf("%s, starting %s", body, oldestTS.Format("Jan 2, 2006 at 3:04 PM"))
+	}
+	body += "."
+
+	return &bridgev2.ConvertedMessagePart{
+		Type: event.EventMessage,
+		Content: &event.MessageEventContent{
+			MsgType: event.MsgNotice,
+			Body:    body,
+		},
+	}, msg.GetContextInfo()
+}
+
 func (mc *MessageConverter) convertEphemeralSettingMessage(ctx context.Context, msg *waE2E.ProtocolMessage, ts time.Time, isBackfill bool) (*bridgev2.ConvertedMessagePart, *waE2E.ContextInfo) {
 	portal := getPortal(ctx)
 	portalMeta := portal.Metadata.(*waid.PortalMetadata)
