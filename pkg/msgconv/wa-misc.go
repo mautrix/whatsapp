@@ -123,20 +123,33 @@ func (mc *MessageConverter) formatMessageHistoryNoticeJID(ctx context.Context, j
 	_, displayName, err := mc.getBasicUserInfo(ctx, jid)
 	if err != nil {
 		zerolog.Ctx(ctx).Err(err).Stringer("jid", jid).Msg("Failed to get user info for message history notice")
-		return jid.String()
-	} else if displayName == "" {
-		return jid.String()
+	} else if displayName != "" {
+		return displayName
 	}
-	return displayName
+	return jid.String()
 }
 
-func (mc *MessageConverter) formatMessageHistoryNoticeReceiver(ctx context.Context, receiver string) string {
-	jid, err := types.ParseJID(receiver)
-	if err != nil {
-		zerolog.Ctx(ctx).Err(err).Str("receiver", receiver).Msg("Failed to parse message history receiver JID")
-		return receiver
+func (mc *MessageConverter) formatMessageHistoryNoticeReceivers(ctx context.Context, receivers []string) string {
+	receiverLimit := min(len(receivers), maxMessageHistoryNoticeReceivers)
+	receiverNames := make([]string, 0, receiverLimit)
+	for _, receiver := range receivers[:receiverLimit] {
+		jid, err := types.ParseJID(receiver)
+		if err != nil {
+			zerolog.Ctx(ctx).Err(err).Str("receiver", receiver).Msg("Failed to parse message history receiver JID")
+			receiverNames = append(receiverNames, receiver)
+		} else {
+			receiverNames = append(receiverNames, mc.formatMessageHistoryNoticeJID(ctx, jid))
+		}
 	}
-	return mc.formatMessageHistoryNoticeJID(ctx, jid)
+	receiverText := strings.Join(receiverNames, ", ")
+	if remainingReceivers := len(receivers) - receiverLimit; remainingReceivers > 0 {
+		otherWord := "others"
+		if remainingReceivers == 1 {
+			otherWord = "other"
+		}
+		receiverText = fmt.Sprintf("%s + %d %s", receiverText, remainingReceivers, otherWord)
+	}
+	return receiverText
 }
 
 func (mc *MessageConverter) messageHistoryNoticeLocation(ctx context.Context) *time.Location {
@@ -147,13 +160,11 @@ func (mc *MessageConverter) messageHistoryNoticeLocation(ctx context.Context) *t
 	}
 	if login := mc.Bridge.GetCachedUserLoginByID(loginID); login != nil {
 		meta, _ := login.Metadata.(*waid.UserLoginMetadata)
-		if meta != nil && meta.Timezone != "" {
-			loc, err := time.LoadLocation(meta.Timezone)
-			if err != nil {
-				zerolog.Ctx(ctx).Err(err).Str("timezone", meta.Timezone).Msg("Failed to load user timezone for message history notice")
-			} else {
-				return loc
-			}
+		loc, err := meta.LoadTimezone()
+		if err != nil {
+			zerolog.Ctx(ctx).Err(err).Str("timezone", meta.Timezone).Msg("Failed to load user timezone for message history notice")
+		} else if loc != nil {
+			return loc
 		}
 	}
 	return time.Local
@@ -161,24 +172,10 @@ func (mc *MessageConverter) messageHistoryNoticeLocation(ctx context.Context) *t
 
 func (mc *MessageConverter) convertMessageHistoryNotice(ctx context.Context, info *types.MessageInfo, msg *waE2E.MessageHistoryNotice) (*bridgev2.ConvertedMessagePart, *waE2E.ContextInfo) {
 	metadata := msg.GetMessageHistoryMetadata()
-	receivers := metadata.GetHistoryReceivers()
-	receiverLimit := min(len(receivers), maxMessageHistoryNoticeReceivers)
-	receiverNames := make([]string, 0, receiverLimit)
-	for _, receiver := range receivers[:receiverLimit] {
-		receiverNames = append(receiverNames, mc.formatMessageHistoryNoticeReceiver(ctx, receiver))
-	}
-	receiverText := strings.Join(receiverNames, ", ")
-	if remainingReceivers := len(receivers) - receiverLimit; remainingReceivers > 0 {
-		otherWord := "others"
-		if remainingReceivers == 1 {
-			otherWord = "other"
-		}
-		receiverText = fmt.Sprintf("%s + %d %s", receiverText, remainingReceivers, otherWord)
-	}
 
 	sender := mc.formatMessageHistoryNoticeJID(ctx, info.Sender)
 	body := fmt.Sprintf("%s sent message history", sender)
-	if receiverText != "" {
+	if receiverText := mc.formatMessageHistoryNoticeReceivers(ctx, metadata.GetHistoryReceivers()); receiverText != "" {
 		body = fmt.Sprintf("%s to %s", body, receiverText)
 	}
 	if count := metadata.GetMessageCount(); count > 0 {
