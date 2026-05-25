@@ -20,6 +20,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"html"
 	"image"
 	"math"
 	"net/http"
@@ -51,7 +52,7 @@ func (mc *MessageConverter) convertLocationMessage(ctx context.Context, msg *waE
 		MsgType:       event.MsgLocation,
 		Body:          fmt.Sprintf("Location: %s\n%s\n%s", name, msg.GetAddress(), url),
 		Format:        event.FormatHTML,
-		FormattedBody: fmt.Sprintf("Location: <a href='%s'>%s</a><br>%s", url, name, msg.GetAddress()),
+		FormattedBody: fmt.Sprintf(`Location: <a href="%s">%s</a><br>%s`, html.EscapeString(url), html.EscapeString(name), html.EscapeString(msg.GetAddress())),
 		GeoURI:        fmt.Sprintf("geo:%.5f,%.5f", msg.GetDegreesLatitude(), msg.GetDegreesLongitude()),
 	}
 
