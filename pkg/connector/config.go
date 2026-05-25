@@ -2,6 +2,7 @@ package connector
 
 import (
 	_ "embed"
+	"fmt"
 	"strings"
 	"text/template"
 	"time"
@@ -90,7 +91,15 @@ func (c *Config) UnmarshalYAML(node *yaml.Node) error {
 func (c *Config) PostProcess() error {
 	var err error
 	c.displaynameTemplate, err = template.New("displayname").Parse(c.DisplaynameTemplate)
-	return err
+	if err != nil {
+		return err
+	}
+	// Try to execute template to make sure it's valid
+	_, err = c.formatDisplayname(types.PSAJID, "", types.ContactInfo{})
+	if err != nil {
+		return fmt.Errorf("failed to execute displayname template: %w", err)
+	}
+	return nil
 }
 
 func upgradeConfig(helper up.Helper) {
@@ -151,7 +160,7 @@ type DisplaynameParams struct {
 	Short  string
 }
 
-func (c *Config) FormatDisplayname(jid types.JID, phone string, contact types.ContactInfo) string {
+func (c *Config) formatDisplayname(jid types.JID, phone string, contact types.ContactInfo) (string, error) {
 	var nameBuf strings.Builder
 	if phone == "" && jid.Server == types.DefaultUserServer {
 		phone = "+" + jid.User
@@ -170,13 +179,21 @@ func (c *Config) FormatDisplayname(jid types.JID, phone string, contact types.Co
 		Name:   contact.FullName,
 		Short:  contact.FirstName,
 	})
+	return nameBuf.String(), err
+}
+
+func (c *Config) FormatDisplayname(jid types.JID, phone string, contact types.ContactInfo) string {
+	name, err := c.formatDisplayname(jid, phone, contact)
 	if err != nil {
 		panic(err)
 	}
-	return nameBuf.String()
+	return name
 }
 
 func redactPhone(phone string) string {
+	if len(phone) <= 4 {
+		return phone
+	}
 	// This doesn't keep 2+ digit country codes properly, but whatever
 	return phone[:2] + strings.Repeat("∙", len(phone)-4) + phone[len(phone)-2:]
 }
