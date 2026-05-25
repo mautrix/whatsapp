@@ -132,8 +132,6 @@ func getMessageType(waMsg *waE2E.Message) string {
 		return "poll result snapshot"
 	case waMsg.MessageHistoryNotice != nil:
 		return "message history notice"
-	case waMsg.MessageHistoryBundle != nil:
-		return "message history bundle"
 	case waMsg.RequestPhoneNumberMessage != nil:
 		return "request phone number"
 	case waMsg.KeepInChatMessage != nil:
@@ -154,7 +152,7 @@ func getMessageType(waMsg *waE2E.Message) string {
 		return "chat"
 	case waMsg.PlaceholderMessage != nil:
 		return "placeholder"
-	case waMsg.SenderKeyDistributionMessage != nil, waMsg.StickerSyncRmrMessage != nil:
+	case waMsg.SenderKeyDistributionMessage != nil, waMsg.StickerSyncRmrMessage != nil, waMsg.MessageHistoryBundle != nil:
 		return "ignore"
 	default:
 		return "unknown"
