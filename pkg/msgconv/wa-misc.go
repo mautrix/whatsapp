@@ -26,6 +26,7 @@ import (
 
 	"github.com/rs/zerolog"
 	"go.mau.fi/util/exerrors"
+	"go.mau.fi/util/exfmt"
 	"go.mau.fi/util/ptr"
 	"go.mau.fi/whatsmeow/proto/waAICommonDeprecated"
 	"go.mau.fi/whatsmeow/proto/waE2E"
@@ -117,8 +118,6 @@ func (mc *MessageConverter) convertGroupInviteMessage(ctx context.Context, info 
 	}, msg.GetContextInfo()
 }
 
-const maxMessageHistoryNoticeReceivers = 5
-
 func (mc *MessageConverter) formatMessageHistoryNoticeJID(ctx context.Context, jid types.JID) string {
 	_, displayName, err := mc.getBasicUserInfo(ctx, jid)
 	if err != nil {
@@ -126,8 +125,17 @@ func (mc *MessageConverter) formatMessageHistoryNoticeJID(ctx context.Context, j
 	} else if displayName != "" {
 		return displayName
 	}
-	return jid.String()
+	switch jid.Server {
+	case types.DefaultUserServer:
+		return "+" + jid.User
+	default:
+		return "Unknown user " + jid.String()
+	}
 }
+
+const maxMessageHistoryNoticeReceivers = 5
+
+var others = exfmt.Pluralizable("other")
 
 func (mc *MessageConverter) formatMessageHistoryNoticeReceivers(ctx context.Context, receivers []string) string {
 	receiverLimit := min(len(receivers), maxMessageHistoryNoticeReceivers)
@@ -142,12 +150,8 @@ func (mc *MessageConverter) formatMessageHistoryNoticeReceivers(ctx context.Cont
 		}
 	}
 	receiverText := strings.Join(receiverNames, ", ")
-	if remainingReceivers := len(receivers) - receiverLimit; remainingReceivers > 0 {
-		otherWord := "others"
-		if remainingReceivers == 1 {
-			otherWord = "other"
-		}
-		receiverText = fmt.Sprintf("%s + %d %s", receiverText, remainingReceivers, otherWord)
+	if len(receivers) > receiverLimit {
+		receiverText = fmt.Sprintf("%s + %s", receiverText, others(len(receivers)-receiverLimit))
 	}
 	return receiverText
 }
