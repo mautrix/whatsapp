@@ -205,17 +205,6 @@ func (mc *MessageConverter) convertMessageHistoryNotice(ctx context.Context, inf
 	}, msg.GetContextInfo()
 }
 
-func (mc *MessageConverter) convertMessageHistoryBundle(_ context.Context, msg *waE2E.MessageHistoryBundle) (*bridgev2.ConvertedMessagePart, *waE2E.ContextInfo) {
-	return &bridgev2.ConvertedMessagePart{
-		Type: event.EventMessage,
-		Content: &event.MessageEventContent{
-			MsgType: event.MsgNotice,
-			Body:    "Message history bundle",
-		},
-		DontBridge: true,
-	}, msg.GetContextInfo()
-}
-
 func (mc *MessageConverter) convertEphemeralSettingMessage(ctx context.Context, msg *waE2E.ProtocolMessage, ts time.Time, isBackfill bool) (*bridgev2.ConvertedMessagePart, *waE2E.ContextInfo) {
 	portal := getPortal(ctx)
 	portalMeta := portal.Metadata.(*waid.PortalMetadata)
