@@ -61,6 +61,13 @@ func (m *UserLoginMetadata) GeneratePushKeys() {
 	}
 }
 
+func (m *UserLoginMetadata) LoadTimezone() (*time.Location, error) {
+	if m == nil || m.Timezone == "" {
+		return nil, nil
+	}
+	return time.LoadLocation(m.Timezone)
+}
+
 type MessageErrorType string
 
 const (

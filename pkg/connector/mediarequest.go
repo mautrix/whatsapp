@@ -70,10 +70,9 @@ func (wa *WhatsAppClient) processFailedMedia(ctx context.Context, portalKey netw
 func (wa *WhatsAppClient) mediaRequestLoop(ctx context.Context) {
 	log := wa.UserLogin.Log.With().Str("loop", "media requests").Logger()
 	ctx = log.WithContext(ctx)
-	tzName := wa.UserLogin.Metadata.(*waid.UserLoginMetadata).Timezone
-	userTz, err := time.LoadLocation(tzName)
+	userTz, err := wa.UserLogin.Metadata.(*waid.UserLoginMetadata).LoadTimezone()
 	var startIn time.Duration
-	if tzName != "" && err == nil && userTz != nil {
+	if err == nil && userTz != nil {
 		now := time.Now()
 		startAt := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, userTz)
 		startAt = startAt.Add(time.Duration(wa.Main.Config.HistorySync.MediaRequests.RequestLocalTime) * time.Minute)
