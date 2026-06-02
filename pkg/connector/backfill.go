@@ -260,6 +260,9 @@ func (wa *WhatsAppClient) handleWAHistorySync(
 					Str("msg_id", rawMsg.GetMessage().GetKey().GetID()).
 					Uint64("msg_time_seconds", rawMsg.GetMessage().GetMessageTimestamp()).
 					Msg("Dropping historical message due to parse error")
+				log.Trace().
+					Any("web_message_info", rawMsg.GetMessage()).
+					Msg("Content of event that failed to parse")
 				continue
 			}
 			if firstItemTime.IsZero() {
@@ -603,6 +606,9 @@ func (wa *WhatsAppClient) convertHistorySyncMessages(
 				Str("msg_id", msg.GetKey().GetID()).
 				Uint64("msg_time_seconds", msg.GetMessageTimestamp()).
 				Msg("Dropping historical message due to parse error")
+			zerolog.Ctx(ctx).Trace().
+				Any("web_message_info", msg.GetMessage()).
+				Msg("Content of event that failed to parse")
 			continue
 		}
 		if !explodeOnError {
