@@ -457,7 +457,7 @@ func (wa *WhatsAppClient) makePortalAvatarFetcher(avatarID string, sender types.
 			wrappedAvatar = &bridgev2.Avatar{
 				ID: networkid.AvatarID(avatar.ID),
 				Get: func(ctx context.Context) ([]byte, error) {
-					return wa.Client.DownloadMediaWithPath(ctx, avatar.DirectPath, nil, nil, nil, 0, "", "")
+					return wa.Client.DownloadMediaWithOnlyPath(ctx, avatar.DirectPath)
 				},
 			}
 		}
@@ -496,7 +496,7 @@ func (wa *WhatsAppClient) wrapNewsletterInfo(ctx context.Context, info *types.Ne
 	if info.ThreadMeta.Picture != nil {
 		avatar.ID = networkid.AvatarID(info.ThreadMeta.Picture.ID)
 		avatar.Get = func(ctx context.Context) ([]byte, error) {
-			return wa.Client.DownloadMediaWithPath(ctx, info.ThreadMeta.Picture.DirectPath, nil, nil, nil, 0, "", "")
+			return wa.Client.DownloadMediaWithOnlyPath(ctx, info.ThreadMeta.Picture.DirectPath)
 		}
 	} else if info.ThreadMeta.Preview.ID != "" {
 		avatar.ID = networkid.AvatarID(info.ThreadMeta.Preview.ID)
@@ -507,7 +507,7 @@ func (wa *WhatsAppClient) wrapNewsletterInfo(ctx context.Context, info *types.Ne
 			} else if meta.ThreadMeta.Picture == nil {
 				return nil, fmt.Errorf("full res avatar info is missing")
 			}
-			return wa.Client.DownloadMediaWithPath(ctx, meta.ThreadMeta.Picture.DirectPath, nil, nil, nil, 0, "", "")
+			return wa.Client.DownloadMediaWithOnlyPath(ctx, meta.ThreadMeta.Picture.DirectPath)
 		}
 	} else {
 		avatar.ID = "remove"

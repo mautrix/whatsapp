@@ -357,7 +357,7 @@ func (wa *WhatsAppClient) fetchGhostAvatar(ctx context.Context, ghost *bridgev2.
 		wrappedAvatar = &bridgev2.Avatar{
 			ID: networkid.AvatarID(avatar.ID),
 			Get: func(ctx context.Context) ([]byte, error) {
-				return wa.Client.DownloadMediaWithPath(ctx, avatar.DirectPath, nil, nil, nil, 0, "", "")
+				return wa.Client.DownloadMediaWithOnlyPath(ctx, avatar.DirectPath)
 			},
 		}
 	}
