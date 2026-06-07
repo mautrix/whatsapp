@@ -203,6 +203,8 @@ func (evt *WAMessageEvent) ConvertEdit(ctx context.Context, portal *bridgev2.Por
 		evt.postHandle = func() {
 			evt.wa.processFailedMedia(ctx, portal.PortalKey, evt.GetID(), cm, false)
 		}
+	} else if len(cm.Parts) > 0 {
+		evt.wa.Main.AddMediaEditCache(portal, evt.GetTargetMessage(), cm.Parts[0])
 	}
 	editPart := cm.Parts[0].ToEditPart(existing[0])
 	if evt.isUndecryptableUpsertSubEvent || evt.dontRenderEdited {
