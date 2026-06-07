@@ -363,19 +363,17 @@ func (wa *WhatsAppClient) handleWAMessage(ctx context.Context, evt *events.Messa
 	messageAssoc := evt.Message.GetMessageContextInfo().GetMessageAssociation()
 	if assocType := messageAssoc.GetAssociationType(); assocType == waE2E.MessageAssociation_HD_IMAGE_DUAL_UPLOAD || assocType == waE2E.MessageAssociation_HD_VIDEO_DUAL_UPLOAD {
 		parentKey := messageAssoc.GetParentMessageKey()
-		var protocolMsg *waE2E.ProtocolMessage
-		if editMsg := evt.Message.GetProtocolMessage(); editMsg.GetType() == waE2E.ProtocolMessage_MESSAGE_EDIT && editMsg.GetKey() != nil {
-			if child := editMsg.GetEditedMessage().GetAssociatedChildMessage().GetMessage(); child != nil {
-				editMsg.EditedMessage = child
-			}
-			protocolMsg = editMsg
-		} else {
+		protocolMsg := evt.Message.GetProtocolMessage()
+		if protocolMsg.GetType() != waE2E.ProtocolMessage_MESSAGE_EDIT || protocolMsg.GetKey() == nil {
 			protocolMsg = &waE2E.ProtocolMessage{
 				Type:          waE2E.ProtocolMessage_MESSAGE_EDIT.Enum(),
 				Key:           parentKey,
 				EditedMessage: evt.Message.GetAssociatedChildMessage().GetMessage(),
 			}
 			dontRenderEdited = true
+		} else if child := protocolMsg.GetEditedMessage().GetAssociatedChildMessage().GetMessage(); child != nil {
+			protocolMsg.EditedMessage = child
+			protocolMsg.Key = parentKey
 		}
 		wa.UserLogin.Log.Debug().
 			Str("message_id", evt.Info.ID).
