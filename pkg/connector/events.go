@@ -182,12 +182,15 @@ func (evt *WAMessageEvent) ConvertEdit(ctx context.Context, portal *bridgev2.Por
 	}
 	var editedMsg *waE2E.Message
 	var previouslyConvertedPart *bridgev2.ConvertedMessagePart
+	targetMessage := evt.GetTargetMessage()
+	cacheMessage := targetMessage
 	if evt.isUndecryptableUpsertSubEvent {
 		// TODO db metadata needs to be updated in this case to remove the error
 		editedMsg = evt.Message
+		cacheMessage = evt.GetID()
 	} else {
 		editedMsg = evt.Message.GetProtocolMessage().GetEditedMessage()
-		previouslyConvertedPart = evt.wa.Main.GetMediaEditCache(portal, evt.GetTargetMessage())
+		previouslyConvertedPart = evt.wa.Main.GetMediaEditCache(portal, targetMessage)
 		meta := existing[0].Metadata.(*waid.MessageMetadata)
 		if slices.Contains(meta.Edits, evt.Info.ID) {
 			return nil, fmt.Errorf("%w: edit already handled", bridgev2.ErrIgnoringRemoteEvent)
@@ -203,8 +206,8 @@ func (evt *WAMessageEvent) ConvertEdit(ctx context.Context, portal *bridgev2.Por
 		evt.postHandle = func() {
 			evt.wa.processFailedMedia(ctx, portal.PortalKey, evt.GetID(), cm, false)
 		}
-	} else if len(cm.Parts) > 0 {
-		evt.wa.Main.AddMediaEditCache(portal, evt.GetTargetMessage(), cm.Parts[0])
+	} else if len(cm.Parts) > 0 && cacheMessage != "" {
+		evt.wa.Main.AddMediaEditCache(portal, cacheMessage, cm.Parts[0])
 	}
 	editPart := cm.Parts[0].ToEditPart(existing[0])
 	if evt.isUndecryptableUpsertSubEvent || evt.dontRenderEdited {
