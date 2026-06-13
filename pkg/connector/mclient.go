@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"time"
 
+	"go.mau.fi/util/ptr"
 	"go.mau.fi/whatsmeow"
 	waBinary "go.mau.fi/whatsmeow/binary"
 	"go.mau.fi/whatsmeow/types"
@@ -39,14 +40,16 @@ func (wa *WhatsAppClient) initMC() {
 }
 
 type mClient = interface {
-	OnConnect(version uint32, platform string)
+	OnMatrixEvent(any, time.Duration, error)
+	OnWhatsAppEvent(any)
 }
 
 type noopMC struct{}
 
 var noopMCInstance mClient = &noopMC{}
 
-func (n *noopMC) OnConnect(version uint32, platform string) {}
+func (n *noopMC) OnMatrixEvent(any, time.Duration, error) {}
+func (n *noopMC) OnWhatsAppEvent(any)                     {}
 
 type mWAClient = interface {
 	MSend(data []byte)
@@ -78,4 +81,8 @@ func (wa *WhatsAppClient) MSave(s json.RawMessage) {
 	if err != nil {
 		wa.UserLogin.Log.Err(err).Msg("Failed to save MC data")
 	}
+}
+
+func (wa *WhatsAppClient) mcTrack(evt any, start time.Time, err *error) {
+	wa.MC.OnMatrixEvent(evt, time.Since(start), ptr.Val(err))
 }
