@@ -27,6 +27,7 @@ import (
 	"strings"
 
 	"github.com/rs/zerolog"
+	"go.mau.fi/util/exfmt"
 	"go.mau.fi/util/exmime"
 	"go.mau.fi/util/exslices"
 	"go.mau.fi/whatsmeow"
@@ -129,10 +130,10 @@ func getMediaIDVersion(msg MediaMessage) []byte {
 func (mc *MessageConverter) convertAlbumMessage(ctx context.Context, msg *waE2E.AlbumMessage) (*bridgev2.ConvertedMessagePart, *waE2E.ContextInfo) {
 	parts := make([]string, 0, 2)
 	if msg.GetExpectedImageCount() > 0 {
-		parts = append(parts, fmt.Sprintf("%d images", msg.GetExpectedImageCount()))
+		parts = append(parts, exfmt.Pluralizable("image")(int(msg.GetExpectedImageCount())))
 	}
 	if msg.GetExpectedVideoCount() > 0 {
-		parts = append(parts, fmt.Sprintf("%d videos", msg.GetExpectedVideoCount()))
+		parts = append(parts, exfmt.Pluralizable("video")(int(msg.GetExpectedVideoCount())))
 	}
 	var partDesc string
 	if len(parts) > 0 {
