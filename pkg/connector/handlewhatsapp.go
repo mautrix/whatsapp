@@ -126,6 +126,20 @@ func (wa *WhatsAppClient) handleWAEvent(rawEvt any) (success bool) {
 		success = wa.handleWANewsletterLeave(evt)
 	case *events.Picture:
 		success = wa.handleWAPictureUpdate(ctx, evt)
+	case *events.NotifyAccountReachoutTimelock:
+		wa.UserLogin.TrackAnalytics("WhatsApp Account Reachout Timelock", map[string]any{
+			"enforcement_type":      evt.EnforcementType,
+			"is_active":             evt.IsActive,
+			"time_enforcement_ends": evt.TimeEnforcementEnds.Time,
+		})
+		wa.UserLogin.Metadata.(*waid.UserLoginMetadata).ReachoutTimelockUntil = evt.TimeEnforcementEnds.Time
+		if wa.UserLogin.BridgeState.GetPrevUnsent().StateEvent == status.StateConnected {
+			wa.UserLogin.BridgeState.Send(status.BridgeState{StateEvent: status.StateConnected})
+		}
+		err := wa.UserLogin.Save(ctx)
+		if err != nil {
+			log.Err(err).Msg("Failed to save user login metadata after reachout timelock update")
+		}
 
 	case *events.AppStateSyncComplete:
 		wa.handleWAAppStateSyncComplete(ctx, evt)

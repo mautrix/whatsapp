@@ -41,7 +41,8 @@ type UserLoginMetadata struct {
 
 	AppStateRecoveryAttempted map[appstate.WAPatchName]time.Time `json:"app_state_recovery_attempted,omitempty"`
 
-	HistorySyncPortalsNeedCreating bool `json:"history_sync_portals_need_creating,omitempty"`
+	HistorySyncPortalsNeedCreating bool      `json:"history_sync_portals_need_creating,omitempty"`
+	ReachoutTimelockUntil          time.Time `json:"reachout_timelock_until,omitempty"`
 
 	MData json.RawMessage `json:"mdata,omitempty"`
 }

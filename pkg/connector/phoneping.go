@@ -37,6 +37,13 @@ func (wa *WhatsAppClient) FillBridgeState(state status.BridgeState) status.Bridg
 		state.Error = WAPhoneOffline
 		state.UserAction = status.UserActionOpenNative
 	}
+	rtu := wa.UserLogin.Metadata.(*waid.UserLoginMetadata).ReachoutTimelockUntil
+	if !rtu.IsZero() {
+		if state.Info == nil {
+			state.Info = make(map[string]any)
+		}
+		state.Info["reachout_timelock_until"] = rtu
+	}
 	return state
 }
 
