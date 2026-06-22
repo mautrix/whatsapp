@@ -29,7 +29,8 @@ var ResyncLoopInterval = 4 * time.Hour
 var ResyncJitterSeconds = 3600
 
 func (wa *WhatsAppClient) EnqueueGhostResync(ghost *bridgev2.Ghost) {
-	if ghost.Metadata.(*waid.GhostMetadata).LastSync.Add(ResyncMinInterval).After(time.Now()) {
+	lastSync := ghost.Metadata.(*waid.GhostMetadata).LastSync.Time
+	if lastSync.Add(ResyncMinInterval).After(time.Now()) {
 		return
 	}
 	wa.resyncQueueLock.Lock()
@@ -43,6 +44,7 @@ func (wa *WhatsAppClient) EnqueueGhostResync(ghost *bridgev2.Ghost) {
 		wa.UserLogin.Log.Debug().
 			Stringer("jid", jid).
 			Str("next_resync_in", nextResyncIn).
+			Time("last_ghost_resync", lastSync).
 			Msg("Enqueued resync for ghost")
 	}
 	wa.resyncQueueLock.Unlock()
@@ -50,7 +52,8 @@ func (wa *WhatsAppClient) EnqueueGhostResync(ghost *bridgev2.Ghost) {
 
 func (wa *WhatsAppClient) EnqueuePortalResync(portal *bridgev2.Portal, allowDM bool) {
 	jid, _ := waid.ParsePortalID(portal.ID)
-	if portal.Metadata.(*waid.PortalMetadata).LastSync.Add(ResyncMinInterval).After(time.Now()) {
+	lastSync := portal.Metadata.(*waid.PortalMetadata).LastSync.Time
+	if lastSync.Add(ResyncMinInterval).After(time.Now()) {
 		return
 	} else if !allowDM && jid.Server != types.GroupServer {
 		return
@@ -61,6 +64,7 @@ func (wa *WhatsAppClient) EnqueuePortalResync(portal *bridgev2.Portal, allowDM b
 		wa.UserLogin.Log.Debug().
 			Stringer("jid", jid).
 			Stringer("next_resync_in", time.Until(wa.nextResync)).
+			Time("last_portal_resync", lastSync).
 			Msg("Enqueued resync for portal")
 	}
 	wa.resyncQueueLock.Unlock()
