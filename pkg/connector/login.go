@@ -2,6 +2,7 @@ package connector
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -12,6 +13,7 @@ import (
 	"go.mau.fi/util/exsync"
 	"go.mau.fi/util/jsontime"
 	"go.mau.fi/whatsmeow"
+	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
 	waLog "go.mau.fi/whatsmeow/util/log"
 	"maunium.net/go/mautrix/bridgev2"
@@ -25,6 +27,7 @@ const (
 	LoginStepIDQR          = "fi.mau.whatsapp.login.qr"
 	LoginStepIDPhoneNumber = "fi.mau.whatsapp.login.phone"
 	LoginStepIDCode        = "fi.mau.whatsapp.login.code"
+	LoginStepIDPasskey     = "fi.mau.whatsapp.login.passkey"
 	LoginStepIDComplete    = "fi.mau.whatsapp.login.complete"
 
 	LoginFlowIDQR    = "qr"
@@ -91,9 +94,11 @@ func (wa *WhatsAppConnector) CreateLogin(_ context.Context, user *bridgev2.User,
 			Bool("phone_code", flowID == LoginFlowIDPhone).
 			Logger(),
 
-		WaitForQRs:    exsync.NewEvent(),
-		LoginComplete: exsync.NewEvent(),
-		Received515:   exsync.NewEvent(),
+		WaitForQRs:          exsync.NewEvent(),
+		LoginComplete:       exsync.NewEvent(),
+		PasskeyRequest:      exsync.NewEvent(),
+		PasskeyConfirmation: exsync.NewEvent(),
+		Received515:         exsync.NewEvent(),
 	}, nil
 }
 
@@ -114,6 +119,11 @@ type WALogin struct {
 	Received515   *exsync.Event
 	PrevQRIndex   atomic.Int32
 
+	PasskeyRequest          *exsync.Event
+	PasskeyRequestData      *events.PairPasskeyRequest
+	PasskeyConfirmation     *exsync.Event
+	PasskeyConfirmationData *events.PairPasskeyConfirmation
+
 	Closed         atomic.Bool
 	EventHandlerID uint32
 }
@@ -122,6 +132,7 @@ var (
 	_ bridgev2.LoginProcessDisplayAndWait = (*WALogin)(nil)
 	_ bridgev2.LoginProcessUserInput      = (*WALogin)(nil)
 	_ bridgev2.LoginProcessWithOverride   = (*WALogin)(nil)
+	_ bridgev2.LoginProcessWebAuthn       = (*WALogin)(nil)
 )
 
 const LoginConnectWait = 15 * time.Second
@@ -262,6 +273,17 @@ func (wl *WALogin) handleEvent(rawEvt any) {
 	case *events.ClientOutdated:
 		wl.Log.Error().Msg("Got client outdated error")
 		wl.LoginError = ErrLoginClientOutdated
+	case *events.PairPasskeyRequest:
+		wl.PasskeyRequestData = evt
+		wl.PasskeyRequest.Set()
+		return
+	case *events.PairPasskeyConfirmation:
+		wl.PasskeyConfirmationData = evt
+		wl.PasskeyConfirmation.Set()
+		return
+	case *events.PairPasskeyError:
+		wl.Log.Err(evt.Error).Msg("Got passkey error")
+		wl.LoginError = evt.Error
 	case *events.PairSuccess:
 		wl.Log.Info().Any("event_data", evt).Msg("Got pair successful event")
 		wl.LoginSuccess = evt
@@ -289,10 +311,14 @@ func (wl *WALogin) handleEvent(rawEvt any) {
 
 func (wl *WALogin) Wait(ctx context.Context) (*bridgev2.LoginStep, error) {
 	if wl.PhoneCode {
-		err := wl.LoginComplete.Wait(ctx)
-		if err != nil {
+		select {
+		case <-ctx.Done():
 			wl.Cancel()
-			return nil, err
+			return nil, ctx.Err()
+		case <-wl.PasskeyRequest.GetChan():
+			return wl.makePasskeyStep()
+		case <-wl.LoginComplete.GetChan():
+			// continue
 		}
 	} else {
 		prevIndex := int(wl.PrevQRIndex.Load())
@@ -319,9 +345,16 @@ func (wl *WALogin) Wait(ctx context.Context) (*bridgev2.LoginStep, error) {
 		case <-ctx.Done():
 			wl.Cancel()
 			return nil, ctx.Err()
+		case <-wl.PasskeyRequest.GetChan():
+			return wl.makePasskeyStep()
 		case <-wl.LoginComplete.GetChan():
+			// continue
 		}
 	}
+	return wl.onLoginComplete(ctx)
+}
+
+func (wl *WALogin) onLoginComplete(ctx context.Context) (*bridgev2.LoginStep, error) {
 	if wl.LoginError != nil {
 		wl.Log.Debug().Err(wl.LoginError).Msg("Login completed with error")
 		wl.Cancel()
@@ -370,6 +403,66 @@ func (wl *WALogin) Wait(ctx context.Context) (*bridgev2.LoginStep, error) {
 			UserLogin:   ul,
 		},
 	}, nil
+}
+
+func (wl *WALogin) makePasskeyStep() (*bridgev2.LoginStep, error) {
+	pubkeyData, err := json.Marshal(wl.PasskeyRequestData.PublicKey)
+	if err != nil {
+		wl.Log.Err(err).Msg("Failed to marshal public key data")
+		return nil, err
+	}
+	return &bridgev2.LoginStep{
+		Type:   bridgev2.LoginStepTypeWebAuthn,
+		StepID: LoginStepIDPasskey,
+		WebAuthnParams: &bridgev2.LoginWebAuthnParams{
+			URL:       "https://web.whatsapp.com",
+			PublicKey: pubkeyData,
+		},
+	}, nil
+}
+
+func (wl *WALogin) SubmitWebAuthnResponse(ctx context.Context, rawResp json.RawMessage) (*bridgev2.LoginStep, error) {
+	var resp types.WebAuthnResponse
+	err := json.Unmarshal(rawResp, &resp)
+	if err != nil {
+		wl.Log.Err(err).Msg("Failed to unmarshal WebAuthn response")
+		wl.Cancel()
+		return nil, err
+	}
+	err = wl.Client.SendPasskeyResponse(ctx, &resp)
+	if err != nil {
+		wl.Log.Err(err).Msg("Failed to send WebAuthn response")
+		wl.Cancel()
+		return nil, err
+	}
+	select {
+	case <-ctx.Done():
+		wl.Cancel()
+		return nil, ctx.Err()
+	case <-wl.PasskeyConfirmation.GetChan():
+		if !wl.PasskeyConfirmationData.SkipHandoffUX {
+			wl.Cancel()
+			return nil, bridgev2.RespError{
+				ErrCode:    "FI.MAU.WHATSAPP.NOT_IMPLEMENTED",
+				Err:        "Displaying WebAuthn pairing confirmation codes is not yet implemented",
+				StatusCode: http.StatusBadRequest,
+			}
+		}
+		err = wl.Client.SendPasskeyConfirmation(ctx)
+		if err != nil {
+			wl.Log.Err(err).Msg("Failed to send WebAuthn confirmation")
+			wl.Cancel()
+			return nil, err
+		}
+	case <-wl.LoginComplete.GetChan():
+	}
+	select {
+	case <-ctx.Done():
+		wl.Cancel()
+		return nil, ctx.Err()
+	case <-wl.LoginComplete.GetChan():
+	}
+	return wl.onLoginComplete(ctx)
 }
 
 func (wl *WALogin) Cancel() {
