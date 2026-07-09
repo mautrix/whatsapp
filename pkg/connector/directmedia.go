@@ -255,10 +255,11 @@ func (wa *WhatsAppConnector) makeDirectMediaResponse(
 
 type directMediaRetry struct {
 	sync.Mutex
-	resultURL  string
-	wait       *exsync.Event
-	requested  bool
-	resultType waMmsRetry.MediaRetryNotification_ResultType
+	resultURL   string
+	wait        *exsync.Event
+	requested   bool
+	resultType  waMmsRetry.MediaRetryNotification_ResultType
+	decryptFail bool
 }
 
 func (wa *WhatsAppClient) getDirectMediaRetryState(msgID networkid.MessageID, create bool) *directMediaRetry {
@@ -284,6 +285,9 @@ func (wa *WhatsAppClient) requestAndWaitDirectMedia(ctx context.Context, rawMsgI
 		if state.resultURL != "" {
 			keys.DirectPath = state.resultURL
 			return nil
+		}
+		if state.decryptFail {
+			return mautrix.MNotFound.WithMessage("Unable to retrieve media: failed to decrypt the media retry notification from your phone.")
 		}
 		switch state.resultType {
 		case waMmsRetry.MediaRetryNotification_NOT_FOUND:
@@ -338,6 +342,9 @@ func (wa *WhatsAppClient) receiveDirectMediaRetry(ctx context.Context, msg *data
 	retryData, err := whatsmeow.DecryptMediaRetryNotification(retry, keys.Key)
 	if err != nil {
 		log.Warn().Err(err).Msg("Failed to decrypt media retry notification")
+		if state != nil {
+			state.decryptFail = true
+		}
 		return
 	}
 	if state != nil {
