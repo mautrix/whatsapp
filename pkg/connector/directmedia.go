@@ -338,6 +338,9 @@ func (wa *WhatsAppClient) receiveDirectMediaRetry(ctx context.Context, msg *data
 	retryData, err := whatsmeow.DecryptMediaRetryNotification(retry, keys.Key)
 	if err != nil {
 		log.Warn().Err(err).Msg("Failed to decrypt media retry notification")
+		if state != nil {
+			state.resultType = waMmsRetry.MediaRetryNotification_DECRYPTION_ERROR
+		}
 		return
 	}
 	if state != nil {
