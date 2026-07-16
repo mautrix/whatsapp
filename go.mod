@@ -11,6 +11,7 @@ require (
 	github.com/livekit/media-sdk v0.0.0-20260605212526-4c11a51d3c97
 	github.com/livekit/protocol v1.49.0
 	github.com/livekit/server-sdk-go/v2 v2.17.0
+	github.com/pion/rtp v1.10.2
 	github.com/pion/webrtc/v4 v4.2.14
 	github.com/purpshell/meowcaller v0.0.0-20260716175428-b00465cb0e52
 	github.com/rs/zerolog v1.35.1
@@ -18,6 +19,7 @@ require (
 	go.mau.fi/util v0.9.10
 	go.mau.fi/webp v0.3.0
 	go.mau.fi/whatsmeow v0.0.0-20260709092057-73fe7355f59f
+	go.yaml.in/yaml/v3 v3.0.4
 	golang.org/x/image v0.42.0
 	golang.org/x/net v0.56.0
 	golang.org/x/sync v0.21.0
@@ -79,7 +81,6 @@ require (
 	github.com/pion/opus v0.1.0 // indirect
 	github.com/pion/randutil v0.1.0 // indirect
 	github.com/pion/rtcp v1.2.16 // indirect
-	github.com/pion/rtp v1.10.2 // indirect
 	github.com/pion/sctp v1.10.0 // indirect
 	github.com/pion/sdp/v3 v3.0.18 // indirect
 	github.com/pion/srtp/v3 v3.0.11 // indirect
@@ -109,7 +110,6 @@ require (
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.28.0 // indirect
 	go.uber.org/zap/exp v0.3.0 // indirect
-	go.yaml.in/yaml/v3 v3.0.4 // indirect
 	golang.org/x/crypto v0.53.0 // indirect
 	golang.org/x/exp v0.0.0-20260611194520-c48552f49976 // indirect
 	golang.org/x/mod v0.37.0 // indirect
