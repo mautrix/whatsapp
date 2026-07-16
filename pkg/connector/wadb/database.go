@@ -10,12 +10,13 @@ import (
 
 type Database struct {
 	*dbutil.Database
-	Conversation *ConversationQuery
-	Message      *MessageQuery
-	PollOption   *PollOptionQuery
-	MediaRequest *MediaRequestQuery
-	HSNotif      *HistorySyncNotificationQuery
-	AvatarCache  *AvatarCacheQuery
+	Conversation  *ConversationQuery
+	Message       *MessageQuery
+	PollOption    *PollOptionQuery
+	MediaRequest  *MediaRequestQuery
+	HSNotif       *HistorySyncNotificationQuery
+	AvatarCache   *AvatarCacheQuery
+	MatrixRTCCall *MatrixRTCCallQuery
 }
 
 func New(bridgeID networkid.BridgeID, db *dbutil.Database, log zerolog.Logger) *Database {
@@ -49,6 +50,12 @@ func New(bridgeID networkid.BridgeID, db *dbutil.Database, log zerolog.Logger) *
 		AvatarCache: &AvatarCacheQuery{
 			QueryHelper: dbutil.MakeQueryHelper(db, func(_ *dbutil.QueryHelper[*AvatarCacheEntry]) *AvatarCacheEntry {
 				return &AvatarCacheEntry{}
+			}),
+		},
+		MatrixRTCCall: &MatrixRTCCallQuery{
+			BridgeID: bridgeID,
+			QueryHelper: dbutil.MakeQueryHelper(db, func(_ *dbutil.QueryHelper[*MatrixRTCCall]) *MatrixRTCCall {
+				return &MatrixRTCCall{}
 			}),
 		},
 	}
