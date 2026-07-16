@@ -40,6 +40,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2/status"
 	"maunium.net/go/mautrix/event"
 
+	"go.mau.fi/mautrix-whatsapp/pkg/connector/voip"
 	"go.mau.fi/mautrix-whatsapp/pkg/waid"
 )
 
@@ -83,6 +84,9 @@ func (wa *WhatsAppConnector) LoadUserLogin(ctx context.Context, login *bridgev2.
 		w.Client.GetMessageForRetry = w.trackNotFoundRetry
 		w.Client.PreRetryCallback = w.trackFoundRetry
 		w.Client.BackgroundEventCtx = w.UserLogin.Log.WithContext(wa.Bridge.BackgroundCtx)
+		w.VOIP = voip.NewManager(w.Client, makeVOIPConfig(wa.Config.VOIP), w.UserLogin.Log.With().Str("component", "voip").Logger())
+		w.VOIP.SetIncomingCallHandler(w.handleIncomingVOIPCall)
+		w.VOIP.SetCallEndHandler(w.handleVOIPCallEnded)
 		w.Client.SetForceActiveDeliveryReceipts(wa.Config.ForceActiveDeliveryReceipts)
 		w.Client.InitialAutoReconnect = wa.Config.InitialAutoReconnect
 		w.Client.UseRetryMessageStore = wa.Config.UseWhatsAppRetryStore
@@ -102,6 +106,7 @@ type WhatsAppClient struct {
 	Main      *WhatsAppConnector
 	UserLogin *bridgev2.UserLogin
 	Client    *whatsmeow.Client
+	VOIP      *voip.Manager
 	Device    *store.Device
 	JID       types.JID
 	MC        mClient
@@ -363,6 +368,9 @@ func (wa *WhatsAppClient) callStopLoops() {
 
 func (wa *WhatsAppClient) Disconnect() {
 	wa.callStopLoops()
+	if wa.VOIP != nil {
+		wa.VOIP.AbortAll()
+	}
 	if cli := wa.Client; cli != nil {
 		cli.Disconnect()
 	}

@@ -54,6 +54,7 @@ type Config struct {
 	UseWhatsAppRetryStore       bool          `yaml:"use_whatsapp_retry_store"`
 
 	AnimatedSticker msgconv.AnimatedStickerConfig `yaml:"animated_sticker"`
+	VOIP            VOIPConfig                    `yaml:"voip"`
 
 	HistorySync struct {
 		MaxInitialConversations int           `yaml:"max_initial_conversations"`
@@ -78,6 +79,58 @@ type Config struct {
 	displaynameTemplate *template.Template `yaml:"-"`
 }
 
+type VOIPConfig struct {
+	Enabled                bool            `yaml:"enabled"`
+	MatrixSurface          string          `yaml:"matrix_surface"`
+	IncomingPolicy         string          `yaml:"incoming_policy"`
+	MaxActiveCallsPerLogin int             `yaml:"max_active_calls_per_login"`
+	MatrixRTC              MatrixRTCConfig `yaml:"matrixrtc"`
+	LiveKit                LiveKitConfig   `yaml:"livekit"`
+	Audio                  VOIPAudioConfig `yaml:"audio"`
+	Video                  VOIPVideoConfig `yaml:"video"`
+	Diagnostics            VOIPDiagnostics `yaml:"diagnostics"`
+}
+
+type MatrixRTCConfig struct {
+	LiveKitServiceURL       string `yaml:"livekit_service_url"`
+	RequireLiveKitFocus     bool   `yaml:"require_livekit_focus"`
+	MembershipEventCompat   string `yaml:"membership_event_compat"`
+	NotificationEventCompat string `yaml:"notification_event_compat"`
+	UseDelayedEvents        bool   `yaml:"use_delayed_events"`
+	ParticipantMode         string `yaml:"participant_mode"`
+	FallbackParticipantMXID string `yaml:"fallback_participant_mxid"`
+}
+
+type LiveKitConfig struct {
+	ConnectTimeout                     time.Duration `yaml:"connect_timeout"`
+	PublishSilenceBeforeWhatsAppAnswer bool          `yaml:"publish_silence_before_whatsapp_answer"`
+	AutoSubscribe                      bool          `yaml:"auto_subscribe"`
+	AudioUplinkPolicy                  string        `yaml:"audio_uplink_policy"`
+	SelectedParticipantTimeout         time.Duration `yaml:"selected_participant_timeout"`
+}
+
+type VOIPAudioConfig struct {
+	Enabled            bool          `yaml:"enabled"`
+	JitterBuffer       time.Duration `yaml:"jitter_buffer_ms"`
+	OpusBackend        string        `yaml:"opus_backend"`
+	SilenceOnUnderrun  bool          `yaml:"silence_on_underrun"`
+	MaxMixParticipants int           `yaml:"max_mix_participants"`
+}
+
+type VOIPVideoConfig struct {
+	Enabled              bool   `yaml:"enabled"`
+	SelectedSourcePolicy string `yaml:"selected_source_policy"`
+	MaxWidth             int    `yaml:"max_width"`
+	MaxHeight            int    `yaml:"max_height"`
+	MaxFPS               int    `yaml:"max_fps"`
+}
+
+type VOIPDiagnostics struct {
+	HealthcheckFocusOnStartup   bool   `yaml:"healthcheck_focus_on_startup"`
+	EnableMeowcallerDiagnostics bool   `yaml:"enable_meowcaller_diagnostics"`
+	MediaTraceDir               string `yaml:"media_trace_dir"`
+}
+
 type umConfig Config
 
 func (c *Config) UnmarshalYAML(node *yaml.Node) error {
@@ -99,7 +152,72 @@ func (c *Config) PostProcess() error {
 	if err != nil {
 		return fmt.Errorf("failed to execute displayname template: %w", err)
 	}
+	if err = c.validateVOIP(); err != nil {
+		return err
+	}
 	return nil
+}
+
+func (c *Config) validateVOIP() error {
+	if !c.VOIP.Enabled {
+		return nil
+	}
+	if c.VOIP.MatrixSurface != "matrixrtc_livekit" {
+		return fmt.Errorf("voip.matrix_surface must be matrixrtc_livekit")
+	}
+	if !oneOf(c.VOIP.IncomingPolicy, "notice", "ring", "auto_answer") {
+		return fmt.Errorf("voip.incoming_policy must be one of notice, ring, auto_answer")
+	}
+	if c.VOIP.MaxActiveCallsPerLogin <= 0 {
+		return fmt.Errorf("voip.max_active_calls_per_login must be greater than 0")
+	}
+	if !oneOf(c.VOIP.MatrixRTC.MembershipEventCompat, "auto", "msc4143", "msc3401") {
+		return fmt.Errorf("voip.matrixrtc.membership_event_compat must be one of auto, msc4143, msc3401")
+	}
+	if !oneOf(c.VOIP.MatrixRTC.NotificationEventCompat, "auto", "disabled") {
+		return fmt.Errorf("voip.matrixrtc.notification_event_compat must be one of auto, disabled")
+	}
+	if !oneOf(c.VOIP.MatrixRTC.ParticipantMode, "whatsapp_ghost", "bridge_user") {
+		return fmt.Errorf("voip.matrixrtc.participant_mode must be one of whatsapp_ghost, bridge_user")
+	}
+	if c.VOIP.LiveKit.ConnectTimeout <= 0 {
+		return fmt.Errorf("voip.livekit.connect_timeout must be greater than 0")
+	}
+	if !oneOf(c.VOIP.LiveKit.AudioUplinkPolicy, "dominant_speaker", "mix_all", "selected_participant") {
+		return fmt.Errorf("voip.livekit.audio_uplink_policy must be one of dominant_speaker, mix_all, selected_participant")
+	}
+	if c.VOIP.Audio.Enabled {
+		if c.VOIP.Audio.JitterBuffer <= 0 {
+			return fmt.Errorf("voip.audio.jitter_buffer_ms must be greater than 0")
+		}
+		if c.VOIP.Audio.OpusBackend == "" {
+			return fmt.Errorf("voip.audio.opus_backend must be set")
+		}
+		if c.VOIP.Audio.MaxMixParticipants <= 0 {
+			return fmt.Errorf("voip.audio.max_mix_participants must be greater than 0")
+		}
+	}
+	if c.VOIP.Video.Enabled {
+		if !oneOf(c.VOIP.Video.SelectedSourcePolicy, "active_speaker", "selected_participant") {
+			return fmt.Errorf("voip.video.selected_source_policy must be one of active_speaker, selected_participant")
+		}
+		if c.VOIP.Video.MaxWidth <= 0 || c.VOIP.Video.MaxHeight <= 0 || c.VOIP.Video.MaxFPS <= 0 {
+			return fmt.Errorf("voip.video max_width, max_height and max_fps must be greater than 0")
+		}
+	}
+	if c.VOIP.Diagnostics.EnableMeowcallerDiagnostics && c.VOIP.Diagnostics.MediaTraceDir == "" {
+		return fmt.Errorf("voip.diagnostics.media_trace_dir must be set when meowcaller diagnostics are enabled")
+	}
+	return nil
+}
+
+func oneOf(value string, allowed ...string) bool {
+	for _, item := range allowed {
+		if value == item {
+			return true
+		}
+	}
+	return false
 }
 
 func upgradeConfig(helper up.Helper) {
@@ -134,6 +252,36 @@ func upgradeConfig(helper up.Helper) {
 	helper.Copy(up.Int, "animated_sticker", "args", "width")
 	helper.Copy(up.Int, "animated_sticker", "args", "height")
 	helper.Copy(up.Int, "animated_sticker", "args", "fps")
+
+	helper.Copy(up.Bool, "voip", "enabled")
+	helper.Copy(up.Str, "voip", "matrix_surface")
+	helper.Copy(up.Str, "voip", "incoming_policy")
+	helper.Copy(up.Int, "voip", "max_active_calls_per_login")
+	helper.Copy(up.Str|up.Null, "voip", "matrixrtc", "livekit_service_url")
+	helper.Copy(up.Bool, "voip", "matrixrtc", "require_livekit_focus")
+	helper.Copy(up.Str, "voip", "matrixrtc", "membership_event_compat")
+	helper.Copy(up.Str, "voip", "matrixrtc", "notification_event_compat")
+	helper.Copy(up.Bool, "voip", "matrixrtc", "use_delayed_events")
+	helper.Copy(up.Str, "voip", "matrixrtc", "participant_mode")
+	helper.Copy(up.Str|up.Null, "voip", "matrixrtc", "fallback_participant_mxid")
+	helper.Copy(up.Str|up.Int, "voip", "livekit", "connect_timeout")
+	helper.Copy(up.Bool, "voip", "livekit", "publish_silence_before_whatsapp_answer")
+	helper.Copy(up.Bool, "voip", "livekit", "auto_subscribe")
+	helper.Copy(up.Str, "voip", "livekit", "audio_uplink_policy")
+	helper.Copy(up.Str|up.Int, "voip", "livekit", "selected_participant_timeout")
+	helper.Copy(up.Bool, "voip", "audio", "enabled")
+	helper.Copy(up.Str|up.Int, "voip", "audio", "jitter_buffer_ms")
+	helper.Copy(up.Str, "voip", "audio", "opus_backend")
+	helper.Copy(up.Bool, "voip", "audio", "silence_on_underrun")
+	helper.Copy(up.Int, "voip", "audio", "max_mix_participants")
+	helper.Copy(up.Bool, "voip", "video", "enabled")
+	helper.Copy(up.Str, "voip", "video", "selected_source_policy")
+	helper.Copy(up.Int, "voip", "video", "max_width")
+	helper.Copy(up.Int, "voip", "video", "max_height")
+	helper.Copy(up.Int, "voip", "video", "max_fps")
+	helper.Copy(up.Bool, "voip", "diagnostics", "healthcheck_focus_on_startup")
+	helper.Copy(up.Bool, "voip", "diagnostics", "enable_meowcaller_diagnostics")
+	helper.Copy(up.Str|up.Null, "voip", "diagnostics", "media_trace_dir")
 
 	helper.Copy(up.Int, "history_sync", "max_initial_conversations")
 	helper.Copy(up.Bool, "history_sync", "request_full_sync")
@@ -205,6 +353,7 @@ func (wa *WhatsAppConnector) GetConfig() (string, any, up.Upgrader) {
 			{"proxy"},
 			{"displayname_template"},
 			{"call_start_notices"},
+			{"voip"},
 			{"history_sync"},
 		},
 		Base: ExampleConfig,

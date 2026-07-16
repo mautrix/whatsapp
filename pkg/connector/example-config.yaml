@@ -70,6 +70,65 @@ initial_auto_reconnect: true
 # retry receipts if the bridge is restarted after the message is sent.
 use_whatsapp_retry_store: false
 
+# MatrixRTC/LiveKit call bridging for WhatsApp calls.
+voip:
+    # Enables real call bridging through Element Call. When false, call_start_notices behavior remains.
+    enabled: false
+    # Only MatrixRTC with a LiveKit focus is supported by this bridge path.
+    matrix_surface: matrixrtc_livekit
+    # notice - keep call_start_notices fallback only
+    # ring - ring MatrixRTC/Element Call and answer WhatsApp only after a Matrix user joins
+    # auto_answer - test-only behavior that answers WhatsApp immediately
+    incoming_policy: ring
+    # WhatsApp/meowcaller currently supports one live 1:1 call leg per login.
+    max_active_calls_per_login: 1
+
+    matrixrtc:
+        # If null, discover from .well-known org.matrix.msc4143.rtc_foci.
+        livekit_service_url: null
+        # Refuse real call bridging when no LiveKit focus can be discovered.
+        require_livekit_focus: true
+        # auto, msc4143, or msc3401.
+        membership_event_compat: auto
+        # auto or disabled. Used for MatrixRTC call ringing/decline events when supported.
+        notification_event_compat: auto
+        # Use homeserver delayed events to expire MatrixRTC membership when supported.
+        use_delayed_events: true
+        # whatsapp_ghost or bridge_user.
+        participant_mode: whatsapp_ghost
+        # Optional explicit Matrix user to use when participant_mode is bridge_user.
+        fallback_participant_mxid: null
+
+    livekit:
+        connect_timeout: 10s
+        # Publish silence before WhatsApp answers so Element Call shows a stable participant.
+        publish_silence_before_whatsapp_answer: true
+        auto_subscribe: true
+        # dominant_speaker, mix_all, or selected_participant.
+        audio_uplink_policy: dominant_speaker
+        selected_participant_timeout: 30s
+
+    audio:
+        enabled: true
+        jitter_buffer_ms: 180ms
+        opus_backend: libopus
+        silence_on_underrun: true
+        max_mix_participants: 4
+
+    video:
+        # Video is passed through as H.264. Other codecs are ignored.
+        enabled: false
+        selected_source_policy: active_speaker
+        max_width: 1280
+        max_height: 720
+        max_fps: 30
+
+    diagnostics:
+        healthcheck_focus_on_startup: true
+        # Unsafe: meowcaller diagnostics can contain call secrets and media.
+        enable_meowcaller_diagnostics: false
+        media_trace_dir: null
+
 # Settings for converting animated stickers.
 animated_sticker:
     # Format to which animated stickers should be converted.
