@@ -21,6 +21,10 @@ type LiveKitH264Writer struct {
 	closed   bool
 }
 
+type liveKitVideoOrientationSetter interface {
+	SetVideoOrientation(uint8)
+}
+
 func NewLiveKitH264Writer(track interface {
 	WriteSample(media.Sample, *lksdk.SampleWriteOptions) error
 }, duration time.Duration) *LiveKitH264Writer {
@@ -44,6 +48,24 @@ func (w *LiveKitH264Writer) WriteVideo(accessUnit []byte) error {
 		Duration: w.duration,
 	}
 	return w.track.WriteSample(sample, nil)
+}
+
+func (w *LiveKitH264Writer) SetOrientation(orientation int) {
+	w.mu.RLock()
+	defer w.mu.RUnlock()
+	if w.closed {
+		return
+	}
+	setLiveKitVideoOrientation(w.track, orientation)
+}
+
+func setLiveKitVideoOrientation(track any, orientation int) bool {
+	setter, ok := track.(liveKitVideoOrientationSetter)
+	if !ok {
+		return false
+	}
+	setter.SetVideoOrientation(uint8(orientation) & 0x03)
+	return true
 }
 
 func (w *LiveKitH264Writer) Close() error {

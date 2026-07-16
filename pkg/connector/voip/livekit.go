@@ -190,6 +190,20 @@ func (p *LiveKitParticipant) SetWhatsAppVideoMuted(muted bool) {
 	p.log.Debug().Bool("muted", muted).Msg("Set LiveKit WhatsApp video mute state")
 }
 
+func (p *LiveKitParticipant) SetWhatsAppVideoOrientation(orientation int) {
+	p.mu.Lock()
+	video := p.video
+	p.mu.Unlock()
+	if video == nil {
+		return
+	}
+	if setLiveKitVideoOrientation(video, orientation) {
+		p.log.Debug().
+			Int("orientation", orientation&0x03).
+			Msg("Set LiveKit WhatsApp video orientation")
+	}
+}
+
 func (p *LiveKitParticipant) WhatsAppSink() *LiveKitPCMWriter {
 	p.mu.Lock()
 	defer p.mu.Unlock()

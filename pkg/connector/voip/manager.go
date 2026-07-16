@@ -423,6 +423,7 @@ func (m *Manager) handleWhatsAppVideoState(callID string, state meowcaller.Video
 	m.mu.Unlock()
 	if participant != nil {
 		participant.SetWhatsAppVideoMuted(muted)
+		participant.SetWhatsAppVideoOrientation(state.Orientation)
 	}
 	m.log.Debug().
 		Str("call_id", callID).
