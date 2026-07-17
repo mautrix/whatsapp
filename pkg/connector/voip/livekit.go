@@ -37,6 +37,7 @@ type LiveKitParticipant struct {
 	remoteVideoPLI             lksdk.PLIWriter
 	remoteVideoSSRC            webrtc.SSRC
 	remoteVideoKeyframePending bool
+	remoteVideoKeyframeAwaited bool
 	disconnected               bool
 	selectedRemoteParticipant  string
 	remoteAudioMuteStateChange func(muted bool)
@@ -152,6 +153,11 @@ func (p *LiveKitParticipant) setRemoteVideoPLI(pli lksdk.PLIWriter, ssrc webrtc.
 }
 
 func (p *LiveKitParticipant) sendRemoteVideoPLI(pli lksdk.PLIWriter, ssrc webrtc.SSRC) {
+	p.mu.Lock()
+	if !p.disconnected {
+		p.remoteVideoKeyframeAwaited = true
+	}
+	p.mu.Unlock()
 	pli(ssrc)
 	p.log.Info().Uint32("ssrc", uint32(ssrc)).Msg("Requested LiveKit H.264 keyframe for WhatsApp peer")
 }
@@ -464,9 +470,12 @@ func (p *LiveKitParticipant) forwardRemoteH264Track(ctx context.Context, track *
 		&codecs.H264Packet{},
 		track.Codec().ClockRate,
 	)
+	var parameterSets h264ParameterSetRepeater
+	loggedIDR := false
 	p.log.Info().
 		Str("participant", string(rp.Identity())).
 		Str("track_id", track.ID()).
+		Str("fmtp", track.Codec().SDPFmtpLine).
 		Msg("Started forwarding LiveKit H.264 video to WhatsApp")
 	for {
 		if ctx.Err() != nil {
@@ -488,6 +497,28 @@ func (p *LiveKitParticipant) forwardRemoteH264Track(ctx context.Context, track *
 			if len(sample.Data) == 0 {
 				continue
 			}
+			accessUnit, repeatedParameterSets := parameterSets.Normalize(sample.Data)
+			nalTypes, profileLevelID, hasIDR, hasSPS, hasPPS := h264AccessUnitMetadata(accessUnit)
+			p.mu.Lock()
+			afterPLI := hasIDR && p.remoteVideoKeyframeAwaited
+			if afterPLI {
+				p.remoteVideoKeyframeAwaited = false
+			}
+			p.mu.Unlock()
+			if hasIDR && (!loggedIDR || afterPLI || repeatedParameterSets) {
+				p.log.Info().
+					Str("participant", string(rp.Identity())).
+					Str("track_id", track.ID()).
+					Ints("nal_types", nalTypes).
+					Str("profile_level_id", profileLevelID).
+					Int("bytes", len(accessUnit)).
+					Bool("has_sps", hasSPS).
+					Bool("has_pps", hasPPS).
+					Bool("after_pli", afterPLI).
+					Bool("repeated_parameter_sets", repeatedParameterSets).
+					Msg("Forwarding decoder-safe LiveKit H.264 keyframe to WhatsApp")
+				loggedIDR = true
+			}
 			p.mu.Lock()
 			handler := p.remoteVideoFrame
 			p.mu.Unlock()
@@ -495,7 +526,7 @@ func (p *LiveKitParticipant) forwardRemoteH264Track(ctx context.Context, track *
 				continue
 			}
 			if err = handler(LiveKitVideoFrame{
-				AccessUnit: sample.Data,
+				AccessUnit: accessUnit,
 				Duration:   sample.Duration,
 			}); err != nil {
 				p.log.Warn().
@@ -525,6 +556,7 @@ func (p *LiveKitParticipant) closeRemoteTracks() {
 	p.remoteVideoPLI = nil
 	p.remoteVideoSSRC = 0
 	p.remoteVideoKeyframePending = false
+	p.remoteVideoKeyframeAwaited = false
 	cancel := p.remoteMediaCancel
 	p.remoteMediaCancel = nil
 	p.mu.Unlock()
