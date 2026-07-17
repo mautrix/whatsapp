@@ -210,6 +210,8 @@ github.com/purpshell/meowcaller v0.0.0-20260717093525-595773cd0a0a h1:/RrPY0TupZ
 github.com/purpshell/meowcaller v0.0.0-20260717093525-595773cd0a0a/go.mod h1:FA3k7L98Dy2km9hvcdKJH1HMKPpi8bCONlA7R84NpN4=
 github.com/purpshell/meowcaller v0.0.0-20260717094426-81bc68b10bc8 h1:4mJDTzyk2CiX1G9/Wup2jMpZxDXdsWjbiDmuQcwc+xI=
 github.com/purpshell/meowcaller v0.0.0-20260717094426-81bc68b10bc8/go.mod h1:FA3k7L98Dy2km9hvcdKJH1HMKPpi8bCONlA7R84NpN4=
+github.com/purpshell/meowcaller v0.0.0-20260717095554-216018153f2a h1:6FTf0Npxq5LfJG07p8WPDhUeRePTKykycm1LmO2nTtU=
+github.com/purpshell/meowcaller v0.0.0-20260717095554-216018153f2a/go.mod h1:FA3k7L98Dy2km9hvcdKJH1HMKPpi8bCONlA7R84NpN4=
 github.com/puzpuzpuz/xsync/v4 v4.5.0 h1:vOSWu6b57/emh+L/Cw0BeQfvxa/cogFywXHeGUxQxAg=
 github.com/puzpuzpuz/xsync/v4 v4.5.0/go.mod h1:VJDmTCJMBt8igNxnkQd86r+8KUeN1quSfNKu5bLYFQo=
 github.com/redis/go-redis/v9 v9.20.0 h1:WnQYxLkgO2xiXTCJY0ldIiI8dNqCDlQAG+AtaH7a2a0=
