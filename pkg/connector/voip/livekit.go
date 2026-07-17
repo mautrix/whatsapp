@@ -34,6 +34,9 @@ type LiveKitParticipant struct {
 	mu                         sync.Mutex
 	remoteAudio                []*lkmedia.PCMRemoteTrack
 	remoteMediaCancel          context.CancelFunc
+	remoteVideoPLI             lksdk.PLIWriter
+	remoteVideoSSRC            webrtc.SSRC
+	remoteVideoKeyframePending bool
 	disconnected               bool
 	selectedRemoteParticipant  string
 	remoteAudioMuteStateChange func(muted bool)
@@ -109,6 +112,48 @@ func (p *LiveKitParticipant) SetRemoteVideoHandlers(selectedParticipant string, 
 	p.remoteVideoFrame = frameHandler
 	p.remoteVideoMuteStateChange = muteHandler
 	p.mu.Unlock()
+}
+
+func (p *LiveKitParticipant) requestRemoteVideoKeyframe() bool {
+	p.mu.Lock()
+	if p.disconnected {
+		p.mu.Unlock()
+		return false
+	}
+	pli := p.remoteVideoPLI
+	ssrc := p.remoteVideoSSRC
+	if pli == nil || ssrc == 0 {
+		p.remoteVideoKeyframePending = true
+		p.mu.Unlock()
+		return false
+	}
+	p.remoteVideoKeyframePending = false
+	p.mu.Unlock()
+	p.sendRemoteVideoPLI(pli, ssrc)
+	return true
+}
+
+func (p *LiveKitParticipant) setRemoteVideoPLI(pli lksdk.PLIWriter, ssrc webrtc.SSRC) {
+	p.mu.Lock()
+	if p.disconnected {
+		p.mu.Unlock()
+		return
+	}
+	p.remoteVideoPLI = pli
+	p.remoteVideoSSRC = ssrc
+	pending := p.remoteVideoKeyframePending && pli != nil && ssrc != 0
+	if pending {
+		p.remoteVideoKeyframePending = false
+	}
+	p.mu.Unlock()
+	if pending {
+		p.sendRemoteVideoPLI(pli, ssrc)
+	}
+}
+
+func (p *LiveKitParticipant) sendRemoteVideoPLI(pli lksdk.PLIWriter, ssrc webrtc.SSRC) {
+	pli(ssrc)
+	p.log.Info().Uint32("ssrc", uint32(ssrc)).Msg("Requested LiveKit H.264 keyframe for WhatsApp peer")
 }
 
 func (p *LiveKitParticipant) PublishAudioTrack(name string) error {
@@ -325,12 +370,20 @@ func (p *LiveKitParticipant) onVideoTrackSubscribed(ctx context.Context, track *
 		p.handleRemoteVideoMuteState(publication, rp, true)
 		return
 	}
+	p.setRemoteVideoPLI(rp.WritePLI, track.SSRC())
 	p.handleRemoteVideoMuteState(publication, rp, publication.IsMuted())
 	go p.forwardRemoteH264Track(ctx, track, rp)
 }
 
 func (p *LiveKitParticipant) onTrackUnsubscribed(track *webrtc.TrackRemote, publication *lksdk.RemoteTrackPublication, rp *lksdk.RemoteParticipant) {
 	if track.Kind() == webrtc.RTPCodecTypeVideo {
+		p.mu.Lock()
+		if p.remoteVideoSSRC == track.SSRC() {
+			p.remoteVideoPLI = nil
+			p.remoteVideoSSRC = 0
+			p.remoteVideoKeyframePending = true
+		}
+		p.mu.Unlock()
 		p.handleRemoteVideoMuteState(publication, rp, true)
 	}
 }
@@ -469,6 +522,9 @@ func (p *LiveKitParticipant) closeRemoteTracks() {
 	p.mu.Lock()
 	tracks := p.remoteAudio
 	p.remoteAudio = nil
+	p.remoteVideoPLI = nil
+	p.remoteVideoSSRC = 0
+	p.remoteVideoKeyframePending = false
 	cancel := p.remoteMediaCancel
 	p.remoteMediaCancel = nil
 	p.mu.Unlock()

@@ -34,32 +34,34 @@ type Manager struct {
 	client   *meowcaller.Client
 	log      zerolog.Logger
 
-	mu                 sync.Mutex
-	calls              map[string]*meowcaller.Call
-	callCreators       map[string]types.JID
-	livekit            map[string]*LiveKitParticipant
-	livekitConnecting  map[string]struct{}
-	matrixAudioMuted   map[string]bool
-	matrixVideoMuted   map[string]bool
-	whatsAppMuted      map[string]bool
-	whatsAppVideoMuted map[string]bool
-	incomingCallNotify func(*meowcaller.Call)
-	callEndNotify      func(callID, reason string)
+	mu                   sync.Mutex
+	calls                map[string]*meowcaller.Call
+	callCreators         map[string]types.JID
+	livekit              map[string]*LiveKitParticipant
+	livekitConnecting    map[string]struct{}
+	matrixAudioMuted     map[string]bool
+	matrixVideoMuted     map[string]bool
+	whatsAppMuted        map[string]bool
+	whatsAppVideoMuted   map[string]bool
+	videoKeyframePending map[string]bool
+	incomingCallNotify   func(*meowcaller.Call)
+	callEndNotify        func(callID, reason string)
 }
 
 func NewManager(waClient *whatsmeow.Client, cfg Config, log zerolog.Logger) *Manager {
 	manager := &Manager{
-		cfg:                cfg,
-		waClient:           waClient,
-		log:                log,
-		calls:              make(map[string]*meowcaller.Call),
-		callCreators:       make(map[string]types.JID),
-		livekit:            make(map[string]*LiveKitParticipant),
-		livekitConnecting:  make(map[string]struct{}),
-		matrixAudioMuted:   make(map[string]bool),
-		matrixVideoMuted:   make(map[string]bool),
-		whatsAppMuted:      make(map[string]bool),
-		whatsAppVideoMuted: make(map[string]bool),
+		cfg:                  cfg,
+		waClient:             waClient,
+		log:                  log,
+		calls:                make(map[string]*meowcaller.Call),
+		callCreators:         make(map[string]types.JID),
+		livekit:              make(map[string]*LiveKitParticipant),
+		livekitConnecting:    make(map[string]struct{}),
+		matrixAudioMuted:     make(map[string]bool),
+		matrixVideoMuted:     make(map[string]bool),
+		whatsAppMuted:        make(map[string]bool),
+		whatsAppVideoMuted:   make(map[string]bool),
+		videoKeyframePending: make(map[string]bool),
 	}
 	if !cfg.Enabled || waClient == nil {
 		return manager
@@ -144,6 +146,7 @@ func (m *Manager) AbortAll() {
 	m.matrixVideoMuted = make(map[string]bool)
 	m.whatsAppMuted = make(map[string]bool)
 	m.whatsAppVideoMuted = make(map[string]bool)
+	m.videoKeyframePending = make(map[string]bool)
 	participants := make([]*LiveKitParticipant, 0, len(m.livekit))
 	for _, participant := range m.livekit {
 		participants = append(participants, participant)
@@ -250,11 +253,26 @@ func (m *Manager) BridgeCallToLiveKit(ctx context.Context, waCallID string, auth
 		}
 	}
 	m.mu.Lock()
+	if m.calls[waCallID] != call || call.State() == meowcaller.CallPhaseEnded {
+		delete(m.livekitConnecting, waCallID)
+		delete(m.videoKeyframePending, waCallID)
+		m.mu.Unlock()
+		call.Receive(nil)
+		call.ReceiveVideo(nil)
+		call.Subscribe(nil)
+		participant.Close()
+		return ErrCallNotFound
+	}
 	whatsAppMuted, knownWhatsAppMute := m.whatsAppMuted[waCallID]
 	whatsAppVideoMuted, knownWhatsAppVideoMute := m.whatsAppVideoMuted[waCallID]
+	keyframePending := m.videoKeyframePending[waCallID]
+	delete(m.videoKeyframePending, waCallID)
 	delete(m.livekitConnecting, waCallID)
 	m.livekit[waCallID] = participant
 	m.mu.Unlock()
+	if videoEnabled && keyframePending {
+		participant.requestRemoteVideoKeyframe()
+	}
 	if knownWhatsAppMute {
 		participant.SetWhatsAppAudioMuted(whatsAppMuted)
 	}
@@ -603,6 +621,7 @@ func (m *Manager) trackCall(call *meowcaller.Call, callCreator types.JID) {
 		delete(m.matrixVideoMuted, call.ID())
 		delete(m.whatsAppMuted, call.ID())
 		delete(m.whatsAppVideoMuted, call.ID())
+		delete(m.videoKeyframePending, call.ID())
 		participant := m.livekit[call.ID()]
 		delete(m.livekit, call.ID())
 		delete(m.livekitConnecting, call.ID())
@@ -619,12 +638,30 @@ func (m *Manager) trackCall(call *meowcaller.Call, callCreator types.JID) {
 	call.OnStateChange(func(phase meowcaller.CallPhase) {
 		m.log.Debug().Str("call_id", call.ID()).Int("phase", int(phase)).Msg("WhatsApp VOIP call state changed")
 	})
+	call.OnPeerAccept(func() {
+		if call.IsVideo() {
+			m.requestLiveKitVideoKeyframe(call.ID())
+		}
+	})
 	call.OnMuteState(func(muted bool) {
 		m.handleWhatsAppAudioMuteState(call.ID(), muted)
 	})
 	call.OnVideoState(func(state meowcaller.VideoState) {
 		m.handleWhatsAppVideoState(call.ID(), state)
 	})
+}
+
+func (m *Manager) requestLiveKitVideoKeyframe(callID string) {
+	m.mu.Lock()
+	call := m.calls[callID]
+	participant := m.livekit[callID]
+	if call != nil && participant == nil {
+		m.videoKeyframePending[callID] = true
+	}
+	m.mu.Unlock()
+	if call != nil && participant != nil {
+		participant.requestRemoteVideoKeyframe()
+	}
 }
 
 func (m *Manager) callCreatorFor(call *meowcaller.Call) types.JID {
