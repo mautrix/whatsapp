@@ -643,6 +643,9 @@ func (m *Manager) trackCall(call *meowcaller.Call, callCreator types.JID) {
 			m.requestLiveKitVideoKeyframe(call.ID())
 		}
 	})
+	call.OnVideoKeyframeRequest(func() {
+		m.requestLiveKitVideoKeyframe(call.ID())
+	})
 	call.OnMuteState(func(muted bool) {
 		m.handleWhatsAppAudioMuteState(call.ID(), muted)
 	})
