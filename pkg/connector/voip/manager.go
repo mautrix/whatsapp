@@ -16,9 +16,17 @@ import (
 )
 
 const (
-	localUnmuteState        = "0"
-	localMuteState          = "1"
-	localVideoInactiveState = 0
+	localUnmuteState = "0"
+	localMuteState   = "1"
+)
+
+type matrixVideoAction uint8
+
+const (
+	matrixVideoNone matrixVideoAction = iota
+	matrixVideoDisable
+	matrixVideoEnable
+	matrixVideoUpgrade
 )
 
 var localMuteRetryIntervals = []time.Duration{
@@ -190,7 +198,7 @@ func (m *Manager) BridgeCallToLiveKit(ctx context.Context, waCallID string, auth
 	participant.SetRemoteAudioMuteHandler(selectedRemoteParticipantID, func(muted bool) {
 		m.handleMatrixAudioMuteState(call, muted)
 	})
-	videoEnabled := m.cfg.Video.Enabled && call.IsVideo()
+	videoEnabled := m.cfg.Video.Enabled
 	if videoEnabled {
 		var videoBuffer whatsAppVideoStartupBuffer
 		var videoBufferLock sync.Mutex
@@ -276,16 +284,16 @@ func (m *Manager) BridgeCallToLiveKit(ctx context.Context, waCallID string, auth
 	if knownWhatsAppMute {
 		participant.SetWhatsAppAudioMuted(whatsAppMuted)
 	}
-	if knownWhatsAppVideoMute {
+	if videoEnabled {
+		if !knownWhatsAppVideoMute {
+			whatsAppVideoMuted = !call.IsReceivingVideo()
+		}
 		participant.SetWhatsAppVideoMuted(whatsAppVideoMuted)
 	}
 	if answeredIncoming {
 		m.log.Debug().Str("call_id", waCallID).Msg("Answered incoming WhatsApp call before sending local unmute")
 	}
 	go m.sendLocalMuteStateRetries(call)
-	if videoEnabled {
-		go m.sendLocalVideoStateRetries(call)
-	}
 	return nil
 }
 
@@ -321,38 +329,6 @@ func (m *Manager) sendLocalMuteStateRetries(call *meowcaller.Call) {
 	}
 }
 
-func (m *Manager) sendLocalVideoStateRetries(call *meowcaller.Call) {
-	if m == nil || m.waClient == nil || call == nil || !call.IsVideo() {
-		return
-	}
-	for attempt, interval := range localMuteRetryIntervals {
-		time.Sleep(interval)
-		if call.State() == meowcaller.CallPhaseEnded {
-			return
-		}
-		muted := m.currentMatrixVideoMuted(call.ID())
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		err := m.sendLocalVideoState(ctx, call.ID(), call.Peer(), m.callCreatorFor(call), localVideoStateFor(muted))
-		cancel()
-		if err != nil {
-			m.log.Warn().
-				Err(err).
-				Str("call_id", call.ID()).
-				Stringer("peer_jid", call.Peer()).
-				Bool("muted", muted).
-				Int("attempt", attempt+1).
-				Msg("Failed to send WhatsApp local video state")
-			continue
-		}
-		m.log.Debug().
-			Str("call_id", call.ID()).
-			Stringer("peer_jid", call.Peer()).
-			Bool("muted", muted).
-			Int("attempt", attempt+1).
-			Msg("Sent WhatsApp local video state")
-	}
-}
-
 func (m *Manager) handleMatrixAudioMuteState(call *meowcaller.Call, muted bool) {
 	if m == nil || call == nil || call.State() == meowcaller.CallPhaseEnded {
 		return
@@ -384,7 +360,7 @@ func (m *Manager) handleMatrixAudioMuteState(call *meowcaller.Call, muted bool) 
 }
 
 func (m *Manager) handleMatrixVideoMuteState(call *meowcaller.Call, muted bool) {
-	if m == nil || call == nil || call.State() == meowcaller.CallPhaseEnded || !call.IsVideo() {
+	if m == nil || call == nil || call.State() == meowcaller.CallPhaseEnded {
 		return
 	}
 	m.mu.Lock()
@@ -394,9 +370,7 @@ func (m *Manager) handleMatrixVideoMuteState(call *meowcaller.Call, muted bool) 
 	if known && previous == muted {
 		return
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	err := m.sendLocalVideoState(ctx, call.ID(), call.Peer(), m.callCreatorFor(call), localVideoStateFor(muted))
-	cancel()
+	err := applyMatrixVideoState(call, muted)
 	if err != nil {
 		m.log.Warn().
 			Err(err).
@@ -434,23 +408,39 @@ func (m *Manager) handleWhatsAppVideoState(callID string, state meowcaller.Video
 	if m == nil || callID == "" {
 		return
 	}
-	muted := !state.Active && !state.Upgrade
+	muted, muteChanged := remoteVideoMuteForState(state)
 	m.mu.Lock()
-	m.whatsAppVideoMuted[callID] = muted
+	if muteChanged {
+		m.whatsAppVideoMuted[callID] = muted
+	}
 	participant := m.livekit[callID]
 	m.mu.Unlock()
 	if participant != nil {
-		participant.SetWhatsAppVideoMuted(muted)
+		if muteChanged {
+			participant.SetWhatsAppVideoMuted(muted)
+		}
 		participant.SetWhatsAppVideoOrientation(state.Orientation)
 	}
 	m.log.Debug().
 		Str("call_id", callID).
 		Bool("muted", muted).
+		Bool("mute_changed", muteChanged).
 		Bool("active", state.Active).
 		Bool("upgrade", state.Upgrade).
 		Int("orientation", state.Orientation).
 		Int("raw_state", state.Raw).
 		Msg("Observed WhatsApp remote video state")
+}
+
+func remoteVideoMuteForState(state meowcaller.VideoState) (muted, changed bool) {
+	switch state.Raw {
+	case signaling.VideoStateEnabled:
+		return false, true
+	case signaling.VideoStateDisabled, signaling.VideoStateStopped:
+		return true, true
+	default:
+		return false, false
+	}
 }
 
 func (m *Manager) currentMatrixAudioMuted(callID string) bool {
@@ -463,16 +453,6 @@ func (m *Manager) currentMatrixAudioMuted(callID string) bool {
 	return muted
 }
 
-func (m *Manager) currentMatrixVideoMuted(callID string) bool {
-	if m == nil {
-		return false
-	}
-	m.mu.Lock()
-	muted := m.matrixVideoMuted[callID]
-	m.mu.Unlock()
-	return muted
-}
-
 func localMuteStateFor(muted bool) string {
 	if muted {
 		return localMuteState
@@ -480,11 +460,30 @@ func localMuteStateFor(muted bool) string {
 	return localUnmuteState
 }
 
-func localVideoStateFor(muted bool) int {
+func matrixVideoActionFor(muted, sending, receiving bool) matrixVideoAction {
 	if muted {
-		return localVideoInactiveState
+		if sending {
+			return matrixVideoDisable
+		}
+		return matrixVideoNone
 	}
-	return signaling.VideoStateActive
+	if sending || receiving {
+		return matrixVideoEnable
+	}
+	return matrixVideoUpgrade
+}
+
+func applyMatrixVideoState(call *meowcaller.Call, muted bool) error {
+	switch matrixVideoActionFor(muted, call.IsSendingVideo(), call.IsReceivingVideo()) {
+	case matrixVideoDisable:
+		return call.SetVideoEnabled(false)
+	case matrixVideoEnable:
+		return call.SetVideoEnabled(true)
+	case matrixVideoUpgrade:
+		return call.StartVideo()
+	default:
+		return nil
+	}
 }
 
 func (m *Manager) sendLocalMuteState(ctx context.Context, callID string, peer, callCreator types.JID, muteState string) error {
@@ -504,31 +503,6 @@ func (m *Manager) sendLocalMuteState(ctx context.Context, callID string, peer, c
 	//lint:ignore SA1019 low-level call signaling is not exposed by whatsmeow's public API
 	if err := m.waClient.DangerousInternals().SendNode(ctx, node); err != nil {
 		return fmt.Errorf("send mute_v2: %w", err)
-	}
-	return nil
-}
-
-func (m *Manager) sendLocalVideoState(ctx context.Context, callID string, peer, callCreator types.JID, videoState int) error {
-	if m == nil || m.waClient == nil {
-		return fmt.Errorf("whatsapp client is not available")
-	}
-	if callID == "" {
-		return fmt.Errorf("call ID is empty")
-	}
-	if peer.IsEmpty() {
-		return fmt.Errorf("peer JID is empty")
-	}
-	if callCreator.IsEmpty() {
-		return fmt.Errorf("call creator JID is empty")
-	}
-	codec := ""
-	if videoState == signaling.VideoStateActive {
-		codec = signaling.VideoStateDecH264
-	}
-	node := signaling.BuildVideoState(callID, peer, callCreator, string(m.waClient.GenerateMessageID()), videoState, 0, codec)
-	//lint:ignore SA1019 low-level call signaling is not exposed by whatsmeow's public API
-	if err := m.waClient.DangerousInternals().SendNode(ctx, node); err != nil {
-		return fmt.Errorf("send video state: %w", err)
 	}
 	return nil
 }

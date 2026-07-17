@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/purpshell/meowcaller"
 	"github.com/purpshell/meowcaller/signaling"
 	"go.mau.fi/whatsmeow/types"
 )
@@ -51,12 +52,45 @@ func TestLocalMuteStateFor(t *testing.T) {
 	}
 }
 
-func TestLocalVideoStateFor(t *testing.T) {
-	if got := localVideoStateFor(false); got != signaling.VideoStateActive {
-		t.Fatalf("unmuted video state = %d, want %d", got, signaling.VideoStateActive)
+func TestMatrixVideoActionFor(t *testing.T) {
+	tests := []struct {
+		muted, sending, receiving bool
+		want                      matrixVideoAction
+	}{
+		{muted: true, sending: true, receiving: true, want: matrixVideoDisable},
+		{muted: true, sending: false, receiving: true, want: matrixVideoNone},
+		{muted: false, sending: true, receiving: false, want: matrixVideoEnable},
+		{muted: false, sending: false, receiving: true, want: matrixVideoEnable},
+		{muted: false, sending: false, receiving: false, want: matrixVideoUpgrade},
 	}
-	if got := localVideoStateFor(true); got != localVideoInactiveState {
-		t.Fatalf("muted video state = %d, want %d", got, localVideoInactiveState)
+	for _, tc := range tests {
+		if got := matrixVideoActionFor(tc.muted, tc.sending, tc.receiving); got != tc.want {
+			t.Errorf("muted:%v sending:%v receiving:%v => %d, want %d",
+				tc.muted, tc.sending, tc.receiving, got, tc.want)
+		}
+	}
+}
+
+func TestRemoteVideoMuteForStateOnlyChangesPeerOwnedFlow(t *testing.T) {
+	tests := []struct {
+		state   int
+		muted   bool
+		changed bool
+	}{
+		{signaling.VideoStateEnabled, false, true},
+		{signaling.VideoStateDisabled, true, true},
+		{signaling.VideoStateStopped, true, true},
+		{signaling.VideoStateUpgradeRequestV2, false, false},
+		{signaling.VideoStateUpgradeAccept, false, false},
+		{signaling.VideoStateUpgradeReject, false, false},
+		{signaling.VideoStateUpgradeCancel, false, false},
+	}
+	for _, tc := range tests {
+		muted, changed := remoteVideoMuteForState(meowcaller.VideoState{Raw: tc.state})
+		if muted != tc.muted || changed != tc.changed {
+			t.Errorf("state %d => muted:%v changed:%v, want muted:%v changed:%v",
+				tc.state, muted, changed, tc.muted, tc.changed)
+		}
 	}
 }
 
