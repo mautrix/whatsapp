@@ -57,11 +57,12 @@ func TestMatrixVideoActionFor(t *testing.T) {
 		muted, sending, receiving bool
 		want                      matrixVideoAction
 	}{
-		{muted: true, sending: true, receiving: true, want: matrixVideoDisable},
+		{muted: true, sending: true, receiving: true, want: matrixVideoStop},
 		{muted: true, sending: false, receiving: true, want: matrixVideoNone},
-		{muted: false, sending: true, receiving: false, want: matrixVideoEnable},
-		{muted: false, sending: false, receiving: true, want: matrixVideoEnable},
-		{muted: false, sending: false, receiving: false, want: matrixVideoUpgrade},
+		{muted: false, sending: true, receiving: false, want: matrixVideoNone},
+		{muted: false, sending: true, receiving: true, want: matrixVideoNone},
+		{muted: false, sending: false, receiving: true, want: matrixVideoStart},
+		{muted: false, sending: false, receiving: false, want: matrixVideoStart},
 	}
 	for _, tc := range tests {
 		if got := matrixVideoActionFor(tc.muted, tc.sending, tc.receiving); got != tc.want {

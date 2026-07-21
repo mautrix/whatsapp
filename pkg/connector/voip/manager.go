@@ -24,9 +24,8 @@ type matrixVideoAction uint8
 
 const (
 	matrixVideoNone matrixVideoAction = iota
-	matrixVideoDisable
-	matrixVideoEnable
-	matrixVideoUpgrade
+	matrixVideoStop
+	matrixVideoStart
 )
 
 var localMuteRetryIntervals = []time.Duration{
@@ -460,26 +459,24 @@ func localMuteStateFor(muted bool) string {
 	return localUnmuteState
 }
 
-func matrixVideoActionFor(muted, sending, receiving bool) matrixVideoAction {
+func matrixVideoActionFor(muted, sending, _ bool) matrixVideoAction {
 	if muted {
 		if sending {
-			return matrixVideoDisable
+			return matrixVideoStop
 		}
 		return matrixVideoNone
 	}
-	if sending || receiving {
-		return matrixVideoEnable
+	if sending {
+		return matrixVideoNone
 	}
-	return matrixVideoUpgrade
+	return matrixVideoStart
 }
 
 func applyMatrixVideoState(call *meowcaller.Call, muted bool) error {
 	switch matrixVideoActionFor(muted, call.IsSendingVideo(), call.IsReceivingVideo()) {
-	case matrixVideoDisable:
-		return call.SetVideoEnabled(false)
-	case matrixVideoEnable:
-		return call.SetVideoEnabled(true)
-	case matrixVideoUpgrade:
+	case matrixVideoStop:
+		return call.StopVideo()
+	case matrixVideoStart:
 		return call.StartVideo()
 	default:
 		return nil
