@@ -412,8 +412,16 @@ func (m *Manager) handleWhatsAppVideoState(callID string, state meowcaller.Video
 	if muteChanged {
 		m.whatsAppVideoMuted[callID] = muted
 	}
+	call := m.calls[callID]
 	participant := m.livekit[callID]
 	m.mu.Unlock()
+	if state.Upgrade && call != nil {
+		if err := call.AcceptVideo(); err != nil {
+			m.log.Warn().Err(err).Str("call_id", callID).Int("raw_state", state.Raw).Msg("Failed to accept WhatsApp peer video upgrade")
+		} else {
+			m.log.Info().Str("call_id", callID).Int("raw_state", state.Raw).Msg("Accepted WhatsApp peer video upgrade")
+		}
+	}
 	if participant != nil {
 		if muteChanged {
 			participant.SetWhatsAppVideoMuted(muted)
