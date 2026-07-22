@@ -103,11 +103,14 @@ func (wa *WhatsAppClient) handleConvertedMatrixMessage(ctx context.Context, msg 
 	if err != nil {
 		return nil, err
 	}
+	if chatJID.Server == types.DefaultUserServer {
+		zerolog.Ctx(ctx).Warn().Stringer("portal_jid", chatJID).Msg("Matrix message received in phone number portal")
+	}
 	if chatJID == types.StatusBroadcastJID && wa.Main.Config.DisableStatusBroadcastSend {
 		return nil, ErrBroadcastSendDisabled
 	}
 	wrappedMsgID := waid.MakeMessageID(chatJID, wa.JID, req.ID)
-	wrappedMsgID2 := waid.MakeMessageID(chatJID, wa.GetStore().GetLID(), req.ID)
+	wrappedMsgID2 := waid.MakeMessageID(chatJID, wa.GetLID(), req.ID)
 	msg.AddPendingToIgnore(networkid.TransactionID(wrappedMsgID))
 	msg.AddPendingToIgnore(networkid.TransactionID(wrappedMsgID2))
 	zerolog.Ctx(ctx).Trace().Any("payload", waMsg).Msg("Outgoing message payload")
@@ -116,7 +119,7 @@ func (wa *WhatsAppClient) handleConvertedMatrixMessage(ctx context.Context, msg 
 		return nil, err
 	}
 	var pickedMessageID networkid.MessageID
-	if resp.Sender == wa.GetStore().GetLID() && chatJID.Server != types.DefaultUserServer {
+	if resp.Sender == wa.GetLID() {
 		pickedMessageID = wrappedMsgID2
 		msg.RemovePending(networkid.TransactionID(wrappedMsgID))
 	} else {
@@ -137,18 +140,17 @@ func (wa *WhatsAppClient) handleConvertedMatrixMessage(ctx context.Context, msg 
 	}, nil
 }
 
-func (wa *WhatsAppClient) PreHandleMatrixReaction(_ context.Context, msg *bridgev2.MatrixReaction) (bridgev2.MatrixReactionPreResponse, error) {
+func (wa *WhatsAppClient) PreHandleMatrixReaction(ctx context.Context, msg *bridgev2.MatrixReaction) (bridgev2.MatrixReactionPreResponse, error) {
 	portalJID, err := waid.ParsePortalID(msg.Portal.ID)
 	if err != nil {
 		return bridgev2.MatrixReactionPreResponse{}, fmt.Errorf("failed to parse portal ID: %w", err)
 	} else if portalJID == types.StatusBroadcastJID {
 		return bridgev2.MatrixReactionPreResponse{}, ErrBroadcastReactionUnsupported
 	}
-	sender := wa.JID
-	if portalJID.Server == types.HiddenUserServer ||
-		msg.Portal.Metadata.(*waid.PortalMetadata).CommunityAnnouncementGroup ||
-		msg.Portal.Metadata.(*waid.PortalMetadata).AddressingMode == types.AddressingModeLID {
-		sender = wa.GetStore().GetLID()
+	sender := wa.GetLID()
+	if portalJID.Server == types.DefaultUserServer {
+		zerolog.Ctx(ctx).Warn().Stringer("portal_jid", portalJID).Msg("Matrix reaction received in phone number portal")
+		sender = wa.JID
 	}
 	return bridgev2.MatrixReactionPreResponse{
 		SenderID:     waid.MakeUserID(sender),
@@ -320,7 +322,7 @@ func (wa *WhatsAppClient) HandleMatrixReadReceipt(ctx context.Context, receipt *
 		if err != nil {
 			continue
 		}
-		if parsed.Sender.User == wa.GetStore().GetLID().User || parsed.Sender.User == wa.JID.User {
+		if wa.IsOwnJID(parsed.Sender) {
 			continue
 		}
 		var key types.JID
@@ -636,7 +638,7 @@ func (wa *WhatsAppClient) getLastMessageInfo(ctx context.Context, chatJID types.
 		lastTS = msgs[0].Timestamp
 		parsed, _ := waid.ParseMessageID(msgs[0].ID)
 		if parsed != nil {
-			fromMe := parsed.Sender.ToNonAD() == wa.JID.ToNonAD() || parsed.Sender.ToNonAD() == wa.GetStore().GetLID().ToNonAD()
+			fromMe := wa.IsOwnJID(parsed.Sender)
 			var participant *string
 			if chatJID.Server == types.GroupServer {
 				participant = ptr.Ptr(parsed.Sender.String())

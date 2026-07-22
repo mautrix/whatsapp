@@ -49,7 +49,7 @@ func (wa *WhatsAppClient) makeEventSender(ctx context.Context, id types.JID) bri
 		}
 	}
 	return bridgev2.EventSender{
-		IsFromMe:    id.User == wa.GetStore().GetJID().User || id.User == wa.GetStore().GetLID().User,
+		IsFromMe:    wa.IsOwnJID(id),
 		Sender:      waid.MakeUserID(id),
 		SenderLogin: waid.MakeUserLoginID(senderLoginJID),
 	}
@@ -60,24 +60,25 @@ func (wa *WhatsAppClient) messageIDToKey(id *waid.ParsedMessageID) *waCommon.Mes
 		RemoteJID: ptr.Ptr(id.Chat.String()),
 		ID:        ptr.Ptr(id.ID),
 	}
-	if id.Sender.User == wa.GetStore().GetJID().User || id.Sender.User == wa.GetStore().GetLID().User {
+	if wa.IsOwnJID(id.Sender) {
 		key.FromMe = ptr.Ptr(true)
 	}
-	if id.Chat.Server != types.MessengerServer && id.Chat.Server != types.DefaultUserServer && id.Chat.Server != types.HiddenUserServer && id.Chat.Server != types.BotServer {
+	if id.Chat.Server != types.MessengerServer && id.Chat.Server != types.DefaultUserServer &&
+		id.Chat.Server != types.HiddenUserServer && id.Chat.Server != types.BotServer {
 		key.Participant = ptr.Ptr(id.Sender.String())
 	}
 	return key
 }
 
-func (wa *WhatsAppClient) maybeConvertJIDToLID(ctx context.Context, chatJID types.JID) types.JID {
-	if chatJID.Server == types.HiddenUserServer {
-		if pn, err := wa.GetStore().LIDs.GetPNForLID(ctx, chatJID); err != nil {
+func (wa *WhatsAppClient) maybeConvertJIDToLID(ctx context.Context, jid types.JID) types.JID {
+	if jid.Server == types.DefaultUserServer {
+		if lidForPN, err := wa.GetStore().LIDs.GetLIDForPN(ctx, jid); err != nil {
 			wa.UserLogin.Log.Err(err).
-				Stringer("lid", chatJID).
-				Msg("Failed to get phone number for LID chat")
-		} else if !pn.IsEmpty() {
-			return pn.ToNonAD()
+				Stringer("pn", jid).
+				Msg("Failed to get LID for phone number chat")
+		} else if !lidForPN.IsEmpty() {
+			return lidForPN
 		}
 	}
-	return chatJID
+	return jid
 }

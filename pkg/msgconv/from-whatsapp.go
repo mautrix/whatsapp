@@ -136,7 +136,6 @@ func (mc *MessageConverter) ToMatrix(
 	waMsg *waE2E.Message,
 	rawWaMsg *waE2E.Message,
 	info *types.MessageInfo,
-	origSource *types.MessageSource,
 	isViewOnce bool,
 	isBackfill bool,
 	previouslyConvertedPart *bridgev2.ConvertedMessagePart,
@@ -183,7 +182,7 @@ func (mc *MessageConverter) ToMatrix(
 	case waMsg.PollCreationMessageV6 != nil:
 		part, contextInfo = mc.convertPollCreationMessage(ctx, waMsg.PollCreationMessageV6)
 	case waMsg.PollUpdateMessage != nil:
-		part, contextInfo = mc.convertPollUpdateMessage(ctx, info, origSource, waMsg.PollUpdateMessage)
+		part, contextInfo = mc.convertPollUpdateMessage(ctx, info, waMsg.PollUpdateMessage)
 	case waMsg.EventMessage != nil:
 		part, contextInfo = mc.convertEventMessage(ctx, waMsg.EventMessage)
 	case waMsg.PinInChatMessage != nil:
@@ -271,27 +270,6 @@ func (mc *MessageConverter) ToMatrix(
 		chat, _ := types.ParseJID(contextInfo.GetRemoteJID())
 		if chat.IsEmpty() {
 			chat, _ = waid.ParsePortalID(portal.ID)
-		}
-		// We reroute all DMs to the phone number JID, so reroute reply participants too
-		pcp = rerouteMessageKey(ctx, chat, pcp, getPortal(ctx).Metadata.(*waid.PortalMetadata).AddressingMode == types.AddressingModeLID)
-		if store := getClient(ctx).Store; store != nil && chat.Server == types.DefaultUserServer && pcp.Server == types.HiddenUserServer {
-			pcpPN, _ := store.LIDs.GetPNForLID(ctx, pcp)
-			zerolog.Ctx(ctx).Debug().
-				Stringer("orig_participant", pcp).
-				Stringer("rerouted_participant", pcpPN).
-				Msg("Rerouting reply target (PN recipient in LID DM)")
-			if !pcpPN.IsEmpty() {
-				pcp = pcpPN
-			}
-		} else if store != nil && chat.Server == types.GroupServer && pcp.Server == types.DefaultUserServer && getPortal(ctx).Metadata.(*waid.PortalMetadata).AddressingMode == types.AddressingModeLID {
-			pcpLID, _ := store.LIDs.GetLIDForPN(ctx, pcp)
-			zerolog.Ctx(ctx).Debug().
-				Stringer("orig_participant", pcp).
-				Stringer("rerouted_participant", pcpLID).
-				Msg("Rerouting reply target (PN recipient in LID group)")
-			if !pcpLID.IsEmpty() {
-				pcp = pcpLID
-			}
 		}
 		cm.ReplyTo = &networkid.MessageOptionalPartID{
 			MessageID: waid.MakeMessageID(chat, pcp, contextInfo.GetStanzaID()),

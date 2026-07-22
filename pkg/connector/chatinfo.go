@@ -141,15 +141,20 @@ const PrivateChatTopic = "WhatsApp private chat"
 const BotChatTopic = "WhatsApp chat with a bot"
 
 func (wa *WhatsAppClient) wrapDMInfo(ctx context.Context, jid types.JID) *bridgev2.ChatInfo {
+	ownID := wa.JID
+	if jid.Server == types.HiddenUserServer {
+		ownID = wa.GetLID()
+	}
 	info := &bridgev2.ChatInfo{
+		Type:  ptr.Ptr(database.RoomTypeDM),
 		Topic: ptr.Ptr(PrivateChatTopic),
 		Members: &bridgev2.ChatMemberList{
 			IsFull:           true,
 			TotalMemberCount: 2,
 			OtherUserID:      waid.MakeUserID(jid),
 			MemberMap: map[networkid.UserID]bridgev2.ChatMember{
-				waid.MakeUserID(jid):    {EventSender: wa.makeEventSender(ctx, jid)},
-				waid.MakeUserID(wa.JID): {EventSender: wa.makeEventSender(ctx, wa.JID)},
+				waid.MakeUserID(jid):   {EventSender: wa.makeEventSender(ctx, jid)},
+				waid.MakeUserID(ownID): {EventSender: wa.makeEventSender(ctx, ownID)},
 			},
 			PowerLevels: &bridgev2.PowerLevelOverrides{
 				Events: map[event.Type]int{
@@ -159,13 +164,14 @@ func (wa *WhatsAppClient) wrapDMInfo(ctx context.Context, jid types.JID) *bridge
 					event.StateBeeperDisappearingTimer: 0,
 				},
 			},
+			ExcludeChangesFromTimeline: true,
 		},
-		Type: ptr.Ptr(database.RoomTypeDM),
+		ExcludeChangesFromTimeline: true,
 	}
 	if jid.Server == types.BotServer {
 		info.Topic = ptr.Ptr(BotChatTopic)
 	}
-	if jid == wa.JID.ToNonAD() {
+	if wa.IsOwnJID(jid) {
 		// For chats with self, force-split the members so the user's own ghost is always in the room.
 		info.Members.MemberMap = map[networkid.UserID]bridgev2.ChatMember{
 			waid.MakeUserID(jid): {EventSender: bridgev2.EventSender{Sender: waid.MakeUserID(jid)}},
@@ -189,7 +195,7 @@ func (wa *WhatsAppClient) wrapStatusBroadcastInfo(ctx context.Context) *bridgev2
 		Members: &bridgev2.ChatMemberList{
 			IsFull: false,
 			MemberMap: map[networkid.UserID]bridgev2.ChatMember{
-				waid.MakeUserID(wa.JID): {EventSender: wa.makeEventSender(ctx, wa.JID)},
+				waid.MakeUserID(wa.GetLID()): {EventSender: wa.makeEventSender(ctx, wa.GetLID())},
 			},
 		},
 		Type:        ptr.Ptr(database.RoomTypeDefault),
@@ -316,7 +322,7 @@ func (wa *WhatsAppClient) wrapGroupInfo(ctx context.Context, info *types.GroupIn
 		}
 	}
 	if info.IsParent && !hasSelf && info.AddressingMode == types.AddressingModeLID {
-		wrapped.Members.MemberMap.Add(bridgev2.ChatMember{EventSender: wa.makeEventSender(ctx, wa.Device.LID)})
+		wrapped.Members.MemberMap.Add(bridgev2.ChatMember{EventSender: wa.makeEventSender(ctx, wa.GetLID())})
 	}
 
 	if !info.LinkedParentJID.IsEmpty() {
@@ -523,8 +529,8 @@ func (wa *WhatsAppClient) wrapNewsletterInfo(ctx context.Context, info *types.Ne
 		Members: &bridgev2.ChatMemberList{
 			TotalMemberCount: info.ThreadMeta.SubscriberCount,
 			MemberMap: map[networkid.UserID]bridgev2.ChatMember{
-				waid.MakeUserID(wa.JID): {
-					EventSender: wa.makeEventSender(ctx, wa.JID),
+				waid.MakeUserID(wa.GetLID()): {
+					EventSender: wa.makeEventSender(ctx, wa.GetLID()),
 					PowerLevel:  &ownPowerLevel,
 				},
 			},

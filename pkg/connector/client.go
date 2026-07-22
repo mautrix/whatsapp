@@ -70,6 +70,7 @@ func (wa *WhatsAppConnector) LoadUserLogin(ctx context.Context, login *bridgev2.
 	if err != nil {
 		return err
 	}
+	w.LID = w.Device.GetLID()
 
 	if w.Device != nil {
 		log := w.UserLogin.Log.With().Str("component", "whatsmeow").Logger()
@@ -104,6 +105,7 @@ type WhatsAppClient struct {
 	Client    *whatsmeow.Client
 	Device    *store.Device
 	JID       types.JID
+	LID       types.JID
 	MC        mClient
 
 	historySyncWakeup  chan struct{}
@@ -185,7 +187,19 @@ func (wa *WhatsAppClient) RegisterPushNotifications(ctx context.Context, pushTyp
 }
 
 func (wa *WhatsAppClient) IsThisUser(_ context.Context, userID networkid.UserID) bool {
-	return userID == waid.MakeUserID(wa.JID)
+	return userID == waid.MakeUserID(wa.JID) || userID == waid.MakeUserID(wa.GetLID())
+}
+
+func (wa *WhatsAppClient) IsOwnJID(jid types.JID) bool {
+	return (jid.Server == types.DefaultUserServer && jid.User == wa.JID.User) ||
+		(jid.Server == types.HiddenUserServer && jid.User == wa.GetLID().User)
+}
+
+func (wa *WhatsAppClient) GetLID() types.JID {
+	if wa.LID.IsEmpty() && !wa.JID.IsEmpty() {
+		wa.LID = wa.GetStore().GetLID()
+	}
+	return wa.LID
 }
 
 func (wa *WhatsAppClient) Connect(ctx context.Context) {

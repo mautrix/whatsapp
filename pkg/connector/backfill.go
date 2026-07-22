@@ -228,18 +228,18 @@ func (wa *WhatsAppClient) handleWAHistorySync(
 		} else {
 			totalMessageCount += len(conv.GetMessages())
 		}
-		if jid.Server == types.HiddenUserServer {
-			pn, err := wa.GetStore().LIDs.GetPNForLID(ctx, jid)
+		if jid.Server == types.DefaultUserServer {
+			lid, err := wa.GetStore().LIDs.GetLIDForPN(ctx, jid)
 			if err != nil {
-				log.Err(err).Stringer("lid", jid).Msg("Failed to get PN for LID in history sync")
-			} else if pn.IsEmpty() {
-				log.Warn().Stringer("lid", jid).Msg("No PN found for LID in history sync")
+				log.Err(err).Stringer("lid", jid).Msg("Failed to get LID for phone number in history sync")
+			} else if lid.IsEmpty() {
+				log.Warn().Stringer("lid", jid).Msg("No LID found for phone number in history sync")
 			} else {
 				log.Debug().
-					Stringer("lid", jid).
-					Stringer("pn", pn).
-					Msg("Rerouting LID DM to phone number in history sync")
-				jid = pn
+					Stringer("lid", lid).
+					Stringer("pn", jid).
+					Msg("Rerouting phone number DM to LID in history sync")
+				jid = lid
 			}
 		}
 		log.UpdateContext(func(c zerolog.Context) zerolog.Context {
@@ -474,6 +474,9 @@ func (wa *WhatsAppClient) FetchMessages(ctx context.Context, params bridgev2.Fet
 	if err != nil {
 		return nil, err
 	}
+	if portalJID.Server == types.DefaultUserServer {
+		zerolog.Ctx(ctx).Warn().Stringer("portal_jid", portalJID).Msg("FetchMessages called for phone number portal")
+	}
 	var markRead bool
 	var startTime, endTime *time.Time
 	var conv *wadb.Conversation
@@ -528,7 +531,7 @@ func (wa *WhatsAppClient) FetchMessages(ctx context.Context, params bridgev2.Fet
 				Forward:               params.Forward,
 			}, nil
 		} else if hasMore {
-			return wa.fetchMessagesFromPhone(ctx, params)
+			return wa.fetchMessagesFromPhone(ctx, portalJID, params)
 		}
 		return &bridgev2.FetchMessagesResponse{
 			HasMore: false,
@@ -617,6 +620,9 @@ func (wa *WhatsAppClient) convertHistorySyncMessages(
 				continue
 			}
 		}
+		if !wa.ensureAltJIDs(ctx, &evt.Info.MessageSource) {
+			return nil, fmt.Errorf("failed to ensure alt JIDs for message %s", evt.Info.ID)
+		}
 		isViewOnce := evt.IsViewOnce || evt.IsViewOnceV2 || evt.IsViewOnceV2Extension
 		converted, mediaReq := wa.convertHistorySyncMessage(
 			ctx, portal, &evt.Info, evt.Message, evt.RawMessage, isViewOnce, msg.Reactions,
@@ -651,7 +657,7 @@ func (wa *WhatsAppClient) convertHistorySyncMessages(
 	}, nil
 }
 
-func (wa *WhatsAppClient) fetchMessagesFromPhone(ctx context.Context, params bridgev2.FetchMessagesParams) (*bridgev2.FetchMessagesResponse, error) {
+func (wa *WhatsAppClient) fetchMessagesFromPhone(ctx context.Context, portalJID types.JID, params bridgev2.FetchMessagesParams) (*bridgev2.FetchMessagesResponse, error) {
 	if params.AnchorMessage == nil {
 		return nil, fmt.Errorf("anchor message is required to fetch messages from phone")
 	}
@@ -663,9 +669,9 @@ func (wa *WhatsAppClient) fetchMessagesFromPhone(ctx context.Context, params bri
 	msgID := wa.Client.GenerateMessageID()
 	reqData := wa.Client.BuildHistorySyncRequest(&types.MessageInfo{
 		MessageSource: types.MessageSource{
-			Chat:     parsed.Chat,
+			Chat:     portalJID,
 			Sender:   parsed.Sender,
-			IsFromMe: parsed.Sender.ToNonAD() == wa.JID.ToNonAD() || parsed.Sender.ToNonAD() == wa.Device.GetLID().ToNonAD(),
+			IsFromMe: wa.IsOwnJID(parsed.Sender),
 			IsGroup:  parsed.Chat.Server == types.GroupServer,
 		},
 		ID:        parsed.ID,
@@ -673,6 +679,7 @@ func (wa *WhatsAppClient) fetchMessagesFromPhone(ctx context.Context, params bri
 	}, 50)
 	zerolog.Ctx(ctx).Debug().
 		Str("request_msg_id", msgID).
+		Stringer("portal_jid", portalJID).
 		Any("anchor_msg_parsed", parsed).
 		Any("request_data", reqData).
 		Msg("Sending history sync request")
@@ -700,6 +707,20 @@ func (wa *WhatsAppClient) handleOnDemandHistorySync(ctx context.Context, blob *w
 		if err != nil {
 			zerolog.Ctx(ctx).Err(err).Str("jid", conv.GetID()).Msg("Failed to parse portal JID")
 			continue
+		}
+		if portalJID.Server == types.DefaultUserServer {
+			lid, err := wa.GetStore().LIDs.GetLIDForPN(ctx, portalJID)
+			if err != nil {
+				zerolog.Ctx(ctx).Err(err).Stringer("lid", portalJID).Msg("Failed to get LID for phone number in on-demand history sync")
+			} else if lid.IsEmpty() {
+				zerolog.Ctx(ctx).Warn().Stringer("lid", portalJID).Msg("No LID found for phone number in on-demand history sync")
+			} else {
+				zerolog.Ctx(ctx).Debug().
+					Stringer("lid", lid).
+					Stringer("pn", portalJID).
+					Msg("Rerouting phone number DM to LID in on-demand history sync")
+				portalJID = lid
+			}
 		}
 		portal, err := wa.Main.Bridge.GetPortalByKey(ctx, wa.makeWAPortalKey(portalJID))
 		if err != nil {
@@ -750,9 +771,9 @@ func (wa *WhatsAppClient) convertHistorySyncMessage(
 	// TODO use proper intent
 	intent := wa.Main.Bridge.Bot
 	wrapped := &bridgev2.BackfillMessage{
-		ConvertedMessage: wa.Main.MsgConv.ToMatrix(ctx, portal, wa.Client, intent, msg, rawMsg, info, nil, isViewOnce, true, nil),
-		Sender:           wa.makeEventSender(ctx, info.Sender),
-		ID:               waid.MakeMessageID(info.Chat, info.Sender, info.ID),
+		ConvertedMessage: wa.Main.MsgConv.ToMatrix(ctx, portal, wa.Client, intent, msg, rawMsg, info, isViewOnce, true, nil),
+		Sender:           wa.makeEventSender(ctx, pickLID(info.Sender, info.SenderAlt)),
+		ID:               waid.MakeMessageIDWithAltSender(info.Chat, info.Sender, info.SenderAlt, info.ID),
 		TxnID:            networkid.TransactionID(waid.MakeMessageID(info.Chat, info.Sender, info.ID)),
 		Timestamp:        info.Timestamp,
 		StreamOrder:      info.Timestamp.Unix(),
@@ -762,10 +783,10 @@ func (wa *WhatsAppClient) convertHistorySyncMessage(
 	for _, reaction := range reactions {
 		var sender types.JID
 		if reaction.GetKey().GetFromMe() {
-			sender = wa.JID
+			sender = wa.GetLID()
 		} else if reaction.GetKey().GetParticipant() != "" {
 			sender, _ = types.ParseJID(*reaction.Key.Participant)
-		} else if info.Chat.Server == types.DefaultUserServer || info.Chat.Server == types.BotServer {
+		} else if info.Chat.Server == types.DefaultUserServer || info.Chat.Server == types.HiddenUserServer || info.Chat.Server == types.BotServer {
 			sender = info.Chat
 		}
 		if sender.IsEmpty() {

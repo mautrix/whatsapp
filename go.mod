@@ -12,13 +12,13 @@ require (
 	github.com/tidwall/gjson v1.19.0
 	go.mau.fi/util v0.9.12-0.20260719092501-f9c03d846391
 	go.mau.fi/webp v0.3.0
-	go.mau.fi/whatsmeow v0.0.0-20260720135917-a2381054887e
+	go.mau.fi/whatsmeow v0.0.0-20260721154117-8b4a8ba0d318
 	golang.org/x/image v0.44.0
 	golang.org/x/net v0.57.0
 	golang.org/x/sync v0.22.0
 	google.golang.org/protobuf v1.36.11
 	gopkg.in/yaml.v3 v3.0.1
-	maunium.net/go/mautrix v0.29.1-0.20260719130752-5743d9b6f27e
+	maunium.net/go/mautrix v0.29.1-0.20260722181210-2ee6142f1dd5
 )
 
 require (
