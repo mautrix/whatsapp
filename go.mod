@@ -13,7 +13,7 @@ require (
 	github.com/livekit/server-sdk-go/v2 v2.17.0
 	github.com/pion/rtp v1.10.2
 	github.com/pion/webrtc/v4 v4.2.14
-	github.com/purpshell/meowcaller v0.0.0-20260722115919-6612437100b7
+	github.com/purpshell/meowcaller v0.0.0-20260722121634-54bbcad94d4e
 	github.com/rs/zerolog v1.35.1
 	github.com/tidwall/gjson v1.19.0
 	go.mau.fi/util v0.9.10
