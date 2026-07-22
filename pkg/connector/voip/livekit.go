@@ -28,7 +28,7 @@ type LiveKitParticipant struct {
 	audio    *lkmedia.PCMLocalTrack
 	audioPub *lksdk.LocalTrackPublication
 	audioSrc *MeowcallerAudioSource
-	video    *lksdk.LocalTrack
+	video    *liveKitVideoTrack
 	videoPub *lksdk.LocalTrackPublication
 
 	mu                         sync.Mutex
@@ -197,7 +197,7 @@ func (p *LiveKitParticipant) PublishVideoTrack(name string) error {
 	if p.video != nil {
 		return nil
 	}
-	track, err := lksdk.NewLocalTrack(webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeH264, ClockRate: liveKitH264ClockRate})
+	track, err := newLiveKitVideoTrack(webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeH264, ClockRate: liveKitH264ClockRate})
 	if err != nil {
 		return err
 	}

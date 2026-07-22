@@ -7,9 +7,13 @@ import (
 	"time"
 
 	lksdk "github.com/livekit/server-sdk-go/v2"
+	"github.com/pion/rtp"
+	"github.com/pion/rtp/codecs"
+	"github.com/pion/webrtc/v4"
 	"github.com/pion/webrtc/v4/pkg/media"
 	"github.com/purpshell/meowcaller"
 	wartp "github.com/purpshell/meowcaller/rtp"
+	"go.mau.fi/util/random"
 )
 
 var ErrVideoSinkClosed = errors.New("voip: video sink closed")
@@ -26,6 +30,135 @@ type LiveKitH264Writer struct {
 type liveKitVideoOrientationSetter interface {
 	SetVideoOrientation(uint8)
 }
+
+const (
+	liveKitVideoMTU              = 1200
+	liveKitVideoOrientationURI   = "urn:3gpp:video-orientation"
+	liveKitVideoOrientationBytes = 8
+)
+
+// liveKitVideoTrack adds CVO to LiveKit's sample track. The SDK does not expose
+// video-orientation in SampleWriteOptions, so this track packetizes H.264 itself.
+type liveKitVideoTrack struct {
+	rtpTrack *webrtc.TrackLocalStaticRTP
+	codec    webrtc.RTPCodecCapability
+
+	mu                     sync.Mutex
+	packetizer             rtp.Packetizer
+	orientation            uint8
+	orientationExtensionID uint8
+	closed                 bool
+}
+
+func newLiveKitVideoTrack(codec webrtc.RTPCodecCapability) (*liveKitVideoTrack, error) {
+	id := "whatsapp-video-" + random.String(12)
+	track, err := webrtc.NewTrackLocalStaticRTP(codec, id, id)
+	if err != nil {
+		return nil, err
+	}
+	return &liveKitVideoTrack{rtpTrack: track, codec: codec}, nil
+}
+
+func (t *liveKitVideoTrack) Bind(ctx webrtc.TrackLocalContext) (webrtc.RTPCodecParameters, error) {
+	codec, err := t.rtpTrack.Bind(ctx)
+	if err != nil {
+		return codec, err
+	}
+
+	var orientationExtensionID uint8
+	for _, extension := range ctx.HeaderExtensions() {
+		if extension.URI == liveKitVideoOrientationURI {
+			orientationExtensionID = uint8(extension.ID)
+			break
+		}
+	}
+	t.mu.Lock()
+	t.orientationExtensionID = orientationExtensionID
+	t.packetizer = rtp.NewPacketizer(
+		liveKitVideoMTU-liveKitVideoOrientationBytes,
+		0,
+		0,
+		&codecs.H264Payloader{},
+		rtp.NewRandomSequencer(),
+		codec.ClockRate,
+	)
+	t.mu.Unlock()
+	return codec, nil
+}
+
+func (t *liveKitVideoTrack) Unbind(ctx webrtc.TrackLocalContext) error {
+	t.mu.Lock()
+	t.packetizer = nil
+	t.orientationExtensionID = 0
+	t.mu.Unlock()
+	return t.rtpTrack.Unbind(ctx)
+}
+
+func (t *liveKitVideoTrack) WriteSample(sample media.Sample, _ *lksdk.SampleWriteOptions) error {
+	return t.writeSampleRTP(sample, func(packet *rtp.Packet) error {
+		return t.rtpTrack.WriteRTP(packet)
+	})
+}
+
+func (t *liveKitVideoTrack) writeSampleRTP(sample media.Sample, write func(*rtp.Packet) error) error {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.closed || t.packetizer == nil || len(sample.Data) == 0 {
+		return nil
+	}
+
+	samples := uint32(sample.Duration.Seconds() * float64(liveKitH264ClockRate))
+	for _, packet := range t.packetizer.Packetize(sample.Data, samples) {
+		if t.orientationExtensionID != 0 {
+			if err := packet.SetExtension(t.orientationExtensionID, []byte{t.orientation & 0x03}); err != nil {
+				return err
+			}
+		}
+		if err := write(packet); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (t *liveKitVideoTrack) SetVideoOrientation(orientation uint8) {
+	t.mu.Lock()
+	t.orientation = orientation & 0x03
+	t.mu.Unlock()
+}
+
+func (t *liveKitVideoTrack) Codec() webrtc.RTPCodecCapability {
+	return t.codec
+}
+
+func (t *liveKitVideoTrack) ID() string {
+	return t.rtpTrack.ID()
+}
+
+func (t *liveKitVideoTrack) RID() string {
+	return t.rtpTrack.RID()
+}
+
+func (t *liveKitVideoTrack) StreamID() string {
+	return t.rtpTrack.StreamID()
+}
+
+func (t *liveKitVideoTrack) Kind() webrtc.RTPCodecType {
+	return t.rtpTrack.Kind()
+}
+
+func (t *liveKitVideoTrack) Close() error {
+	t.mu.Lock()
+	t.closed = true
+	t.packetizer = nil
+	t.mu.Unlock()
+	return nil
+}
+
+var _ liveKitVideoOrientationSetter = (*liveKitVideoTrack)(nil)
+var _ lksdk.LocalTrackWithClose = (*liveKitVideoTrack)(nil)
+var _ lksdk.TrackLocalWithCodec = (*liveKitVideoTrack)(nil)
+var _ webrtc.TrackLocal = (*liveKitVideoTrack)(nil)
 
 type h264ParameterSetRepeater struct {
 	sps []byte
