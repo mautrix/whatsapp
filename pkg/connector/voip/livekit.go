@@ -28,7 +28,7 @@ type LiveKitParticipant struct {
 	audio    *lkmedia.PCMLocalTrack
 	audioPub *lksdk.LocalTrackPublication
 	audioSrc *MeowcallerAudioSource
-	video    *liveKitVideoTrack
+	video    *lksdk.LocalTrack
 	videoPub *lksdk.LocalTrackPublication
 
 	mu                         sync.Mutex
@@ -197,7 +197,7 @@ func (p *LiveKitParticipant) PublishVideoTrack(name string) error {
 	if p.video != nil {
 		return nil
 	}
-	track, err := newLiveKitVideoTrack(webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeH264, ClockRate: liveKitH264ClockRate})
+	track, err := lksdk.NewLocalTrack(webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeH264, ClockRate: liveKitH264ClockRate})
 	if err != nil {
 		return err
 	}
@@ -249,9 +249,7 @@ func (p *LiveKitParticipant) SetWhatsAppVideoOrientation(orientation int) {
 		return
 	}
 	if setLiveKitVideoOrientation(video, orientation) {
-		p.log.Debug().
-			Int("orientation", orientation&0x03).
-			Msg("Set LiveKit WhatsApp video orientation")
+		p.log.Debug().Int("orientation", orientation&0x03).Msg("Set LiveKit WhatsApp video orientation")
 	}
 }
 

@@ -6,7 +6,6 @@ import (
 	"time"
 
 	lksdk "github.com/livekit/server-sdk-go/v2"
-	"github.com/pion/rtp"
 	"github.com/pion/webrtc/v4"
 	"github.com/pion/webrtc/v4/pkg/media"
 	"github.com/purpshell/meowcaller"
@@ -86,36 +85,6 @@ func TestLiveKitH264WriterSetsVideoOrientation(t *testing.T) {
 	if track.orientation != 1 {
 		t.Fatalf("track orientation = %d, want 1", track.orientation)
 	}
-}
-
-func TestLiveKitVideoTrackWritesOrientationExtension(t *testing.T) {
-	packetizer := rtp.NewPacketizer(1192, 96, 1234, &recordingPayloader{}, rtp.NewFixedSequencer(1), liveKitH264ClockRate)
-	track := &liveKitVideoTrack{
-		packetizer:             packetizer,
-		orientation:            1,
-		orientationExtensionID: 13,
-	}
-	var packets []*rtp.Packet
-	write := func(packet *rtp.Packet) error {
-		packets = append(packets, packet.Clone())
-		return nil
-	}
-
-	if err := track.writeSampleRTP(media.Sample{Data: []byte{1, 2, 3}, Duration: time.Second / 30}, write); err != nil {
-		t.Fatalf("writeSampleRTP: %v", err)
-	}
-	if len(packets) != 1 {
-		t.Fatalf("packet count = %d, want 1", len(packets))
-	}
-	if got := packets[0].GetExtension(13); !bytes.Equal(got, []byte{1}) {
-		t.Fatalf("orientation extension = %x, want 01", got)
-	}
-}
-
-type recordingPayloader struct{}
-
-func (*recordingPayloader) Payload(_ uint16, payload []byte) [][]byte {
-	return [][]byte{payload}
 }
 
 func TestLiveKitParticipantRequestsRemoteVideoKeyframe(t *testing.T) {
