@@ -198,6 +198,8 @@ github.com/prometheus/procfs v0.20.1 h1:XwbrGOIplXW/AU3YhIhLODXMJYyC1isLFfYCsTEy
 github.com/prometheus/procfs v0.20.1/go.mod h1:o9EMBZGRyvDrSPH1RqdxhojkuXstoe4UlK79eF5TGGo=
 github.com/purpshell/meowcaller v0.0.0-20260722133919-2ca8d7d30527 h1:RDtFZuvgsg2KZtyY1bZLmG/xg42+OukL86O+OFFIMhI=
 github.com/purpshell/meowcaller v0.0.0-20260722133919-2ca8d7d30527/go.mod h1:FA3k7L98Dy2km9hvcdKJH1HMKPpi8bCONlA7R84NpN4=
+github.com/purpshell/meowcaller v0.0.0-20260722143136-8faf887946a8 h1:sVe8DiEWPu+oEkhbLUMPrTYXxaRQ/V3tUZld/5y2jYE=
+github.com/purpshell/meowcaller v0.0.0-20260722143136-8faf887946a8/go.mod h1:FA3k7L98Dy2km9hvcdKJH1HMKPpi8bCONlA7R84NpN4=
 github.com/puzpuzpuz/xsync/v4 v4.5.0 h1:vOSWu6b57/emh+L/Cw0BeQfvxa/cogFywXHeGUxQxAg=
 github.com/puzpuzpuz/xsync/v4 v4.5.0/go.mod h1:VJDmTCJMBt8igNxnkQd86r+8KUeN1quSfNKu5bLYFQo=
 github.com/redis/go-redis/v9 v9.20.0 h1:WnQYxLkgO2xiXTCJY0ldIiI8dNqCDlQAG+AtaH7a2a0=
