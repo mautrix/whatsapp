@@ -231,9 +231,9 @@ func (wa *WhatsAppClient) handleWAHistorySync(
 		if jid.Server == types.DefaultUserServer {
 			lid, err := wa.GetStore().LIDs.GetLIDForPN(ctx, jid)
 			if err != nil {
-				log.Err(err).Stringer("lid", jid).Msg("Failed to get LID for phone number in history sync")
+				log.Err(err).Stringer("pn", jid).Msg("Failed to get LID for phone number in history sync")
 			} else if lid.IsEmpty() {
-				log.Warn().Stringer("lid", jid).Msg("No LID found for phone number in history sync")
+				log.Warn().Stringer("pn", jid).Msg("No LID found for phone number in history sync")
 			} else {
 				log.Debug().
 					Stringer("lid", lid).
