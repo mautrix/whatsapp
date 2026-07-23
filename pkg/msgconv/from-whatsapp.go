@@ -274,6 +274,23 @@ func (mc *MessageConverter) ToMatrix(
 		cm.ReplyTo = &networkid.MessageOptionalPartID{
 			MessageID: waid.MakeMessageID(chat, pcp, contextInfo.GetStanzaID()),
 		}
+		var pn, lid types.JID
+		if pcp.Server == types.DefaultUserServer {
+			pn = pcp
+			lid, _ = client.Store.LIDs.GetLIDForPN(ctx, pcp)
+		} else if pcp.Server == types.HiddenUserServer {
+			lid = pcp
+			pn, _ = client.Store.LIDs.GetPNForLID(ctx, pcp)
+		} else if pcp.Server == types.BotServer {
+			lid = pcp
+		}
+		if !pn.IsEmpty() {
+			cm.ReplyToLogin = waid.MakeUserLoginID(pn)
+		}
+		if !lid.IsEmpty() {
+			cm.ReplyToUser = waid.MakeUserID(lid)
+		}
+		// TODO set reply to room
 	}
 	if contextInfo.GetIsForwarded() {
 		hasCaption := part.Content.FileName != "" && part.Content.FileName != part.Content.Body
