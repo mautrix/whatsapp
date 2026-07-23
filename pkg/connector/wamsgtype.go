@@ -67,10 +67,11 @@ func getMessageType(waMsg *waE2E.Message) string {
 		return "encrypted comment"
 	case waMsg.CommentMessage != nil:
 		return "comment"
-	case waMsg.PollCreationMessage != nil || waMsg.PollCreationMessageV2 != nil || waMsg.PollCreationMessageV3 != nil:
+	case waMsg.PollCreationMessage != nil || waMsg.PollCreationMessageV2 != nil || waMsg.PollCreationMessageV3 != nil ||
+		waMsg.PollCreationMessageV5 != nil || waMsg.PollCreationMessageV6 != nil:
 		return "poll create"
-	case waMsg.PollCreationMessageV4 != nil || waMsg.PollCreationMessageV5 != nil:
-		return "poll create (vNext)"
+	case waMsg.PollCreationMessageV4 != nil:
+		return "poll create (v4)"
 	case waMsg.PollUpdateMessage != nil:
 		return "poll update"
 	case waMsg.ProtocolMessage != nil:

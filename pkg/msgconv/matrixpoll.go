@@ -149,7 +149,7 @@ func (mc *MessageConverter) PollVoteToWhatsApp(
 func MessageIDToInfo(ctx context.Context, client *whatsmeow.Client, parsedMsgID *waid.ParsedMessageID) *types.MessageInfo {
 	chat := parsedMsgID.Chat
 	sender := parsedMsgID.Sender
-	if client.Store.LIDMigrationTimestamp != 0 && chat.Server == types.DefaultUserServer {
+	if chat.Server == types.DefaultUserServer {
 		chatLID, _ := client.Store.LIDs.GetLIDForPN(ctx, chat)
 		senderLID, _ := client.Store.LIDs.GetLIDForPN(ctx, sender)
 		if !chatLID.IsEmpty() && !senderLID.IsEmpty() {

@@ -176,6 +176,12 @@ func (mc *MessageConverter) ToMatrix(
 		part, contextInfo = mc.convertPollCreationMessage(ctx, waMsg.PollCreationMessageV2)
 	case waMsg.PollCreationMessageV3 != nil:
 		part, contextInfo = mc.convertPollCreationMessage(ctx, waMsg.PollCreationMessageV3)
+	//case waMsg.PollCreationMessageV4 != nil:
+	//	part, contextInfo = mc.convertPollCreationMessage(ctx, waMsg.PollCreationMessageV4)
+	case waMsg.PollCreationMessageV5 != nil:
+		part, contextInfo = mc.convertPollCreationMessage(ctx, waMsg.PollCreationMessageV5)
+	case waMsg.PollCreationMessageV6 != nil:
+		part, contextInfo = mc.convertPollCreationMessage(ctx, waMsg.PollCreationMessageV6)
 	case waMsg.PollUpdateMessage != nil:
 		part, contextInfo = mc.convertPollUpdateMessage(ctx, info, origSource, waMsg.PollUpdateMessage)
 	case waMsg.EventMessage != nil:
