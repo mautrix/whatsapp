@@ -119,16 +119,15 @@ func (wa *WhatsAppConnector) ValidateUserID(id networkid.UserID) bool {
 	}
 }
 
-func (wa *WhatsAppClient) startChatLIDToPN(ctx context.Context, jid types.JID) (types.JID, error) {
-	if jid.Server == types.HiddenUserServer {
-		pn, err := wa.GetStore().LIDs.GetPNForLID(ctx, jid)
+func (wa *WhatsAppClient) startChatPNToLID(ctx context.Context, jid types.JID) (types.JID, error) {
+	if jid.Server == types.DefaultUserServer {
+		lid, err := wa.GetStore().LIDs.GetLIDForPN(ctx, jid)
 		if err != nil {
-			return jid, fmt.Errorf("failed to get phone number for lid: %w", err)
-		} else if pn.IsEmpty() {
-			// Don't allow starting chats with LIDs for now
-			return jid, fmt.Errorf("phone number not found")
+			return jid, fmt.Errorf("failed to get lid for phone number: %w", err)
+		} else if lid.IsEmpty() {
+			return jid, fmt.Errorf("lid not found")
 		}
-		return pn, nil
+		return lid, nil
 	}
 	return jid, nil
 }
@@ -147,7 +146,7 @@ func (wa *WhatsAppClient) makeCreateChatResponse(ctx context.Context, jid, origJ
 
 func (wa *WhatsAppClient) CreateChatWithGhost(ctx context.Context, ghost *bridgev2.Ghost) (*bridgev2.CreateChatResponse, error) {
 	origJID := waid.ParseUserID(ghost.ID)
-	jid, err := wa.startChatLIDToPN(ctx, origJID)
+	jid, err := wa.startChatPNToLID(ctx, origJID)
 	if err != nil {
 		return nil, err
 	}
@@ -159,7 +158,7 @@ func (wa *WhatsAppClient) ResolveIdentifier(ctx context.Context, identifier stri
 	if err != nil {
 		return nil, err
 	}
-	jid, err := wa.startChatLIDToPN(ctx, origJID)
+	jid, err := wa.startChatPNToLID(ctx, origJID)
 	if err != nil {
 		return nil, err
 	}
@@ -229,8 +228,7 @@ func (wa *WhatsAppClient) CreateGroup(ctx context.Context, params *bridgev2.Grou
 	}
 	for i, participant := range params.Participants {
 		jid := waid.ParseUserID(participant)
-		// Normalize to PN if it's a LID
-		jid, err := wa.startChatLIDToPN(ctx, jid)
+		jid, err := wa.startChatPNToLID(ctx, jid)
 		if err != nil {
 			return nil, fmt.Errorf("failed to normalize participant %s: %w", participant, err)
 		}
