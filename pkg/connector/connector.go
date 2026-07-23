@@ -29,6 +29,7 @@ import (
 
 	"github.com/lib/pq"
 	"go.mau.fi/util/dbutil"
+	"go.mau.fi/util/exsync"
 	"go.mau.fi/util/random"
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/proto/waCompanionReg"
@@ -60,6 +61,8 @@ type WhatsAppConnector struct {
 	mediaEditCache         MediaEditCache
 	mediaEditCacheLock     sync.RWMutex
 	stopMediaEditCacheLoop atomic.Pointer[context.CancelFunc]
+
+	unmigratedDMs *exsync.Set[networkid.PortalKey]
 }
 
 func init() {
@@ -110,6 +113,7 @@ func (wa *WhatsAppConnector) Init(bridge *bridgev2.Bridge) {
 		cmdAccept, cmdSync, cmdInviteLink, cmdResolveLink, cmdJoin,
 	)
 	wa.mediaEditCache = make(MediaEditCache)
+	wa.unmigratedDMs = exsync.NewSet[networkid.PortalKey]()
 
 	whatsmeowDBLog := bridge.Log.With().Str("db_section", "whatsmeow").Logger()
 	wa.DeviceStore = sqlstore.NewWithWrappedDB(

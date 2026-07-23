@@ -258,7 +258,7 @@ func (wa *WhatsAppClient) handleWAEvent(rawEvt any) (success bool) {
 	return
 }
 
-func (wa *WhatsAppClient) ensureAltJIDs(ctx context.Context, info *types.MessageSource) bool {
+func (wa *WhatsAppClient) ensureAltJIDs(ctx context.Context, info *types.MessageSource, checkPhones bool) bool {
 	var err error
 	if info.Sender.Server == types.DefaultUserServer && info.SenderAlt.IsEmpty() {
 		info.SenderAlt, err = wa.GetStore().LIDs.GetLIDForPN(ctx, info.Sender)
@@ -274,6 +274,9 @@ func (wa *WhatsAppClient) ensureAltJIDs(ctx context.Context, info *types.Message
 			return false
 		}
 	}
+	if checkPhones {
+		return wa.checkAllPhonesInMessage(ctx, info)
+	}
 	return true
 }
 
@@ -282,7 +285,7 @@ func (wa *WhatsAppClient) handleWAMessage(ctx context.Context, evt *events.Messa
 	if evt.Info.Chat == types.StatusBroadcastJID && !wa.Main.Config.EnableStatusBroadcast {
 		return
 	}
-	if !wa.ensureAltJIDs(ctx, &evt.Info.MessageSource) {
+	if !wa.ensureAltJIDs(ctx, &evt.Info.MessageSource, true) {
 		return false
 	}
 	parsedMessageType := getMessageType(evt.Message)
@@ -381,7 +384,7 @@ func (wa *WhatsAppClient) handleWAMessage(ctx context.Context, evt *events.Messa
 }
 
 func (wa *WhatsAppClient) handleWAUndecryptableMessage(ctx context.Context, evt *events.UndecryptableMessage) bool {
-	if !wa.ensureAltJIDs(ctx, &evt.Info.MessageSource) {
+	if !wa.ensureAltJIDs(ctx, &evt.Info.MessageSource, true) {
 		return false
 	}
 	wa.UserLogin.Log.Debug().
@@ -441,7 +444,7 @@ func (wa *WhatsAppClient) handleWAReceipt(ctx context.Context, evt *events.Recei
 	if evt.IsFromMe && evt.Sender.Device == 0 {
 		wa.phoneSeen(evt.Timestamp)
 	}
-	if !wa.ensureAltJIDs(ctx, &evt.MessageSource) {
+	if !wa.ensureAltJIDs(ctx, &evt.MessageSource, true) {
 		return false
 	}
 	var evtType bridgev2.RemoteEventType

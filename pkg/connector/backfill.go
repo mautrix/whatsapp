@@ -620,7 +620,7 @@ func (wa *WhatsAppClient) convertHistorySyncMessages(
 				continue
 			}
 		}
-		if !wa.ensureAltJIDs(ctx, &evt.Info.MessageSource) {
+		if !wa.ensureAltJIDs(ctx, &evt.Info.MessageSource, false) {
 			return nil, fmt.Errorf("failed to ensure alt JIDs for message %s", evt.Info.ID)
 		}
 		isViewOnce := evt.IsViewOnce || evt.IsViewOnceV2 || evt.IsViewOnceV2Extension

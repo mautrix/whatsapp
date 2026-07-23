@@ -64,6 +64,43 @@ func (wa *WhatsAppClient) FindAltTargetMessage(ctx context.Context, targetMsg ne
 	return
 }
 
+func (wa *WhatsAppClient) checkAllPhonesInMessage(ctx context.Context, info *types.MessageSource) (ok bool) {
+	for _, jid := range []types.JID{info.Sender, info.SenderAlt, info.Chat, info.RecipientAlt} {
+		if !wa.reIDPhoneDMToLIDIfNeeded(ctx, jid) {
+			return false
+		}
+	}
+	return true
+}
+
+func (wa *WhatsAppClient) reIDPhoneDMToLIDIfNeeded(ctx context.Context, pn types.JID) (ok bool) {
+	if pn.Server != types.DefaultUserServer {
+		return true
+	}
+	portalKey := wa.makeWAPortalKey(pn)
+	if wa.Main.unmigratedDMs.Has(portalKey) {
+		lid, err := wa.GetStore().LIDs.GetLIDForPN(ctx, pn)
+		if err != nil {
+			zerolog.Ctx(ctx).Err(err).Stringer("pn", pn).Msg("Failed to get LID for PN")
+			return false
+		} else if lid.IsEmpty() {
+			zerolog.Ctx(ctx).Warn().Stringer("pn", pn).Msg("No found LID for phone number")
+			return true
+		}
+		zerolog.Ctx(ctx).Info().
+			Object("portal_key", portalKey).
+			Stringer("pn", pn).
+			Stringer("lid", lid).
+			Msg("Received event for portal in unmigrated DMs list, trying migration")
+		_, err = wa.Main.reIDPhoneDMToLID(ctx, pn, lid, wa.UserLogin.ID)
+		if err != nil {
+			zerolog.Ctx(ctx).Err(err).Msg("Failed to re-ID phone DM to LID")
+			return false
+		}
+	}
+	return true
+}
+
 func (wa *WhatsAppConnector) reIDPhoneDMToLID(ctx context.Context, pn, lid types.JID, receiver networkid.UserLoginID) (bridgev2.ReIDResult, error) {
 	pnKey := networkid.PortalKey{
 		ID:       waid.MakePortalID(pn),
@@ -150,6 +187,7 @@ func (wa *WhatsAppConnector) migrateToLIDDMs(ctx context.Context) error {
 			return fmt.Errorf("failed to get LID for PN portal %s: %w", key.ID, err)
 		} else if lid.IsEmpty() {
 			log.Warn().Stringer("pn", pnJID).Msg("No LID for PN portal")
+			wa.unmigratedDMs.Add(key)
 			missingLID++
 			continue
 		}
