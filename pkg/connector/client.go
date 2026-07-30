@@ -24,6 +24,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/purpshell/meowcaller"
 	"github.com/rs/zerolog"
 	"go.mau.fi/util/exsync"
 	"go.mau.fi/whatsmeow"
@@ -87,6 +88,12 @@ func (wa *WhatsAppConnector) LoadUserLogin(ctx context.Context, login *bridgev2.
 		w.VOIP = voip.NewManager(w.Client, makeVOIPConfig(wa.Config.VOIP), w.UserLogin.Log.With().Str("component", "voip").Logger())
 		w.VOIP.SetIncomingCallHandler(w.handleIncomingVOIPCall)
 		w.VOIP.SetCallEndHandler(w.handleVOIPCallEnded)
+		w.VOIP.SetCallReactionHandler(func(callID string, reaction meowcaller.CallReaction) {
+			go w.handleWhatsAppCallReaction(withoutCancelOrBackground(w.Main.Bridge.BackgroundCtx), callID, reaction)
+		})
+		w.VOIP.SetHandRaiseHandler(func(callID string, state meowcaller.HandRaiseState) {
+			go w.handleWhatsAppHandRaise(withoutCancelOrBackground(w.Main.Bridge.BackgroundCtx), callID, state)
+		})
 		w.Client.SetForceActiveDeliveryReceipts(wa.Config.ForceActiveDeliveryReceipts)
 		w.Client.InitialAutoReconnect = wa.Config.InitialAutoReconnect
 		w.Client.UseRetryMessageStore = wa.Config.UseWhatsAppRetryStore
@@ -118,6 +125,9 @@ type WhatsAppClient struct {
 	nextResync         time.Time
 	directMediaRetries map[networkid.MessageID]*directMediaRetry
 	directMediaLock    sync.Mutex
+	voipHandBridgeLock sync.Mutex
+	voipHandRaiseLock  sync.Mutex
+	voipHandRaises     map[string]map[types.JID]bool
 	mediaRetryLock     *semaphore.Weighted
 	offlineSyncWaiter  atomic.Pointer[chan error]
 	isNewLogin         bool

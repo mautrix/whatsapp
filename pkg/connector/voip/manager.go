@@ -53,6 +53,8 @@ type Manager struct {
 	videoKeyframePending map[string]bool
 	incomingCallNotify   func(*meowcaller.Call)
 	callEndNotify        func(callID, reason string)
+	callReactionNotify   func(callID string, reaction meowcaller.CallReaction)
+	handRaiseNotify      func(callID string, state meowcaller.HandRaiseState)
 }
 
 func NewManager(waClient *whatsmeow.Client, cfg Config, log zerolog.Logger) *Manager {
@@ -120,6 +122,54 @@ func (m *Manager) SetCallEndHandler(handler func(callID, reason string)) {
 	m.mu.Lock()
 	m.callEndNotify = handler
 	m.mu.Unlock()
+}
+
+func (m *Manager) SetCallReactionHandler(handler func(callID string, reaction meowcaller.CallReaction)) {
+	if m == nil {
+		return
+	}
+	m.mu.Lock()
+	m.callReactionNotify = handler
+	m.mu.Unlock()
+}
+
+func (m *Manager) SetHandRaiseHandler(handler func(callID string, state meowcaller.HandRaiseState)) {
+	if m == nil {
+		return
+	}
+	m.mu.Lock()
+	m.handRaiseNotify = handler
+	m.mu.Unlock()
+}
+
+func (m *Manager) SendReaction(callID, emoji string) error {
+	if !m.Enabled() {
+		return ErrNotEnabled
+	}
+	m.mu.Lock()
+	call := m.calls[callID]
+	m.mu.Unlock()
+	if call == nil || call.State() == meowcaller.CallPhaseEnded {
+		return ErrCallNotFound
+	}
+	normalized, ok := NormalizeWhatsAppCallReaction(emoji)
+	if !ok {
+		return fmt.Errorf("unsupported WhatsApp call reaction %q", emoji)
+	}
+	return call.SendReaction(normalized)
+}
+
+func (m *Manager) SetHandRaised(callID string, raised bool) error {
+	if !m.Enabled() {
+		return ErrNotEnabled
+	}
+	m.mu.Lock()
+	call := m.calls[callID]
+	m.mu.Unlock()
+	if call == nil || call.State() == meowcaller.CallPhaseEnded {
+		return ErrCallNotFound
+	}
+	return call.SetHandRaised(raised)
 }
 
 func (m *Manager) Dial(ctx context.Context, target string, video ...bool) (*meowcaller.Call, error) {
@@ -745,6 +795,22 @@ func (m *Manager) trackCall(call *meowcaller.Call, callCreator types.JID) {
 	})
 	call.OnVideoState(func(state meowcaller.VideoState) {
 		m.handleWhatsAppVideoState(call.ID(), state)
+	})
+	call.OnReaction(func(reaction meowcaller.CallReaction) {
+		m.mu.Lock()
+		handler := m.callReactionNotify
+		m.mu.Unlock()
+		if handler != nil {
+			handler(call.ID(), reaction)
+		}
+	})
+	call.OnHandRaise(func(state meowcaller.HandRaiseState) {
+		m.mu.Lock()
+		handler := m.handRaiseNotify
+		m.mu.Unlock()
+		if handler != nil {
+			handler(call.ID(), state)
+		}
 	})
 }
 

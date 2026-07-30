@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/purpshell/meowcaller"
 	"go.mau.fi/whatsmeow/types"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
@@ -184,6 +185,48 @@ func TestMatrixRTCPortalSupportsWhatsAppGroupCalls(t *testing.T) {
 	peer := types.NewJID("120363000000000000", types.GroupServer)
 	if !matrixRTCPortalSupportsWhatsAppCalls(peer) {
 		t.Fatal("matrixRTCPortalSupportsWhatsAppCalls rejected a WhatsApp group portal")
+	}
+}
+
+func TestMatrixRTCControlEventMatchesSelectedMembership(t *testing.T) {
+	call := &wadb.MatrixRTCCall{
+		SelectedPublisherID:       "@alice:example.com:DEVICE",
+		SelectedMembershipEventID: "$membership",
+	}
+	reaction := voip.MatrixRTCEvent{
+		Kind:             voip.MatrixRTCEventKindCallReaction,
+		Sender:           "@alice:example.com",
+		RelatesToEventID: "$membership",
+	}
+	if !matrixRTCControlEventMatchesCall(reaction, call) {
+		t.Fatal("reaction did not match its selected MatrixRTC membership")
+	}
+	reaction.Sender = "@mallory:example.com"
+	if matrixRTCControlEventMatchesCall(reaction, call) {
+		t.Fatal("reaction from another Matrix user matched the selected membership")
+	}
+}
+
+func TestWhatsAppRemoteHandRaisesAreAggregated(t *testing.T) {
+	wa := &WhatsAppClient{}
+	alice := types.NewJID("111", types.DefaultUserServer)
+	bob := types.NewJID("222", types.DefaultUserServer)
+
+	raised, changed := wa.updateWhatsAppRemoteHandRaise("call", meowcaller.HandRaiseState{Participant: alice, Raised: true})
+	if !raised || !changed {
+		t.Fatalf("first raise = %t, %t, want true, true", raised, changed)
+	}
+	raised, changed = wa.updateWhatsAppRemoteHandRaise("call", meowcaller.HandRaiseState{Participant: bob, Raised: true})
+	if !raised || changed {
+		t.Fatalf("second raise = %t, %t, want true, false", raised, changed)
+	}
+	raised, changed = wa.updateWhatsAppRemoteHandRaise("call", meowcaller.HandRaiseState{Participant: alice, Raised: false})
+	if !raised || changed {
+		t.Fatalf("first lower = %t, %t, want true, false", raised, changed)
+	}
+	raised, changed = wa.updateWhatsAppRemoteHandRaise("call", meowcaller.HandRaiseState{Participant: bob, Raised: false})
+	if raised || !changed {
+		t.Fatalf("last lower = %t, %t, want false, true", raised, changed)
 	}
 }
 

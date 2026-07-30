@@ -17,28 +17,32 @@ type MatrixRTCCallQuery struct {
 }
 
 type MatrixRTCCall struct {
-	BridgeID              networkid.BridgeID
-	UserLoginID           networkid.UserLoginID
-	WACallID              string
-	RoomID                id.RoomID
-	PortalKey             networkid.PortalKey
-	PeerJID               types.JID
-	Direction             string
-	MediaKind             string
-	FocusType             string
-	LiveKitServiceURL     string
-	LiveKitRoom           string
-	MatrixParticipantMXID id.UserID
-	MatrixSessionID       string
-	SelectedPublisherID   string
-	AudioPolicy           string
-	State                 string
-	CreatedTS             time.Time
-	JoinedTS              time.Time
-	AnsweredTS            time.Time
-	EndedTS               time.Time
-	EndReason             string
-	LastError             string
+	BridgeID                  networkid.BridgeID
+	UserLoginID               networkid.UserLoginID
+	WACallID                  string
+	RoomID                    id.RoomID
+	PortalKey                 networkid.PortalKey
+	PeerJID                   types.JID
+	Direction                 string
+	MediaKind                 string
+	FocusType                 string
+	LiveKitServiceURL         string
+	LiveKitRoom               string
+	MatrixParticipantMXID     id.UserID
+	MatrixSessionID           string
+	SelectedPublisherID       string
+	BridgeMembershipEventID   id.EventID
+	SelectedMembershipEventID id.EventID
+	BridgeHandRaiseEventID    id.EventID
+	SelectedHandRaiseEventID  id.EventID
+	AudioPolicy               string
+	State                     string
+	CreatedTS                 time.Time
+	JoinedTS                  time.Time
+	AnsweredTS                time.Time
+	EndedTS                   time.Time
+	EndReason                 string
+	LastError                 string
 }
 
 const (
@@ -47,10 +51,12 @@ const (
 			bridge_id, user_login_id, wa_call_id, room_id, portal_id, portal_receiver, peer_jid,
 			direction, media_kind, focus_type, livekit_service_url, livekit_room,
 			matrix_participant_mxid, matrix_session_id, selected_publisher_id,
+			bridge_membership_event_id, selected_membership_event_id,
+			bridge_hand_raise_event_id, selected_hand_raise_event_id,
 			audio_policy, state, created_ts, joined_ts, answered_ts, ended_ts,
 			end_reason, last_error
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27)
 		ON CONFLICT (bridge_id, user_login_id, wa_call_id) DO UPDATE SET
 			room_id=excluded.room_id,
 			portal_id=excluded.portal_id,
@@ -64,6 +70,10 @@ const (
 			matrix_participant_mxid=excluded.matrix_participant_mxid,
 			matrix_session_id=excluded.matrix_session_id,
 			selected_publisher_id=excluded.selected_publisher_id,
+			bridge_membership_event_id=excluded.bridge_membership_event_id,
+			selected_membership_event_id=excluded.selected_membership_event_id,
+			bridge_hand_raise_event_id=excluded.bridge_hand_raise_event_id,
+			selected_hand_raise_event_id=excluded.selected_hand_raise_event_id,
 			audio_policy=excluded.audio_policy,
 			state=excluded.state,
 			joined_ts=excluded.joined_ts,
@@ -77,6 +87,8 @@ const (
 			bridge_id, user_login_id, wa_call_id, room_id, portal_id, portal_receiver, peer_jid,
 			direction, media_kind, focus_type, livekit_service_url, livekit_room,
 			matrix_participant_mxid, matrix_session_id, selected_publisher_id,
+			bridge_membership_event_id, selected_membership_event_id,
+			bridge_hand_raise_event_id, selected_hand_raise_event_id,
 			audio_policy, state, created_ts, joined_ts, answered_ts, ended_ts,
 			end_reason, last_error
 		FROM whatsapp_matrixrtc_call
@@ -87,6 +99,8 @@ const (
 			bridge_id, user_login_id, wa_call_id, room_id, portal_id, portal_receiver, peer_jid,
 			direction, media_kind, focus_type, livekit_service_url, livekit_room,
 			matrix_participant_mxid, matrix_session_id, selected_publisher_id,
+			bridge_membership_event_id, selected_membership_event_id,
+			bridge_hand_raise_event_id, selected_hand_raise_event_id,
 			audio_policy, state, created_ts, joined_ts, answered_ts, ended_ts,
 			end_reason, last_error
 		FROM whatsapp_matrixrtc_call
@@ -97,6 +111,8 @@ const (
 			bridge_id, user_login_id, wa_call_id, room_id, portal_id, portal_receiver, peer_jid,
 			direction, media_kind, focus_type, livekit_service_url, livekit_room,
 			matrix_participant_mxid, matrix_session_id, selected_publisher_id,
+			bridge_membership_event_id, selected_membership_event_id,
+			bridge_hand_raise_event_id, selected_hand_raise_event_id,
 			audio_policy, state, created_ts, joined_ts, answered_ts, ended_ts,
 			end_reason, last_error
 		FROM whatsapp_matrixrtc_call
@@ -139,7 +155,9 @@ func (cq *MatrixRTCCallQuery) Delete(ctx context.Context, loginID networkid.User
 }
 
 func (call *MatrixRTCCall) Scan(row dbutil.Scannable) (*MatrixRTCCall, error) {
-	var liveKitRoom, participantMXID, matrixSessionID, selectedPublisherID, endReason, lastError sql.NullString
+	var liveKitRoom, participantMXID, matrixSessionID, selectedPublisherID sql.NullString
+	var bridgeMembershipEventID, selectedMembershipEventID, bridgeHandRaiseEventID, selectedHandRaiseEventID sql.NullString
+	var endReason, lastError sql.NullString
 	var joinedTS, answeredTS, endedTS sql.NullInt64
 	var createdTS int64
 	err := row.Scan(
@@ -158,6 +176,10 @@ func (call *MatrixRTCCall) Scan(row dbutil.Scannable) (*MatrixRTCCall, error) {
 		&participantMXID,
 		&matrixSessionID,
 		&selectedPublisherID,
+		&bridgeMembershipEventID,
+		&selectedMembershipEventID,
+		&bridgeHandRaiseEventID,
+		&selectedHandRaiseEventID,
 		&call.AudioPolicy,
 		&call.State,
 		&createdTS,
@@ -178,6 +200,10 @@ func (call *MatrixRTCCall) Scan(row dbutil.Scannable) (*MatrixRTCCall, error) {
 	call.MatrixParticipantMXID = id.UserID(participantMXID.String)
 	call.MatrixSessionID = matrixSessionID.String
 	call.SelectedPublisherID = selectedPublisherID.String
+	call.BridgeMembershipEventID = id.EventID(bridgeMembershipEventID.String)
+	call.SelectedMembershipEventID = id.EventID(selectedMembershipEventID.String)
+	call.BridgeHandRaiseEventID = id.EventID(bridgeHandRaiseEventID.String)
+	call.SelectedHandRaiseEventID = id.EventID(selectedHandRaiseEventID.String)
 	call.EndReason = endReason.String
 	call.LastError = lastError.String
 	return call, nil
@@ -200,6 +226,10 @@ func (call *MatrixRTCCall) sqlVariables() []any {
 		nullString(string(call.MatrixParticipantMXID)),
 		nullString(call.MatrixSessionID),
 		nullString(call.SelectedPublisherID),
+		nullString(string(call.BridgeMembershipEventID)),
+		nullString(string(call.SelectedMembershipEventID)),
+		nullString(string(call.BridgeHandRaiseEventID)),
+		nullString(string(call.SelectedHandRaiseEventID)),
 		call.AudioPolicy,
 		call.State,
 		nullableUnix(call.CreatedTS),

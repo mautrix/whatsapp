@@ -12,6 +12,7 @@ import (
 	"maunium.net/go/mautrix/id"
 
 	"go.mau.fi/mautrix-whatsapp/pkg/connector/voip"
+	"go.mau.fi/mautrix-whatsapp/pkg/connector/wadb"
 )
 
 const (
@@ -102,7 +103,12 @@ func (wa *WhatsAppConnector) handleMatrixRTCEvent(ctx context.Context, evt *even
 	if err != nil {
 		log.Err(err).Msg("Failed to look up active MatrixRTC calls for room")
 		return
-	} else if len(activeCalls) == 0 {
+	}
+	if isMatrixRTCCallControlEvent(parsed) {
+		wa.handleMatrixRTCCallControlEvent(ctx, parsed, activeCalls, log)
+		return
+	}
+	if len(activeCalls) == 0 {
 		if !shouldStartOutboundMatrixRTCCall(evt, parsed, wa.Config.VOIP.MatrixRTC.MembershipEventCompat) {
 			log.Debug().Msg("Ignoring MatrixRTC event without active bridged calls in the room")
 			return
@@ -142,6 +148,19 @@ func (wa *WhatsAppConnector) handleMatrixRTCEvent(ctx context.Context, evt *even
 			callLog.Debug().Msg("WhatsApp login has no VOIP manager for MatrixRTC event")
 			continue
 		}
+		if matrixRTCMembershipEventMatchesCall(parsed, activeCall) &&
+			activeCall.SelectedMembershipEventID != parsed.EventID {
+			if activeCall.SelectedHandRaiseEventID != "" {
+				if err = client.VOIP.SetHandRaised(activeCall.WACallID, false); err != nil {
+					callLog.Warn().Err(err).Msg("Failed to lower WhatsApp hand after MatrixRTC membership replacement")
+				}
+				activeCall.SelectedHandRaiseEventID = ""
+			}
+			activeCall.SelectedMembershipEventID = parsed.EventID
+			if err = wa.DB.MatrixRTCCall.Put(ctx, activeCall); err != nil {
+				callLog.Err(err).Msg("Failed to persist replacement MatrixRTC membership event")
+			}
+		}
 		handled++
 		endedCalls := client.VOIP.HandleMatrixRTCCallEvent(ctx, parsed, activeCall.WACallID)
 		if shouldEndMatrixRTCCallFromMembership(parsed, activeCall.SelectedPublisherID) {
@@ -174,6 +193,18 @@ func (wa *WhatsAppConnector) handleMatrixRTCEvent(ctx context.Context, evt *even
 		Int("activated_call_count", activated).
 		Int("ended_call_count", ended).
 		Msg("Handled MatrixRTC event for active bridged calls")
+}
+
+func matrixRTCMembershipEventMatchesCall(evt voip.MatrixRTCEvent, call *wadb.MatrixRTCCall) bool {
+	if call == nil || evt.EventID == "" || !voip.MatrixRTCEventHasJoinContent(evt) {
+		return false
+	}
+	switch evt.Kind {
+	case voip.MatrixRTCEventKindRTCMembership, voip.MatrixRTCEventKindGroupCallMember:
+		return matrixRTCEventMatchesParticipant(evt, call.SelectedPublisherID)
+	default:
+		return false
+	}
 }
 
 func shouldActivateMatrixRTCCall(evt voip.MatrixRTCEvent, callState string) bool {

@@ -42,6 +42,7 @@ func (wa *WhatsAppClient) handleIncomingVOIPCall(call *meowcaller.Call) {
 }
 
 func (wa *WhatsAppClient) handleVOIPCallEnded(callID, reason string) {
+	wa.clearWhatsAppRemoteHandRaises(callID)
 	ctx := wa.UserLogin.Log.WithContext(withoutCancelOrBackground(wa.Main.Bridge.BackgroundCtx))
 	log := wa.UserLogin.Log.With().Str("call_id", callID).Str("reason", reason).Logger()
 	call, err := wa.Main.DB.MatrixRTCCall.Get(ctx, wa.UserLogin.ID, callID)
@@ -140,6 +141,10 @@ func (wa *WhatsAppClient) announceIncomingMatrixRTCCall(ctx context.Context, cal
 	}
 	if err = wa.sendMatrixRTCRing(ctx, intent, portal.MXID, call.ID(), &session); err != nil {
 		_ = wa.Main.DB.MatrixRTCCall.MarkEnded(ctx, wa.UserLogin.ID, call.ID(), "ended", "matrixrtc_announce_failed", err.Error(), time.Now())
+		return err
+	}
+	record.BridgeMembershipEventID = session.MembershipEventID
+	if err = wa.Main.DB.MatrixRTCCall.Put(ctx, record); err != nil {
 		return err
 	}
 	log.Info().
@@ -249,22 +254,23 @@ func (wa *WhatsAppClient) startOutboundMatrixRTCCall(ctx context.Context, portal
 	now := time.Now()
 	deviceID := voip.MatrixRTCDeviceID(string(wa.UserLogin.ID), call.ID())
 	record := &wadb.MatrixRTCCall{
-		UserLoginID:           wa.UserLogin.ID,
-		WACallID:              call.ID(),
-		RoomID:                trigger.RoomID,
-		PortalKey:             portal.PortalKey,
-		PeerJID:               peer,
-		Direction:             "outgoing",
-		MediaKind:             mediaKind,
-		FocusType:             focus.Type,
-		LiveKitServiceURL:     focus.LiveKitServiceURL,
-		LiveKitRoom:           trigger.RoomID.String(),
-		MatrixParticipantMXID: intent.GetMXID(),
-		MatrixSessionID:       deviceID,
-		SelectedPublisherID:   matrixRTCTriggerParticipantID(trigger),
-		AudioPolicy:           wa.Main.Config.VOIP.LiveKit.AudioUplinkPolicy,
-		State:                 "joining_livekit",
-		CreatedTS:             now,
+		UserLoginID:               wa.UserLogin.ID,
+		WACallID:                  call.ID(),
+		RoomID:                    trigger.RoomID,
+		PortalKey:                 portal.PortalKey,
+		PeerJID:                   peer,
+		Direction:                 "outgoing",
+		MediaKind:                 mediaKind,
+		FocusType:                 focus.Type,
+		LiveKitServiceURL:         focus.LiveKitServiceURL,
+		LiveKitRoom:               trigger.RoomID.String(),
+		MatrixParticipantMXID:     intent.GetMXID(),
+		MatrixSessionID:           deviceID,
+		SelectedPublisherID:       matrixRTCTriggerParticipantID(trigger),
+		SelectedMembershipEventID: trigger.EventID,
+		AudioPolicy:               wa.Main.Config.VOIP.LiveKit.AudioUplinkPolicy,
+		State:                     "joining_livekit",
+		CreatedTS:                 now,
 	}
 	if err = wa.Main.DB.MatrixRTCCall.Put(ctx, record); err != nil {
 		_ = call.Hangup()
@@ -283,6 +289,7 @@ func (wa *WhatsAppClient) startOutboundMatrixRTCCall(ctx context.Context, portal
 	if err = wa.sendMatrixRTCMembership(ctx, intent, trigger.RoomID, session); err != nil {
 		return wa.failMatrixRTCActivation(ctx, record, "matrixrtc_membership_failed", err)
 	}
+	record.BridgeMembershipEventID = session.MembershipEventID
 	if err = wa.connectOutboundMatrixRTCCall(ctx, record, trigger); err != nil {
 		wa.UserLogin.Log.Warn().
 			Err(err).
@@ -328,21 +335,28 @@ func (wa *WhatsAppClient) sendMatrixRTCMembership(ctx context.Context, intent br
 	modernMessageSent := false
 	if matrixRTCCompatAllowsModern(membershipMode) {
 		content := voip.BuildRTCMembershipContent(*session)
-		if _, err := sendMatrixRTCMessage(ctx, intent, roomID, voip.RTCMembershipEventType(event.MessageEventType), content, matrixRTCStickyDuration); err != nil {
+		resp, err := sendMatrixRTCMessage(ctx, intent, roomID, voip.RTCMembershipEventType(event.MessageEventType), content, matrixRTCStickyDuration)
+		if err != nil {
 			return err
+		}
+		if resp != nil {
+			session.MembershipEventID = resp.EventID
 		}
 		modernMessageSent = true
 		stateKey := voip.MatrixRTCStateKey(session.UserID, session.DeviceID)
-		if _, err := intent.SendState(ctx, roomID, voip.RTCMembershipEventType(event.StateEventType), stateKey, &event.Content{Raw: content}, now); err != nil {
+		stateResp, err := intent.SendState(ctx, roomID, voip.RTCMembershipEventType(event.StateEventType), stateKey, &event.Content{Raw: content}, now)
+		if err != nil {
 			wa.UserLogin.Log.Warn().
 				Err(err).
 				Stringer("room_id", roomID).
 				Str("state_key", stateKey).
 				Msg("Failed to send MatrixRTC membership state event after sticky message membership")
+		} else if session.MembershipEventID == "" && stateResp != nil {
+			session.MembershipEventID = stateResp.EventID
 		}
 	}
 	if matrixRTCCompatAllowsLegacy(membershipMode) {
-		_, err := intent.SendState(ctx, roomID, voip.GroupCallMemberEventType(), "", &event.Content{Raw: voip.BuildLegacyCallMemberContent(*session)}, now)
+		resp, err := intent.SendState(ctx, roomID, voip.GroupCallMemberEventType(), "", &event.Content{Raw: voip.BuildLegacyCallMemberContent(*session)}, now)
 		if err != nil {
 			if modernMessageSent {
 				wa.UserLogin.Log.Warn().
@@ -352,6 +366,9 @@ func (wa *WhatsAppClient) sendMatrixRTCMembership(ctx context.Context, intent br
 				return nil
 			}
 			return err
+		}
+		if session.MembershipEventID == "" && resp != nil {
+			session.MembershipEventID = resp.EventID
 		}
 	}
 	return nil
@@ -435,6 +452,7 @@ func (wa *WhatsAppClient) activateMatrixRTCCall(ctx context.Context, call *wadb.
 	call.State = "joining_livekit"
 	call.LastError = ""
 	call.SelectedPublisherID = matrixRTCTriggerParticipantID(trigger)
+	call.SelectedMembershipEventID = trigger.EventID
 	if err := wa.Main.DB.MatrixRTCCall.Put(ctx, call); err != nil {
 		return err
 	}

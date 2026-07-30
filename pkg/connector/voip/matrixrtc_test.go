@@ -10,8 +10,8 @@ import (
 
 func TestSupportedMatrixRTCEventTypesHaveExplicitClasses(t *testing.T) {
 	types := SupportedMatrixRTCEventTypes()
-	if len(types) != 7 {
-		t.Fatalf("SupportedMatrixRTCEventTypes returned %d types, want 7", len(types))
+	if len(types) != 10 {
+		t.Fatalf("SupportedMatrixRTCEventTypes returned %d types, want 10", len(types))
 	}
 	for _, evtType := range types {
 		switch evtType.Type {
@@ -23,13 +23,53 @@ func TestSupportedMatrixRTCEventTypesHaveExplicitClasses(t *testing.T) {
 			if evtType.Class != event.StateEventType && evtType.Class != event.MessageEventType {
 				t.Fatalf("%s class = %v, want state or message", evtType.Type, evtType.Class)
 			}
-		case EventTypeRTCNotification, EventTypeCallNotify, EventTypeRTCDecline:
+		case EventTypeRTCNotification, EventTypeCallNotify, EventTypeRTCDecline,
+			EventTypeElementCallReaction, event.EventReaction.Type, event.EventRedaction.Type:
 			if evtType.Class != event.MessageEventType {
 				t.Fatalf("%s class = %v, want message", evtType.Type, evtType.Class)
 			}
 		default:
 			t.Fatalf("unexpected MatrixRTC event type %s", evtType.Type)
 		}
+	}
+}
+
+func TestParseElementCallReactionEvent(t *testing.T) {
+	evt := &event.Event{
+		ID:     id.EventID("$reaction"),
+		Type:   ElementCallReactionEventType(),
+		RoomID: id.RoomID("!room:example.com"),
+		Sender: id.UserID("@alice:example.com"),
+		Content: event.Content{Raw: map[string]any{
+			"m.relates_to": map[string]any{
+				"rel_type": "m.reference",
+				"event_id": "$membership",
+			},
+			"emoji": "❤️",
+			"name":  "generic",
+		}},
+	}
+	parsed, ok := ParseMatrixRTCEvent(evt)
+	if !ok {
+		t.Fatal("ParseMatrixRTCEvent did not recognize Element Call reaction")
+	}
+	if parsed.Kind != MatrixRTCEventKindCallReaction ||
+		parsed.EventID != "$reaction" ||
+		parsed.RelatesToEventID != "$membership" ||
+		parsed.ReactionEmoji != "❤️" {
+		t.Fatalf("unexpected parsed reaction: %+v", parsed)
+	}
+}
+
+func TestSupportedWhatsAppCallReactions(t *testing.T) {
+	for _, emoji := range []string{"👍", "❤️", "😂", "😮", "😢", "🙏"} {
+		normalized, ok := NormalizeWhatsAppCallReaction(emoji)
+		if !ok || normalized != emoji {
+			t.Fatalf("NormalizeWhatsAppCallReaction(%q) = %q, %t", emoji, normalized, ok)
+		}
+	}
+	if normalized, ok := NormalizeWhatsAppCallReaction("🎉"); ok || normalized != "" {
+		t.Fatalf("unsupported reaction normalized to %q, %t", normalized, ok)
 	}
 }
 

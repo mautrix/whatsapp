@@ -11,12 +11,13 @@ import (
 )
 
 const (
-	EventTypeGroupCall       = "org.matrix.msc3401.call"
-	EventTypeGroupCallMember = "org.matrix.msc3401.call.member"
-	EventTypeRTCMembership   = "org.matrix.msc4143.rtc.member"
-	EventTypeRTCNotification = "org.matrix.msc4075.rtc.notification"
-	EventTypeCallNotify      = "org.matrix.msc4075.call.notify"
-	EventTypeRTCDecline      = "org.matrix.msc4310.rtc.decline"
+	EventTypeGroupCall           = "org.matrix.msc3401.call"
+	EventTypeGroupCallMember     = "org.matrix.msc3401.call.member"
+	EventTypeRTCMembership       = "org.matrix.msc4143.rtc.member"
+	EventTypeRTCNotification     = "org.matrix.msc4075.rtc.notification"
+	EventTypeCallNotify          = "org.matrix.msc4075.call.notify"
+	EventTypeRTCDecline          = "org.matrix.msc4310.rtc.decline"
+	EventTypeElementCallReaction = "io.element.call.reaction"
 
 	MatrixRTCApplicationCall = "m.call"
 	MatrixRTCDefaultSlotID   = "m.call#ROOM"
@@ -31,6 +32,9 @@ var supportedMatrixRTCEventTypes = []event.Type{
 	{Type: EventTypeRTCNotification, Class: event.MessageEventType},
 	{Type: EventTypeCallNotify, Class: event.MessageEventType},
 	{Type: EventTypeRTCDecline, Class: event.MessageEventType},
+	ElementCallReactionEventType(),
+	event.EventReaction,
+	event.EventRedaction,
 }
 
 type MatrixRTCEventKind string
@@ -43,21 +47,31 @@ const (
 	MatrixRTCEventKindRTCNotification  MatrixRTCEventKind = "rtc_notification"
 	MatrixRTCEventKindLegacyCallNotify MatrixRTCEventKind = "legacy_call_notify"
 	MatrixRTCEventKindRTCDecline       MatrixRTCEventKind = "rtc_decline"
+	MatrixRTCEventKindCallReaction     MatrixRTCEventKind = "call_reaction"
+	MatrixRTCEventKindHandRaise        MatrixRTCEventKind = "hand_raise"
+	MatrixRTCEventKindRedaction        MatrixRTCEventKind = "redaction"
 )
 
 type MatrixRTCEvent struct {
-	Type          event.Type
-	Kind          MatrixRTCEventKind
-	RoomID        id.RoomID
-	Sender        id.UserID
-	StateKey      string
-	CallID        string
-	DeviceID      string
-	SessionID     string
-	Intent        string
-	LifetimeMS    int
-	FociPreferred []Focus
-	Raw           map[string]any
+	Type             event.Type
+	Kind             MatrixRTCEventKind
+	RoomID           id.RoomID
+	Sender           id.UserID
+	StateKey         string
+	CallID           string
+	DeviceID         string
+	SessionID        string
+	Intent           string
+	LifetimeMS       int
+	FociPreferred    []Focus
+	Raw              map[string]any
+	EventID          id.EventID
+	RelatesToEventID id.EventID
+	RelationType     event.RelationType
+	RelationKey      string
+	ReactionEmoji    string
+	ReactionName     string
+	Redacts          id.EventID
 }
 
 type MatrixRTCSession struct {
@@ -71,6 +85,7 @@ type MatrixRTCSession struct {
 	Expires             time.Duration
 	StickyKey           string
 	NotificationEventID id.EventID
+	MembershipEventID   id.EventID
 }
 
 func SupportedMatrixRTCEventTypes() []event.Type {
@@ -91,6 +106,12 @@ func ClassifyMatrixRTCEventType(evtType event.Type) MatrixRTCEventKind {
 		return MatrixRTCEventKindLegacyCallNotify
 	case EventTypeRTCDecline:
 		return MatrixRTCEventKindRTCDecline
+	case EventTypeElementCallReaction:
+		return MatrixRTCEventKindCallReaction
+	case event.EventReaction.Type:
+		return MatrixRTCEventKindHandRaise
+	case event.EventRedaction.Type:
+		return MatrixRTCEventKindRedaction
 	default:
 		return MatrixRTCEventKindUnknown
 	}
@@ -106,16 +127,20 @@ func ParseMatrixRTCEvent(evt *event.Event) (MatrixRTCEvent, bool) {
 	}
 	raw := rawMatrixRTCContent(evt)
 	parsed := MatrixRTCEvent{
-		Type:   evt.Type,
-		Kind:   kind,
-		RoomID: evt.RoomID,
-		Sender: evt.Sender,
-		Raw:    raw,
+		Type:    evt.Type,
+		Kind:    kind,
+		RoomID:  evt.RoomID,
+		Sender:  evt.Sender,
+		EventID: evt.ID,
+		Raw:     raw,
 	}
 	if evt.StateKey != nil {
 		parsed.StateKey = *evt.StateKey
 	}
 	fillMatrixRTCFields(&parsed, raw)
+	if evt.Redacts != "" {
+		parsed.Redacts = evt.Redacts
+	}
 	return parsed, true
 }
 
@@ -147,6 +172,16 @@ func fillMatrixRTCFields(parsed *MatrixRTCEvent, raw map[string]any) {
 	parsed.SessionID = firstString(raw, "session_id", "m.session_id", "sessionId", "sessionID")
 	parsed.Intent = firstString(raw, "intent", "m.call.intent", "call_intent")
 	parsed.LifetimeMS = firstInt(raw, "lifetime", "lifetime_ms", "m.lifetime", "m.lifetime_ms")
+	if relatesTo, ok := raw["m.relates_to"].(map[string]any); ok {
+		parsed.RelatesToEventID = id.EventID(firstString(relatesTo, "event_id"))
+		parsed.RelationType = event.RelationType(firstString(relatesTo, "rel_type"))
+		parsed.RelationKey = firstString(relatesTo, "key")
+	}
+	parsed.ReactionEmoji = firstString(raw, "emoji")
+	parsed.ReactionName = firstString(raw, "name")
+	if parsed.Redacts == "" {
+		parsed.Redacts = id.EventID(firstString(raw, "redacts"))
+	}
 	forEachObject(raw["application"], func(application map[string]any) {
 		if parsed.Intent == "" {
 			parsed.Intent = firstString(application, "intent", "m.call.intent", "call_intent")

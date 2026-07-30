@@ -1,4 +1,4 @@
--- v0 -> v10 (compatible with v3+): Latest revision
+-- v0 -> v11 (compatible with v3+): Latest revision
 
 CREATE TABLE whatsapp_poll_option_id (
     bridge_id TEXT  NOT NULL,
@@ -115,6 +115,10 @@ CREATE TABLE whatsapp_matrixrtc_call (
     matrix_participant_mxid TEXT,
     matrix_session_id       TEXT,
     selected_publisher_id   TEXT,
+    bridge_membership_event_id   TEXT,
+    selected_membership_event_id TEXT,
+    bridge_hand_raise_event_id    TEXT,
+    selected_hand_raise_event_id  TEXT,
     audio_policy            TEXT   NOT NULL,
     state                   TEXT   NOT NULL,
     created_ts              BIGINT NOT NULL,
