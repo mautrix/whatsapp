@@ -203,7 +203,7 @@ func (wa *WhatsAppClient) startOutboundMatrixRTCCall(ctx context.Context, portal
 		return err
 	}
 	if !matrixRTCPortalSupportsWhatsAppCalls(peer) {
-		return fmt.Errorf("MatrixRTC WhatsApp calls are only supported in 1:1 portals, not %s", peer.Server)
+		return fmt.Errorf("MatrixRTC WhatsApp calls are not supported in %s portals", peer.Server)
 	}
 	mediaKind, downgradedMedia := matrixRTCOutboundMediaKind(trigger)
 	if mediaKind == "" {
@@ -237,7 +237,12 @@ func (wa *WhatsAppClient) startOutboundMatrixRTCCall(ctx context.Context, portal
 		return err
 	}
 
-	call, err := wa.VOIP.Dial(ctx, peer.ToNonAD().String(), mediaKind == "video")
+	var call *meowcaller.Call
+	if peer.Server == types.GroupServer {
+		call, err = wa.VOIP.DialGroupByID(ctx, peer.ToNonAD().String(), mediaKind == "video")
+	} else {
+		call, err = wa.VOIP.Dial(ctx, peer.ToNonAD().String(), mediaKind == "video")
+	}
 	if err != nil {
 		return err
 	}
@@ -578,7 +583,7 @@ func (wa *WhatsAppClient) matrixRTCIntentForMXID(ctx context.Context, mxid id.Us
 
 func matrixRTCPortalSupportsWhatsAppCalls(peer types.JID) bool {
 	switch peer.Server {
-	case types.DefaultUserServer, types.HiddenUserServer:
+	case types.DefaultUserServer, types.HiddenUserServer, types.GroupServer:
 		return true
 	default:
 		return false

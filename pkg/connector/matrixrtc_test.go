@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"go.mau.fi/whatsmeow/types"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 
@@ -176,6 +177,13 @@ func TestShouldEndMatrixRTCCallFromMembershipRejectsOtherParticipant(t *testing.
 	}
 	if shouldEndMatrixRTCCallFromMembership(parsed, "@alice:example.com:DEVICE") {
 		t.Fatalf("shouldEndMatrixRTCCallFromMembership returned true for another participant")
+	}
+}
+
+func TestMatrixRTCPortalSupportsWhatsAppGroupCalls(t *testing.T) {
+	peer := types.NewJID("120363000000000000", types.GroupServer)
+	if !matrixRTCPortalSupportsWhatsAppCalls(peer) {
+		t.Fatal("matrixRTCPortalSupportsWhatsAppCalls rejected a WhatsApp group portal")
 	}
 }
 

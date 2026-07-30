@@ -138,6 +138,22 @@ func (m *Manager) Dial(ctx context.Context, target string, video ...bool) (*meow
 	return call, nil
 }
 
+func (m *Manager) DialGroupByID(ctx context.Context, groupID string, video ...bool) (*meowcaller.Call, error) {
+	if !m.Enabled() {
+		return nil, ErrNotEnabled
+	}
+	opts := meowcaller.GroupCallOptions{}
+	if len(video) > 0 {
+		opts.Video = video[0]
+	}
+	call, err := m.client.GroupCallByIDWithOptions(ctx, groupID, opts)
+	if err != nil {
+		return nil, err
+	}
+	m.trackCall(call, m.ownCallCreator())
+	return call, nil
+}
+
 func (m *Manager) AbortAll() {
 	if m == nil {
 		return
