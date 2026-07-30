@@ -93,7 +93,9 @@ func (wa *WhatsAppClient) handleWAEvent(rawEvt any) (success bool) {
 		success = wa.handleWACallStart(ctx, evt.GroupJID, evt.CallCreator, evt.CallCreatorAlt, evt.CallID, "", evt.Timestamp)
 	case *events.CallOfferNotice:
 		success = wa.handleWACallStart(ctx, evt.GroupJID, evt.CallCreator, evt.CallCreatorAlt, evt.CallID, evt.Type, evt.Timestamp)
-	case *events.CallTerminate, *events.CallRelayLatency, *events.CallAccept, *events.UnknownCallEvent:
+	case *events.CallTerminate:
+		wa.clearIncomingCallGroup(evt.CallID)
+	case *events.CallRelayLatency, *events.CallAccept, *events.UnknownCallEvent:
 		// ignore
 	case *events.IdentityChange:
 		wa.handleWAIdentityChange(ctx, evt)

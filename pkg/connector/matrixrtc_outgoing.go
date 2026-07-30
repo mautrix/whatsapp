@@ -9,6 +9,7 @@ import (
 	"github.com/purpshell/meowcaller"
 	"github.com/rs/zerolog"
 	"go.mau.fi/whatsmeow/types"
+	"go.mau.fi/whatsmeow/types/events"
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/bridgev2"
 	mxbridge "maunium.net/go/mautrix/bridgev2/matrix"
@@ -26,6 +27,22 @@ const (
 	matrixRTCStickyDuration     = time.Hour
 )
 
+type incomingCallGroup struct {
+	JID       types.JID
+	ExpiresAt time.Time
+}
+
+func (wa *WhatsAppClient) trackIncomingCallEvent(rawEvt any) {
+	switch evt := rawEvt.(type) {
+	case *events.CallOffer:
+		wa.trackIncomingCallGroup(evt.CallID, evt.GroupJID)
+	case *events.CallOfferNotice:
+		wa.trackIncomingCallGroup(evt.CallID, evt.GroupJID)
+	case *events.CallTerminate:
+		wa.clearIncomingCallGroup(evt.CallID)
+	}
+}
+
 func (wa *WhatsAppClient) handleIncomingVOIPCall(call *meowcaller.Call) {
 	if call == nil {
 		return
@@ -42,6 +59,7 @@ func (wa *WhatsAppClient) handleIncomingVOIPCall(call *meowcaller.Call) {
 }
 
 func (wa *WhatsAppClient) handleVOIPCallEnded(callID, reason string) {
+	wa.clearIncomingCallGroup(callID)
 	wa.clearWhatsAppRemoteHandRaises(callID)
 	ctx := wa.UserLogin.Log.WithContext(withoutCancelOrBackground(wa.Main.Bridge.BackgroundCtx))
 	log := wa.UserLogin.Log.With().Str("call_id", callID).Str("reason", reason).Logger()
@@ -77,7 +95,8 @@ func (wa *WhatsAppClient) announceIncomingMatrixRTCCall(ctx context.Context, cal
 		Stringer("peer_jid", call.Peer()).
 		Logger()
 	peer := wa.matrixRTCAnnouncementPeer(ctx, call.Peer())
-	portal, err := wa.Main.Bridge.GetPortalByKey(ctx, wa.makeWAPortalKey(peer))
+	portalPeer := wa.incomingCallPortalPeer(call.ID(), peer)
+	portal, err := wa.Main.Bridge.GetPortalByKey(ctx, wa.makeWAPortalKey(portalPeer))
 	if err != nil {
 		return err
 	}
@@ -99,6 +118,50 @@ func (wa *WhatsAppClient) announceIncomingMatrixRTCCall(ctx context.Context, cal
 		}
 	}
 	return wa.announceMatrixRTCCallInPortal(ctx, call, portal, peer, "incoming")
+}
+
+func (wa *WhatsAppClient) trackIncomingCallGroup(callID string, group types.JID) {
+	if wa == nil || callID == "" || group.Server != types.GroupServer || group.User == "" {
+		return
+	}
+	wa.incomingCallGroupLock.Lock()
+	if wa.incomingCallGroups == nil {
+		wa.incomingCallGroups = make(map[string]incomingCallGroup)
+	}
+	now := time.Now()
+	for trackedCallID, tracked := range wa.incomingCallGroups {
+		if !tracked.ExpiresAt.After(now) {
+			delete(wa.incomingCallGroups, trackedCallID)
+		}
+	}
+	wa.incomingCallGroups[callID] = incomingCallGroup{
+		JID:       group.ToNonAD(),
+		ExpiresAt: now.Add(callEventMaxAge),
+	}
+	wa.incomingCallGroupLock.Unlock()
+}
+
+func (wa *WhatsAppClient) incomingCallPortalPeer(callID string, fallback types.JID) types.JID {
+	if wa == nil || callID == "" {
+		return fallback
+	}
+	wa.incomingCallGroupLock.Lock()
+	tracked := wa.incomingCallGroups[callID]
+	delete(wa.incomingCallGroups, callID)
+	wa.incomingCallGroupLock.Unlock()
+	if tracked.JID.IsEmpty() || !tracked.ExpiresAt.After(time.Now()) {
+		return fallback
+	}
+	return tracked.JID
+}
+
+func (wa *WhatsAppClient) clearIncomingCallGroup(callID string) {
+	if wa == nil || callID == "" {
+		return
+	}
+	wa.incomingCallGroupLock.Lock()
+	delete(wa.incomingCallGroups, callID)
+	wa.incomingCallGroupLock.Unlock()
 }
 
 func (wa *WhatsAppClient) joinMatrixRTCCallLink(

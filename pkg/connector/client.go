@@ -58,6 +58,7 @@ func (wa *WhatsAppConnector) LoadUserLogin(ctx context.Context, login *bridgev2.
 		pushNamesSynced:           exsync.NewEvent(),
 		createDedup:               exsync.NewSet[types.MessageID](),
 		appStateFullSyncAttempted: make(map[appstate.WAPatchName]time.Time),
+		incomingCallGroups:        make(map[string]incomingCallGroup),
 	}
 	login.Client = w
 
@@ -76,7 +77,7 @@ func (wa *WhatsAppConnector) LoadUserLogin(ctx context.Context, login *bridgev2.
 	if w.Device != nil {
 		log := w.UserLogin.Log.With().Str("component", "whatsmeow").Logger()
 		w.Client = whatsmeow.NewClient(w.Device, waLog.Zerolog(log))
-		w.Client.AddEventHandlerWithSuccessStatus(w.handleWAEvent)
+		w.Client.AddEventHandler(w.trackIncomingCallEvent)
 		w.Client.SynchronousAck = true
 		w.Client.EnableDecryptedEventBuffer = bridgev2.PortalEventBuffer == 0
 		w.Client.ManualHistorySyncDownload = true
@@ -94,6 +95,7 @@ func (wa *WhatsAppConnector) LoadUserLogin(ctx context.Context, login *bridgev2.
 		w.VOIP.SetHandRaiseHandler(func(callID string, state meowcaller.HandRaiseState) {
 			go w.handleWhatsAppHandRaise(withoutCancelOrBackground(w.Main.Bridge.BackgroundCtx), callID, state)
 		})
+		w.Client.AddEventHandlerWithSuccessStatus(w.handleWAEvent)
 		w.Client.SetForceActiveDeliveryReceipts(wa.Config.ForceActiveDeliveryReceipts)
 		w.Client.InitialAutoReconnect = wa.Config.InitialAutoReconnect
 		w.Client.UseRetryMessageStore = wa.Config.UseWhatsAppRetryStore
@@ -118,22 +120,24 @@ type WhatsAppClient struct {
 	JID       types.JID
 	MC        mClient
 
-	historySyncWakeup  chan struct{}
-	stopLoops          atomic.Pointer[context.CancelFunc]
-	resyncQueue        map[types.JID]resyncQueueItem
-	resyncQueueLock    sync.Mutex
-	nextResync         time.Time
-	directMediaRetries map[networkid.MessageID]*directMediaRetry
-	directMediaLock    sync.Mutex
-	voipHandBridgeLock sync.Mutex
-	voipHandRaiseLock  sync.Mutex
-	voipHandRaises     map[string]map[types.JID]bool
-	mediaRetryLock     *semaphore.Weighted
-	offlineSyncWaiter  atomic.Pointer[chan error]
-	isNewLogin         bool
-	pushNamesSynced    *exsync.Event
-	lastPresence       types.Presence
-	createDedup        *exsync.Set[types.MessageID]
+	historySyncWakeup     chan struct{}
+	stopLoops             atomic.Pointer[context.CancelFunc]
+	resyncQueue           map[types.JID]resyncQueueItem
+	resyncQueueLock       sync.Mutex
+	nextResync            time.Time
+	directMediaRetries    map[networkid.MessageID]*directMediaRetry
+	directMediaLock       sync.Mutex
+	voipHandBridgeLock    sync.Mutex
+	voipHandRaiseLock     sync.Mutex
+	voipHandRaises        map[string]map[types.JID]bool
+	incomingCallGroupLock sync.Mutex
+	incomingCallGroups    map[string]incomingCallGroup
+	mediaRetryLock        *semaphore.Weighted
+	offlineSyncWaiter     atomic.Pointer[chan error]
+	isNewLogin            bool
+	pushNamesSynced       *exsync.Event
+	lastPresence          types.Presence
+	createDedup           *exsync.Set[types.MessageID]
 
 	appStateRecoveryLock      sync.Mutex
 	appStateFullSyncAttempted map[appstate.WAPatchName]time.Time

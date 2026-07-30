@@ -8,6 +8,7 @@ import (
 
 	"github.com/purpshell/meowcaller"
 	"go.mau.fi/whatsmeow/types"
+	"go.mau.fi/whatsmeow/types/events"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 
@@ -23,6 +24,60 @@ func TestShouldStartOutboundMatrixRTCCall(t *testing.T) {
 	}
 	if !shouldStartOutboundMatrixRTCCall(evt, parsed, "auto") {
 		t.Fatalf("shouldStartOutboundMatrixRTCCall returned false for active state membership")
+	}
+}
+
+func TestIncomingGroupCallUsesGroupPortalAndConsumesCorrelation(t *testing.T) {
+	client := &WhatsAppClient{incomingCallGroups: make(map[string]incomingCallGroup)}
+	group := types.NewJID("120363000000000000", types.GroupServer)
+	fallback := types.NewJID("15550000001", types.DefaultUserServer)
+
+	client.trackIncomingCallGroup("CALL", group)
+	if got := client.incomingCallPortalPeer("CALL", fallback); got != group {
+		t.Fatalf("incoming portal peer = %s, want group %s", got, group)
+	}
+	if got := client.incomingCallPortalPeer("CALL", fallback); got != fallback {
+		t.Fatalf("consumed incoming portal peer = %s, want fallback %s", got, fallback)
+	}
+}
+
+func TestIncomingCallEventTracksOfferGroupBeforeManagedCall(t *testing.T) {
+	client := &WhatsAppClient{incomingCallGroups: make(map[string]incomingCallGroup)}
+	group := types.NewJID("120363000000000000", types.GroupServer)
+	client.trackIncomingCallEvent(&events.CallOffer{
+		BasicCallMeta: types.BasicCallMeta{
+			CallID:   "CALL",
+			GroupJID: group,
+		},
+	})
+	if got := client.incomingCallPortalPeer("CALL", types.EmptyJID); got != group {
+		t.Fatalf("incoming portal peer = %s, want group %s", got, group)
+	}
+}
+
+func TestIncomingCallGroupIgnoresNonGroupJID(t *testing.T) {
+	client := &WhatsAppClient{incomingCallGroups: make(map[string]incomingCallGroup)}
+	direct := types.NewJID("15550000001", types.DefaultUserServer)
+	client.trackIncomingCallGroup("CALL", direct)
+	if got := client.incomingCallPortalPeer("CALL", direct); got != direct {
+		t.Fatalf("incoming portal peer = %s, want direct fallback %s", got, direct)
+	}
+	if len(client.incomingCallGroups) != 0 {
+		t.Fatalf("tracked non-group calls = %d, want 0", len(client.incomingCallGroups))
+	}
+}
+
+func TestIncomingCallGroupIgnoresExpiredCorrelation(t *testing.T) {
+	group := types.NewJID("120363000000000000", types.GroupServer)
+	fallback := types.NewJID("15550000001", types.DefaultUserServer)
+	client := &WhatsAppClient{incomingCallGroups: map[string]incomingCallGroup{
+		"CALL": {
+			JID:       group,
+			ExpiresAt: time.Now().Add(-time.Second),
+		},
+	}}
+	if got := client.incomingCallPortalPeer("CALL", fallback); got != fallback {
+		t.Fatalf("expired incoming portal peer = %s, want fallback %s", got, fallback)
 	}
 }
 
