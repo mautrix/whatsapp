@@ -79,6 +79,49 @@ func (wa *WhatsAppClient) handleVOIPCallEnded(callID, reason string) {
 	}
 }
 
+func (wa *WhatsAppClient) cleanupStaleMatrixRTCCalls(ctx context.Context) {
+	if wa == nil || wa.Main == nil || wa.Main.DB == nil || wa.UserLogin == nil {
+		return
+	}
+	calls, err := wa.Main.DB.MatrixRTCCall.GetActiveForLogin(ctx, wa.UserLogin.ID)
+	if err != nil {
+		wa.UserLogin.Log.Err(err).Msg("Failed to query stale MatrixRTC calls during login load")
+		return
+	}
+	for _, call := range calls {
+		if call == nil {
+			continue
+		}
+		lastError := ""
+		if clearErr := wa.clearMatrixRTCMembership(ctx, call); clearErr != nil {
+			lastError = clearErr.Error()
+			wa.UserLogin.Log.Warn().
+				Err(clearErr).
+				Str("call_id", call.WACallID).
+				Stringer("room_id", call.RoomID).
+				Msg("Failed to clear stale MatrixRTC membership during login load")
+		}
+		if markErr := wa.Main.DB.MatrixRTCCall.MarkEnded(
+			ctx,
+			wa.UserLogin.ID,
+			call.WACallID,
+			"ended",
+			"bridge_restart",
+			lastError,
+			time.Now(),
+		); markErr != nil {
+			wa.UserLogin.Log.Err(markErr).
+				Str("call_id", call.WACallID).
+				Msg("Failed to mark stale MatrixRTC call ended during login load")
+		}
+	}
+	if len(calls) > 0 {
+		wa.UserLogin.Log.Info().
+			Int("call_count", len(calls)).
+			Msg("Cleaned up stale MatrixRTC calls during login load")
+	}
+}
+
 func matrixRTCFinalEndReason(call *wadb.MatrixRTCCall, reason string) (string, string) {
 	if call != nil && !call.EndedTS.IsZero() && (call.EndReason != "" || call.LastError != "") {
 		if call.EndReason != "" {
@@ -90,6 +133,8 @@ func matrixRTCFinalEndReason(call *wadb.MatrixRTCCall, reason string) (string, s
 }
 
 func (wa *WhatsAppClient) announceIncomingMatrixRTCCall(ctx context.Context, call *meowcaller.Call) error {
+	wa.voipCallStartLock.Lock()
+	defer wa.voipCallStartLock.Unlock()
 	log := zerolog.Ctx(ctx).With().
 		Str("call_id", call.ID()).
 		Stringer("peer_jid", call.Peer()).
@@ -103,6 +148,17 @@ func (wa *WhatsAppClient) announceIncomingMatrixRTCCall(ctx context.Context, cal
 	if portal == nil || portal.MXID == "" {
 		log.Debug().Msg("No existing Matrix portal room for incoming MatrixRTC call announcement")
 		return nil
+	}
+	activeRoomCalls, err := wa.Main.DB.MatrixRTCCall.GetActiveInRoom(ctx, portal.MXID)
+	if err != nil {
+		return err
+	}
+	if len(activeRoomCalls) > 0 {
+		log.Warn().
+			Stringer("room_id", portal.MXID).
+			Int("active_call_count", len(activeRoomCalls)).
+			Msg("Rejecting incoming WhatsApp call because the Matrix room already has an active call")
+		return call.Reject()
 	}
 	if wa.Main.Config.VOIP.MaxActiveCallsPerLogin > 0 {
 		activeCalls, err := wa.Main.DB.MatrixRTCCall.GetActiveForLogin(ctx, wa.UserLogin.ID)
@@ -170,11 +226,20 @@ func (wa *WhatsAppClient) joinMatrixRTCCallLink(
 	tokenOrURL string,
 	video bool,
 ) (*meowcaller.Call, error) {
+	wa.voipCallStartLock.Lock()
+	defer wa.voipCallStartLock.Unlock()
 	if portal == nil || portal.MXID == "" {
 		return nil, fmt.Errorf("call links must be joined from an existing portal room")
 	}
 	if video && !wa.Main.Config.VOIP.Video.Enabled {
 		return nil, fmt.Errorf("WhatsApp call-link video requires voip.video.enabled")
+	}
+	activeRoomCalls, err := wa.Main.DB.MatrixRTCCall.GetActiveInRoom(ctx, portal.MXID)
+	if err != nil {
+		return nil, err
+	}
+	if len(activeRoomCalls) > 0 {
+		return nil, fmt.Errorf("the Matrix room already has an active call")
 	}
 	if wa.Main.Config.VOIP.MaxActiveCallsPerLogin > 0 {
 		activeCalls, err := wa.Main.DB.MatrixRTCCall.GetActiveForLogin(ctx, wa.UserLogin.ID)
@@ -314,6 +379,8 @@ func (wa *WhatsAppConnector) startOutboundMatrixRTCCall(ctx context.Context, por
 }
 
 func (wa *WhatsAppClient) startOutboundMatrixRTCCall(ctx context.Context, portal *bridgev2.Portal, trigger voip.MatrixRTCEvent) error {
+	wa.voipCallStartLock.Lock()
+	defer wa.voipCallStartLock.Unlock()
 	if wa.VOIP == nil || !wa.VOIP.Enabled() {
 		return voip.ErrNotEnabled
 	}

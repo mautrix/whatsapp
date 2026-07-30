@@ -130,6 +130,7 @@ type WhatsAppClient struct {
 	voipHandBridgeLock    sync.Mutex
 	voipHandRaiseLock     sync.Mutex
 	voipHandRaises        map[string]map[types.JID]bool
+	voipCallStartLock     sync.Mutex
 	incomingCallGroupLock sync.Mutex
 	incomingCallGroups    map[string]incomingCallGroup
 	mediaRetryLock        *semaphore.Weighted
@@ -224,6 +225,7 @@ func (wa *WhatsAppClient) Connect(ctx context.Context) {
 	if ctx.Err() != nil {
 		return
 	}
+	wa.cleanupStaleMatrixRTCCalls(ctx)
 	wa.initMC()
 	wa.startLoops()
 	wa.Client.BackgroundEventCtx = wa.UserLogin.Log.WithContext(wa.Main.Bridge.BackgroundCtx)
