@@ -197,6 +197,68 @@ func (m *Manager) RingParticipant(ctx context.Context, callID, target string) er
 	return call.RingParticipant(ctx, target)
 }
 
+func (m *Manager) CreateCallLink(ctx context.Context, video bool) (meowcaller.CallLink, error) {
+	if !m.Enabled() {
+		return meowcaller.CallLink{}, ErrNotEnabled
+	}
+	return m.client.CreateCallLink(ctx, meowcaller.CallLinkOptions{Video: video})
+}
+
+func (m *Manager) PreviewCallLink(ctx context.Context, tokenOrURL string, video bool) (meowcaller.CallLinkPreview, error) {
+	if !m.Enabled() {
+		return meowcaller.CallLinkPreview{}, ErrNotEnabled
+	}
+	return m.client.PreviewCallLink(ctx, tokenOrURL, meowcaller.CallLinkOptions{Video: video})
+}
+
+func (m *Manager) JoinCallLink(ctx context.Context, tokenOrURL string, video bool) (*meowcaller.Call, error) {
+	if !m.Enabled() {
+		return nil, ErrNotEnabled
+	}
+	call, err := m.client.JoinCallLink(ctx, tokenOrURL, meowcaller.CallLinkOptions{Video: video})
+	if err != nil {
+		return nil, err
+	}
+	if call == nil {
+		return nil, fmt.Errorf("meowcaller returned no call for call-link join")
+	}
+	m.trackCall(call, call.Peer())
+	return call, nil
+}
+
+func (m *Manager) WaitingRoomState(callID string) (meowcaller.WaitingRoomState, bool, error) {
+	call, err := m.activeCall(callID)
+	if err != nil {
+		return meowcaller.WaitingRoomState{}, false, err
+	}
+	state, ok := call.WaitingRoomState()
+	return state, ok, nil
+}
+
+func (m *Manager) SetApprovalRequired(ctx context.Context, callID string, enabled bool) error {
+	call, err := m.activeCall(callID)
+	if err != nil {
+		return err
+	}
+	return call.SetApprovalRequired(ctx, enabled)
+}
+
+func (m *Manager) AdmitParticipant(ctx context.Context, callID, target string) error {
+	call, err := m.activeCall(callID)
+	if err != nil {
+		return err
+	}
+	return call.AdmitParticipant(ctx, target)
+}
+
+func (m *Manager) DenyParticipant(ctx context.Context, callID, target string) error {
+	call, err := m.activeCall(callID)
+	if err != nil {
+		return err
+	}
+	return call.DenyParticipant(ctx, target)
+}
+
 func (m *Manager) activeCall(callID string) (*meowcaller.Call, error) {
 	if !m.Enabled() {
 		return nil, ErrNotEnabled

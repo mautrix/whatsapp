@@ -98,6 +98,55 @@ func (wa *WhatsAppClient) announceIncomingMatrixRTCCall(ctx context.Context, cal
 			return call.Reject()
 		}
 	}
+	return wa.announceMatrixRTCCallInPortal(ctx, call, portal, peer, "incoming")
+}
+
+func (wa *WhatsAppClient) joinMatrixRTCCallLink(
+	ctx context.Context,
+	portal *bridgev2.Portal,
+	tokenOrURL string,
+	video bool,
+) (*meowcaller.Call, error) {
+	if portal == nil || portal.MXID == "" {
+		return nil, fmt.Errorf("call links must be joined from an existing portal room")
+	}
+	if video && !wa.Main.Config.VOIP.Video.Enabled {
+		return nil, fmt.Errorf("WhatsApp call-link video requires voip.video.enabled")
+	}
+	if wa.Main.Config.VOIP.MaxActiveCallsPerLogin > 0 {
+		activeCalls, err := wa.Main.DB.MatrixRTCCall.GetActiveForLogin(ctx, wa.UserLogin.ID)
+		if err != nil {
+			return nil, err
+		}
+		if len(activeCalls) >= wa.Main.Config.VOIP.MaxActiveCallsPerLogin {
+			return nil, fmt.Errorf("active MatrixRTC call limit reached for login %s", wa.UserLogin.ID)
+		}
+	}
+	call, err := wa.VOIP.JoinCallLink(ctx, tokenOrURL, video)
+	if err != nil {
+		return nil, err
+	}
+	peer := wa.matrixRTCAnnouncementPeer(ctx, call.Peer())
+	if err = wa.announceMatrixRTCCallInPortal(ctx, call, portal, peer, "call_link"); err != nil {
+		_ = call.Hangup()
+		return nil, err
+	}
+	return call, nil
+}
+
+func (wa *WhatsAppClient) announceMatrixRTCCallInPortal(
+	ctx context.Context,
+	call *meowcaller.Call,
+	portal *bridgev2.Portal,
+	peer types.JID,
+	direction string,
+) error {
+	if call == nil {
+		return fmt.Errorf("WhatsApp call is nil")
+	}
+	if portal == nil || portal.MXID == "" {
+		return fmt.Errorf("Matrix portal room is not available")
+	}
 	focus, err := voip.DiscoverLiveKitFocus(ctx, nil, wa.Main.Bridge.Matrix.ServerName(), wa.Main.Config.VOIP.MatrixRTC.LiveKitServiceURL)
 	if err != nil {
 		return err
@@ -125,7 +174,7 @@ func (wa *WhatsAppClient) announceIncomingMatrixRTCCall(ctx context.Context, cal
 		RoomID:                portal.MXID,
 		PortalKey:             portal.PortalKey,
 		PeerJID:               peer,
-		Direction:             "incoming",
+		Direction:             direction,
 		MediaKind:             session.Intent,
 		FocusType:             focus.Type,
 		LiveKitServiceURL:     focus.LiveKitServiceURL,
@@ -147,11 +196,13 @@ func (wa *WhatsAppClient) announceIncomingMatrixRTCCall(ctx context.Context, cal
 	if err = wa.Main.DB.MatrixRTCCall.Put(ctx, record); err != nil {
 		return err
 	}
-	log.Info().
+	zerolog.Ctx(ctx).Info().
+		Str("call_id", call.ID()).
+		Str("direction", direction).
 		Stringer("room_id", portal.MXID).
 		Stringer("participant_mxid", intent.GetMXID()).
 		Str("device_id", deviceID).
-		Msg("Announced incoming WhatsApp call over MatrixRTC")
+		Msg("Announced WhatsApp call over MatrixRTC")
 	return nil
 }
 

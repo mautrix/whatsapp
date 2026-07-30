@@ -117,6 +117,8 @@ func (wa *WhatsAppConnector) Init(bridge *bridgev2.Bridge) {
 	wa.Bridge.Commands.(*commands.Processor).AddHandlers(
 		cmdAccept, cmdSync, cmdInviteLink, cmdResolveLink, cmdJoin,
 		cmdCallParticipants, cmdCallAdd, cmdCallRing,
+		cmdCallLinkCreate, cmdCallLinkPreview, cmdCallLinkJoin,
+		cmdCallWaiting, cmdCallApproval, cmdCallAdmit, cmdCallDeny,
 	)
 	wa.mediaEditCache = make(MediaEditCache)
 	wa.initMatrixRTCEventHooks()

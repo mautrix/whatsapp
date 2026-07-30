@@ -73,3 +73,72 @@ func TestFormatGroupCallRoster(t *testing.T) {
 		}
 	}
 }
+
+func TestCallLinkArgsInfersMediaFromURL(t *testing.T) {
+	token, video, err := callLinkArgs([]string{"https://call.whatsapp.com/video/TOKEN"})
+	if err != nil {
+		t.Fatalf("callLinkArgs returned error: %v", err)
+	}
+	if token != "https://call.whatsapp.com/video/TOKEN" || !video {
+		t.Fatalf("callLinkArgs = (%q, %t), want video URL and true", token, video)
+	}
+
+	token, video, err = callLinkArgs([]string{"TOKEN", "video"})
+	if err != nil {
+		t.Fatalf("callLinkArgs with explicit media returned error: %v", err)
+	}
+	if token != "TOKEN" || !video {
+		t.Fatalf("callLinkArgs = (%q, %t), want TOKEN and true", token, video)
+	}
+}
+
+func TestCallMediaArgRejectsUnknownMedia(t *testing.T) {
+	if _, err := callMediaArg([]string{"screen"}); err == nil {
+		t.Fatal("callMediaArg accepted an unknown media kind")
+	}
+	if video, err := callMediaArg(nil); err != nil || video {
+		t.Fatalf("callMediaArg default = (%t, %v), want audio and nil", video, err)
+	}
+}
+
+func TestParseCallApproval(t *testing.T) {
+	for _, raw := range []string{"on", "true", "enabled"} {
+		if enabled, err := parseCallApproval(raw); err != nil || !enabled {
+			t.Errorf("parseCallApproval(%q) = (%t, %v), want true and nil", raw, enabled, err)
+		}
+	}
+	for _, raw := range []string{"off", "false", "disabled"} {
+		if enabled, err := parseCallApproval(raw); err != nil || enabled {
+			t.Errorf("parseCallApproval(%q) = (%t, %v), want false and nil", raw, enabled, err)
+		}
+	}
+	if _, err := parseCallApproval("maybe"); err == nil {
+		t.Fatal("parseCallApproval accepted an invalid value")
+	}
+}
+
+func TestFormatWaitingRoomState(t *testing.T) {
+	state := meowcaller.WaitingRoomState{
+		Enabled:       true,
+		IsAdmin:       true,
+		InWaitingRoom: false,
+		TransactionID: 7,
+		Users: []meowcaller.WaitingRoomUser{
+			{
+				JID:   types.NewJID("222", types.HiddenUserServer),
+				PN:    types.NewJID("15550000002", types.DefaultUserServer),
+				State: "pending",
+			},
+		},
+	}
+	got := formatWaitingRoomState(state)
+	for _, want := range []string{
+		"transaction 7",
+		"approval **enabled**",
+		"`15550000002@s.whatsapp.net`: pending",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("formatted waiting room missing %q:\n%s", want, got)
+		}
+	}
+}
