@@ -196,8 +196,6 @@ github.com/prometheus/common v0.68.1 h1:omjRRl4QP4komogpXuhfeOiisQg7xdy8VM1UY+pS
 github.com/prometheus/common v0.68.1/go.mod h1:ZzL3f6u94qUxh9p+tJTrF+FvBS1XXbbRAZCQkytAL0Y=
 github.com/prometheus/procfs v0.20.1 h1:XwbrGOIplXW/AU3YhIhLODXMJYyC1isLFfYCsTEycfc=
 github.com/prometheus/procfs v0.20.1/go.mod h1:o9EMBZGRyvDrSPH1RqdxhojkuXstoe4UlK79eF5TGGo=
-github.com/purpshell/meowcaller v0.0.0-20260722143136-8faf887946a8 h1:sVe8DiEWPu+oEkhbLUMPrTYXxaRQ/V3tUZld/5y2jYE=
-github.com/purpshell/meowcaller v0.0.0-20260722143136-8faf887946a8/go.mod h1:FA3k7L98Dy2km9hvcdKJH1HMKPpi8bCONlA7R84NpN4=
 github.com/purpshell/meowcaller v0.0.0-20260726180203-6d9b7b2c1807 h1:SnLX76CnagumooXRm63BK9Rn2/e/Th6aWWJJKTqOk2k=
 github.com/purpshell/meowcaller v0.0.0-20260726180203-6d9b7b2c1807/go.mod h1:kSME01MaSkwul6tSmExmgBWUOmfkw3DNpfnozsn01eE=
 github.com/puzpuzpuz/xsync/v4 v4.5.0 h1:vOSWu6b57/emh+L/Cw0BeQfvxa/cogFywXHeGUxQxAg=
@@ -249,8 +247,6 @@ go.mau.fi/util v0.9.12-0.20260719092501-f9c03d846391 h1:lsvBEY8MJfYdV61YbwikiQvb
 go.mau.fi/util v0.9.12-0.20260719092501-f9c03d846391/go.mod h1:xunp/oIQfFD68HHcNHfG0pOiHkvEtDhTweeIwKJ//+Q=
 go.mau.fi/webp v0.3.0 h1:gVHQZtz21Ziwj+CDuklbX9mqpsnDIFKxs/BJyV7iZzA=
 go.mau.fi/webp v0.3.0/go.mod h1:rlZFTev+dYxhvk+XNBP/5GcTt4gXmzAB4DU0aGUYIQo=
-go.mau.fi/whatsmeow v0.0.0-20260720135917-a2381054887e h1:Kn2XQTpYRploXqtmJKjeX4ZYGevhIeQkO2PWGPGdwrY=
-go.mau.fi/whatsmeow v0.0.0-20260720135917-a2381054887e/go.mod h1:Iy/xVSuVU2payR26MB1hv0UZUWRraEn4qKZ7+VRHulg=
 go.mau.fi/whatsmeow v0.0.0-20260722203353-e9a033b24933 h1:7skZGs9q+rWKqYHok4ZufzhKpf6GmTKZnTjSm0aDtus=
 go.mau.fi/whatsmeow v0.0.0-20260722203353-e9a033b24933/go.mod h1:Iy/xVSuVU2payR26MB1hv0UZUWRraEn4qKZ7+VRHulg=
 go.mau.fi/zeroconfig v0.2.0 h1:e/OGEERqVRRKlgaro7E6bh8xXiKFSXB3eNNIud7FUjU=

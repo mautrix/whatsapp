@@ -11,6 +11,7 @@ require (
 	github.com/livekit/media-sdk v0.0.0-20260605212526-4c11a51d3c97
 	github.com/livekit/protocol v1.49.0
 	github.com/livekit/server-sdk-go/v2 v2.17.0
+	github.com/mattn/go-sqlite3 v1.14.48
 	github.com/pion/rtp v1.10.2
 	github.com/pion/webrtc/v4 v4.2.14
 	github.com/purpshell/meowcaller v0.0.0-20260726180203-6d9b7b2c1807
@@ -66,7 +67,6 @@ require (
 	github.com/magefile/mage v1.17.2 // indirect
 	github.com/mattn/go-colorable v0.1.14 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
-	github.com/mattn/go-sqlite3 v1.14.48 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/nats-io/nats.go v1.52.0 // indirect
 	github.com/nats-io/nkeys v0.4.16 // indirect
