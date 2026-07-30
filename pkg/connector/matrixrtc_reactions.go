@@ -110,7 +110,7 @@ func (wa *WhatsAppConnector) handleMatrixRTCCallControlEvent(
 }
 
 func (wa *WhatsAppClient) handleWhatsAppCallReaction(ctx context.Context, callID string, reaction meowcaller.CallReaction) {
-	if reaction.Removed {
+	if reaction.Removed || wa.isOwnWhatsAppCallParticipant(reaction.Sender) {
 		return
 	}
 	emoji, supported := voip.NormalizeWhatsAppCallReaction(reaction.Emoji)
@@ -244,10 +244,11 @@ func (wa *WhatsAppClient) clearWhatsAppRemoteHandRaises(callID string) {
 }
 
 func (wa *WhatsAppClient) isOwnWhatsAppCallParticipant(participant types.JID) bool {
-	if participant.IsEmpty() || wa.GetStore() == nil {
+	if participant.IsEmpty() || wa == nil || wa.Client == nil || wa.Client.Store == nil {
 		return false
 	}
+	device := wa.Client.Store
 	participant = participant.ToNonAD()
-	return participant == wa.GetStore().GetLID().ToNonAD() ||
-		participant == wa.GetStore().GetJID().ToNonAD()
+	return participant == device.GetLID().ToNonAD() ||
+		participant == device.GetJID().ToNonAD()
 }

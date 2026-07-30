@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/purpshell/meowcaller"
+	"go.mau.fi/whatsmeow"
+	"go.mau.fi/whatsmeow/store"
 	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
 	"maunium.net/go/mautrix/bridgev2"
@@ -43,6 +45,25 @@ func TestMatrixRTCSenderMustOwnPortalLogin(t *testing.T) {
 	}
 	if matrixRTCSenderOwnsLogin("@alice:example.com", nil) {
 		t.Fatal("matrixRTCSenderOwnsLogin accepted a missing login")
+	}
+}
+
+func TestOwnWhatsAppCallParticipantMatchesPhoneAndLID(t *testing.T) {
+	phone := types.NewJID("15550000001", types.DefaultUserServer)
+	lid := types.NewJID("111", types.HiddenUserServer)
+	client := &WhatsAppClient{
+		Client: &whatsmeow.Client{
+			Store: &store.Device{ID: &phone, LID: lid},
+		},
+	}
+	if !client.isOwnWhatsAppCallParticipant(phone) {
+		t.Fatal("phone JID was not recognized as the local WhatsApp call participant")
+	}
+	if !client.isOwnWhatsAppCallParticipant(lid) {
+		t.Fatal("LID was not recognized as the local WhatsApp call participant")
+	}
+	if client.isOwnWhatsAppCallParticipant(types.NewJID("222", types.HiddenUserServer)) {
+		t.Fatal("remote LID was recognized as the local WhatsApp call participant")
 	}
 }
 
