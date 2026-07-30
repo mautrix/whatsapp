@@ -116,7 +116,7 @@ func (wa *WhatsAppConnector) Init(bridge *bridgev2.Bridge) {
 	wa.matrixRTCOutboundStartExpires = make(map[string]time.Time)
 	wa.Bridge.Commands.(*commands.Processor).AddHandlers(
 		cmdAccept, cmdSync, cmdInviteLink, cmdResolveLink, cmdJoin,
-		cmdCallParticipants, cmdCallAdd, cmdCallRing,
+		cmdCallParticipants, cmdCallAdd, cmdCallRing, cmdCallVideoSelect,
 		cmdCallLinkCreate, cmdCallLinkPreview, cmdCallLinkJoin,
 		cmdCallWaiting, cmdCallApproval, cmdCallAdmit, cmdCallDeny,
 	)

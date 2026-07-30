@@ -50,6 +50,18 @@ var cmdCallRing = &commands.FullHandler{
 	RequiresPortal: true,
 }
 
+var cmdCallVideoSelect = &commands.FullHandler{
+	Func: fnCallVideoSelect,
+	Name: "call-video-select",
+	Help: commands.HelpMeta{
+		Section:     HelpSectionCalls,
+		Description: "Select which WhatsApp group participant is shown on the Matrix camera track.",
+		Args:        "<phone number or JID>",
+	},
+	RequiresLogin:  true,
+	RequiresPortal: true,
+}
+
 var cmdCallLinkCreate = &commands.FullHandler{
 	Func: fnCallLinkCreate,
 	Name: "call-link-create",
@@ -181,6 +193,23 @@ func fnCallRing(ce *commands.Event) {
 		return
 	}
 	ce.Reply("Rang `%s` in the active WhatsApp call.", target)
+}
+
+func fnCallVideoSelect(ce *commands.Event) {
+	target, ok := callTargetArg(ce)
+	if !ok {
+		return
+	}
+	client, call, err := activePortalCall(ce)
+	if err != nil {
+		ce.Reply("Failed to find the active call: %v", err)
+		return
+	}
+	if err = client.VOIP.SelectVideoParticipant(call.WACallID, target); err != nil {
+		ce.Reply("Failed to select the WhatsApp video participant: %v", err)
+		return
+	}
+	ce.Reply("Selected `%s` for the WhatsApp camera track.", target)
 }
 
 func fnCallLinkCreate(ce *commands.Event) {

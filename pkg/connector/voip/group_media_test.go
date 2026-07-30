@@ -60,6 +60,58 @@ func TestWhatsAppVideoRouterKeepsOneStableGroupCamera(t *testing.T) {
 	}
 }
 
+func TestWhatsAppVideoRouterSelectsCameraByPhoneNumberAlias(t *testing.T) {
+	camera := &recordingGroupVideoSink{}
+	screen := &recordingGroupVideoSink{}
+	router := newWhatsAppVideoRouter(camera, screen, camera.setMuted, screen.setMuted)
+	aliceLID := types.NewJID("111", types.HiddenUserServer)
+	alicePN := types.NewJID("15550000001", types.DefaultUserServer)
+	bobLID := types.NewJID("222", types.HiddenUserServer)
+	bobPN := types.NewJID("15550000002", types.DefaultUserServer)
+	router.SetGroupState(meowcaller.GroupCallState{
+		Participants: []meowcaller.GroupCallParticipant{
+			{JID: aliceLID, PN: alicePN, State: "connected"},
+			{JID: bobLID, PN: bobPN, State: "connected"},
+		},
+	})
+	if err := router.SelectCamera(bobPN); err != nil {
+		t.Fatalf("SelectCamera returned error: %v", err)
+	}
+
+	router.WriteParticipantFrame(meowcaller.ParticipantVideoFrame{
+		Sender:     aliceLID,
+		AccessUnit: []byte{0x01},
+	})
+	router.WriteParticipantFrame(meowcaller.ParticipantVideoFrame{
+		Sender:     bobLID,
+		AccessUnit: []byte{0x02},
+	})
+
+	if len(camera.frames) != 1 || camera.frames[0][0] != 0x02 {
+		t.Fatalf("camera frames = %v, want only the selected participant", camera.frames)
+	}
+}
+
+func TestWhatsAppVideoRouterRejectsDisconnectedCameraSelection(t *testing.T) {
+	router := newWhatsAppVideoRouter(
+		&recordingGroupVideoSink{},
+		&recordingGroupVideoSink{},
+		nil,
+		nil,
+	)
+	router.SetGroupState(meowcaller.GroupCallState{
+		Participants: []meowcaller.GroupCallParticipant{
+			{
+				JID:   types.NewJID("111", types.HiddenUserServer),
+				State: "connected",
+			},
+		},
+	})
+	if err := router.SelectCamera(types.NewJID("222", types.HiddenUserServer)); err == nil {
+		t.Fatal("SelectCamera accepted a disconnected participant")
+	}
+}
+
 func TestWhatsAppVideoRouterSeparatesScreenShareFromCamera(t *testing.T) {
 	camera := &recordingGroupVideoSink{}
 	screen := &recordingGroupVideoSink{}

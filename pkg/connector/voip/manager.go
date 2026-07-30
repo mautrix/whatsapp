@@ -3,6 +3,7 @@ package voip
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -51,6 +52,7 @@ type Manager struct {
 	whatsAppMuted        map[string]bool
 	whatsAppVideoMuted   map[string]bool
 	videoKeyframePending map[string]bool
+	videoRouters         map[string]*whatsAppVideoRouter
 	incomingCallNotify   func(*meowcaller.Call)
 	callEndNotify        func(callID, reason string)
 	callReactionNotify   func(callID string, reaction meowcaller.CallReaction)
@@ -71,6 +73,7 @@ func NewManager(waClient *whatsmeow.Client, cfg Config, log zerolog.Logger) *Man
 		whatsAppMuted:        make(map[string]bool),
 		whatsAppVideoMuted:   make(map[string]bool),
 		videoKeyframePending: make(map[string]bool),
+		videoRouters:         make(map[string]*whatsAppVideoRouter),
 	}
 	if !cfg.Enabled || waClient == nil {
 		return manager
@@ -197,6 +200,23 @@ func (m *Manager) RingParticipant(ctx context.Context, callID, target string) er
 	return call.RingParticipant(ctx, target)
 }
 
+func (m *Manager) SelectVideoParticipant(callID, target string) error {
+	if _, err := m.activeCall(callID); err != nil {
+		return err
+	}
+	jid, err := parseVideoParticipantTarget(target)
+	if err != nil {
+		return err
+	}
+	m.mu.Lock()
+	router := m.videoRouters[callID]
+	m.mu.Unlock()
+	if router == nil {
+		return fmt.Errorf("WhatsApp group video is not connected to LiveKit")
+	}
+	return router.SelectCamera(jid)
+}
+
 func (m *Manager) CreateCallLink(ctx context.Context, video bool) (meowcaller.CallLink, error) {
 	if !m.Enabled() {
 		return meowcaller.CallLink{}, ErrNotEnabled
@@ -320,6 +340,7 @@ func (m *Manager) AbortAll() {
 	m.whatsAppMuted = make(map[string]bool)
 	m.whatsAppVideoMuted = make(map[string]bool)
 	m.videoKeyframePending = make(map[string]bool)
+	m.videoRouters = make(map[string]*whatsAppVideoRouter)
 	participants := make([]*LiveKitParticipant, 0, len(m.livekit))
 	for _, participant := range m.livekit {
 		participants = append(participants, participant)
@@ -364,6 +385,7 @@ func (m *Manager) BridgeCallToLiveKit(ctx context.Context, waCallID string, auth
 		m.handleMatrixAudioMuteState(call, muted)
 	})
 	videoEnabled := m.cfg.Video.Enabled
+	var videoRouter *whatsAppVideoRouter
 	if videoEnabled {
 		var videoBuffer whatsAppVideoStartupBuffer
 		var videoBufferLock sync.Mutex
@@ -424,7 +446,7 @@ func (m *Manager) BridgeCallToLiveKit(ctx context.Context, waCallID string, auth
 			m.clearLiveKitConnecting(waCallID)
 			return err
 		}
-		videoRouter := newWhatsAppVideoRouter(
+		videoRouter = newWhatsAppVideoRouter(
 			participant.WhatsAppVideoSink(),
 			participant.WhatsAppScreenShareSink(),
 			participant.SetWhatsAppVideoMuted,
@@ -466,6 +488,9 @@ func (m *Manager) BridgeCallToLiveKit(ctx context.Context, waCallID string, auth
 	delete(m.videoKeyframePending, waCallID)
 	delete(m.livekitConnecting, waCallID)
 	m.livekit[waCallID] = participant
+	if videoRouter != nil {
+		m.videoRouters[waCallID] = videoRouter
+	}
 	m.mu.Unlock()
 	if videoEnabled && keyframePending {
 		participant.requestRemoteVideoKeyframe()
@@ -866,6 +891,7 @@ func (m *Manager) trackCall(call *meowcaller.Call, callCreator types.JID) {
 		delete(m.whatsAppMuted, call.ID())
 		delete(m.whatsAppVideoMuted, call.ID())
 		delete(m.videoKeyframePending, call.ID())
+		delete(m.videoRouters, call.ID())
 		participant := m.livekit[call.ID()]
 		delete(m.livekit, call.ID())
 		delete(m.livekitConnecting, call.ID())
@@ -912,6 +938,21 @@ func (m *Manager) trackCall(call *meowcaller.Call, callCreator types.JID) {
 			handler(call.ID(), state)
 		}
 	})
+}
+
+func parseVideoParticipantTarget(target string) (types.JID, error) {
+	target = strings.TrimSpace(target)
+	if target == "" {
+		return types.EmptyJID, fmt.Errorf("WhatsApp video participant is empty")
+	}
+	if !strings.ContainsRune(target, '@') {
+		return types.NewJID(strings.TrimPrefix(target, "+"), types.DefaultUserServer), nil
+	}
+	jid, err := types.ParseJID(target)
+	if err != nil {
+		return types.EmptyJID, fmt.Errorf("parse WhatsApp video participant: %w", err)
+	}
+	return jid.ToNonAD(), nil
 }
 
 func (m *Manager) requestLiveKitVideoKeyframe(callID string) {

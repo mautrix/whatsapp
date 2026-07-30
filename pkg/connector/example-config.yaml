@@ -80,7 +80,7 @@ voip:
     # ring - ring MatrixRTC/Element Call and answer WhatsApp only after a Matrix user joins
     # auto_answer - test-only behavior that answers WhatsApp immediately
     incoming_policy: ring
-    # WhatsApp/meowcaller currently supports one live 1:1 call leg per login.
+    # Limit concurrent WhatsApp call legs per login. A direct, group, or call-link call counts as one leg.
     max_active_calls_per_login: 1
 
     matrixrtc:
@@ -118,6 +118,8 @@ voip:
     video:
         # Video is passed through as H.264. Other codecs are ignored.
         enabled: false
+        # active_speaker or selected_participant. Both keep one group camera stable;
+        # change the selected participant with !wa call-video-select.
         selected_source_policy: active_speaker
         max_width: 1280
         max_height: 720

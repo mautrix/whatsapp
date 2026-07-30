@@ -1,6 +1,7 @@
 package voip
 
 import (
+	"errors"
 	"sync"
 
 	"github.com/purpshell/meowcaller"
@@ -22,6 +23,7 @@ type whatsAppVideoRouter struct {
 
 	group          bool
 	connected      map[string]struct{}
+	aliases        map[string]string
 	screenSharers  map[string]struct{}
 	selectedCamera string
 	selectedScreen string
@@ -37,6 +39,7 @@ func newWhatsAppVideoRouter(
 		setCameraMute: setCameraMute,
 		setScreenMute: setScreenMute,
 		connected:     make(map[string]struct{}),
+		aliases:       make(map[string]string),
 		screenSharers: make(map[string]struct{}),
 	}
 }
@@ -46,20 +49,33 @@ func (r *whatsAppVideoRouter) SetGroupState(state meowcaller.GroupCallState) {
 		return
 	}
 	connected := make(map[string]struct{})
+	aliases := make(map[string]string)
 	for _, participant := range state.Participants {
 		if participant.State != "connected" {
 			continue
 		}
-		addVideoParticipantIdentity(connected, participant.JID)
-		addVideoParticipantIdentity(connected, participant.PN)
+		canonical := videoParticipantIdentity(participant.JID)
+		if canonical == "" {
+			canonical = videoParticipantIdentity(participant.PN)
+		}
+		if canonical == "" && len(participant.Devices) > 0 {
+			canonical = videoParticipantIdentity(participant.Devices[0].JID)
+		}
+		if canonical == "" {
+			continue
+		}
+		connected[canonical] = struct{}{}
+		addVideoParticipantAlias(aliases, participant.JID, canonical)
+		addVideoParticipantAlias(aliases, participant.PN, canonical)
 		for _, device := range participant.Devices {
-			addVideoParticipantIdentity(connected, device.JID)
+			addVideoParticipantAlias(aliases, device.JID, canonical)
 		}
 	}
 
 	r.mu.Lock()
 	r.group = true
 	r.connected = connected
+	r.aliases = aliases
 	cameraRemoved := r.selectedCamera != ""
 	if cameraRemoved {
 		_, cameraRemoved = connected[r.selectedCamera]
@@ -89,12 +105,42 @@ func (r *whatsAppVideoRouter) SetGroupState(state meowcaller.GroupCallState) {
 	}
 }
 
+func (r *whatsAppVideoRouter) SelectCamera(participant types.JID) error {
+	if r == nil {
+		return errors.New("WhatsApp video router is not available")
+	}
+	identity := videoParticipantIdentity(participant)
+	r.mu.Lock()
+	if !r.group {
+		r.mu.Unlock()
+		return errors.New("the active call has no WhatsApp group video roster")
+	}
+	canonical := r.aliases[identity]
+	if canonical == "" {
+		canonical = identity
+	}
+	if _, ok := r.connected[canonical]; !ok {
+		r.mu.Unlock()
+		return errors.New("the selected WhatsApp participant is not connected")
+	}
+	r.selectedCamera = canonical
+	setCameraMute := r.setCameraMute
+	r.mu.Unlock()
+	if setCameraMute != nil {
+		setCameraMute(true)
+	}
+	return nil
+}
+
 func (r *whatsAppVideoRouter) SetScreenShare(state meowcaller.ScreenShareState) {
 	if r == nil || state.Participant.IsEmpty() {
 		return
 	}
 	participant := videoParticipantIdentity(state.Participant)
 	r.mu.Lock()
+	if canonical := r.aliases[participant]; canonical != "" {
+		participant = canonical
+	}
 	if state.Active {
 		r.screenSharers[participant] = struct{}{}
 		if r.selectedScreen == "" {
@@ -121,6 +167,9 @@ func (r *whatsAppVideoRouter) WriteParticipantFrame(frame meowcaller.Participant
 	}
 	identity := participantVideoFrameIdentity(frame)
 	r.mu.Lock()
+	if canonical := r.aliases[identity]; canonical != "" {
+		identity = canonical
+	}
 	_, sharing := r.screenSharers[identity]
 	if sharing {
 		if r.selectedScreen == "" {
@@ -176,13 +225,16 @@ func participantVideoFrameIdentity(frame meowcaller.ParticipantVideoFrame) strin
 	return frame.ParticipantID
 }
 
-func addVideoParticipantIdentity(target map[string]struct{}, jid types.JID) {
-	if !jid.IsEmpty() {
-		target[videoParticipantIdentity(jid)] = struct{}{}
+func addVideoParticipantAlias(target map[string]string, jid types.JID, canonical string) {
+	if identity := videoParticipantIdentity(jid); identity != "" {
+		target[identity] = canonical
 	}
 }
 
 func videoParticipantIdentity(jid types.JID) string {
+	if jid.IsEmpty() {
+		return ""
+	}
 	return jid.ToNonAD().String()
 }
 
