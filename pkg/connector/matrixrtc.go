@@ -98,6 +98,14 @@ func (wa *WhatsAppConnector) handleMatrixRTCEvent(ctx context.Context, evt *even
 		log.Debug().Msg("Ignoring MatrixRTC event outside a bridged portal")
 		return
 	}
+	portalLogin := wa.Bridge.GetCachedUserLoginByID(portal.Receiver)
+	if !matrixRTCSenderOwnsLogin(parsed.Sender, portalLogin) {
+		log.Warn().
+			Str("portal_receiver", string(portal.Receiver)).
+			Msg("Dropping MatrixRTC event from a user who does not own the portal login")
+		wa.Bridge.Matrix.SendMessageStatus(ctx, &bridgev2.ErrNoPermissionToInteract, bridgev2.StatusEventInfoFromEvent(evt))
+		return
+	}
 
 	activeCalls, err := wa.DB.MatrixRTCCall.GetActiveInRoom(ctx, parsed.RoomID)
 	if err != nil {
@@ -193,6 +201,10 @@ func (wa *WhatsAppConnector) handleMatrixRTCEvent(ctx context.Context, evt *even
 		Int("activated_call_count", activated).
 		Int("ended_call_count", ended).
 		Msg("Handled MatrixRTC event for active bridged calls")
+}
+
+func matrixRTCSenderOwnsLogin(sender id.UserID, login *bridgev2.UserLogin) bool {
+	return sender != "" && login != nil && login.User != nil && login.User.MXID == sender
 }
 
 func matrixRTCMembershipEventMatchesCall(evt voip.MatrixRTCEvent, call *wadb.MatrixRTCCall) bool {

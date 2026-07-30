@@ -9,6 +9,7 @@ import (
 	"github.com/purpshell/meowcaller"
 	"maunium.net/go/mautrix/bridgev2/commands"
 	"maunium.net/go/mautrix/bridgev2/networkid"
+	"maunium.net/go/mautrix/id"
 
 	"go.mau.fi/mautrix-whatsapp/pkg/connector/wadb"
 )
@@ -391,6 +392,13 @@ func commandWhatsAppClient(ce *commands.Event) (*WhatsAppClient, error) {
 	login := ce.Bridge.GetCachedUserLoginByID(loginID)
 	if login == nil {
 		return nil, errors.New("the WhatsApp login is not available")
+	}
+	var sender id.UserID
+	if ce.User != nil {
+		sender = ce.User.MXID
+	}
+	if !matrixRTCSenderOwnsLogin(sender, login) {
+		return nil, errors.New("the WhatsApp login for this portal belongs to another Matrix user")
 	}
 	client, ok := login.Client.(*WhatsAppClient)
 	if !ok || client == nil || !client.IsLoggedIn() {

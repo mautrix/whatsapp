@@ -9,6 +9,8 @@ import (
 	"github.com/purpshell/meowcaller"
 	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
+	"maunium.net/go/mautrix/bridgev2"
+	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 
@@ -24,6 +26,23 @@ func TestShouldStartOutboundMatrixRTCCall(t *testing.T) {
 	}
 	if !shouldStartOutboundMatrixRTCCall(evt, parsed, "auto") {
 		t.Fatalf("shouldStartOutboundMatrixRTCCall returned false for active state membership")
+	}
+}
+
+func TestMatrixRTCSenderMustOwnPortalLogin(t *testing.T) {
+	login := &bridgev2.UserLogin{
+		User: &bridgev2.User{
+			User: &database.User{MXID: "@alice:example.com"},
+		},
+	}
+	if !matrixRTCSenderOwnsLogin("@alice:example.com", login) {
+		t.Fatal("matrixRTCSenderOwnsLogin rejected the login owner")
+	}
+	if matrixRTCSenderOwnsLogin("@mallory:example.com", login) {
+		t.Fatal("matrixRTCSenderOwnsLogin accepted another Matrix user")
+	}
+	if matrixRTCSenderOwnsLogin("@alice:example.com", nil) {
+		t.Fatal("matrixRTCSenderOwnsLogin accepted a missing login")
 	}
 }
 
