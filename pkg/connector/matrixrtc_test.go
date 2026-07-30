@@ -3,6 +3,7 @@ package connector
 import (
 	"bytes"
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
@@ -118,6 +119,31 @@ func TestIncomingCallGroupIgnoresExpiredCorrelation(t *testing.T) {
 	}}
 	if got := client.incomingCallPortalPeer("CALL", fallback); got != fallback {
 		t.Fatalf("expired incoming portal peer = %s, want fallback %s", got, fallback)
+	}
+}
+
+func TestFormatWaitingRoomNotice(t *testing.T) {
+	waiting := formatWaitingRoomNotice(meowcaller.WaitingRoomState{
+		Enabled:       true,
+		InWaitingRoom: true,
+	})
+	if !strings.Contains(waiting, "Waiting for approval") {
+		t.Fatalf("waiting-room self notice = %q", waiting)
+	}
+
+	participants := formatWaitingRoomNotice(meowcaller.WaitingRoomState{
+		Enabled: true,
+		Users: []meowcaller.WaitingRoomUser{
+			{
+				JID: types.NewJID("222", types.HiddenUserServer),
+				PN:  types.NewJID("15550000002", types.DefaultUserServer),
+			},
+			{JID: types.NewJID("111", types.HiddenUserServer)},
+		},
+	})
+	if !strings.Contains(participants, "2 participant(s)") ||
+		!strings.Contains(participants, "111@lid, 15550000002@s.whatsapp.net") {
+		t.Fatalf("waiting-room participant notice = %q", participants)
 	}
 }
 

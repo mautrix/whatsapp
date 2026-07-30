@@ -57,6 +57,7 @@ type Manager struct {
 	callEndNotify        func(callID, reason string)
 	callReactionNotify   func(callID string, reaction meowcaller.CallReaction)
 	handRaiseNotify      func(callID string, state meowcaller.HandRaiseState)
+	waitingRoomNotify    func(callID string, state meowcaller.WaitingRoomState)
 }
 
 func NewManager(waClient *whatsmeow.Client, cfg Config, log zerolog.Logger) *Manager {
@@ -142,6 +143,15 @@ func (m *Manager) SetHandRaiseHandler(handler func(callID string, state meowcall
 	}
 	m.mu.Lock()
 	m.handRaiseNotify = handler
+	m.mu.Unlock()
+}
+
+func (m *Manager) SetWaitingRoomHandler(handler func(callID string, state meowcaller.WaitingRoomState)) {
+	if m == nil {
+		return
+	}
+	m.mu.Lock()
+	m.waitingRoomNotify = handler
 	m.mu.Unlock()
 }
 
@@ -933,6 +943,14 @@ func (m *Manager) trackCall(call *meowcaller.Call, callCreator types.JID) {
 	call.OnHandRaise(func(state meowcaller.HandRaiseState) {
 		m.mu.Lock()
 		handler := m.handRaiseNotify
+		m.mu.Unlock()
+		if handler != nil {
+			handler(call.ID(), state)
+		}
+	})
+	call.OnWaitingRoomState(func(state meowcaller.WaitingRoomState) {
+		m.mu.Lock()
+		handler := m.waitingRoomNotify
 		m.mu.Unlock()
 		if handler != nil {
 			handler(call.ID(), state)

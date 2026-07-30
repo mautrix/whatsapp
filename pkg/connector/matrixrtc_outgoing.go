@@ -3,6 +3,7 @@ package connector
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -120,6 +121,64 @@ func (wa *WhatsAppClient) cleanupStaleMatrixRTCCalls(ctx context.Context) {
 			Int("call_count", len(calls)).
 			Msg("Cleaned up stale MatrixRTC calls during login load")
 	}
+}
+
+func (wa *WhatsAppClient) handleWhatsAppWaitingRoom(
+	ctx context.Context,
+	callID string,
+	state meowcaller.WaitingRoomState,
+) {
+	call, err := wa.Main.DB.MatrixRTCCall.Get(ctx, wa.UserLogin.ID, callID)
+	if err != nil {
+		wa.UserLogin.Log.Err(err).
+			Str("call_id", callID).
+			Msg("Failed to load MatrixRTC call for WhatsApp waiting-room update")
+		return
+	}
+	if call == nil || !call.EndedTS.IsZero() || call.RoomID == "" {
+		return
+	}
+	intent := wa.matrixRTCIntentForMXID(ctx, call.MatrixParticipantMXID)
+	_, err = intent.SendMessage(ctx, call.RoomID, event.EventMessage, &event.Content{
+		Parsed: &event.MessageEventContent{
+			MsgType: event.MsgNotice,
+			Body:    formatWaitingRoomNotice(state),
+		},
+	}, nil)
+	if err != nil {
+		wa.UserLogin.Log.Warn().
+			Err(err).
+			Str("call_id", callID).
+			Msg("Failed to send WhatsApp waiting-room update to Matrix")
+	}
+}
+
+func formatWaitingRoomNotice(state meowcaller.WaitingRoomState) string {
+	approval := "disabled"
+	if state.Enabled {
+		approval = "enabled"
+	}
+	if state.InWaitingRoom {
+		return fmt.Sprintf("Waiting for approval to join the WhatsApp call link (approval %s).", approval)
+	}
+	if len(state.Users) == 0 {
+		return fmt.Sprintf("WhatsApp call-link waiting room is empty (approval %s).", approval)
+	}
+	participants := make([]string, 0, len(state.Users))
+	for _, user := range state.Users {
+		identity := user.JID
+		if !user.PN.IsEmpty() {
+			identity = user.PN
+		}
+		participants = append(participants, identity.String())
+	}
+	slices.Sort(participants)
+	return fmt.Sprintf(
+		"WhatsApp call-link waiting room has %d participant(s) pending (approval %s): %s",
+		len(participants),
+		approval,
+		strings.Join(participants, ", "),
+	)
 }
 
 func matrixRTCFinalEndReason(call *wadb.MatrixRTCCall, reason string) (string, string) {

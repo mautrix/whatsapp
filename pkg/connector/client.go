@@ -95,6 +95,9 @@ func (wa *WhatsAppConnector) LoadUserLogin(ctx context.Context, login *bridgev2.
 		w.VOIP.SetHandRaiseHandler(func(callID string, state meowcaller.HandRaiseState) {
 			go w.handleWhatsAppHandRaise(withoutCancelOrBackground(w.Main.Bridge.BackgroundCtx), callID, state)
 		})
+		w.VOIP.SetWaitingRoomHandler(func(callID string, state meowcaller.WaitingRoomState) {
+			go w.handleWhatsAppWaitingRoom(withoutCancelOrBackground(w.Main.Bridge.BackgroundCtx), callID, state)
+		})
 		w.Client.AddEventHandlerWithSuccessStatus(w.handleWAEvent)
 		w.Client.SetForceActiveDeliveryReceipts(wa.Config.ForceActiveDeliveryReceipts)
 		w.Client.InitialAutoReconnect = wa.Config.InitialAutoReconnect
