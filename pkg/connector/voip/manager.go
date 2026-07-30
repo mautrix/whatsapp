@@ -172,6 +172,44 @@ func (m *Manager) SetHandRaised(callID string, raised bool) error {
 	return call.SetHandRaised(raised)
 }
 
+func (m *Manager) GroupState(callID string) (meowcaller.GroupCallState, bool, error) {
+	call, err := m.activeCall(callID)
+	if err != nil {
+		return meowcaller.GroupCallState{}, false, err
+	}
+	state, ok := call.GroupState()
+	return state, ok, nil
+}
+
+func (m *Manager) AddParticipant(ctx context.Context, callID, target string) error {
+	call, err := m.activeCall(callID)
+	if err != nil {
+		return err
+	}
+	return call.AddParticipant(ctx, target)
+}
+
+func (m *Manager) RingParticipant(ctx context.Context, callID, target string) error {
+	call, err := m.activeCall(callID)
+	if err != nil {
+		return err
+	}
+	return call.RingParticipant(ctx, target)
+}
+
+func (m *Manager) activeCall(callID string) (*meowcaller.Call, error) {
+	if !m.Enabled() {
+		return nil, ErrNotEnabled
+	}
+	m.mu.Lock()
+	call := m.calls[callID]
+	m.mu.Unlock()
+	if call == nil || call.State() == meowcaller.CallPhaseEnded {
+		return nil, ErrCallNotFound
+	}
+	return call, nil
+}
+
 func (m *Manager) Dial(ctx context.Context, target string, video ...bool) (*meowcaller.Call, error) {
 	if !m.Enabled() {
 		return nil, ErrNotEnabled
