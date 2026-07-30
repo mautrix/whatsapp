@@ -217,7 +217,7 @@ func (m *Manager) BridgeCallToLiveKit(ctx context.Context, waCallID string, auth
 	if videoEnabled {
 		var videoBuffer whatsAppVideoStartupBuffer
 		var videoBufferLock sync.Mutex
-		participant.SetRemoteVideoHandlers(selectedRemoteParticipantID, func(frame LiveKitVideoFrame) error {
+		sendMatrixVideoFrame := func(frame LiveKitVideoFrame) error {
 			if call.State() == meowcaller.CallPhaseEnded {
 				return nil
 			}
@@ -243,8 +243,13 @@ func (m *Manager) BridgeCallToLiveKit(ctx context.Context, waCallID string, auth
 					Msg("Flushed buffered LiveKit H.264 video to WhatsApp")
 			}
 			return nil
-		}, func(muted bool) {
-			m.handleMatrixVideoMuteState(call, muted)
+		}
+		sourceRouter := newMatrixVideoSourceRouter(sendMatrixVideoFrame)
+		participant.SetRemoteVideoHandlers(selectedRemoteParticipantID, sourceRouter.WriteCamera, func(muted bool) {
+			m.handleMatrixCameraMuteState(call, sourceRouter, muted)
+		})
+		participant.SetRemoteScreenShareHandlers(sourceRouter.WriteScreen, func(muted bool) {
+			m.handleMatrixScreenShareMuteState(call, participant, sourceRouter, muted)
 		})
 	}
 	if err = participant.PublishAudioTrack("whatsapp-audio"); err != nil {
@@ -262,7 +267,26 @@ func (m *Manager) BridgeCallToLiveKit(ctx context.Context, waCallID string, auth
 			m.clearLiveKitConnecting(waCallID)
 			return err
 		}
-		call.ReceiveVideo(participant.WhatsAppVideoSink())
+		if err = participant.PublishScreenShareTrack("whatsapp-screen"); err != nil {
+			call.Receive(nil)
+			call.Subscribe(nil)
+			participant.Close()
+			m.clearLiveKitConnecting(waCallID)
+			return err
+		}
+		videoRouter := newWhatsAppVideoRouter(
+			participant.WhatsAppVideoSink(),
+			participant.WhatsAppScreenShareSink(),
+			participant.SetWhatsAppVideoMuted,
+			participant.SetWhatsAppScreenShareMuted,
+		)
+		call.ReceiveVideo(nil)
+		call.OnParticipantVideoFrame(videoRouter.WriteParticipantFrame)
+		call.OnGroupState(videoRouter.SetGroupState)
+		call.OnScreenShare(videoRouter.SetScreenShare)
+		for _, state := range call.ScreenShares() {
+			videoRouter.SetScreenShare(state)
+		}
 	}
 	answeredIncoming := call.State() == meowcaller.CallPhaseRinging
 	if call.State() == meowcaller.CallPhaseRinging {
@@ -402,6 +426,71 @@ func (m *Manager) handleMatrixVideoMuteState(call *meowcaller.Call, muted bool) 
 		Msg("Sent WhatsApp local video state from LiveKit")
 }
 
+func (m *Manager) handleMatrixCameraMuteState(call *meowcaller.Call, sourceRouter *matrixVideoSourceRouter, muted bool) {
+	if m == nil || call == nil || call.State() == meowcaller.CallPhaseEnded {
+		return
+	}
+	if sourceRouter != nil && sourceRouter.ScreenSharing() {
+		m.mu.Lock()
+		m.matrixVideoMuted[call.ID()] = muted
+		m.mu.Unlock()
+		return
+	}
+	m.handleMatrixVideoMuteState(call, muted)
+}
+
+func (m *Manager) handleMatrixScreenShareMuteState(
+	call *meowcaller.Call,
+	participant *LiveKitParticipant,
+	sourceRouter *matrixVideoSourceRouter,
+	muted bool,
+) {
+	if m == nil || call == nil || sourceRouter == nil || call.State() == meowcaller.CallPhaseEnded {
+		return
+	}
+	active := !muted
+	if sourceRouter.ScreenSharing() == active {
+		return
+	}
+	sourceRouter.SetScreenSharing(active)
+
+	var err error
+	startedVideo := false
+	if active {
+		if !call.IsSendingVideo() {
+			err = call.StartVideo()
+			startedVideo = err == nil
+		}
+		if err == nil {
+			err = call.StartScreenShare(nil)
+			if err != nil && startedVideo {
+				_ = call.StopVideo()
+			}
+		}
+	} else {
+		err = call.StopScreenShare()
+		if err == nil && m.currentMatrixVideoMuted(call.ID()) && call.IsSendingVideo() {
+			err = call.StopVideo()
+		}
+	}
+	if err != nil {
+		sourceRouter.SetScreenSharing(!active)
+		m.log.Warn().
+			Err(err).
+			Str("call_id", call.ID()).
+			Bool("active", active).
+			Msg("Failed to update WhatsApp screen-share state from LiveKit")
+		return
+	}
+	if participant != nil {
+		participant.requestRemoteVideoKeyframe()
+	}
+	m.log.Info().
+		Str("call_id", call.ID()).
+		Bool("active", active).
+		Msg("Updated WhatsApp screen-share state from LiveKit")
+}
+
 func (m *Manager) handleWhatsAppAudioMuteState(callID string, muted bool) {
 	if m == nil || callID == "" {
 		return
@@ -472,6 +561,16 @@ func (m *Manager) currentMatrixAudioMuted(callID string) bool {
 	}
 	m.mu.Lock()
 	muted := m.matrixAudioMuted[callID]
+	m.mu.Unlock()
+	return muted
+}
+
+func (m *Manager) currentMatrixVideoMuted(callID string) bool {
+	if m == nil {
+		return false
+	}
+	m.mu.Lock()
+	muted := m.matrixVideoMuted[callID]
 	m.mu.Unlock()
 	return muted
 }

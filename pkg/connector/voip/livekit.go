@@ -21,29 +21,43 @@ import (
 )
 
 type LiveKitParticipant struct {
-	cfg      LiveKitConfig
-	videoCfg VideoConfig
-	log      zerolog.Logger
-	room     *lksdk.Room
-	audio    *lkmedia.PCMLocalTrack
-	audioPub *lksdk.LocalTrackPublication
-	audioSrc *MeowcallerAudioSource
-	video    *lksdk.LocalTrack
-	videoPub *lksdk.LocalTrackPublication
+	cfg       LiveKitConfig
+	videoCfg  VideoConfig
+	log       zerolog.Logger
+	room      *lksdk.Room
+	audio     *lkmedia.PCMLocalTrack
+	audioPub  *lksdk.LocalTrackPublication
+	audioSrc  *MeowcallerAudioSource
+	video     *lksdk.LocalTrack
+	videoPub  *lksdk.LocalTrackPublication
+	screen    *lksdk.LocalTrack
+	screenPub *lksdk.LocalTrackPublication
 
-	mu                         sync.Mutex
-	remoteAudio                []*lkmedia.PCMRemoteTrack
-	remoteMediaCancel          context.CancelFunc
-	remoteVideoPLI             lksdk.PLIWriter
-	remoteVideoSSRC            webrtc.SSRC
-	remoteVideoKeyframePending bool
-	remoteVideoKeyframeAwaited bool
-	disconnected               bool
-	selectedRemoteParticipant  string
-	remoteAudioMuteStateChange func(muted bool)
-	remoteVideoFrame           func(frame LiveKitVideoFrame) error
-	remoteVideoMuteStateChange func(muted bool)
+	mu                          sync.Mutex
+	remoteAudio                 []*lkmedia.PCMRemoteTrack
+	remoteMediaCancel           context.CancelFunc
+	remoteVideoPLI              lksdk.PLIWriter
+	remoteVideoSSRC             webrtc.SSRC
+	remoteScreenPLI             lksdk.PLIWriter
+	remoteScreenSSRC            webrtc.SSRC
+	remoteScreenActive          bool
+	remoteVideoKeyframePending  [2]bool
+	remoteVideoKeyframeAwaited  [2]bool
+	disconnected                bool
+	selectedRemoteParticipant   string
+	remoteAudioMuteStateChange  func(muted bool)
+	remoteVideoFrame            func(frame LiveKitVideoFrame) error
+	remoteVideoMuteStateChange  func(muted bool)
+	remoteScreenFrame           func(frame LiveKitVideoFrame) error
+	remoteScreenMuteStateChange func(muted bool)
 }
+
+type liveKitVideoSource uint8
+
+const (
+	liveKitVideoSourceCamera liveKitVideoSource = iota
+	liveKitVideoSourceScreenShare
+)
 
 func ConnectLiveKitParticipant(ctx context.Context, authResp *LiveKitAuthResponse, cfg LiveKitConfig, videoCfg VideoConfig, log zerolog.Logger) (*LiveKitParticipant, error) {
 	if authResp == nil {
@@ -115,6 +129,13 @@ func (p *LiveKitParticipant) SetRemoteVideoHandlers(selectedParticipant string, 
 	p.mu.Unlock()
 }
 
+func (p *LiveKitParticipant) SetRemoteScreenShareHandlers(frameHandler func(frame LiveKitVideoFrame) error, muteHandler func(muted bool)) {
+	p.mu.Lock()
+	p.remoteScreenFrame = frameHandler
+	p.remoteScreenMuteStateChange = muteHandler
+	p.mu.Unlock()
+}
+
 func (p *LiveKitParticipant) requestRemoteVideoKeyframe() bool {
 	p.mu.Lock()
 	if p.disconnected {
@@ -123,39 +144,58 @@ func (p *LiveKitParticipant) requestRemoteVideoKeyframe() bool {
 	}
 	pli := p.remoteVideoPLI
 	ssrc := p.remoteVideoSSRC
+	source := liveKitVideoSourceCamera
+	if p.remoteScreenActive && p.remoteScreenPLI != nil && p.remoteScreenSSRC != 0 {
+		pli = p.remoteScreenPLI
+		ssrc = p.remoteScreenSSRC
+		source = liveKitVideoSourceScreenShare
+	} else if p.remoteScreenActive {
+		source = liveKitVideoSourceScreenShare
+		pli = nil
+		ssrc = 0
+	}
 	if pli == nil || ssrc == 0 {
-		p.remoteVideoKeyframePending = true
+		p.remoteVideoKeyframePending[source] = true
 		p.mu.Unlock()
 		return false
 	}
-	p.remoteVideoKeyframePending = false
+	p.remoteVideoKeyframePending[source] = false
 	p.mu.Unlock()
-	p.sendRemoteVideoPLI(pli, ssrc)
+	p.sendRemoteVideoPLI(source, pli, ssrc)
 	return true
 }
 
 func (p *LiveKitParticipant) setRemoteVideoPLI(pli lksdk.PLIWriter, ssrc webrtc.SSRC) {
+	p.setRemoteVideoPLIForSource(liveKitVideoSourceCamera, pli, ssrc)
+}
+
+func (p *LiveKitParticipant) setRemoteVideoPLIForSource(source liveKitVideoSource, pli lksdk.PLIWriter, ssrc webrtc.SSRC) {
 	p.mu.Lock()
 	if p.disconnected {
 		p.mu.Unlock()
 		return
 	}
-	p.remoteVideoPLI = pli
-	p.remoteVideoSSRC = ssrc
-	pending := p.remoteVideoKeyframePending && pli != nil && ssrc != 0
+	if source == liveKitVideoSourceScreenShare {
+		p.remoteScreenPLI = pli
+		p.remoteScreenSSRC = ssrc
+	} else {
+		p.remoteVideoPLI = pli
+		p.remoteVideoSSRC = ssrc
+	}
+	pending := p.remoteVideoKeyframePending[source] && pli != nil && ssrc != 0
 	if pending {
-		p.remoteVideoKeyframePending = false
+		p.remoteVideoKeyframePending[source] = false
 	}
 	p.mu.Unlock()
 	if pending {
-		p.sendRemoteVideoPLI(pli, ssrc)
+		p.sendRemoteVideoPLI(source, pli, ssrc)
 	}
 }
 
-func (p *LiveKitParticipant) sendRemoteVideoPLI(pli lksdk.PLIWriter, ssrc webrtc.SSRC) {
+func (p *LiveKitParticipant) sendRemoteVideoPLI(source liveKitVideoSource, pli lksdk.PLIWriter, ssrc webrtc.SSRC) {
 	p.mu.Lock()
 	if !p.disconnected {
-		p.remoteVideoKeyframeAwaited = true
+		p.remoteVideoKeyframeAwaited[source] = true
 	}
 	p.mu.Unlock()
 	pli(ssrc)
@@ -204,12 +244,10 @@ func (p *LiveKitParticipant) PublishVideoTrack(name string) error {
 	if name == "" {
 		name = "whatsapp-video"
 	}
-	pub, err := p.room.LocalParticipant.PublishTrack(track, &lksdk.TrackPublicationOptions{
-		Name:        name,
-		Source:      livekitproto.TrackSource_CAMERA,
-		VideoWidth:  p.videoCfg.MaxWidth,
-		VideoHeight: p.videoCfg.MaxHeight,
-	})
+	pub, err := p.room.LocalParticipant.PublishTrack(
+		track,
+		videoTrackPublicationOptions(name, livekitproto.TrackSource_CAMERA, p.videoCfg),
+	)
 	if err != nil {
 		_ = track.Close()
 		return err
@@ -217,6 +255,45 @@ func (p *LiveKitParticipant) PublishVideoTrack(name string) error {
 	p.video = track
 	p.videoPub = pub
 	return nil
+}
+
+func (p *LiveKitParticipant) PublishScreenShareTrack(name string) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.room == nil {
+		return fmt.Errorf("livekit room is not connected")
+	}
+	if p.screen != nil {
+		return nil
+	}
+	track, err := lksdk.NewLocalTrack(webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeH264, ClockRate: liveKitH264ClockRate})
+	if err != nil {
+		return err
+	}
+	if name == "" {
+		name = "whatsapp-screen"
+	}
+	pub, err := p.room.LocalParticipant.PublishTrack(
+		track,
+		videoTrackPublicationOptions(name, livekitproto.TrackSource_SCREEN_SHARE, p.videoCfg),
+	)
+	if err != nil {
+		_ = track.Close()
+		return err
+	}
+	pub.SetMuted(true)
+	p.screen = track
+	p.screenPub = pub
+	return nil
+}
+
+func videoTrackPublicationOptions(name string, source livekitproto.TrackSource, cfg VideoConfig) *lksdk.TrackPublicationOptions {
+	return &lksdk.TrackPublicationOptions{
+		Name:        name,
+		Source:      source,
+		VideoWidth:  cfg.MaxWidth,
+		VideoHeight: cfg.MaxHeight,
+	}
 }
 
 func (p *LiveKitParticipant) SetWhatsAppAudioMuted(muted bool) {
@@ -241,6 +318,17 @@ func (p *LiveKitParticipant) SetWhatsAppVideoMuted(muted bool) {
 	p.log.Debug().Bool("muted", muted).Msg("Set LiveKit WhatsApp video mute state")
 }
 
+func (p *LiveKitParticipant) SetWhatsAppScreenShareMuted(muted bool) {
+	p.mu.Lock()
+	pub := p.screenPub
+	p.mu.Unlock()
+	if pub == nil {
+		return
+	}
+	pub.SetMuted(muted)
+	p.log.Debug().Bool("muted", muted).Msg("Set LiveKit WhatsApp screen-share mute state")
+}
+
 func (p *LiveKitParticipant) SetWhatsAppVideoOrientation(orientation int) {
 	p.mu.Lock()
 	video := p.video
@@ -263,6 +351,12 @@ func (p *LiveKitParticipant) WhatsAppVideoSink() *LiveKitH264Writer {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return NewLiveKitH264Writer(p.video, videoFrameDuration(p.videoCfg))
+}
+
+func (p *LiveKitParticipant) WhatsAppScreenShareSink() *LiveKitH264Writer {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return NewLiveKitH264Writer(p.screen, videoFrameDuration(p.videoCfg))
 }
 
 func (p *LiveKitParticipant) MatrixAudioSource() *MeowcallerAudioSource {
@@ -291,11 +385,15 @@ func (p *LiveKitParticipant) Close() {
 	audioPub := p.audioPub
 	video := p.video
 	videoPub := p.videoPub
+	screen := p.screen
+	screenPub := p.screenPub
 	p.room = nil
 	p.audio = nil
 	p.audioPub = nil
 	p.video = nil
 	p.videoPub = nil
+	p.screen = nil
+	p.screenPub = nil
 	p.mu.Unlock()
 	p.closeRemoteTracks()
 	if audioPub != nil {
@@ -304,12 +402,18 @@ func (p *LiveKitParticipant) Close() {
 	if videoPub != nil {
 		videoPub.SetMuted(true)
 	}
+	if screenPub != nil {
+		screenPub.SetMuted(true)
+	}
 	if audio != nil {
 		audio.ClearQueue()
 		_ = audio.Close()
 	}
 	if video != nil {
 		_ = video.Close()
+	}
+	if screen != nil {
+		_ = screen.Close()
 	}
 	if room != nil {
 		room.Disconnect()
@@ -374,18 +478,25 @@ func (p *LiveKitParticipant) onVideoTrackSubscribed(ctx context.Context, track *
 		p.handleRemoteVideoMuteState(publication, rp, true)
 		return
 	}
-	p.setRemoteVideoPLI(rp.WritePLI, track.SSRC())
+	source := liveKitVideoSourceRole(publication.Source())
+	p.setRemoteVideoPLIForSource(source, rp.WritePLI, track.SSRC())
 	p.handleRemoteVideoMuteState(publication, rp, publication.IsMuted())
-	go p.forwardRemoteH264Track(ctx, track, rp)
+	go p.forwardRemoteH264Track(ctx, track, rp, source)
 }
 
 func (p *LiveKitParticipant) onTrackUnsubscribed(track *webrtc.TrackRemote, publication *lksdk.RemoteTrackPublication, rp *lksdk.RemoteParticipant) {
 	if track.Kind() == webrtc.RTPCodecTypeVideo {
+		source := liveKitVideoSourceRole(publication.Source())
 		p.mu.Lock()
-		if p.remoteVideoSSRC == track.SSRC() {
+		if source == liveKitVideoSourceScreenShare && p.remoteScreenSSRC == track.SSRC() {
+			p.remoteScreenPLI = nil
+			p.remoteScreenSSRC = 0
+			p.remoteScreenActive = false
+			p.remoteVideoKeyframePending[liveKitVideoSourceScreenShare] = true
+		} else if source == liveKitVideoSourceCamera && p.remoteVideoSSRC == track.SSRC() {
 			p.remoteVideoPLI = nil
 			p.remoteVideoSSRC = 0
-			p.remoteVideoKeyframePending = true
+			p.remoteVideoKeyframePending[liveKitVideoSourceCamera] = true
 		}
 		p.mu.Unlock()
 		p.handleRemoteVideoMuteState(publication, rp, true)
@@ -442,7 +553,6 @@ func (p *LiveKitParticipant) handleRemoteVideoMuteState(pub lksdk.TrackPublicati
 	identity := participant.Identity()
 	p.mu.Lock()
 	selected := p.selectedRemoteParticipant
-	handler := p.remoteVideoMuteStateChange
 	p.mu.Unlock()
 	if !remoteParticipantSelected(selected, identity) {
 		p.log.Debug().
@@ -452,6 +562,14 @@ func (p *LiveKitParticipant) handleRemoteVideoMuteState(pub lksdk.TrackPublicati
 			Msg("Ignoring LiveKit video mute state from non-selected participant")
 		return
 	}
+	source := liveKitVideoSourceRole(pub.Source())
+	p.mu.Lock()
+	handler := p.remoteVideoMuteStateChange
+	if source == liveKitVideoSourceScreenShare {
+		p.remoteScreenActive = !muted
+		handler = p.remoteScreenMuteStateChange
+	}
+	p.mu.Unlock()
 	p.log.Debug().
 		Str("participant", identity).
 		Str("track_id", pub.SID()).
@@ -462,7 +580,7 @@ func (p *LiveKitParticipant) handleRemoteVideoMuteState(pub lksdk.TrackPublicati
 	}
 }
 
-func (p *LiveKitParticipant) forwardRemoteH264Track(ctx context.Context, track *webrtc.TrackRemote, rp *lksdk.RemoteParticipant) {
+func (p *LiveKitParticipant) forwardRemoteH264Track(ctx context.Context, track *webrtc.TrackRemote, rp *lksdk.RemoteParticipant, source liveKitVideoSource) {
 	builder := samplebuilder.New(
 		liveKitH264MaxLatePackets,
 		&codecs.H264Packet{},
@@ -473,6 +591,7 @@ func (p *LiveKitParticipant) forwardRemoteH264Track(ctx context.Context, track *
 	p.log.Info().
 		Str("participant", string(rp.Identity())).
 		Str("track_id", track.ID()).
+		Str("source", source.String()).
 		Str("fmtp", track.Codec().SDPFmtpLine).
 		Msg("Started forwarding LiveKit H.264 video to WhatsApp")
 	for {
@@ -498,9 +617,9 @@ func (p *LiveKitParticipant) forwardRemoteH264Track(ctx context.Context, track *
 			accessUnit, repeatedParameterSets := parameterSets.Normalize(sample.Data)
 			nalTypes, profileLevelID, hasIDR, hasSPS, hasPPS := h264AccessUnitMetadata(accessUnit)
 			p.mu.Lock()
-			afterPLI := hasIDR && p.remoteVideoKeyframeAwaited
+			afterPLI := hasIDR && p.remoteVideoKeyframeAwaited[source]
 			if afterPLI {
-				p.remoteVideoKeyframeAwaited = false
+				p.remoteVideoKeyframeAwaited[source] = false
 			}
 			p.mu.Unlock()
 			if hasIDR && (!loggedIDR || afterPLI || repeatedParameterSets) {
@@ -519,6 +638,9 @@ func (p *LiveKitParticipant) forwardRemoteH264Track(ctx context.Context, track *
 			}
 			p.mu.Lock()
 			handler := p.remoteVideoFrame
+			if source == liveKitVideoSourceScreenShare {
+				handler = p.remoteScreenFrame
+			}
 			p.mu.Unlock()
 			if handler == nil {
 				continue
@@ -531,10 +653,25 @@ func (p *LiveKitParticipant) forwardRemoteH264Track(ctx context.Context, track *
 					Err(err).
 					Str("participant", string(rp.Identity())).
 					Str("track_id", track.ID()).
+					Str("source", source.String()).
 					Msg("Failed to forward LiveKit H.264 frame to WhatsApp")
 			}
 		}
 	}
+}
+
+func liveKitVideoSourceRole(source livekitproto.TrackSource) liveKitVideoSource {
+	if source == livekitproto.TrackSource_SCREEN_SHARE {
+		return liveKitVideoSourceScreenShare
+	}
+	return liveKitVideoSourceCamera
+}
+
+func (s liveKitVideoSource) String() string {
+	if s == liveKitVideoSourceScreenShare {
+		return "screen_share"
+	}
+	return "camera"
 }
 
 func (p *LiveKitParticipant) selectedParticipant() string {
@@ -553,8 +690,11 @@ func (p *LiveKitParticipant) closeRemoteTracks() {
 	p.remoteAudio = nil
 	p.remoteVideoPLI = nil
 	p.remoteVideoSSRC = 0
-	p.remoteVideoKeyframePending = false
-	p.remoteVideoKeyframeAwaited = false
+	p.remoteScreenPLI = nil
+	p.remoteScreenSSRC = 0
+	p.remoteScreenActive = false
+	p.remoteVideoKeyframePending = [2]bool{}
+	p.remoteVideoKeyframeAwaited = [2]bool{}
 	cancel := p.remoteMediaCancel
 	p.remoteMediaCancel = nil
 	p.mu.Unlock()

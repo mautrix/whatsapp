@@ -111,6 +111,31 @@ func TestLiveKitParticipantRequestsRemoteVideoKeyframe(t *testing.T) {
 	}
 }
 
+func TestLiveKitParticipantKeepsScreenShareKeyframeRequestSourceSpecific(t *testing.T) {
+	const (
+		cameraSSRC = webrtc.SSRC(0x11111111)
+		screenSSRC = webrtc.SSRC(0x22222222)
+	)
+	var gotSSRC webrtc.SSRC
+	participant := &LiveKitParticipant{remoteScreenActive: true}
+
+	if participant.requestRemoteVideoKeyframe() {
+		t.Fatal("requestRemoteVideoKeyframe returned true before screen-share subscription")
+	}
+	participant.setRemoteVideoPLIForSource(liveKitVideoSourceCamera, func(ssrc webrtc.SSRC) {
+		gotSSRC = ssrc
+	}, cameraSSRC)
+	if gotSSRC != 0 {
+		t.Fatalf("camera subscription consumed pending screen-share PLI with SSRC %#x", gotSSRC)
+	}
+	participant.setRemoteVideoPLIForSource(liveKitVideoSourceScreenShare, func(ssrc webrtc.SSRC) {
+		gotSSRC = ssrc
+	}, screenSSRC)
+	if gotSSRC != screenSSRC {
+		t.Fatalf("screen-share subscription PLI SSRC = %#x, want %#x", gotSSRC, screenSSRC)
+	}
+}
+
 func TestManagerDefersVideoKeyframeOnlyForTrackedCall(t *testing.T) {
 	manager := &Manager{
 		calls:                make(map[string]*meowcaller.Call),
