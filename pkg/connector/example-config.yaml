@@ -24,6 +24,9 @@ displayname_template: '{{or .BusinessName .PushName .Phone .RedactedPhone "Unkno
 call_start_notices: true
 # Should another user's cryptographic identity changing send a message to Matrix?
 identity_change_notices: false
+# Should the bridge keep the Matrix copy as a notice reply when the sender deletes
+# a received message on WhatsApp, instead of removing it?
+keep_revoked_messages: false
 # Should the bridge mark you as online on WhatsApp when you send typing notifications?
 # Full presence bridging is not supported.
 send_presence_on_typing: false
