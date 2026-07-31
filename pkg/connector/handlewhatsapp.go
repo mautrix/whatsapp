@@ -36,6 +36,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2/status"
 	"maunium.net/go/mautrix/event"
 
+	"go.mau.fi/mautrix-whatsapp/pkg/msgconv"
 	"go.mau.fi/mautrix-whatsapp/pkg/waid"
 )
 
@@ -408,6 +409,26 @@ func (wa *WhatsAppClient) handleWAMessage(ctx context.Context, evt *events.Messa
 		return
 	}
 
+	if parsedMessageType == "revoke" {
+		targetID := msgconv.KeyToMessageID(ctx, wa.Client, evt.Info.Chat, evt.Info.Sender, evt.Message.GetProtocolMessage().GetKey())
+		return wa.UserLogin.QueueRemoteEvent(&simplevent.Message[revokeNoticeData]{
+			EventMeta: simplevent.EventMeta{
+				Type:         bridgev2.RemoteEventMessage,
+				PortalKey:    wa.getPortalKeyByMessageSource(evt.Info.MessageSource),
+				Sender:       wa.makeEventSender(ctx, evt.Info.Sender),
+				CreatePortal: false,
+				Timestamp:    evt.Info.Timestamp,
+				StreamOrder:  evt.Info.Timestamp.Unix(),
+			},
+			Data: revokeNoticeData{
+				Text:     "Message deleted by sender (kept by bridge)",
+				TargetID: targetID,
+			},
+			ID:                 waid.MakeFakeMessageID(evt.Info.Chat, evt.Info.Sender, "revoke-"+evt.Info.ID),
+			ConvertMessageFunc: convertRevokeNotice,
+		}).Success
+	}
+
 	res := wa.UserLogin.QueueRemoteEvent(&WAMessageEvent{
 		MessageInfoWrapper: &MessageInfoWrapper{
 			OrigSource: origSource,
@@ -421,6 +442,29 @@ func (wa *WhatsAppClient) handleWAMessage(ctx context.Context, evt *events.Messa
 		dontRenderEdited:  dontRenderEdited,
 	})
 	return res.Success
+}
+
+type revokeNoticeData struct {
+	Text     string
+	TargetID networkid.MessageID
+}
+
+func convertRevokeNotice(ctx context.Context, portal *bridgev2.Portal, intent bridgev2.MatrixAPI, data revokeNoticeData) (*bridgev2.ConvertedMessage, error) {
+	content := &event.MessageEventContent{
+		MsgType: event.MsgNotice,
+		Body:    data.Text,
+	}
+	if data.TargetID != "" {
+		if msg, err := portal.Bridge.DB.Message.GetFirstPartByID(ctx, portal.Receiver, data.TargetID); err == nil && msg != nil && !msg.HasFakeMXID() {
+			content.RelatesTo = (&event.RelatesTo{}).SetReplyTo(msg.MXID)
+		}
+	}
+	return &bridgev2.ConvertedMessage{
+		Parts: []*bridgev2.ConvertedMessagePart{{
+			Type:    event.EventMessage,
+			Content: content,
+		}},
+	}, nil
 }
 
 func (wa *WhatsAppClient) handleWAUndecryptableMessage(ctx context.Context, evt *events.UndecryptableMessage) bool {
