@@ -1,3 +1,8 @@
+# v26.08 (unreleased)
+
+* Added config option to keep the Matrix copy of a sender deleted message as a
+  notice instead of removing it.
+
 # v26.07
 
 * Updated Docker image to Alpine 3.24.
