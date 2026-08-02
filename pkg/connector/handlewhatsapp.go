@@ -409,7 +409,7 @@ func (wa *WhatsAppClient) handleWAMessage(ctx context.Context, evt *events.Messa
 		return
 	}
 
-	if parsedMessageType == "revoke" && wa.Main.Config.KeepRevokedMessages {
+	if parsedMessageType == "revoke" && wa.Main.Config.KeepRevokedMessages && !evt.Info.IsFromMe {
 		targetID := msgconv.KeyToMessageID(ctx, wa.Client, evt.Info.Chat, evt.Info.Sender, evt.Message.GetProtocolMessage().GetKey())
 		return wa.UserLogin.QueueRemoteEvent(&simplevent.Message[revokeNoticeData]{
 			EventMeta: simplevent.EventMeta{
