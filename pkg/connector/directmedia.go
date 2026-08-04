@@ -52,7 +52,7 @@ func (wa *WhatsAppConnector) SetUseDirectMedia() {
 }
 
 var ErrReloadNeeded = mautrix.RespError{
-	ErrCode:    "FI.MAU.WHATSAPP_RELOAD_NEEDED",
+	ErrCode:    "COM.BEEPER.MEDIA_RELOAD_NEEDED",
 	Err:        "Media is no longer available on WhatsApp servers and must be re-requested from your phone",
 	StatusCode: http.StatusNotFound,
 }
@@ -212,7 +212,7 @@ func (wa *WhatsAppConnector) makeDirectMediaResponse(
 			log := zerolog.Ctx(ctx)
 			err := waClient.Client.DownloadToFile(ctx, dm, f)
 			if keys != nil && (errors.Is(err, whatsmeow.ErrMediaDownloadFailedWith403) || errors.Is(err, whatsmeow.ErrMediaDownloadFailedWith404) || errors.Is(err, whatsmeow.ErrMediaDownloadFailedWith410) || errors.Is(err, whatsmeow.ErrNoURLPresent)) {
-				val := params["fi.mau.whatsapp.reload_media"]
+				val := params["com.beeper.interactive_download_request"]
 				if val == "false" || (!wa.Config.DirectMediaAutoRequest && val != "true") {
 					return nil, ErrReloadNeeded
 				}
