@@ -52,7 +52,7 @@ func (wa *WhatsAppConnector) GetCapabilities() *bridgev2.NetworkGeneralCapabilit
 }
 
 func (wa *WhatsAppConnector) GetBridgeInfoVersion() (info, caps int) {
-	return 1, 8
+	return 1, 9
 }
 
 const WAMaxFileSize = 2000 * 1024 * 1024
@@ -67,7 +67,7 @@ func supportedIfFFmpeg() event.CapabilitySupportLevel {
 }
 
 func capID() string {
-	base := "fi.mau.whatsapp.capabilities.2026_05_12"
+	base := "fi.mau.whatsapp.capabilities.2026_07_22"
 	if ffmpeg.Supported() {
 		return base + "+ffmpeg"
 	}
@@ -174,21 +174,26 @@ var whatsappCaps = &event.RoomFeatures{
 		event.MemberActionKick:   event.CapLevelFullySupported,
 		event.MemberActionLeave:  event.CapLevelFullySupported,
 	},
-	MaxTextLength:       MaxTextLength,
-	LocationMessage:     event.CapLevelFullySupported,
-	Poll:                event.CapLevelFullySupported,
-	Reply:               event.CapLevelFullySupported,
-	Edit:                event.CapLevelFullySupported,
-	EditMaxAge:          ptr.Ptr(jsontime.S(EditMaxAge)),
-	Delete:              event.CapLevelFullySupported,
-	DeleteForMe:         false,
-	DeleteMaxAge:        ptr.Ptr(jsontime.S(2 * 24 * time.Hour)),
-	Reaction:            event.CapLevelFullySupported,
-	ReactionCount:       1,
-	ReadReceipts:        true,
-	TypingNotifications: true,
-	DisappearingTimer:   waDisappearingCap,
-	DeleteChat:          true,
+	MaxTextLength:        MaxTextLength,
+	LocationMessage:      event.CapLevelFullySupported,
+	Poll:                 event.CapLevelFullySupported,
+	PollEnd:              event.CapLevelUnsupported,
+	PollHiddenVotes:      event.CapLevelUnsupported,
+	PollDuplicateOptions: event.CapLevelUnsupported,
+	PollMaxOptions:       12,
+	PollOptionMaxLength:  100,
+	Reply:                event.CapLevelFullySupported,
+	Edit:                 event.CapLevelFullySupported,
+	EditMaxAge:           ptr.Ptr(jsontime.S(EditMaxAge)),
+	Delete:               event.CapLevelFullySupported,
+	DeleteForMe:          false,
+	DeleteMaxAge:         ptr.Ptr(jsontime.S(2 * 24 * time.Hour)),
+	Reaction:             event.CapLevelFullySupported,
+	ReactionCount:        1,
+	ReadReceipts:         true,
+	TypingNotifications:  true,
+	DisappearingTimer:    waDisappearingCap,
+	DeleteChat:           true,
 }
 
 var whatsappDMCaps *event.RoomFeatures
