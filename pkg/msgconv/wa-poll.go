@@ -94,31 +94,7 @@ func (mc *MessageConverter) convertPollCreationMessage(ctx context.Context, msg 
 	}, msg.GetContextInfo()
 }
 
-func rerouteMessageKey(ctx context.Context, chat, sender types.JID, groupLIDAddressing bool) types.JID {
-	if store := getClient(ctx).Store; store != nil && chat.Server == types.DefaultUserServer && sender.Server == types.HiddenUserServer {
-		senderPN, _ := store.LIDs.GetPNForLID(ctx, sender)
-		zerolog.Ctx(ctx).Debug().
-			Stringer("orig_participant", sender).
-			Stringer("rerouted_participant", senderPN).
-			Msg("Rerouting message key (PN recipient in LID DM)")
-		if !senderPN.IsEmpty() {
-			return senderPN
-		}
-	} else if store != nil && chat.Server == types.GroupServer && sender.Server == types.DefaultUserServer && groupLIDAddressing {
-		senderLID, _ := store.LIDs.GetLIDForPN(ctx, sender)
-		zerolog.Ctx(ctx).Debug().
-			Stringer("orig_participant", sender).
-			Stringer("rerouted_participant", senderLID).
-			Msg("Rerouting message key (PN recipient in LID group)")
-		if !senderLID.IsEmpty() {
-			return senderLID
-		}
-	}
-	return sender
-}
-
 func KeyToMessageID(ctx context.Context, client *whatsmeow.Client, chat, sender types.JID, key *waCommon.MessageKey) networkid.MessageID {
-	groupLIDAddressing := sender.Server == types.HiddenUserServer
 	sender = sender.ToNonAD()
 	var err error
 	if !key.GetFromMe() {
@@ -131,7 +107,7 @@ func KeyToMessageID(ctx context.Context, client *whatsmeow.Client, chat, sender 
 			if sender.Server == types.LegacyUserServer {
 				sender.Server = types.DefaultUserServer
 			}
-		} else if chat.Server == types.DefaultUserServer || chat.Server == types.BotServer {
+		} else if chat.Server == types.DefaultUserServer || chat.Server == types.HiddenUserServer || chat.Server == types.BotServer {
 			if sender.User == client.Store.GetJID().User || sender.User == client.Store.GetLID().User {
 				// Message key is not from the sender, but message sender (containing key) is me,
 				// so message key sender is the other user in the DM
@@ -139,7 +115,11 @@ func KeyToMessageID(ctx context.Context, client *whatsmeow.Client, chat, sender 
 			} else {
 				// Message key is not from the sender, but message sender (containing key) is not me,
 				// so message key sender is me
-				sender = client.Store.GetJID().ToNonAD()
+				if chat.Server == types.HiddenUserServer {
+					sender = client.Store.GetLID().ToNonAD()
+				} else {
+					sender = client.Store.GetJID().ToNonAD()
+				}
 			}
 		} else {
 			zerolog.Ctx(ctx).Warn().
@@ -157,10 +137,6 @@ func KeyToMessageID(ctx context.Context, client *whatsmeow.Client, chat, sender 
 			chat = remoteJID
 		}
 	}
-	sender = rerouteMessageKey(
-		context.WithValue(ctx, contextKeyClient, client),
-		chat, sender, groupLIDAddressing,
-	)
 	return waid.MakeMessageID(chat, sender, key.GetID())
 }
 
@@ -170,7 +146,7 @@ var failedPollUpdatePart = &bridgev2.ConvertedMessagePart{
 	DontBridge: true,
 }
 
-func (mc *MessageConverter) convertPollUpdateMessage(ctx context.Context, info *types.MessageInfo, origSource *types.MessageSource, msg *waE2E.PollUpdateMessage) (*bridgev2.ConvertedMessagePart, *waE2E.ContextInfo) {
+func (mc *MessageConverter) convertPollUpdateMessage(ctx context.Context, info *types.MessageInfo, msg *waE2E.PollUpdateMessage) (*bridgev2.ConvertedMessagePart, *waE2E.ContextInfo) {
 	log := zerolog.Ctx(ctx)
 	pollMessageID := KeyToMessageID(ctx, getClient(ctx), info.Chat, info.Sender, msg.PollCreationMessageKey)
 	pollMessage, err := mc.Bridge.DB.Message.GetPartByID(ctx, getPortal(ctx).Receiver, pollMessageID, "")
@@ -181,12 +157,8 @@ func (mc *MessageConverter) convertPollUpdateMessage(ctx context.Context, info *
 		log.Warn().Str("target_message_id", string(pollMessageID)).Msg("Poll update target message not found")
 		return failedPollUpdatePart, nil
 	}
-	infoForDecrypt := *info
-	if origSource != nil {
-		infoForDecrypt.MessageSource = *origSource
-	}
 	vote, err := getClient(ctx).DecryptPollVote(ctx, &events.Message{
-		Info:    infoForDecrypt,
+		Info:    *info,
 		Message: &waE2E.Message{PollUpdateMessage: msg},
 	})
 	if err != nil {

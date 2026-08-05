@@ -39,22 +39,9 @@ import (
 	"go.mau.fi/mautrix-whatsapp/pkg/waid"
 )
 
-func (wa *WhatsAppClient) getPortalKeyByMessageSource(ms types.MessageSource) networkid.PortalKey {
-	jid := ms.Chat
-	if ms.IsIncomingBroadcast() {
-		if ms.IsFromMe {
-			jid = ms.BroadcastListOwner.ToNonAD()
-		} else {
-			jid = ms.Sender.ToNonAD()
-		}
-	}
-	return wa.makeWAPortalKey(jid)
-}
-
 type MessageInfoWrapper struct {
-	OrigSource types.MessageSource
-	Info       types.MessageInfo
-	wa         *WhatsAppClient
+	Info types.MessageInfo
+	wa   *WhatsAppClient
 }
 
 func (evt *MessageInfoWrapper) ShouldCreatePortal() bool {
@@ -62,7 +49,26 @@ func (evt *MessageInfoWrapper) ShouldCreatePortal() bool {
 }
 
 func (evt *MessageInfoWrapper) GetPortalKey() networkid.PortalKey {
-	return evt.wa.getPortalKeyByMessageSource(evt.Info.MessageSource)
+	ms := evt.Info.MessageSource
+	jid := ms.Chat
+	if ms.IsIncomingBroadcast() {
+		if ms.IsFromMe {
+			// TODO can this still be a phone number?
+			jid = ms.BroadcastListOwner.ToNonAD()
+		} else {
+			jid = ms.Sender.ToNonAD()
+			if jid.Server == types.DefaultUserServer && !ms.SenderAlt.IsEmpty() {
+				jid = ms.SenderAlt.ToNonAD()
+			}
+		}
+	} else if jid.Server == types.DefaultUserServer {
+		if !ms.IsFromMe && ms.Chat.ToNonAD() == ms.Sender.ToNonAD() && !ms.SenderAlt.IsEmpty() {
+			jid = ms.SenderAlt.ToNonAD()
+		} else if !ms.RecipientAlt.IsEmpty() {
+			jid = ms.RecipientAlt.ToNonAD()
+		}
+	}
+	return evt.wa.makeWAPortalKey(jid)
 }
 
 func (evt *MessageInfoWrapper) AddLogContext(c zerolog.Context) zerolog.Context {
@@ -73,12 +79,19 @@ func (evt *MessageInfoWrapper) GetTimestamp() time.Time {
 	return evt.Info.Timestamp
 }
 
+func pickLID(main, alt types.JID) types.JID {
+	if main.Server == types.DefaultUserServer && alt.Server == types.HiddenUserServer {
+		return alt
+	}
+	return main
+}
+
 func (evt *MessageInfoWrapper) GetSender() bridgev2.EventSender {
-	return evt.wa.makeEventSender(evt.wa.Main.Bridge.BackgroundCtx, evt.Info.Sender)
+	return evt.wa.makeEventSender(evt.wa.Main.Bridge.BackgroundCtx, pickLID(evt.Info.Sender, evt.Info.SenderAlt))
 }
 
 func (evt *MessageInfoWrapper) GetID() networkid.MessageID {
-	return waid.MakeMessageID(evt.Info.Chat, evt.Info.Sender, evt.Info.ID)
+	return waid.MakeMessageIDWithAltSender(evt.Info.Chat, evt.Info.Sender, evt.Info.SenderAlt, evt.Info.ID)
 }
 
 func (evt *MessageInfoWrapper) GetTransactionID() networkid.TransactionID {
@@ -135,14 +148,6 @@ func (evt *WAMessageEvent) PreHandle(ctx context.Context, portal *bridgev2.Porta
 		return
 	}
 	meta := portal.Metadata.(*waid.PortalMetadata)
-	if meta.AddressingMode == types.AddressingModeLID && evt.Info.Sender.Server == types.DefaultUserServer {
-		evt.Info.Sender, evt.Info.SenderAlt = evt.Info.SenderAlt, evt.Info.Sender
-		zerolog.Ctx(ctx).Debug().
-			Stringer("lid", evt.Info.Sender).
-			Stringer("pn", evt.Info.SenderAlt).
-			Str("message_id", evt.Info.ID).
-			Msg("Forced phone number sender to LID in group message")
-	}
 	if meta.AddressingMode == types.AddressingModeLID || meta.LIDMigrationAttempted {
 		return
 	}
@@ -161,13 +166,6 @@ func (evt *WAMessageEvent) PreHandle(ctx context.Context, portal *bridgev2.Porta
 	log.Info().Msg("Resyncing group members as it appears to have switched to LID addressing mode")
 	portal.UpdateInfo(ctx, evt.wa.wrapGroupInfo(ctx, info), evt.wa.UserLogin, nil, time.Time{})
 	log.Debug().Msg("Finished resyncing after LID change")
-	if evt.Info.Sender.Server == types.DefaultUserServer && evt.Info.SenderAlt.Server == types.HiddenUserServer {
-		evt.Info.Sender, evt.Info.SenderAlt = evt.Info.SenderAlt, evt.Info.Sender
-		log.Debug().
-			Stringer("new_sender", evt.Info.Sender).
-			Stringer("new_sender_alt", evt.Info.SenderAlt).
-			Msg("Overriding sender to LID after resyncing group members")
-	}
 }
 
 func (evt *WAMessageEvent) PostHandle(ctx context.Context, portal *bridgev2.Portal) {
@@ -201,7 +199,7 @@ func (evt *WAMessageEvent) ConvertEdit(ctx context.Context, portal *bridgev2.Por
 
 	ctx = context.WithValue(ctx, msgconv.ContextKeyEditTargetID, evt.Message.GetProtocolMessage().GetKey().GetID())
 	cm := evt.wa.Main.MsgConv.ToMatrix(
-		ctx, portal, evt.wa.Client, intent, editedMsg, evt.MsgEvent.RawMessage, &evt.Info, &evt.OrigSource, evt.isViewOnce(), false, previouslyConvertedPart,
+		ctx, portal, evt.wa.Client, intent, editedMsg, evt.MsgEvent.RawMessage, &evt.Info, evt.isViewOnce(), false, previouslyConvertedPart,
 	)
 	if evt.isUndecryptableUpsertSubEvent && isFailedMedia(cm) {
 		evt.postHandle = func() {
@@ -286,7 +284,7 @@ func (evt *WAMessageEvent) HandleExisting(ctx context.Context, portal *bridgev2.
 func (evt *WAMessageEvent) ConvertMessage(ctx context.Context, portal *bridgev2.Portal, intent bridgev2.MatrixAPI) (*bridgev2.ConvertedMessage, error) {
 	evt.wa.EnqueuePortalResync(portal, false)
 	converted := evt.wa.Main.MsgConv.ToMatrix(
-		ctx, portal, evt.wa.Client, intent, evt.Message, evt.MsgEvent.RawMessage, &evt.Info, &evt.OrigSource, evt.isViewOnce(), false, nil,
+		ctx, portal, evt.wa.Client, intent, evt.Message, evt.MsgEvent.RawMessage, &evt.Info, evt.isViewOnce(), false, nil,
 	)
 	if isFailedMedia(converted) {
 		evt.postHandle = func() {
@@ -392,7 +390,9 @@ func (evt *WAUndecryptableMessage) GetStreamOrder() int64 {
 
 type WAMediaRetry struct {
 	*events.MediaRetry
-	wa *WhatsAppClient
+	wa        *WhatsAppClient
+	senderLID types.JID
+	chatLID   types.JID
 }
 
 func (evt *WAMediaRetry) GetType() bridgev2.RemoteEventType {
@@ -400,7 +400,7 @@ func (evt *WAMediaRetry) GetType() bridgev2.RemoteEventType {
 }
 
 func (evt *WAMediaRetry) GetPortalKey() networkid.PortalKey {
-	return evt.wa.makeWAPortalKey(evt.ChatID)
+	return evt.wa.makeWAPortalKey(pickLID(evt.ChatID, evt.chatLID))
 }
 
 func (evt *WAMediaRetry) AddLogContext(c zerolog.Context) zerolog.Context {
@@ -414,16 +414,23 @@ func (evt *WAMediaRetry) AddLogContext(c zerolog.Context) zerolog.Context {
 
 func (evt *WAMediaRetry) getRealSender() types.JID {
 	sender := evt.SenderID
-	if evt.FromMe {
-		sender = evt.wa.JID.ToNonAD()
-	} else if sender.IsEmpty() && (evt.ChatID.Server == types.DefaultUserServer || evt.ChatID.Server == types.BotServer) {
-		sender = evt.ChatID.ToNonAD()
+	if sender.IsEmpty() {
+		if evt.FromMe {
+			if evt.ChatID.Server == types.HiddenUserServer {
+				sender = evt.wa.GetLID().ToNonAD()
+			} else {
+				sender = evt.wa.JID.ToNonAD()
+			}
+		} else if evt.ChatID.Server == types.DefaultUserServer || evt.ChatID.Server == types.HiddenUserServer || evt.ChatID.Server == types.BotServer {
+			sender = evt.ChatID.ToNonAD()
+		}
 	}
 	return sender
 }
 
 func (evt *WAMediaRetry) GetSender() bridgev2.EventSender {
-	return evt.wa.makeEventSender(evt.wa.Main.Bridge.BackgroundCtx, evt.getRealSender())
+	realSender := pickLID(evt.getRealSender(), evt.senderLID)
+	return evt.wa.makeEventSender(evt.wa.Main.Bridge.BackgroundCtx, realSender)
 }
 
 func (evt *WAMediaRetry) GetTargetMessage() networkid.MessageID {

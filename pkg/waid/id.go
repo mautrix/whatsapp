@@ -83,6 +83,13 @@ func MakeMessageID(chat, sender types.JID, id types.MessageID) networkid.Message
 	return networkid.MessageID(fmt.Sprintf("%s:%s:%s", chat.ToNonAD().String(), sender.ToNonAD().String(), id))
 }
 
+func MakeMessageIDWithAltSender(chat, sender, altSender types.JID, id types.MessageID) networkid.MessageID {
+	if chat.Server == types.HiddenUserServer && sender.Server == types.DefaultUserServer && altSender.Server == types.HiddenUserServer {
+		sender = altSender
+	}
+	return MakeMessageID(chat, sender, id)
+}
+
 func MakeFakeMessageID(chat, sender types.JID, data string) networkid.MessageID {
 	return networkid.MessageID(fmt.Sprintf("fake:%s:%s:%s", chat.ToNonAD().String(), sender.ToNonAD().String(), data))
 }
