@@ -65,7 +65,7 @@ func (wa *WhatsAppClient) FindAltTargetMessage(ctx context.Context, targetMsg ne
 }
 
 func (wa *WhatsAppClient) checkAllPhonesInMessage(ctx context.Context, info *types.MessageSource) (ok bool) {
-	for _, jid := range []types.JID{info.Sender, info.SenderAlt, info.Chat, info.RecipientAlt} {
+	for _, jid := range []types.JID{info.Sender, info.SenderAlt, info.Chat, info.RecipientAlt, info.BroadcastListOwner} {
 		if !wa.reIDPhoneDMToLIDIfNeeded(ctx, jid) {
 			return false
 		}

@@ -99,6 +99,18 @@ func (wa *WhatsAppClient) applyChatSettings(ctx context.Context, chatID types.JI
 		zerolog.Ctx(ctx).Warn().Err(err).Msg("Failed to get chat settings")
 		return
 	}
+	if !chat.Found {
+		chatID, err = wa.GetStore().GetAltJID(ctx, chatID)
+		if err != nil {
+			zerolog.Ctx(ctx).Warn().Err(err).Msg("Failed to get alternate JID to get chat settings")
+			return
+		}
+		chat, err = wa.GetStore().ChatSettings.GetChatSettings(ctx, chatID)
+		if err != nil {
+			zerolog.Ctx(ctx).Warn().Err(err).Msg("Failed to get chat settings with alternate JID")
+			return
+		}
+	}
 	info.UserLocal = &bridgev2.UserLocalPortalInfo{
 		MutedUntil: ptr.Ptr(chat.MutedUntil),
 	}

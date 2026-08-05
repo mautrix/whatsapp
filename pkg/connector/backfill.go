@@ -770,11 +770,12 @@ func (wa *WhatsAppClient) convertHistorySyncMessage(
 	}
 	// TODO use proper intent
 	intent := wa.Main.Bridge.Bot
+	msgID := waid.MakeMessageIDWithAltSender(info.Chat, info.Sender, info.SenderAlt, info.ID)
 	wrapped := &bridgev2.BackfillMessage{
 		ConvertedMessage: wa.Main.MsgConv.ToMatrix(ctx, portal, wa.Client, intent, msg, rawMsg, info, isViewOnce, true, nil),
 		Sender:           wa.makeEventSender(ctx, pickLID(info.Sender, info.SenderAlt)),
-		ID:               waid.MakeMessageIDWithAltSender(info.Chat, info.Sender, info.SenderAlt, info.ID),
-		TxnID:            networkid.TransactionID(waid.MakeMessageID(info.Chat, info.Sender, info.ID)),
+		ID:               msgID,
+		TxnID:            networkid.TransactionID(msgID),
 		Timestamp:        info.Timestamp,
 		StreamOrder:      info.Timestamp.Unix(),
 		Reactions:        make([]*bridgev2.BackfillReaction, 0, len(reactions)),

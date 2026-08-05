@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/rs/zerolog"
+	"go.mau.fi/util/exmaps"
 	"go.mau.fi/util/exsync"
 	"go.mau.fi/util/ptr"
 	"go.mau.fi/whatsmeow"
@@ -125,7 +126,16 @@ func (wa *WhatsAppClient) startChatPNToLID(ctx context.Context, jid types.JID) (
 		if err != nil {
 			return jid, fmt.Errorf("failed to get lid for phone number: %w", err)
 		} else if lid.IsEmpty() {
-			return jid, fmt.Errorf("lid not found")
+			resp, err := wa.Client.GetUserInfo(ctx, []types.JID{jid})
+			if err != nil {
+				return jid, fmt.Errorf("failed to get user info for phone number: %w", err)
+			} else if info, ok := resp[jid]; !ok {
+				return jid, fmt.Errorf("server didn't return user info for phone number")
+			} else if info.LID.IsEmpty() {
+				return jid, fmt.Errorf("server didn't return lid for phone number")
+			} else {
+				return info.LID, nil
+			}
 		}
 		return lid, nil
 	}
@@ -198,6 +208,7 @@ func (wa *WhatsAppClient) getContactList(ctx context.Context, filter string, onl
 		return nil, err
 	}
 	resp := make([]*bridgev2.ResolveIdentifierResponse, 0, len(contacts))
+	addedIDs := make(exmaps.Set[types.JID])
 	for jid, contactInfo := range contacts {
 		if onlyContacts && (contactInfo.FirstName == "" && contactInfo.FullName == "") {
 			continue
@@ -205,12 +216,30 @@ func (wa *WhatsAppClient) getContactList(ctx context.Context, filter string, onl
 		if !matchesQuery(contactInfo.PushName, filter) && !matchesQuery(contactInfo.FullName, filter) && !matchesQuery(jid.User, filter) {
 			continue
 		}
+		var lid types.JID
+		if jid.Server == types.HiddenUserServer {
+			lid = jid
+		} else if jid.Server == types.DefaultUserServer {
+			lid, err = wa.GetStore().LIDs.GetLIDForPN(ctx, jid)
+			if err != nil {
+				return nil, fmt.Errorf("failed to get lid for phone number %s: %w", jid, err)
+			} else if !lid.IsEmpty() {
+				jid = lid
+			}
+		}
+		if !addedIDs.Add(jid) {
+			continue
+		}
+		var chatResp *bridgev2.CreateChatResponse
+		if !lid.IsEmpty() {
+			chatResp = &bridgev2.CreateChatResponse{PortalKey: wa.makeWAPortalKey(lid)}
+		}
 		ghost, _ := wa.Main.Bridge.GetGhostByID(ctx, waid.MakeUserID(jid))
 		resp = append(resp, &bridgev2.ResolveIdentifierResponse{
 			Ghost:    ghost,
 			UserID:   waid.MakeUserID(jid),
 			UserInfo: wa.contactToUserInfo(ctx, jid, contactInfo, false),
-			Chat:     &bridgev2.CreateChatResponse{PortalKey: wa.makeWAPortalKey(jid)},
+			Chat:     chatResp,
 		})
 	}
 	return resp, nil

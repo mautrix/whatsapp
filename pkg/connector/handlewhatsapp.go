@@ -458,13 +458,24 @@ func (wa *WhatsAppClient) handleWAReceipt(ctx context.Context, evt *events.Recei
 	default:
 		return true
 	}
-	targets := make([]networkid.MessageID, len(evt.MessageIDs))
+	targets := make([]networkid.MessageID, 0, len(evt.MessageIDs))
 	messageSender := wa.GetLID()
 	if !evt.MessageSender.IsEmpty() {
 		messageSender = evt.MessageSender
 	}
-	for i, id := range evt.MessageIDs {
-		targets[i] = waid.MakeMessageID(evt.Chat, messageSender, id)
+	var chatAlt types.JID
+	if evt.Chat.Server == types.DefaultUserServer {
+		chatLID, _ := wa.GetStore().LIDs.GetLIDForPN(ctx, evt.Chat)
+		if !chatLID.IsEmpty() {
+			chatAlt = evt.Chat
+			evt.Chat = chatLID
+		}
+	}
+	for _, id := range evt.MessageIDs {
+		targets = append(targets, waid.MakeMessageID(evt.Chat, messageSender, id))
+		if !chatAlt.IsEmpty() {
+			targets = append(targets, waid.MakeMessageID(chatAlt, messageSender, id))
+		}
 	}
 	senderLID := evt.Sender
 	if senderLID.Server == types.DefaultUserServer && !evt.SenderAlt.IsEmpty() {
@@ -483,11 +494,11 @@ func (wa *WhatsAppClient) handleWAReceipt(ctx context.Context, evt *events.Recei
 }
 
 func (wa *WhatsAppClient) handleWAChatPresence(ctx context.Context, evt *events.ChatPresence) {
-	if evt.Chat.Server == types.HiddenUserServer && evt.Sender.ToNonAD() == evt.Chat {
+	if evt.Chat.Server == types.DefaultUserServer && evt.Sender.ToNonAD() == evt.Chat {
 		if evt.SenderAlt.IsEmpty() {
-			evt.SenderAlt, _ = wa.GetStore().LIDs.GetPNForLID(ctx, evt.Sender)
+			evt.SenderAlt, _ = wa.GetStore().LIDs.GetLIDForPN(ctx, evt.Sender)
 		}
-		if evt.SenderAlt.Server == types.DefaultUserServer {
+		if evt.SenderAlt.Server == types.HiddenUserServer {
 			evt.Sender, evt.SenderAlt = evt.SenderAlt, evt.Sender
 			evt.Chat = evt.Sender.ToNonAD()
 		}
@@ -538,12 +549,15 @@ func (wa *WhatsAppClient) handleWACallStart(ctx context.Context, group, sender, 
 	if !wa.Main.Config.CallStartNotices || time.Since(ts) > callEventMaxAge {
 		return true
 	}
-	if sender.Server == types.HiddenUserServer && senderAlt.Server == types.DefaultUserServer {
+	if sender.Server == types.DefaultUserServer && senderAlt.IsEmpty() {
+		senderAlt, _ = wa.GetStore().LIDs.GetLIDForPN(ctx, sender)
+	}
+	if sender.Server == types.DefaultUserServer && senderAlt.Server == types.HiddenUserServer {
 		wa.UserLogin.Log.Debug().
-			Stringer("lid", sender).
-			Stringer("pn", senderAlt).
+			Stringer("lid", senderAlt).
+			Stringer("pn", sender).
 			Str("call_id", id).
-			Msg("Forced LID caller to phone number in incoming call")
+			Msg("Forced phone number caller to LID in incoming call")
 		sender, senderAlt = senderAlt, sender
 	}
 	chat := group
@@ -589,6 +603,12 @@ func convertCallStart(ctx context.Context, portal *bridgev2.Portal, intent bridg
 func (wa *WhatsAppClient) handleWAIdentityChange(ctx context.Context, evt *events.IdentityChange) {
 	if !wa.Main.Config.IdentityChangeNotices {
 		return
+	}
+	if evt.JID.Server == types.DefaultUserServer {
+		lid, _ := wa.GetStore().LIDs.GetLIDForPN(ctx, evt.JID)
+		if !lid.IsEmpty() {
+			evt.JID = lid
+		}
 	}
 	wa.UserLogin.QueueRemoteEvent(&simplevent.Message[*events.IdentityChange]{
 		EventMeta: simplevent.EventMeta{
