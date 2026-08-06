@@ -880,7 +880,12 @@ func (wa *WhatsAppClient) handleWAAppStateSyncComplete(ctx context.Context, evt 
 		} else {
 			log.Info().
 				Time("recovery_ts", ts).
+				Bool("recovery_evt", evt.Recovery).
 				Msg("Unmarked app state recovery as attempted after successful full sync")
+			wa.UserLogin.TrackAnalytics("WhatsApp Appstate Recovery Success", map[string]any{
+				"patch_name":    evt.Name,
+				"from_recovery": evt.Recovery,
+			})
 		}
 	} else if ts, exists = wa.appStateFullSyncAttempted[evt.Name]; exists {
 		delete(wa.appStateFullSyncAttempted, evt.Name)
@@ -937,6 +942,9 @@ func (wa *WhatsAppClient) handleWAAppStateSyncError(ctx context.Context, evt *ev
 	if err != nil {
 		log.Err(err).Msg("Failed to save login metadata after marking app state recovery as attempted")
 	}
+	wa.UserLogin.TrackAnalytics("WhatsApp Appstate Recovery Request", map[string]any{
+		"patch_name": evt.Name,
+	})
 	go func() {
 		resp, err := wa.Client.SendPeerMessage(ctx, whatsmeow.BuildAppStateRecoveryRequest(evt.Name))
 		if err != nil {
