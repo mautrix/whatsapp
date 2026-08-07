@@ -636,6 +636,9 @@ func (wa *WhatsAppClient) convertHistorySyncMessages(
 	return &bridgev2.FetchMessagesResponse{
 		Messages: convertedMessages,
 		Cursor:   networkid.PaginationCursor(strconv.FormatUint(oldestTS, 10)),
+		// The cursor is second-granularity, so a batch boundary can split messages sharing a
+		// timestamp and re-return already-bridged ones.
+		AggressiveDeduplication: true,
 		CompleteCallback: func() {
 			// TODO this only deletes after backfilling. If there's no need for backfill after a relogin,
 			//      the messages will be stuck in the database
