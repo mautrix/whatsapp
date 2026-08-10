@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/rs/zerolog"
+	"go.mau.fi/util/exmaps"
 	"go.mau.fi/util/ptr"
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/proto/waE2E"
@@ -597,6 +598,7 @@ func (wa *WhatsAppClient) convertHistorySyncMessages(
 	newestTS := messages[0].GetMessageTimestamp()
 	convertedMessages := make([]*bridgev2.BackfillMessage, 0, len(messages))
 	var mediaRequests []*wadb.MediaRequest
+	dups := make(exmaps.Set[networkid.MessageID])
 	for i, msg := range messages {
 		evt, err := wa.Client.ParseWebMessage(portalJID, msg)
 		if err != nil {
@@ -627,6 +629,11 @@ func (wa *WhatsAppClient) convertHistorySyncMessages(
 		converted, mediaReq := wa.convertHistorySyncMessage(
 			ctx, portal, &evt.Info, evt.Message, evt.RawMessage, isViewOnce, msg.Reactions,
 		)
+		// This is a hack to remove duplicates where the same message is inserted with both the LID and phone number sender
+		// TODO prevent those being inserted in the first place instead of hacking around it here
+		if !dups.Add(converted.ID) {
+			continue
+		}
 		convertedMessages = append(convertedMessages, converted)
 		if mediaReq != nil {
 			mediaRequests = append(mediaRequests, mediaReq)
