@@ -96,12 +96,12 @@ func (mq *MessageQuery) GetBetween(ctx context.Context, loginID networkid.UserLo
 	args := []any{mq.BridgeID, loginID, chatJID}
 	argNum := 4
 	if startTime != nil {
-		whereClauses += fmt.Sprintf(" AND timestamp >= $%d", argNum)
+		whereClauses += fmt.Sprintf(" AND timestamp > $%d", argNum)
 		args = append(args, startTime.Unix())
 		argNum++
 	}
 	if endTime != nil {
-		whereClauses += fmt.Sprintf(" AND timestamp <= $%d", argNum)
+		whereClauses += fmt.Sprintf(" AND timestamp < $%d", argNum)
 		args = append(args, endTime.Unix())
 	}
 
