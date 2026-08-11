@@ -56,6 +56,8 @@ func (wa *WhatsAppConnector) LoadUserLogin(ctx context.Context, login *bridgev2.
 		pushNamesSynced:           exsync.NewEvent(),
 		createDedup:               exsync.NewSet[types.MessageID](),
 		appStateFullSyncAttempted: make(map[appstate.WAPatchName]time.Time),
+
+		disableNewsletter: store.BaseClientPayload.GetUserAgent().GetPlatform() == waWa6.ClientPayload_UserAgent_MACOS,
 	}
 	login.Client = w
 
@@ -121,6 +123,8 @@ type WhatsAppClient struct {
 	pushNamesSynced    *exsync.Event
 	lastPresence       types.Presence
 	createDedup        *exsync.Set[types.MessageID]
+
+	disableNewsletter bool
 
 	appStateRecoveryLock      sync.Mutex
 	appStateFullSyncAttempted map[appstate.WAPatchName]time.Time

@@ -285,6 +285,9 @@ func (wa *WhatsAppClient) handleWAMessage(ctx context.Context, evt *events.Messa
 	if evt.Info.Chat == types.StatusBroadcastJID && !wa.Main.Config.EnableStatusBroadcast {
 		return
 	}
+	if evt.Info.Chat.Server == types.NewsletterServer && wa.disableNewsletter {
+		return
+	}
 	if !wa.ensureAltJIDs(ctx, &evt.Info.MessageSource, true) {
 		return false
 	}
@@ -782,6 +785,9 @@ func (wa *WhatsAppClient) handleWAJoinedGroup(ctx context.Context, evt *events.J
 }
 
 func (wa *WhatsAppClient) handleWANewsletterJoin(ctx context.Context, evt *events.NewsletterJoin) bool {
+	if wa.disableNewsletter {
+		return true
+	}
 	return wa.UserLogin.QueueRemoteEvent(&simplevent.ChatResync{
 		EventMeta: simplevent.EventMeta{
 			Type:         bridgev2.RemoteEventChatResync,
