@@ -246,14 +246,9 @@ func (wa *WhatsAppClient) getContactList(ctx context.Context, filter string, onl
 }
 
 func (wa *WhatsAppClient) CreateGroup(ctx context.Context, params *bridgev2.GroupCreateParams) (*bridgev2.CreateChatResponse, error) {
-	createKey := wa.Client.GenerateMessageID()
-	if params.RoomID != "" {
-		wa.createDedup.Add(createKey)
-	}
 	req := whatsmeow.ReqCreateGroup{
 		Name:         ptr.Val(params.Name).Name,
 		Participants: make([]types.JID, len(params.Participants)),
-		CreateKey:    createKey,
 	}
 	for i, participant := range params.Participants {
 		jid := waid.ParseUserID(participant)
