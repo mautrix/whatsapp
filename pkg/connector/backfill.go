@@ -649,14 +649,24 @@ func (wa *WhatsAppClient) convertHistorySyncMessages(
 			wa.deleteHistorySyncMessages(ctx, portalJID, newestTS, oldestTS)
 			if len(mediaRequests) > 0 {
 				go func(ctx context.Context) {
+					immediate := wa.Main.Config.HistorySync.MediaRequests.AutoRequestMedia &&
+						wa.Main.Config.HistorySync.MediaRequests.RequestMethod == MediaRequestMethodImmediate
+					sent := 0
 					for _, req := range mediaRequests {
 						err := wa.Main.DB.MediaRequest.Put(ctx, req)
 						if err != nil {
 							zerolog.Ctx(ctx).Err(err).Msg("Failed to save media request to database")
 						}
-						if wa.Main.Config.HistorySync.MediaRequests.AutoRequestMedia && wa.Main.Config.HistorySync.MediaRequests.RequestMethod == MediaRequestMethodImmediate {
-							wa.sendMediaRequest(ctx, req)
+						if !immediate {
+							continue
 						}
+						// Saved to the database above regardless, so a request that
+						// does not go out now is not lost - the daily sweep sends it.
+						if sent > 0 && !pauseBetweenMediaRequests(ctx) {
+							return
+						}
+						wa.sendMediaRequest(ctx, req)
+						sent++
 					}
 				}(context.WithoutCancel(ctx))
 			}
