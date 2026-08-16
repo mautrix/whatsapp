@@ -1,3 +1,7 @@
+# v26.08
+
+* Switched direct chats to use LIDs instead of phone numbers.
+
 # v26.07
 
 * Updated Docker image to Alpine 3.24.
