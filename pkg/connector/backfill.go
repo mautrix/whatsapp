@@ -247,12 +247,14 @@ func (wa *WhatsAppClient) handleWAHistorySync(
 			return c.Stringer("chat_jid", jid)
 		})
 
-		var minTime, maxTime, firstItemTime, lastItemTime time.Time
-		var minTimeIndex, maxTimeIndex int
+		var firstItemTime, lastItemTime time.Time
 
 		ignoredTypes := 0
-		messages := make([]*wadb.HistorySyncMessageTuple, 0, len(conv.GetMessages()))
-		for i, rawMsg := range conv.GetMessages() {
+		rawMessages := conv.GetMessages()
+		messages := make([]*wadb.HistorySyncMessageTuple, 0, len(rawMessages))
+		allowClamp := conv.GetCommentsCount() == 0
+		var newerTS uint64
+		for i, rawMsg := range rawMessages {
 			// Don't store messages that will just be skipped.
 			msgEvt, err := wa.Client.ParseWebMessage(jid, rawMsg.GetMessage())
 			if err != nil {
@@ -270,20 +272,30 @@ func (wa *WhatsAppClient) handleWAHistorySync(
 				firstItemTime = msgEvt.Info.Timestamp
 			}
 			lastItemTime = msgEvt.Info.Timestamp
-			if minTime.IsZero() || msgEvt.Info.Timestamp.Before(minTime) {
-				minTime = msgEvt.Info.Timestamp
-				minTimeIndex = i
-			}
-			if maxTime.IsZero() || msgEvt.Info.Timestamp.After(maxTime) {
-				maxTime = msgEvt.Info.Timestamp
-				maxTimeIndex = i
-			}
 
 			msgType := getMessageType(msgEvt.Message)
 			if msgType == "ignore" || strings.HasPrefix(msgType, "unknown_protocol_") {
 				ignoredTypes++
 				continue
 			}
+			// Comments (replies) in announcement groups are not ordered by timestamp, so don't clamp them.
+			if rawMsg.GetMessage().GetCommentMetadata().GetCommentParentKey() != nil {
+				allowClamp = false
+			}
+			// WhatsApp has bugs where some random messages will have timestamps decades in the future.
+			// To ensure they don't mess up our ordering, require timestamps of older messages to be
+			// before the previous (newer) message.
+			if currentTS := rawMsg.GetMessage().GetMessageTimestamp(); newerTS > 0 && allowClamp && currentTS > newerTS {
+				log.Warn().
+					Time("current_ts", time.Unix(int64(currentTS), 0)).
+					Time("prev_ts", time.Unix(int64(newerTS), 0)).
+					Int("msg_index", i).
+					Str("msg_id", rawMsg.GetMessage().GetKey().GetID()).
+					Msg("Clamping message timestamp")
+				rawMsg.Message.MessageTimestamp = ptr.Ptr(newerTS)
+				msgEvt.Info.Timestamp = time.Unix(int64(newerTS), 0)
+			}
+			newerTS = rawMsg.GetMessage().GetMessageTimestamp()
 			marshaled, err := proto.Marshal(rawMsg)
 			if err != nil {
 				log.Warn().Err(err).
@@ -298,13 +310,8 @@ func (wa *WhatsAppClient) handleWAHistorySync(
 		log.Debug().
 			Int("wrapped_count", len(messages)).
 			Int("ignored_msg_type_count", ignoredTypes).
-			Time("lowest_time", minTime).
-			Int("lowest_time_index", minTimeIndex).
-			Time("highest_time", maxTime).
-			Int("highest_time_index", maxTimeIndex).
 			Time("first_item_time", firstItemTime).
 			Time("last_item_time", lastItemTime).
-			Bool("highest_time_mismatch", firstItemTime != maxTime).
 			Dict("metadata", zerolog.Dict().
 				Uint32("ephemeral_expiration", conv.GetEphemeralExpiration()).
 				Int64("ephemeral_setting_timestamp", conv.GetEphemeralSettingTimestamp()).
@@ -320,7 +327,7 @@ func (wa *WhatsAppClient) handleWAHistorySync(
 			Msg("Collected messages to save from history sync conversation")
 
 		if len(messages) > 0 {
-			err = wa.Main.DB.Conversation.Put(ctx, wadb.NewConversation(wa.UserLogin.ID, jid, conv, maxTime))
+			err = wa.Main.DB.Conversation.Put(ctx, wadb.NewConversation(wa.UserLogin.ID, jid, conv, firstItemTime))
 			if err != nil {
 				if stopOnError {
 					return fmt.Errorf("failed to save conversation metadata for %s: %w", jid, err)
