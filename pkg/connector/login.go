@@ -135,7 +135,8 @@ var (
 	_ bridgev2.LoginProcessWebAuthn       = (*WALogin)(nil)
 )
 
-const LoginConnectWait = 15 * time.Second
+const LoginConnectWait = 30 * time.Second
+const LoginPairPhoneWait = 30 * time.Second
 
 func (wl *WALogin) Start(ctx context.Context) (*bridgev2.LoginStep, error) {
 	wl.Main.firstClientConnectOnce.Do(wl.Main.onFirstClientConnect)
@@ -193,19 +194,21 @@ func (wl *WALogin) StartWithOverride(ctx context.Context, old *bridgev2.UserLogi
 }
 
 func (wl *WALogin) SubmitUserInput(ctx context.Context, input map[string]string) (*bridgev2.LoginStep, error) {
-	ctx, cancel := context.WithTimeout(ctx, LoginConnectWait)
-	defer cancel()
 	err := wl.Client.Connect()
 	if err != nil {
 		wl.Log.Err(err).Msg("Failed to connect to WhatsApp for phone code login")
 		return nil, err
 	}
-	err = wl.WaitForQRs.Wait(ctx)
+	connectCtx, cancelConnect := context.WithTimeout(ctx, LoginConnectWait)
+	err = wl.WaitForQRs.Wait(connectCtx)
+	cancelConnect()
 	if err != nil {
 		wl.Log.Warn().Err(err).Msg("Timed out waiting for connection")
 		return nil, fmt.Errorf("failed to wait for connection: %w", err)
 	}
-	pairingCode, err := wl.Client.PairPhone(ctx, input["phone_number"], true, whatsmeow.PairClientChrome, "Chrome (Linux)")
+	pairCtx, cancelPair := context.WithTimeout(ctx, LoginPairPhoneWait)
+	defer cancelPair()
+	pairingCode, err := wl.Client.PairPhone(pairCtx, input["phone_number"], true, whatsmeow.PairClientChrome, "Chrome (Linux)")
 	if err != nil {
 		wl.Log.Err(err).Msg("Failed to request phone code login")
 		if errors.Is(err, whatsmeow.ErrPhoneNumberTooShort) {
