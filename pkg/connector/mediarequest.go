@@ -17,6 +17,7 @@
 package connector
 
 import (
+	"math/rand/v2"
 	"context"
 	"fmt"
 	"time"
@@ -109,8 +110,30 @@ func (wa *WhatsAppClient) sendMediaRequests(ctx context.Context) {
 		return
 	}
 	zerolog.Ctx(ctx).Info().Int("request_count", len(reqs)).Msg("Sending media requests")
-	for _, req := range reqs {
+	for i, req := range reqs {
+		if i > 0 && !pauseBetweenMediaRequests(ctx) {
+			return
+		}
 		wa.sendMediaRequest(ctx, req)
+	}
+}
+
+// mediaRequestSpacing is the pause between consecutive media re-request
+// stanzas. A phone fetches expired media lazily, one item at a time, as a
+// person scrolls into a chat; it does not fire dozens of requests within a
+// millisecond right after linking. Half a second, with jitter, keeps a burst
+// of a few hundred requests spread over minutes rather than instants.
+const mediaRequestSpacing = 500 * time.Millisecond
+
+// pauseBetweenMediaRequests waits mediaRequestSpacing plus up to 50% jitter.
+// It returns false if the context ended during the wait.
+func pauseBetweenMediaRequests(ctx context.Context) bool {
+	wait := mediaRequestSpacing + time.Duration(rand.Float64()*float64(mediaRequestSpacing)*0.5)
+	select {
+	case <-time.After(wait):
+		return true
+	case <-ctx.Done():
+		return false
 	}
 }
 
