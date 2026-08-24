@@ -27,6 +27,7 @@ import (
 	"go.mau.fi/util/ptr"
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/appstate"
+	"go.mau.fi/whatsmeow/proto/waCommon"
 	"go.mau.fi/whatsmeow/proto/waE2E"
 	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
@@ -341,18 +342,8 @@ func (wa *WhatsAppClient) handleWAMessage(ctx context.Context, evt *events.Messa
 	messageAssoc := evt.Message.GetMessageContextInfo().GetMessageAssociation()
 	if assocType := messageAssoc.GetAssociationType(); assocType == waE2E.MessageAssociation_HD_IMAGE_DUAL_UPLOAD || assocType == waE2E.MessageAssociation_HD_VIDEO_DUAL_UPLOAD {
 		parentKey := messageAssoc.GetParentMessageKey()
-		protocolMsg := evt.Message.GetProtocolMessage()
-		if protocolMsg.GetType() != waE2E.ProtocolMessage_MESSAGE_EDIT || protocolMsg.GetKey() == nil {
-			protocolMsg = &waE2E.ProtocolMessage{
-				Type:          waE2E.ProtocolMessage_MESSAGE_EDIT.Enum(),
-				Key:           parentKey,
-				EditedMessage: evt.Message.GetAssociatedChildMessage().GetMessage(),
-			}
-			dontRenderEdited = true
-		} else if child := protocolMsg.GetEditedMessage().GetAssociatedChildMessage().GetMessage(); child != nil {
-			protocolMsg.EditedMessage = child
-			protocolMsg.Key = parentKey
-		}
+		protocolMsg, shouldHideEdit := makeHDMediaReplacementEdit(evt.Message, parentKey)
+		dontRenderEdited = shouldHideEdit
 		wa.UserLogin.Log.Debug().
 			Str("message_id", evt.Info.ID).
 			Str("parent_id", parentKey.GetID()).
@@ -384,6 +375,26 @@ func (wa *WhatsAppClient) handleWAMessage(ctx context.Context, evt *events.Messa
 		dontRenderEdited:  dontRenderEdited,
 	})
 	return res.Success
+}
+
+func makeHDMediaReplacementEdit(message *waE2E.Message, parentKey *waCommon.MessageKey) (*waE2E.ProtocolMessage, bool) {
+	protocolMsg := message.GetProtocolMessage()
+	associatedMessage := message.GetAssociatedChildMessage().GetMessage()
+	if protocolMsg.GetType() != waE2E.ProtocolMessage_MESSAGE_EDIT || protocolMsg.GetKey() == nil {
+		protocolMsg = associatedMessage.GetProtocolMessage()
+	}
+	if protocolMsg.GetType() == waE2E.ProtocolMessage_MESSAGE_EDIT && protocolMsg.GetKey() != nil {
+		if child := protocolMsg.GetEditedMessage().GetAssociatedChildMessage().GetMessage(); child != nil {
+			protocolMsg.EditedMessage = child
+		}
+		protocolMsg.Key = parentKey
+		return protocolMsg, false
+	}
+	return &waE2E.ProtocolMessage{
+		Type:          waE2E.ProtocolMessage_MESSAGE_EDIT.Enum(),
+		Key:           parentKey,
+		EditedMessage: associatedMessage,
+	}, true
 }
 
 func (wa *WhatsAppClient) handleWAUndecryptableMessage(ctx context.Context, evt *events.UndecryptableMessage) bool {
