@@ -532,6 +532,7 @@ func (wa *WhatsAppClient) FetchMessages(ctx context.Context, params bridgev2.Fet
 		return nil, fmt.Errorf("failed to load messages from database: %w", err)
 	} else if len(messages) == 0 || (len(messages) == 1 && anchorID != "" && messages[0].GetKey().GetID() == anchorID) {
 		wa.deleteHistorySyncMessages(ctx, portalJID, 0, 0)
+		hasMore = hasMore && params.AnchorMessage != nil
 		if hasMore && !params.AllowSlowFetch {
 			return &bridgev2.FetchMessagesResponse{
 				MoreRequiresSlowFetch: true,
