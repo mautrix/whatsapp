@@ -393,6 +393,10 @@ func (wa *WhatsAppClient) LogoutRemote(ctx context.Context) {
 	}
 	wa.Disconnect()
 	wa.Client = nil
+	err := wa.Main.DB.Conversation.DeleteAll(ctx, wa.UserLogin.ID)
+	if err != nil {
+		zerolog.Ctx(ctx).Err(err).Msg("Failed to delete history sync data on logout")
+	}
 }
 
 func (wa *WhatsAppClient) IsLoggedIn() bool {

@@ -202,7 +202,7 @@ func (wa *WhatsAppClient) handleWAEvent(rawEvt any) (success bool) {
 		wa.UserLogin.BridgeState.Send(status.BridgeState{StateEvent: status.StateConnected})
 		wa.notifyOfflineSyncWaiter(nil)
 	case *events.LoggedOut:
-		wa.handleWALogout(evt.Reason, evt.OnConnect)
+		wa.handleWALogout(ctx, evt.Reason, evt.OnConnect)
 		wa.notifyOfflineSyncWaiter(fmt.Errorf("logged out: %s", evt.Reason))
 	case *events.Disconnected:
 		// Don't send the normal transient disconnect state if we're already in a different transient disconnect state.
@@ -528,7 +528,7 @@ func (wa *WhatsAppClient) handleWAChatPresence(ctx context.Context, evt *events.
 	})
 }
 
-func (wa *WhatsAppClient) handleWALogout(reason events.ConnectFailureReason, onConnect bool) {
+func (wa *WhatsAppClient) handleWALogout(ctx context.Context, reason events.ConnectFailureReason, onConnect bool) {
 	errorCode := WAUnknownLogout
 	if reason == events.ConnectFailureLoggedOut {
 		errorCode = WALoggedOut
@@ -540,6 +540,10 @@ func (wa *WhatsAppClient) handleWALogout(reason events.ConnectFailureReason, onC
 	wa.JID = types.EmptyJID
 	wa.LID = types.EmptyJID
 	wa.UserLogin.Metadata.(*waid.UserLoginMetadata).WADeviceID = 0
+	err := wa.Main.DB.Conversation.DeleteAll(ctx, wa.UserLogin.ID)
+	if err != nil {
+		zerolog.Ctx(ctx).Err(err).Msg("Failed to delete history sync data on logout")
+	}
 	wa.UserLogin.BridgeState.Send(status.BridgeState{
 		StateEvent: status.StateBadCredentials,
 		Error:      errorCode,
