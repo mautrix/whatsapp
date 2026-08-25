@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/rs/zerolog"
+	"go.mau.fi/util/exslices"
 	"go.mau.fi/util/ptr"
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/appstate"
@@ -476,6 +477,8 @@ func (wa *WhatsAppClient) handleWAReceipt(ctx context.Context, evt *events.Recei
 	messageSender := wa.GetLID()
 	if !evt.MessageSender.IsEmpty() {
 		messageSender = evt.MessageSender
+	} else if evt.Chat.Server == types.NewsletterServer {
+		messageSender = evt.Chat
 	}
 	var chatAlt types.JID
 	if evt.Chat.Server == types.DefaultUserServer {
@@ -494,6 +497,8 @@ func (wa *WhatsAppClient) handleWAReceipt(ctx context.Context, evt *events.Recei
 	senderLID := evt.Sender
 	if senderLID.Server == types.DefaultUserServer && !evt.SenderAlt.IsEmpty() {
 		senderLID = evt.SenderAlt
+	} else if evt.Chat.Server == types.NewsletterServer && evt.Type == types.ReceiptTypeReadSelf {
+		senderLID = wa.GetLID()
 	}
 	res := wa.UserLogin.QueueRemoteEvent(&simplevent.Receipt{
 		EventMeta: simplevent.EventMeta{
@@ -501,6 +506,11 @@ func (wa *WhatsAppClient) handleWAReceipt(ctx context.Context, evt *events.Recei
 			PortalKey: wa.makeWAPortalKey(evt.Chat),
 			Sender:    wa.makeEventSender(ctx, senderLID),
 			Timestamp: evt.Timestamp,
+			LogContext: func(c zerolog.Context) zerolog.Context {
+				return c.
+					Strs("targets", exslices.CastToString[string](targets)).
+					Stringer("receipt_sender", senderLID)
+			},
 		},
 		Targets: targets,
 	})
