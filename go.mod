@@ -12,13 +12,13 @@ require (
 	github.com/tidwall/gjson v1.19.0
 	go.mau.fi/util v0.10.1-0.20260820140024-eb612d936fde
 	go.mau.fi/webp v0.3.0
-	go.mau.fi/whatsmeow v0.0.0-20260821141805-33cfac511629
+	go.mau.fi/whatsmeow v0.0.0-20260828224850-0fadda796019
 	golang.org/x/image v0.45.0
 	golang.org/x/net v0.58.0
 	golang.org/x/sync v0.22.0
 	google.golang.org/protobuf v1.36.12
 	gopkg.in/yaml.v3 v3.0.1
-	maunium.net/go/mautrix v0.30.1-0.20260825141151-92fa7b2e4545
+	maunium.net/go/mautrix v0.30.1-0.20260828224424-c22bd4fdc9e6
 )
 
 require (
@@ -31,8 +31,8 @@ require (
 	github.com/kr/pretty v0.3.1 // indirect
 	github.com/mattn/go-colorable v0.1.14 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
-	github.com/mattn/go-sqlite3 v1.14.49 // indirect
-	github.com/petermattis/goid v0.0.0-20260816044145-ed329add6b1b // indirect
+	github.com/mattn/go-sqlite3 v1.14.50 // indirect
+	github.com/petermattis/goid v0.0.0-20260820044319-269ab09b5261 // indirect
 	github.com/rogpeppe/go-internal v1.10.0 // indirect
 	github.com/rs/xid v1.6.0 // indirect
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e // indirect
@@ -44,7 +44,7 @@ require (
 	go.mau.fi/libsignal v0.2.2 // indirect
 	go.mau.fi/zeroconfig v0.2.0 // indirect
 	golang.org/x/crypto v0.55.0 // indirect
-	golang.org/x/exp v0.0.0-20260813180055-c1d0aacb2297 // indirect
+	golang.org/x/exp v0.0.0-20260824195058-e88cd73687aa // indirect
 	golang.org/x/mod v0.40.0 // indirect
 	golang.org/x/sys v0.47.0 // indirect
 	golang.org/x/text v0.41.0 // indirect
