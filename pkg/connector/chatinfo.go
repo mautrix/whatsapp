@@ -271,11 +271,12 @@ func (wa *WhatsAppClient) wrapGroupInfo(ctx context.Context, info *types.GroupIn
 		setAddressingMode(info.AddressingMode),
 		setTopicID(info.TopicID, info.Topic),
 	)
+	syncAllMembers := wa.Main.Config.MaxMemberSync < 0 || len(info.Participants) < wa.Main.Config.MaxMemberSync
 	wrapped := &bridgev2.ChatInfo{
 		Name:  ptr.Ptr(info.Name),
 		Topic: ptr.Ptr(info.Topic),
 		Members: &bridgev2.ChatMemberList{
-			IsFull:           !info.IsIncognito && !info.IsParent,
+			IsFull:           !info.IsIncognito && !info.IsParent && syncAllMembers,
 			TotalMemberCount: len(info.Participants),
 			MemberMap:        make(map[networkid.UserID]bridgev2.ChatMember, len(info.Participants)),
 			PowerLevels: &bridgev2.PowerLevelOverrides{
@@ -315,6 +316,9 @@ func (wa *WhatsAppClient) wrapGroupInfo(ctx context.Context, info *types.GroupIn
 		} else if pcp.IsAdmin {
 			member.PowerLevel = ptr.Ptr(adminPL)
 		} else {
+			if !syncAllMembers && !member.EventSender.IsFromMe {
+				continue
+			}
 			member.PowerLevel = ptr.Ptr(defaultPL)
 		}
 		member.MemberEventExtra = map[string]any{

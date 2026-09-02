@@ -69,6 +69,9 @@ initial_auto_reconnect: true
 # the bridge? By default, the bridge only stores messages in memory, and therefore can't accept
 # retry receipts if the bridge is restarted after the message is sent.
 use_whatsapp_retry_store: false
+# Maximum size of groups to sync members eagerly in. Defaults to unlimited.
+# If set, groups with more than this number of members will not have non-admin participants synced until they talk.
+max_member_sync: -1
 
 # Settings for converting animated stickers.
 animated_sticker:
