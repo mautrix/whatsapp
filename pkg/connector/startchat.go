@@ -176,11 +176,16 @@ func (wa *WhatsAppClient) ResolveIdentifier(ctx context.Context, identifier stri
 	if err != nil {
 		return nil, fmt.Errorf("failed to get ghost: %w", err)
 	}
+	userInfo, err := wa.getUserInfo(ctx, jid, "", false)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get user info: %w", err)
+	}
 
 	return &bridgev2.ResolveIdentifierResponse{
-		Ghost:  ghost,
-		UserID: waid.MakeUserID(jid),
-		Chat:   wa.makeCreateChatResponse(ctx, jid, origJID),
+		Ghost:    ghost,
+		UserID:   waid.MakeUserID(jid),
+		UserInfo: userInfo,
+		Chat:     wa.makeCreateChatResponse(ctx, jid, origJID),
 	}, nil
 }
 
