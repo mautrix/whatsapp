@@ -24,6 +24,7 @@ import (
 	"strconv"
 	"strings"
 
+	"go.mau.fi/util/random"
 	"go.mau.fi/whatsmeow/types"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 )
@@ -83,6 +84,16 @@ type AvatarMediaInfo struct {
 	TargetJID types.JID
 	AvatarID  string
 	Community bool
+}
+
+const RandomAvatarIDPrefix = "mxwa-lazy-avatar-"
+
+func MakeRandomAvatarID() string {
+	return RandomAvatarIDPrefix + random.String(8)
+}
+
+func (ami *AvatarMediaInfo) IsRandom() bool {
+	return ami != nil && strings.HasPrefix(ami.AvatarID, RandomAvatarIDPrefix)
 }
 
 func MakeStickerPackMediaID(packID string, fileHash []byte, receiver networkid.UserLoginID) networkid.MediaID {

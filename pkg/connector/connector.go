@@ -142,6 +142,9 @@ func (wa *WhatsAppConnector) Init(bridge *bridgev2.Bridge) {
 }
 
 func (wa *WhatsAppConnector) Start(ctx context.Context) error {
+	if !wa.MsgConv.DirectMedia && wa.Config.LazyAvatars {
+		return fmt.Errorf("lazy_avatars set without enabling global direct_media")
+	}
 	err := wa.DeviceStore.Upgrade(ctx)
 	if err != nil {
 		return bridgev2.DBUpgradeError{Err: err, Section: "whatsmeow"}

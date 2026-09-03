@@ -2,10 +2,14 @@ package wadb
 
 import (
 	"context"
+	"strings"
+	"time"
 
 	"go.mau.fi/util/dbutil"
 	"go.mau.fi/util/jsontime"
 	"go.mau.fi/whatsmeow/types"
+
+	"go.mau.fi/mautrix-whatsapp/pkg/waid"
 )
 
 type AvatarCacheQuery struct {
@@ -48,4 +52,14 @@ func (ace *AvatarCacheEntry) Scan(row dbutil.Scannable) (*AvatarCacheEntry, erro
 
 func (ace *AvatarCacheEntry) sqlVariables() []any {
 	return []any{ace.EntityJID, ace.AvatarID, ace.DirectPath, ace.Expiry, ace.Gone}
+}
+
+func (ace *AvatarCacheEntry) IsGone() bool {
+	return ace != nil && ace.Gone &&
+		// Random IDs can be retried after a specific expiry time, other types of gones can't
+		(ace.Expiry.IsZero() || !strings.HasPrefix(ace.AvatarID, waid.RandomAvatarIDPrefix) || ace.Expiry.After(time.Now()))
+}
+
+func (ace *AvatarCacheEntry) Expired() bool {
+	return ace == nil || ace.Expiry.Before(time.Now().Add(5*time.Minute))
 }

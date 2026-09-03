@@ -72,6 +72,9 @@ use_whatsapp_retry_store: false
 # Maximum size of groups to sync members eagerly in. Defaults to unlimited.
 # If set, groups with more than this number of members will not have non-admin participants synced until they talk.
 max_member_sync: -1
+# Lazily load avatars using direct media?
+# Global direct media must be enabled for this.
+lazy_avatars: false
 
 # Settings for converting animated stickers.
 animated_sticker:

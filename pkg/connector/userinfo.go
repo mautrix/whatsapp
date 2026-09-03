@@ -165,7 +165,7 @@ func (wa *WhatsAppClient) doGhostResync(ctx context.Context, queue map[types.JID
 			log.Warn().Stringer("jid", jid).Msg("Didn't get info for puppet in background sync")
 			continue
 		}
-		userInfo, err := wa.getUserInfo(ctx, jid, info.PictureID != "" && string(ghost.AvatarID) != info.PictureID)
+		userInfo, err := wa.getUserInfo(ctx, jid, info.PictureID, info.PictureID != "" && string(ghost.AvatarID) != info.PictureID)
 		if err != nil {
 			log.Err(err).Stringer("jid", jid).Msg("Failed to get user info for puppet in background sync")
 			continue
@@ -181,18 +181,18 @@ func (wa *WhatsAppClient) GetUserInfo(ctx context.Context, ghost *bridgev2.Ghost
 		return nil, nil
 	}
 	jid := waid.ParseUserID(ghost.ID)
-	return wa.getUserInfo(ctx, jid, ghost.AvatarID == "")
+	return wa.getUserInfo(ctx, jid, "", ghost.AvatarID == "")
 }
 
-func (wa *WhatsAppClient) getUserInfo(ctx context.Context, jid types.JID, fetchAvatar bool) (*bridgev2.UserInfo, error) {
+func (wa *WhatsAppClient) getUserInfo(ctx context.Context, jid types.JID, avatarID string, fetchAvatar bool) (*bridgev2.UserInfo, error) {
 	contact, err := wa.GetStore().Contacts.GetContact(ctx, jid)
 	if err != nil {
 		return nil, err
 	}
-	return wa.contactToUserInfo(ctx, jid, contact, fetchAvatar), nil
+	return wa.contactToUserInfo(ctx, jid, contact, avatarID, fetchAvatar), nil
 }
 
-func (wa *WhatsAppClient) contactToUserInfo(ctx context.Context, jid types.JID, contact types.ContactInfo, getAvatar bool) *bridgev2.UserInfo {
+func (wa *WhatsAppClient) contactToUserInfo(ctx context.Context, jid types.JID, contact types.ContactInfo, avatarID string, fetchAvatar bool) *bridgev2.UserInfo {
 	if jid == types.MetaAIJID && contact.PushName == jid.User {
 		contact.PushName = "Meta AI"
 	} else if jid == types.LegacyPSAJID || jid == types.PSAJID {
@@ -270,7 +270,9 @@ func (wa *WhatsAppClient) contactToUserInfo(ctx context.Context, jid types.JID, 
 	} else if phone != "" {
 		ui.Identifiers = []string{fmt.Sprintf("tel:%s", phone)}
 	}
-	if getAvatar {
+	if wa.Main.Config.LazyAvatars {
+		ui.ExtraUpdates = bridgev2.MergeExtraUpdaters(ui.ExtraUpdates, wa.makeLazyGhostAvatarUpdater(avatarID, fetchAvatar))
+	} else if fetchAvatar {
 		ui.ExtraUpdates = bridgev2.MergeExtraUpdaters(ui.ExtraUpdates, wa.fetchGhostAvatar)
 	}
 	return ui
@@ -307,6 +309,21 @@ func avatarInfoToCacheEntry(ctx context.Context, jid types.JID, avatar *types.Pr
 	}
 }
 
+func (wa *WhatsAppClient) makeLazyDirectMediaAvatar(ctx context.Context, jid types.JID, avatarID string, community bool) (*bridgev2.Avatar, error) {
+	if avatarID == "" {
+		avatarID = waid.MakeRandomAvatarID()
+	}
+	mxc, err := wa.Main.Bridge.Matrix.GenerateContentURI(ctx, waid.MakeAvatarMediaID(jid, avatarID, wa.UserLogin.ID, community))
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate MXC URI: %w", err)
+	}
+	return &bridgev2.Avatar{
+		ID:   networkid.AvatarID(avatarID),
+		MXC:  mxc,
+		Hash: sha256.Sum256([]byte(avatarID)),
+	}, nil
+}
+
 func (wa *WhatsAppClient) makeDirectMediaAvatar(ctx context.Context, jid types.JID, avatar *types.ProfilePictureInfo, community bool) (*bridgev2.Avatar, error) {
 	mxc, err := wa.Main.Bridge.Matrix.GenerateContentURI(ctx, waid.MakeAvatarMediaID(jid, avatar.ID, wa.UserLogin.ID, community))
 	if err != nil {
@@ -326,6 +343,21 @@ func (wa *WhatsAppClient) makeDirectMediaAvatar(ctx context.Context, jid types.J
 		MXC:  mxc,
 		Hash: hash,
 	}, nil
+}
+
+func (wa *WhatsAppClient) makeLazyGhostAvatarUpdater(avatarID string, forceUpdate bool) func(context.Context, *bridgev2.Ghost) bool {
+	return func(ctx context.Context, ghost *bridgev2.Ghost) bool {
+		if ghost.AvatarID != "" && (networkid.AvatarID(avatarID) == ghost.AvatarID || (!forceUpdate && avatarID == "")) {
+			return false
+		}
+		jid := waid.ParseUserID(ghost.ID)
+		wrappedAvatar, err := wa.makeLazyDirectMediaAvatar(ctx, jid, avatarID, false)
+		if err != nil {
+			zerolog.Ctx(ctx).Err(err).Msg("Failed to prepare lazy direct media avatar")
+			return false
+		}
+		return ghost.UpdateAvatar(ctx, wrappedAvatar)
+	}
 }
 
 func (wa *WhatsAppClient) fetchGhostAvatar(ctx context.Context, ghost *bridgev2.Ghost) bool {
@@ -399,7 +431,7 @@ func (wa *WhatsAppClient) resyncContacts(forceAvatarSync, automatic bool) {
 		} else if contact, err := contactStore.GetContact(ctx, jid); err != nil {
 			log.Err(err).Stringer("jid", jid).Msg("Failed to get contact info")
 		} else {
-			userInfo := wa.contactToUserInfo(ctx, jid, contact, forceAvatarSync || ghost.AvatarID == "")
+			userInfo := wa.contactToUserInfo(ctx, jid, contact, "", forceAvatarSync || ghost.AvatarID == "")
 			ghost.UpdateInfo(ctx, userInfo)
 			wa.syncAltGhostWithInfo(ctx, jid, userInfo)
 		}

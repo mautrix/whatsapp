@@ -64,12 +64,12 @@ func looksEmaily(str string) bool {
 	return false
 }
 
-type cacheEntry struct {
+type isOnWhatsappCacheEntry struct {
 	jid types.JID
 	ts  time.Time
 }
 
-var isOnWhatsappCache = exsync.NewMap[string, cacheEntry]()
+var isOnWhatsappCache = exsync.NewMap[string, isOnWhatsappCacheEntry]()
 
 func (wa *WhatsAppClient) validateIdentifer(ctx context.Context, number string) (types.JID, error) {
 	if strings.HasSuffix(number, "@"+types.BotServer) || strings.HasSuffix(number, "@"+types.HiddenUserServer) {
@@ -94,7 +94,7 @@ func (wa *WhatsAppClient) validateIdentifer(ctx context.Context, number string) 
 	} else if !resp[0].IsIn {
 		return types.EmptyJID, bridgev2.WrapRespErr(fmt.Errorf("the server said +%s is not on WhatsApp", resp[0].JID.User), mautrix.MNotFound)
 	} else {
-		isOnWhatsappCache.Set(number, cacheEntry{resp[0].JID, time.Now()})
+		isOnWhatsappCache.Set(number, isOnWhatsappCacheEntry{resp[0].JID, time.Now()})
 		return resp[0].JID, nil
 	}
 }
@@ -238,7 +238,7 @@ func (wa *WhatsAppClient) getContactList(ctx context.Context, filter string, onl
 		resp = append(resp, &bridgev2.ResolveIdentifierResponse{
 			Ghost:    ghost,
 			UserID:   waid.MakeUserID(jid),
-			UserInfo: wa.contactToUserInfo(ctx, jid, contactInfo, false),
+			UserInfo: wa.contactToUserInfo(ctx, jid, contactInfo, "", false),
 			Chat:     chatResp,
 		})
 	}

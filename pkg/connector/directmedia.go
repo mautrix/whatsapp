@@ -30,6 +30,7 @@ import (
 
 	"github.com/rs/zerolog"
 	"go.mau.fi/util/exsync"
+	"go.mau.fi/util/jsontime"
 	"go.mau.fi/util/ptr"
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/proto/waMmsRetry"
@@ -88,9 +89,9 @@ func (wa *WhatsAppConnector) downloadAvatarDirectMedia(ctx context.Context, pars
 	if err != nil {
 		return nil, fmt.Errorf("failed to get avatar cache entry: %w", err)
 	}
-	if cachedInfo != nil && cachedInfo.Gone {
+	if cachedInfo.IsGone() {
 		return nil, mautrix.MNotFound.WithMessage("Avatar is no longer available (cached response)")
-	} else if cachedInfo == nil || cachedInfo.Expiry.Time.Before(time.Now().Add(5*time.Minute)) {
+	} else if cachedInfo.Expired() {
 		zerolog.Ctx(ctx).Debug().
 			Str("avatar_id", parsedID.Avatar.AvatarID).
 			Msg("Refreshing avatar URL from WhatsApp servers")
@@ -99,7 +100,7 @@ func (wa *WhatsAppConnector) downloadAvatarDirectMedia(ctx context.Context, pars
 		})
 		if errors.Is(err, whatsmeow.ErrProfilePictureNotSet) ||
 			errors.Is(err, whatsmeow.ErrProfilePictureUnauthorized) ||
-			(err == nil && (avatar == nil || avatar.ID != parsedID.Avatar.AvatarID)) {
+			(err == nil && (avatar == nil || (avatar.ID != parsedID.Avatar.AvatarID && !parsedID.Avatar.IsRandom()))) {
 			zerolog.Ctx(ctx).Debug().
 				Err(err).
 				Stringer("target_jid", parsedID.Avatar.TargetJID).
@@ -107,9 +108,14 @@ func (wa *WhatsAppConnector) downloadAvatarDirectMedia(ctx context.Context, pars
 				Str("wanted_avatar_id", parsedID.Avatar.AvatarID).
 				Str("got_avatar_id", ptr.Val(avatar).ID).
 				Msg("Avatar is no longer available")
+			var goneExpiry jsontime.Unix
+			if parsedID.Avatar.IsRandom() {
+				goneExpiry = jsontime.U(time.Now().Add(7 * 24 * time.Hour))
+			}
 			err = wa.DB.AvatarCache.Put(ctx, &wadb.AvatarCacheEntry{
 				EntityJID: parsedID.Avatar.TargetJID,
 				AvatarID:  parsedID.Avatar.AvatarID,
+				Expiry:    goneExpiry,
 				Gone:      true,
 			})
 			if err != nil {
@@ -127,6 +133,15 @@ func (wa *WhatsAppConnector) downloadAvatarDirectMedia(ctx context.Context, pars
 			zerolog.Ctx(ctx).Warn().Err(err).
 				Str("avatar_id", avatar.ID).
 				Msg("Failed to update avatar cache entry")
+		}
+		if cachedInfo.AvatarID != parsedID.Avatar.AvatarID {
+			cachedInfo.AvatarID = parsedID.Avatar.AvatarID
+			err = wa.DB.AvatarCache.Put(ctx, cachedInfo)
+			if err != nil {
+				zerolog.Ctx(ctx).Warn().Err(err).
+					Str("avatar_id", parsedID.Avatar.AvatarID).
+					Msg("Failed to update avatar cache entry")
+			}
 		}
 	}
 	return &mediaproxy.GetMediaResponseFile{

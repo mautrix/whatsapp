@@ -37,12 +37,12 @@ type UserLoginMetadata struct {
 	PushKeys        *PushKeys     `json:"push_keys,omitempty"`
 	APNSEncPubKey   []byte        `json:"apns_enc_pubkey,omitempty"`
 	APNSEncPrivKey  []byte        `json:"apns_enc_privkey,omitempty"`
-	LoggedInAt      jsontime.Unix `json:"logged_in_at,omitempty"`
+	LoggedInAt      jsontime.Unix `json:"logged_in_at,omitzero"`
 
 	AppStateRecoveryAttempted map[appstate.WAPatchName]time.Time `json:"app_state_recovery_attempted,omitempty"`
 
-	HistorySyncPortalsNeedCreating bool      `json:"history_sync_portals_need_creating,omitempty"`
-	ReachoutTimelockUntil          time.Time `json:"reachout_timelock_until,omitempty"`
+	HistorySyncPortalsNeedCreating bool      `json:"history_sync_portals_need_creating,omitzero"`
+	ReachoutTimelockUntil          time.Time `json:"reachout_timelock_until,omitzero"`
 
 	MData json.RawMessage `json:"mdata,omitempty"`
 }
@@ -88,13 +88,13 @@ type GroupInviteMeta struct {
 }
 
 type MessageMetadata struct {
-	SenderDeviceID   uint16            `json:"sender_device_id,omitempty"`
+	SenderDeviceID   uint16            `json:"sender_device_id,omitzero"`
 	Error            MessageErrorType  `json:"error,omitempty"`
 	BroadcastListJID *types.JID        `json:"broadcast_list_jid,omitempty"`
 	GroupInvite      *GroupInviteMeta  `json:"group_invite,omitempty"`
 	FailedMediaMeta  json.RawMessage   `json:"media_meta,omitempty"`
 	DirectMediaMeta  json.RawMessage   `json:"direct_media_meta,omitempty"`
-	IsMatrixPoll     bool              `json:"is_matrix_poll,omitempty"`
+	IsMatrixPoll     bool              `json:"is_matrix_poll,omitzero"`
 	Edits            []types.MessageID `json:"edits,omitempty"`
 }
 
@@ -122,14 +122,16 @@ type ReactionMetadata struct {
 }
 
 type PortalMetadata struct {
-	DisappearingTimerSetAt     int64                `json:"disappearing_timer_set_at,omitempty"`
+	DisappearingTimerSetAt     int64                `json:"disappearing_timer_set_at,omitzero"`
 	TopicID                    string               `json:"topic_id,omitempty"`
-	LastSync                   jsontime.Unix        `json:"last_sync,omitempty"`
-	CommunityAnnouncementGroup bool                 `json:"is_cag,omitempty"`
+	LastSync                   jsontime.Unix        `json:"last_sync,omitzero"`
+	CommunityAnnouncementGroup bool                 `json:"is_cag,omitzero"`
 	AddressingMode             types.AddressingMode `json:"addressing_mode,omitempty"`
-	LIDMigrationAttempted      bool                 `json:"lid_migration_attempted,omitempty"`
+	LIDMigrationAttempted      bool                 `json:"lid_migration_attempted,omitzero"`
 }
 
 type GhostMetadata struct {
-	LastSync jsontime.Unix `json:"last_sync,omitempty"`
+	LastSync jsontime.Unix `json:"last_sync,omitzero"`
+
+	DirectAvatarURL string `json:"direct_avatar_url,omitempty"`
 }
