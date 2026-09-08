@@ -107,5 +107,5 @@ gopkg.in/yaml.v3 v3.0.1 h1:fxVm/GzAzEWqLHuvctI91KS9hhNmmWOoWu0XTYJS7CA=
 gopkg.in/yaml.v3 v3.0.1/go.mod h1:K4uyk7z7BCEPqu6E+C64Yfv1cQ7kz7rIZviUmN+EgEM=
 maunium.net/go/mauflag v1.0.0 h1:YiaRc0tEI3toYtJMRIfjP+jklH45uDHtT80nUamyD4M=
 maunium.net/go/mauflag v1.0.0/go.mod h1:nLivPOpTpHnpzEh8jEdSL9UqO9+/KBJFmNRlwKfkPeA=
-maunium.net/go/mautrix v0.30.1-0.20260908102503-2f2c98079d9e h1:T4g/2u7ZEbAGkYGNizjYZSltWR5m0DrX5UDWqfZJdS4=
-maunium.net/go/mautrix v0.30.1-0.20260908102503-2f2c98079d9e/go.mod h1:Y02sBiAvfEVqK24bwVGCprmLATRZ7prWel3ZpB413e0=
+maunium.net/go/mautrix v0.30.1-0.20260908153423-501dff148280 h1:AoNwPhJCX0y93tp2nJPu/RuIt/+K+Zu4p4Q44+hKEhc=
+maunium.net/go/mautrix v0.30.1-0.20260908153423-501dff148280/go.mod h1:Y02sBiAvfEVqK24bwVGCprmLATRZ7prWel3ZpB413e0=
