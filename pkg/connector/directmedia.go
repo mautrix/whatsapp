@@ -85,6 +85,8 @@ func (wa *WhatsAppConnector) downloadAvatarDirectMedia(ctx context.Context, pars
 	if waClient.Client == nil {
 		return nil, fmt.Errorf("no WhatsApp client found on login %s", parsedID.UserLogin)
 	}
+	waClient.avatarLock.Lock(parsedID.Avatar.TargetJID)
+	defer waClient.avatarLock.Unlock(parsedID.Avatar.TargetJID)
 	cachedInfo, err := wa.DB.AvatarCache.Get(ctx, parsedID.Avatar.TargetJID, parsedID.Avatar.AvatarID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get avatar cache entry: %w", err)
