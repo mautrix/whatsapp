@@ -171,7 +171,7 @@ func (wa *WhatsAppClient) doGhostResync(ctx context.Context, queue map[types.JID
 			continue
 		}
 		ghost.UpdateInfo(ctx, userInfo)
-		wa.syncAltGhostWithInfo(ctx, jid, userInfo)
+		wa.syncAltGhostWithInfo(ctx, jid, ghost)
 	}
 }
 
@@ -433,12 +433,12 @@ func (wa *WhatsAppClient) resyncContacts(forceAvatarSync, automatic bool) {
 		} else {
 			userInfo := wa.contactToUserInfo(ctx, jid, contact, "", forceAvatarSync || ghost.AvatarID == "")
 			ghost.UpdateInfo(ctx, userInfo)
-			wa.syncAltGhostWithInfo(ctx, jid, userInfo)
+			wa.syncAltGhostWithInfo(ctx, jid, ghost)
 		}
 	}
 }
 
-func (wa *WhatsAppClient) syncAltGhostWithInfo(ctx context.Context, jid types.JID, info *bridgev2.UserInfo) {
+func (wa *WhatsAppClient) syncAltGhostWithInfo(ctx context.Context, jid types.JID, mainGhost *bridgev2.Ghost) {
 	log := zerolog.Ctx(ctx)
 	var altJID types.JID
 	var err error
@@ -463,10 +463,25 @@ func (wa *WhatsAppClient) syncAltGhostWithInfo(ctx context.Context, jid types.JI
 			Msg("Failed to get ghost for alternate JID")
 		return
 	}
-	ghost.UpdateInfo(ctx, info)
+	ghost.UpdateInfo(ctx, makeInfoFromGhost(mainGhost))
 	log.Debug().
 		Stringer("jid", jid).
 		Stringer("alternate_jid", altJID).
 		Msg("Synced alternate ghost with info")
 	go wa.syncRemoteProfile(ctx, ghost)
+}
+
+func makeInfoFromGhost(ghost *bridgev2.Ghost) *bridgev2.UserInfo {
+	return &bridgev2.UserInfo{
+		Identifiers: ghost.Identifiers,
+		Name:        &ghost.Name,
+		Avatar: &bridgev2.Avatar{
+			ID:     ghost.AvatarID,
+			Remove: ghost.AvatarID == "" || ghost.AvatarMXC == "",
+			MXC:    ghost.AvatarMXC,
+			Hash:   ghost.AvatarHash,
+		},
+		IsBot:        &ghost.IsBot,
+		ExtraProfile: ghost.ExtraProfile,
+	}
 }

@@ -160,7 +160,15 @@ func (wa *WhatsAppConnector) Start(ctx context.Context) error {
 		return bridgev2.DBUpgradeError{Err: err, Section: "whatsapp"}
 	}
 
-	return wa.migrateToLIDDMs(ctx)
+	err = wa.migrateToLIDDMs(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to migrate to LID DMs: %w", err)
+	}
+	err = wa.syncMismatchingGhosts(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to sync mismatching ghosts: %w", err)
+	}
+	return nil
 }
 
 func (wa *WhatsAppConnector) Stop() {

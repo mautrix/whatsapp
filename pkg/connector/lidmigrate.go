@@ -210,3 +210,60 @@ func (wa *WhatsAppConnector) migrateToLIDDMs(ctx context.Context) error {
 	wa.Bridge.DB.KV.Set(ctx, "whatsapp_lid_dms_migrated", "true")
 	return nil
 }
+
+func (wa *WhatsAppConnector) syncMismatchingGhosts(ctx context.Context) error {
+	if wa.Bridge.Background || wa.Bridge.DB.KV.Get(ctx, "whatsapp_lid_avatars_resynced") == "true" {
+		return nil
+	}
+	const findMismatchingGhosts = `
+		SELECT id
+		FROM ghost
+		WHERE bridge_id=$1
+		  AND id LIKE 'lid-%'
+		  AND avatar_mxc=''
+		  AND EXISTS (
+		  	SELECT pnghost.avatar_mxc
+		  	FROM ghost pnghost
+		  	WHERE pnghost.bridge_id=$1
+		  	  AND pnghost.id=(SELECT pn FROM whatsmeow_lid_map WHERE lid=replace(ghost.id, 'lid-', ''))
+		  	  AND pnghost.avatar_mxc<>''
+		  )
+	`
+	var scanGhostID = dbutil.ConvertRowFn[networkid.UserID](dbutil.ScanSingleColumn[networkid.UserID])
+	ghostIDs, err := scanGhostID.NewRowIter(wa.Bridge.DB.Query(ctx, findMismatchingGhosts, wa.Bridge.ID)).AsList()
+	if err != nil {
+		return fmt.Errorf("failed to get mismatching ghosts: %w", err)
+	}
+	for _, ghostID := range ghostIDs {
+		lid := waid.ParseUserID(ghostID)
+		pn, err := wa.DeviceStore.LIDMap.GetPNForLID(ctx, lid)
+		if err != nil {
+			return fmt.Errorf("failed to get PN for LID %s: %w", lid, err)
+		} else if pn.IsEmpty() {
+			zerolog.Ctx(ctx).Warn().Stringer("lid", lid).Msg("No PN for LID")
+			continue
+		}
+		pnGhost, err := wa.Bridge.GetGhostByID(ctx, waid.MakeUserID(pn))
+		if err != nil {
+			return fmt.Errorf("failed to get PN ghost for %s: %w", pn, err)
+		}
+		lidGhost, err := wa.Bridge.GetGhostByID(ctx, ghostID)
+		if err != nil {
+			return fmt.Errorf("failed to get LID ghost for %s: %w", ghostID, err)
+		}
+		if lidGhost.AvatarMXC != "" || pnGhost.AvatarMXC == "" {
+			continue
+		}
+		zerolog.Ctx(ctx).Debug().
+			Stringer("pn", pn).
+			Stringer("lid", lid).
+			Str("pn_ghost_avatar", string(pnGhost.AvatarMXC)).
+			Str("lid_ghost_avatar", string(lidGhost.AvatarMXC)).
+			Str("pn_ghost_name", pnGhost.Name).
+			Str("lid_ghost_name", lidGhost.Name).
+			Msg("Updating LID ghost avatar")
+		lidGhost.UpdateInfo(ctx, makeInfoFromGhost(pnGhost))
+	}
+	wa.Bridge.DB.KV.Set(ctx, "whatsapp_lid_avatars_resynced", "true")
+	return nil
+}
