@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -98,6 +99,7 @@ func (wa *WhatsAppConnector) CreateLogin(_ context.Context, user *bridgev2.User,
 		LoginComplete:       exsync.NewEvent(),
 		PasskeyRequest:      exsync.NewEvent(),
 		PasskeyConfirmation: exsync.NewEvent(),
+		ADVRotate:           exsync.NewEvent(),
 		Received515:         exsync.NewEvent(),
 	}, nil
 }
@@ -123,6 +125,8 @@ type WALogin struct {
 	PasskeyRequestData      *events.PairPasskeyRequest
 	PasskeyConfirmation     *exsync.Event
 	PasskeyConfirmationData *events.PairPasskeyConfirmation
+
+	ADVRotate *exsync.Event
 
 	Closed         atomic.Bool
 	EventHandlerID uint32
@@ -270,6 +274,12 @@ func (wl *WALogin) handleEvent(rawEvt any) {
 		wl.StartTime = time.Now()
 		wl.WaitForQRs.Set()
 		return
+	case *events.RotateADVSecret:
+		wl.Log.Debug().Msg("Rotating ADV secret in all QRs")
+		for i, code := range wl.QRs {
+			wl.QRs[i] = strings.Replace(code, evt.OldSecret, evt.NewSecret, 1)
+		}
+		wl.ADVRotate.Set()
 	case *events.QRScannedWithoutMultidevice:
 		wl.Log.Error().Msg("QR code scanned without multidevice enabled")
 		wl.LoginError = ErrLoginMultideviceNotEnabled
@@ -332,6 +342,7 @@ func (wl *WALogin) Wait(ctx context.Context) (*bridgev2.LoginStep, error) {
 			Int("current_index", currentIndex)
 		if currentIndex > prevIndex {
 			logEvt.Msg("Returning new QR immediately")
+			wl.ADVRotate.Clear()
 			wl.PrevQRIndex.Store(int32(currentIndex))
 			return makeQRStep(wl.QRs[currentIndex]), nil
 		}
@@ -343,6 +354,7 @@ func (wl *WALogin) Wait(ctx context.Context) (*bridgev2.LoginStep, error) {
 				wl.Cancel()
 				return nil, ErrLoginTimeout
 			}
+			wl.ADVRotate.Clear()
 			wl.PrevQRIndex.Store(int32(nextIndex))
 			return makeQRStep(wl.QRs[nextIndex]), nil
 		case <-ctx.Done():
@@ -350,6 +362,10 @@ func (wl *WALogin) Wait(ctx context.Context) (*bridgev2.LoginStep, error) {
 			return nil, ctx.Err()
 		case <-wl.PasskeyRequest.GetChan():
 			return wl.makePasskeyStep()
+		case <-wl.ADVRotate.GetChan():
+			wl.Log.Debug().Msg("ADV secret was rotated, returning new QR immediately")
+			wl.ADVRotate.Clear()
+			return makeQRStep(wl.QRs[nextIndex]), nil
 		case <-wl.LoginComplete.GetChan():
 			// continue
 		}
