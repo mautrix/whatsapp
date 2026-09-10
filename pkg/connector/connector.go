@@ -164,10 +164,12 @@ func (wa *WhatsAppConnector) Start(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to migrate to LID DMs: %w", err)
 	}
-	err = wa.syncMismatchingGhosts(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to sync mismatching ghosts: %w", err)
-	}
+	go func() {
+		err = wa.syncMismatchingGhosts(wa.Bridge.BackgroundCtx)
+		if err != nil {
+			wa.Bridge.Log.Err(err).Msg("Failed to sync mismatching ghosts")
+		}
+	}()
 	return nil
 }
 
