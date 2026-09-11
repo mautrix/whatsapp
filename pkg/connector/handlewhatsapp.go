@@ -284,10 +284,9 @@ func (wa *WhatsAppClient) ensureAltJIDs(ctx context.Context, info *types.Message
 
 func (wa *WhatsAppClient) handleWAMessage(ctx context.Context, evt *events.Message) (success bool) {
 	success = true
-	if evt.Info.Chat == types.StatusBroadcastJID && !wa.Main.Config.EnableStatusBroadcast {
-		return
-	}
-	if evt.Info.Chat.Server == types.NewsletterServer && wa.disableNewsletter {
+	if (evt.Info.Chat == types.StatusBroadcastJID && !wa.Main.Config.EnableStatusBroadcast) ||
+		(evt.Info.Chat.Server == types.NewsletterServer && wa.disableNewsletter) ||
+		(evt.Info.Chat.Server == types.BroadcastServer && evt.Info.IsFromMe) {
 		return
 	}
 	if !wa.ensureAltJIDs(ctx, &evt.Info.MessageSource, true) {

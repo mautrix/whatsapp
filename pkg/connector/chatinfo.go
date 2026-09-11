@@ -29,6 +29,8 @@ func (wa *WhatsAppClient) GetChatInfo(ctx context.Context, portal *bridgev2.Port
 	return wa.getChatInfo(ctx, portalJID, nil, portal.MXID == "")
 }
 
+var ErrBroadcastList = errors.New("broadcast list bridging is currently not supported")
+
 func (wa *WhatsAppClient) getChatInfo(ctx context.Context, portalJID types.JID, conv *wadb.Conversation, isNew bool) (wrapped *bridgev2.ChatInfo, err error) {
 	switch portalJID.Server {
 	case types.DefaultUserServer, types.HiddenUserServer, types.BotServer:
@@ -37,7 +39,7 @@ func (wa *WhatsAppClient) getChatInfo(ctx context.Context, portalJID types.JID, 
 		if portalJID == types.StatusBroadcastJID {
 			wrapped = wa.wrapStatusBroadcastInfo(ctx)
 		} else {
-			return nil, fmt.Errorf("broadcast list bridging is currently not supported")
+			return nil, ErrBroadcastList
 		}
 	case types.GroupServer:
 		info, err := wa.Client.GetGroupInfo(ctx, portalJID)
