@@ -351,7 +351,7 @@ func (mc *MessageConverter) convertKeepInChatMessage(ctx context.Context, msg *w
 	}, nil
 }
 
-func (mc *MessageConverter) convertRichResponseMessage(ctx context.Context, msg *waE2E.AIRichResponseMessage) (*bridgev2.ConvertedMessagePart, *waE2E.ContextInfo) {
+func (mc *MessageConverter) convertRichResponseMessage(ctx context.Context, msg *waE2E.AIRichResponseMessage, fullMsg *waE2E.Message) (*bridgev2.ConvertedMessagePart, *waE2E.ContextInfo) {
 	var body strings.Builder
 
 	// TODO switch to new format?
@@ -363,10 +363,14 @@ func (mc *MessageConverter) convertRichResponseMessage(ctx context.Context, msg 
 			body.WriteString(submsg.GetMessageText())
 		}
 	}
-
+	unknownPart, _ := mc.convertUnknownMessage(ctx, fullMsg)
+	if body.Len() == 0 {
+		return unknownPart, msg.GetContextInfo()
+	}
 	content := format.RenderMarkdown(body.String(), true, false)
 	return &bridgev2.ConvertedMessagePart{
 		Type:    event.EventMessage,
 		Content: &content,
+		Extra:   unknownPart.Extra,
 	}, msg.GetContextInfo()
 }
