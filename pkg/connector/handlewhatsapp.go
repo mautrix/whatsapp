@@ -334,7 +334,15 @@ func (wa *WhatsAppClient) handleWAMessage(ctx context.Context, evt *events.Messa
 		wa.Main.Bridge.Config.Backfill.Enabled {
 		wa.saveWAHistorySyncNotification(ctx, evt.Message.ProtocolMessage.HistorySyncNotification)
 	}
-	if parsedMessageType == "ignore" || strings.HasPrefix(parsedMessageType, "unknown_protocol_") {
+	if parsedMessageType == "ignore" {
+		return
+	} else if strings.HasPrefix(parsedMessageType, "unknown_protocol_") {
+		wa.UserLogin.Log.Debug().
+			Str("message_id", evt.Info.ID).
+			Stringer("chat_jid", evt.Info.Chat).
+			Stringer("sender_jid", evt.Info.Sender).
+			Stringer("protocol_message_type", evt.Message.GetProtocolMessage().GetType()).
+			Msg("Ignoring unknown protocol message")
 		return
 	}
 
