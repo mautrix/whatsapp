@@ -1,3 +1,18 @@
+# v26.09 (unreleased)
+
+* Bumped minimum Go version to 1.26.
+* Added option to limit eager member sync in group chat portals.
+* Added option to fetch avatars lazily when using direct media.
+* Added one-time migration to ensure LID ghost avatars are consistent with the
+  old phone number ghosts.
+* Fixed the resolve identifier command and API not returning any user info for
+  users who hadn't previously been encountered.
+* Fixed group portal power levels to always allow poll responses.
+* Fixed handling history sync events where the phone sends nonsensical
+  timestamps.
+* Fixed handling edits to HD media captions.
+* Fixed handling bridging own read receipts from the native apps in channels.
+
 # v26.08
 
 * Switched direct chats to use LIDs instead of phone numbers.
