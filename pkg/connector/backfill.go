@@ -602,6 +602,9 @@ func (wa *WhatsAppClient) convertHistorySyncMessages(
 	messages []*waWeb.WebMessageInfo,
 	explodeOnError bool,
 ) (*bridgev2.FetchMessagesResponse, error) {
+	if wa.Client == nil {
+		return nil, bridgev2.ErrNotLoggedIn
+	}
 	oldestTS := messages[len(messages)-1].GetMessageTimestamp()
 	newestTS := messages[0].GetMessageTimestamp()
 	convertedMessages := make([]*bridgev2.BackfillMessage, 0, len(messages))
