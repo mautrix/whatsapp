@@ -1,4 +1,4 @@
-# v26.09 (unreleased)
+# v26.09
 
 * Bumped minimum Go version to 1.26.
 * Added option to limit eager member sync in group chat portals.
@@ -12,6 +12,9 @@
   timestamps.
 * Fixed handling edits to HD media captions.
 * Fixed handling bridging own read receipts from the native apps in channels.
+* Fixed decrypting messages from the new Muse AI bot
+  * May require resyncing app state using `!wa sync appstate regular_high`.
+  * The message contents aren't supported yet.
 
 # v26.08
 
