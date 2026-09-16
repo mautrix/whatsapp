@@ -31,6 +31,7 @@ import (
 	"go.mau.fi/whatsmeow/types"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/commands"
+	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/bridgev2/simplevent"
 
 	"go.mau.fi/mautrix-whatsapp/pkg/waid"
@@ -82,27 +83,40 @@ var cmdSync = &commands.FullHandler{
 	Help: commands.HelpMeta{
 		Section:     commands.HelpSectionAdmin,
 		Description: "Sync data from WhatsApp.",
-		Args:        "<group/groups/contacts>",
+		Args:        "[_login ID_] <group/groups/contacts/contacts-with-avatars/appstate>",
 	},
 	RequiresLogin: true,
 }
 
 func fnSync(ce *commands.Event) {
+	args := ce.Args
 	login := ce.User.GetDefaultLogin()
+	loginGiven := false
+	if len(args) > 0 {
+		if specified := ce.Bridge.GetCachedUserLoginByID(networkid.UserLoginID(args[0])); specified != nil && specified.UserMXID == ce.User.MXID {
+			login = specified
+			args = args[1:]
+			loginGiven = true
+		}
+	}
 	if login == nil {
 		ce.Reply("Login not found")
 		return
 	}
-	if len(ce.Args) == 0 {
-		ce.Reply("Usage: `$cmdprefix sync <group/groups/contacts/contacts-with-avatars/appstate>`")
+	if len(args) == 0 {
+		ce.Reply("Usage: `$cmdprefix sync [login ID] <group/groups/contacts/contacts-with-avatars/appstate>`\n\nYour logins:\n\n%s", ce.User.GetFormattedUserLogins())
 		return
 	}
 	logContext := func(c zerolog.Context) zerolog.Context {
 		return c.Stringer("triggered_by_user", ce.User.MXID)
 	}
 	wa := login.Client.(*WhatsAppClient)
-	switch strings.ToLower(ce.Args[0]) {
+	switch strings.ToLower(args[0]) {
 	case "group", "portal", "room":
+		if loginGiven {
+			ce.Reply("A login ID can't be used with the `%s` target, which syncs the current portal.", args[0])
+			return
+		}
 		if ce.Portal == nil {
 			ce.Reply("`!wa sync group` can only be used in a portal room.")
 			return
@@ -147,8 +161,8 @@ func fnSync(ce *commands.Event) {
 		ce.React("✅")
 	case "appstate":
 		names := appstate.AllPatchNames[:]
-		if len(ce.Args) > 1 {
-			names = exslices.CastFuncFilter(ce.Args[1:], func(name string) (appstate.WAPatchName, bool) {
+		if len(args) > 1 {
+			names = exslices.CastFuncFilter(args[1:], func(name string) (appstate.WAPatchName, bool) {
 				if !slices.Contains(appstate.AllPatchNames[:], appstate.WAPatchName(name)) {
 					ce.Reply("Invalid app state name `%s`", name)
 					return "", false
@@ -170,7 +184,7 @@ func fnSync(ce *commands.Event) {
 			}
 		}
 	default:
-		ce.Reply("Unknown sync target `%s`", ce.Args[0])
+		ce.Reply("Unknown sync target `%s`", args[0])
 	}
 }
 
