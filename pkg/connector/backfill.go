@@ -602,7 +602,8 @@ func (wa *WhatsAppClient) convertHistorySyncMessages(
 	messages []*waWeb.WebMessageInfo,
 	explodeOnError bool,
 ) (*bridgev2.FetchMessagesResponse, error) {
-	if wa.Client == nil {
+	cli := wa.Client
+	if cli == nil {
 		return nil, bridgev2.ErrNotLoggedIn
 	}
 	oldestTS := messages[len(messages)-1].GetMessageTimestamp()
@@ -611,7 +612,7 @@ func (wa *WhatsAppClient) convertHistorySyncMessages(
 	var mediaRequests []*wadb.MediaRequest
 	dups := make(exmaps.Set[networkid.MessageID])
 	for i, msg := range messages {
-		evt, err := wa.Client.ParseWebMessage(portalJID, msg)
+		evt, err := cli.ParseWebMessage(portalJID, msg)
 		if err != nil {
 			if explodeOnError {
 				// This should never happen because the info is already parsed once before being stored in the database
@@ -638,7 +639,7 @@ func (wa *WhatsAppClient) convertHistorySyncMessages(
 		}
 		isViewOnce := evt.IsViewOnce || evt.IsViewOnceV2 || evt.IsViewOnceV2Extension
 		converted, mediaReq := wa.convertHistorySyncMessage(
-			ctx, portal, &evt.Info, evt.Message, evt.RawMessage, isViewOnce, msg.Reactions,
+			ctx, cli, portal, &evt.Info, evt.Message, evt.RawMessage, isViewOnce, msg.Reactions,
 		)
 		// This is a hack to remove duplicates where the same message is inserted with both the LID and phone number sender
 		// TODO prevent those being inserted in the first place instead of hacking around it here
@@ -779,7 +780,7 @@ func (wa *WhatsAppClient) handleOnDemandHistorySync(ctx context.Context, blob *w
 }
 
 func (wa *WhatsAppClient) convertHistorySyncMessage(
-	ctx context.Context, portal *bridgev2.Portal, info *types.MessageInfo, msg, rawMsg *waE2E.Message, isViewOnce bool, reactions []*waWeb.Reaction,
+	ctx context.Context, cli *whatsmeow.Client, portal *bridgev2.Portal, info *types.MessageInfo, msg, rawMsg *waE2E.Message, isViewOnce bool, reactions []*waWeb.Reaction,
 ) (*bridgev2.BackfillMessage, *wadb.MediaRequest) {
 	// New messages turn these into edits, but in backfill we only have the last version,
 	// so no need to do the edit thing. Instead, just unwrap the message.
@@ -790,7 +791,7 @@ func (wa *WhatsAppClient) convertHistorySyncMessage(
 	intent := wa.Main.Bridge.Bot
 	msgID := waid.MakeMessageIDWithAltSender(info.Chat, info.Sender, info.SenderAlt, info.ID)
 	wrapped := &bridgev2.BackfillMessage{
-		ConvertedMessage: wa.Main.MsgConv.ToMatrix(ctx, portal, wa.Client, intent, msg, rawMsg, info, isViewOnce, true, nil),
+		ConvertedMessage: wa.Main.MsgConv.ToMatrix(ctx, portal, cli, intent, msg, rawMsg, info, isViewOnce, true, nil),
 		Sender:           wa.makeEventSender(ctx, pickLID(info.Sender, info.SenderAlt)),
 		ID:               msgID,
 		TxnID:            networkid.TransactionID(msgID),
