@@ -352,9 +352,10 @@ func (mc *MessageConverter) convertKeepInChatMessage(ctx context.Context, msg *w
 }
 
 func (mc *MessageConverter) convertRichResponseMessage(ctx context.Context, msg *waE2E.AIRichResponseMessage, fullMsg *waE2E.Message) (*bridgev2.ConvertedMessagePart, *waE2E.ContextInfo) {
+	if msg.GetUnifiedResponse() != nil {
+		return mc.convertUnifiedRichResponseMessage(ctx, msg.GetUnifiedResponse().GetData()), msg.GetContextInfo()
+	}
 	var body strings.Builder
-
-	// TODO switch to new format?
 	for i, submsg := range msg.GetSubmessages() {
 		if submsg.GetMessageType() == waAICommonDeprecated.AIRichResponseSubMessageType_AI_RICH_RESPONSE_TEXT {
 			if i > 0 {

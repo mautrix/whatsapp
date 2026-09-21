@@ -10,9 +10,10 @@ require (
 	github.com/lib/pq v1.12.3
 	github.com/rs/zerolog v1.35.1
 	github.com/tidwall/gjson v1.19.0
-	go.mau.fi/util v0.10.1
+	github.com/yuin/goldmark v1.8.6
+	go.mau.fi/util v0.10.2-0.20260918225449-a4c0d5b86aa8
 	go.mau.fi/webp v0.3.0
-	go.mau.fi/whatsmeow v0.0.0-20260916100317-2375e1751bbd
+	go.mau.fi/whatsmeow v0.0.0-20260921121126-35ae40906e74
 	golang.org/x/image v0.46.0
 	golang.org/x/net v0.59.0
 	golang.org/x/sync v0.23.0
@@ -40,7 +41,6 @@ require (
 	github.com/tidwall/pretty v1.2.1 // indirect
 	github.com/tidwall/sjson v1.2.5 // indirect
 	github.com/vektah/gqlparser/v2 v2.5.27 // indirect
-	github.com/yuin/goldmark v1.8.6 // indirect
 	go.mau.fi/libsignal v0.2.2 // indirect
 	go.mau.fi/zeroconfig v0.2.0 // indirect
 	golang.org/x/crypto v0.57.0 // indirect
