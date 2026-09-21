@@ -42,6 +42,12 @@ func (mc *MessageConverter) convertTextMessage(ctx context.Context, msg *waE2E.M
 	}
 	contextInfo = msg.GetExtendedTextMessage().GetContextInfo()
 	mc.parseFormatting(part.Content, false, false)
+	if len(part.Content.FormattedBody) > 20000 {
+		part.Content.Body = part.Content.Body[:500] + "[...]"
+	}
+	if len(part.Content.FormattedBody) > 40000 {
+		part.Content.FormattedBody = part.Content.FormattedBody[:40000] + "<br><em>[long message cut off]</em>"
+	}
 	part.Content.BeeperLinkPreviews = mc.convertURLPreviewToBeeper(ctx, msg.GetExtendedTextMessage())
 	return
 }
