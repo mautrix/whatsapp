@@ -371,7 +371,7 @@ func (wa *WhatsAppClient) handleWAMessage(ctx context.Context, evt *events.Messa
 		return
 	}
 
-	res := wa.UserLogin.QueueRemoteEvent(&WAMessageEvent{
+	wrappedEvt := &WAMessageEvent{
 		MessageInfoWrapper: &MessageInfoWrapper{
 			Info: evt.Info,
 			wa:   wa,
@@ -381,8 +381,20 @@ func (wa *WhatsAppClient) handleWAMessage(ctx context.Context, evt *events.Messa
 
 		parsedMessageType: parsedMessageType,
 		dontRenderEdited:  dontRenderEdited,
-	})
-	return res.Success
+	}
+	if evt.UnavailableRequestID != "" {
+		wa.UserLogin.Log.Debug().
+			Str("message_id", evt.Info.ID).
+			Str("unavailable_request_id", evt.UnavailableRequestID).
+			Msg("Received placeholder resend response")
+		wa.trackUndecryptableResolved(evt)
+		wrappedEvt.isUndecryptableUpsertSubEvent = true
+		// Dispatch directly as edit instead of the usual upsert, so that the message doesn't
+		// get re-bridged if it was deleted before the resend response was received.
+		return wa.UserLogin.QueueRemoteEvent(&WANowDecryptableMessage{WAMessageEvent: wrappedEvt}).Success
+	}
+
+	return wa.UserLogin.QueueRemoteEvent(wrappedEvt).Success
 }
 
 func makeHDMediaReplacementEdit(message *waE2E.Message, parentKey *waCommon.MessageKey) (*waE2E.ProtocolMessage, bool) {

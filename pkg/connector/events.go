@@ -315,7 +315,10 @@ func (evt *WANowDecryptableMessage) GetTargetMessage() networkid.MessageID {
 }
 
 func (evt *WANowDecryptableMessage) AddLogContext(c zerolog.Context) zerolog.Context {
-	return c
+	if evt.editParts != nil {
+		return c.Bool("from_upsert", true)
+	}
+	return evt.WAMessageEvent.AddLogContext(c.Bool("from_upsert", false))
 }
 
 func (evt *WANowDecryptableMessage) GetType() bridgev2.RemoteEventType {
