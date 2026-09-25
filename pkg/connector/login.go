@@ -410,8 +410,14 @@ func (wl *WALogin) onLoginComplete(ctx context.Context) (*bridgev2.LoginStep, er
 		return nil, fmt.Errorf("failed to create user login: %w", err)
 	}
 
-	ul.Client.(*WhatsAppClient).isNewLogin = true
-	ul.Client.Connect(ul.Log.WithContext(wl.Main.Bridge.BackgroundCtx))
+	c := ul.Client.(*WhatsAppClient)
+	c.isNewLogin = true
+	if c.connect(ul.Log.WithContext(wl.Main.Bridge.BackgroundCtx)) {
+		err = c.Client.PreKeysUploaded.WaitTimeoutCtx(ctx, 5*time.Second)
+		if err != nil {
+			wl.Log.Warn().Err(err).Msg("Prekey upload wait failed")
+		}
+	}
 
 	return &bridgev2.LoginStep{
 		Type:         bridgev2.LoginStepTypeComplete,
