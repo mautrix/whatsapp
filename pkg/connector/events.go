@@ -287,7 +287,7 @@ func (evt *WAMessageEvent) addMuseProfile(portal *bridgev2.Portal, converted *br
 		return
 	}
 	profile := &event.BeeperPerMessageProfile{
-		ID:          string(portal.Receiver) + ":muse",
+		ID:          string(portal.MXID),
 		Displayname: portal.Name,
 	}
 	if portal.AvatarMXC != "" {
