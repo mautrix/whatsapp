@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"runtime/debug"
 	"slices"
 	"strconv"
 	"strings"
@@ -12,6 +13,7 @@ import (
 	"time"
 
 	"github.com/rs/zerolog"
+	"go.mau.fi/util/exerrors"
 	"go.mau.fi/util/exmaps"
 	"go.mau.fi/util/ptr"
 	"go.mau.fi/whatsmeow"
@@ -62,7 +64,7 @@ func (wa *WhatsAppClient) historySyncLoop(ctx context.Context) {
 		}
 	}()
 	for {
-		var resetTimer bool
+		var resetTimer, errored bool
 		select {
 		case <-wa.historySyncWakeup:
 			dispatchTimer.Stop()
@@ -72,11 +74,20 @@ func (wa *WhatsAppClient) historySyncLoop(ctx context.Context) {
 			} else if notif == nil {
 				wa.UserLogin.Log.Debug().Msg("No more queued history sync notifications")
 			} else {
-				resetTimer = wa.downloadAndSaveWAHistorySyncData(ctx, notif, rowid)
+				resetTimer, errored = wa.downloadAndSaveWAHistorySyncData(ctx, notif, rowid)
 				// Continue waking up the loop until all queued notifications are processed
 				select {
 				case wa.historySyncWakeup <- struct{}{}:
 				default:
+				}
+				if errored {
+					wa.UserLogin.Log.Debug().Msg("Temporarily stopping history sync loop after error")
+					select {
+					case <-time.After(1 * time.Minute):
+					case <-ctx.Done():
+						wa.UserLogin.Log.Debug().Msg("Stopping main history sync loop")
+						return
+					}
 				}
 			}
 		case <-ctx.Done():
@@ -109,13 +120,21 @@ func (wa *WhatsAppClient) saveWAHistorySyncNotification(ctx context.Context, evt
 	}
 }
 
-func (wa *WhatsAppClient) downloadAndSaveWAHistorySyncData(ctx context.Context, evt *waE2E.HistorySyncNotification, rowid int) (resetTimer bool) {
+func (wa *WhatsAppClient) downloadAndSaveWAHistorySyncData(ctx context.Context, evt *waE2E.HistorySyncNotification, rowid int) (resetTimer, errored bool) {
 	log := wa.UserLogin.Log.With().
 		Str("action", "download history sync").
 		Stringer("sync_type", evt.GetSyncType()).
 		Uint32("chunk_order", evt.GetChunkOrder()).
 		Uint32("progress", evt.GetProgress()).
 		Logger()
+	defer func() {
+		if v := recover(); v != nil {
+			log.Err(exerrors.RecoverToError(v)).
+				Bytes(zerolog.ErrorStackFieldName, debug.Stack()).
+				Msg("History sync saving panicked")
+			errored = true
+		}
+	}()
 	log.Debug().
 		Int64("oldest_msg_in_chunk_ts", evt.GetOldestMsgInChunkTimestampSec()).
 		Any("full_request_meta", evt.GetFullHistorySyncOnDemandRequestMetadata()).
@@ -367,6 +386,13 @@ func (wa *WhatsAppClient) createPortalsFromHistorySync(ctx context.Context) {
 	log := wa.UserLogin.Log.With().
 		Str("action", "create portals from history sync").
 		Logger()
+	defer func() {
+		if v := recover(); v != nil {
+			log.Err(exerrors.RecoverToError(v)).
+				Bytes(zerolog.ErrorStackFieldName, debug.Stack()).
+				Msg("History sync portal creation panicked")
+		}
+	}()
 	ctx = log.WithContext(ctx)
 	limit := wa.Main.Config.HistorySync.MaxInitialConversations
 	loginTS := wa.UserLogin.Metadata.(*waid.UserLoginMetadata).LoggedInAt

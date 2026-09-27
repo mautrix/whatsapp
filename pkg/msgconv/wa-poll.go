@@ -108,7 +108,7 @@ func KeyToMessageID(ctx context.Context, client *whatsmeow.Client, chat, sender 
 				sender.Server = types.DefaultUserServer
 			}
 		} else if chat.Server == types.DefaultUserServer || chat.Server == types.HiddenUserServer || chat.Server == types.BotServer {
-			if sender.User == client.Store.GetJID().User || sender.User == client.Store.GetLID().User {
+			if sender.User == getStore(client).GetJID().User || sender.User == getStore(client).GetLID().User {
 				// Message key is not from the sender, but message sender (containing key) is me,
 				// so message key sender is the other user in the DM
 				sender = chat
@@ -116,9 +116,9 @@ func KeyToMessageID(ctx context.Context, client *whatsmeow.Client, chat, sender 
 				// Message key is not from the sender, but message sender (containing key) is not me,
 				// so message key sender is me
 				if chat.Server == types.HiddenUserServer {
-					sender = client.Store.GetLID().ToNonAD()
+					sender = getStore(client).GetLID().ToNonAD()
 				} else {
-					sender = client.Store.GetJID().ToNonAD()
+					sender = getStore(client).GetJID().ToNonAD()
 				}
 			}
 		} else {

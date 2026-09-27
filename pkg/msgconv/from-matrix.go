@@ -150,7 +150,7 @@ func (mc *MessageConverter) ToWhatsApp(
 			}
 			lid := parsedID.Sender
 			if lid.Server == types.DefaultUserServer {
-				lid, err = client.Store.LIDs.GetLIDForPN(ctx, lid)
+				lid, err = getStore(client).LIDs.GetLIDForPN(ctx, lid)
 				if err != nil {
 					return nil, nil, fmt.Errorf("failed to get LID for PN: %w", err)
 				}

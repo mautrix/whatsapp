@@ -30,6 +30,7 @@ import (
 	"go.mau.fi/util/ptr"
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/proto/waE2E"
+	"go.mau.fi/whatsmeow/store"
 	"go.mau.fi/whatsmeow/types"
 	_ "golang.org/x/image/webp"
 	"maunium.net/go/mautrix/bridgev2"
@@ -277,10 +278,10 @@ func (mc *MessageConverter) ToMatrix(
 		var pn, lid types.JID
 		if pcp.Server == types.DefaultUserServer {
 			pn = pcp
-			lid, _ = client.Store.LIDs.GetLIDForPN(ctx, pcp)
+			lid, _ = getStore(client).LIDs.GetLIDForPN(ctx, pcp)
 		} else if pcp.Server == types.HiddenUserServer {
 			lid = pcp
-			pn, _ = client.Store.LIDs.GetPNForLID(ctx, pcp)
+			pn, _ = getStore(client).LIDs.GetPNForLID(ctx, pcp)
 		} else if pcp.Server == types.BotServer {
 			lid = pcp
 		}
@@ -321,4 +322,13 @@ func (mc *MessageConverter) ToMatrix(
 	}
 
 	return cm
+}
+
+func getStore(cli *whatsmeow.Client) *store.Device {
+	if cli != nil {
+		if currentStore := cli.Store; currentStore != nil {
+			return currentStore
+		}
+	}
+	return store.NoopDevice
 }
