@@ -334,6 +334,12 @@ func (wa *WhatsAppClient) handleWAMessage(ctx context.Context, evt *events.Messa
 		wa.Main.Bridge.Config.Backfill.Enabled {
 		wa.saveWAHistorySyncNotification(ctx, evt.Message.ProtocolMessage.HistorySyncNotification)
 	}
+	if protocol := evt.Message.GetProtocolMessage(); evt.Info.Chat == types.MuseJID && protocol.GetType() == waE2E.ProtocolMessage_AI_METADATA_OPERATION {
+		if sync := protocol.GetAiMetadataOperation().GetHatchMetadataSync(); sync != nil {
+			return wa.handleMuseMetadata(ctx, sync.GetData())
+		}
+		return
+	}
 	if parsedMessageType == "ignore" {
 		return
 	} else if strings.HasPrefix(parsedMessageType, "unknown_protocol_") {
