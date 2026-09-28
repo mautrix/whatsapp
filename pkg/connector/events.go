@@ -201,6 +201,7 @@ func (evt *WAMessageEvent) ConvertEdit(ctx context.Context, portal *bridgev2.Por
 	cm := evt.wa.Main.MsgConv.ToMatrix(
 		ctx, portal, evt.wa.Client, intent, editedMsg, evt.MsgEvent.RawMessage, &evt.Info, evt.isViewOnce(), false, previouslyConvertedPart,
 	)
+	evt.addMuseProfile(portal, cm)
 	if evt.isUndecryptableUpsertSubEvent && isFailedMedia(cm) {
 		evt.postHandle = func() {
 			evt.wa.processFailedMedia(ctx, portal.PortalKey, evt.GetID(), cm, false)
@@ -281,11 +282,30 @@ func (evt *WAMessageEvent) HandleExisting(ctx context.Context, portal *bridgev2.
 	return bridgev2.UpsertResult{}, nil
 }
 
+func (evt *WAMessageEvent) addMuseProfile(portal *bridgev2.Portal, converted *bridgev2.ConvertedMessage) {
+	if evt.Info.Chat != types.MuseJID || evt.Info.IsFromMe || !portal.NameIsCustom {
+		return
+	}
+	profile := &event.BeeperPerMessageProfile{
+		ID:          string(portal.MXID),
+		Displayname: portal.Name,
+	}
+	if portal.AvatarMXC != "" {
+		profile.AvatarURL = &portal.AvatarMXC
+	}
+	for _, part := range converted.Parts {
+		if part.Content != nil {
+			part.Content.BeeperPerMessageProfile = profile
+		}
+	}
+}
+
 func (evt *WAMessageEvent) ConvertMessage(ctx context.Context, portal *bridgev2.Portal, intent bridgev2.MatrixAPI) (*bridgev2.ConvertedMessage, error) {
 	evt.wa.EnqueuePortalResync(portal, false)
 	converted := evt.wa.Main.MsgConv.ToMatrix(
 		ctx, portal, evt.wa.Client, intent, evt.Message, evt.MsgEvent.RawMessage, &evt.Info, evt.isViewOnce(), false, nil,
 	)
+	evt.addMuseProfile(portal, converted)
 	if isFailedMedia(converted) {
 		evt.postHandle = func() {
 			evt.wa.processFailedMedia(ctx, portal.PortalKey, evt.GetID(), converted, false)

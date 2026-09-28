@@ -26,6 +26,7 @@ import (
 
 	"github.com/rs/zerolog"
 	"github.com/yuin/goldmark"
+	"github.com/yuin/goldmark/extension"
 	"go.mau.fi/whatsmeow/types/richresponse"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/event"
@@ -42,10 +43,20 @@ func (mc *MessageConverter) convertUnifiedRichResponseMessage(ctx context.Contex
 	}
 	var rrMsg richresponse.RichResponse
 	err := json.Unmarshal(data, &rrMsg)
-	if err != nil || len(rrMsg.Sections) == 0 {
-		if err != nil {
-			zerolog.Ctx(ctx).Err(err).Msg("Failed to unmarshal unified rich response message")
+	if err != nil {
+		zerolog.Ctx(ctx).Err(err).Msg("Failed to unmarshal unified rich response message")
+		rrMsg.Sections = nil
+	}
+	var htmlBuf strings.Builder
+	for _, mv := range rrMsg.Sections {
+		if mv.Model == nil {
+			continue
 		}
+		for _, p := range mv.Model.GetPrimitives() {
+			mc.convertRichResponsePrimitive(ctx, p, &htmlBuf)
+		}
+	}
+	if htmlBuf.Len() == 0 {
 		return &bridgev2.ConvertedMessagePart{
 			Type: event.EventMessage,
 			Content: &event.MessageEventContent{
@@ -56,12 +67,6 @@ func (mc *MessageConverter) convertUnifiedRichResponseMessage(ctx context.Contex
 		}
 	}
 	extra["fi.mau.whatsapp.rich_response_id"] = rrMsg.ResponseID
-	var htmlBuf strings.Builder
-	for _, mv := range rrMsg.Sections {
-		for _, p := range mv.Model.GetPrimitives() {
-			mc.convertRichResponsePrimitive(ctx, p, &htmlBuf)
-		}
-	}
 	return &bridgev2.ConvertedMessagePart{
 		Type:    event.EventMessage,
 		Content: new(format.HTMLToContent(htmlBuf.String())),
@@ -69,7 +74,7 @@ func (mc *MessageConverter) convertUnifiedRichResponseMessage(ctx context.Contex
 	}
 }
 
-var mdRender = goldmark.New(format.Extensions, format.HTMLOptions, goldmark.WithExtensions(mdext.EscapeHTML))
+var mdRender = goldmark.New(format.HTMLOptions, goldmark.WithExtensions(extension.Strikethrough, extension.Table, mdext.EscapeHTML, mdext.ShortEmphasis, mdext.Math))
 
 func (mc *MessageConverter) convertRichMarkdownText(ctx context.Context, text *richresponse.GenAIMarkdownTextUXPrimitive, buf *strings.Builder) error {
 	for _, ent := range text.InlineEntities {
@@ -113,7 +118,7 @@ func (mc *MessageConverter) convertRichResponsePrimitive(ctx context.Context, pr
 			buf.WriteString("<pre><code>")
 		}
 		for _, part := range p.CodeBlocks {
-			buf.WriteString(part.Content)
+			buf.WriteString(html.EscapeString(part.Content))
 		}
 		buf.WriteString("</code></pre>")
 	case *richresponse.GenAIMarkdownTextUXPrimitive:
@@ -122,7 +127,7 @@ func (mc *MessageConverter) convertRichResponsePrimitive(ctx context.Context, pr
 		buf.WriteString("<table>")
 		for _, row := range p.Rows {
 			buf.WriteString("<tr>")
-			cellType := "tr"
+			cellType := "td"
 			if row.IsHeader {
 				cellType = "th"
 			}
