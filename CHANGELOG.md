@@ -2,6 +2,9 @@
 
 * Fixed native WhatsApp "mark as unread" being bridged as a read receipt.
   Marking a chat unread on a linked device now sets `m.marked_unread`.
+* Fixed the dormant Matrix to WhatsApp mark-unread handler, which passed the
+  unread flag through as WhatsApp's read flag. It stays unused until bridgev2
+  delivers room account data.
 
 # v26.09
 
