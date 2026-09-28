@@ -26,6 +26,7 @@ import (
 
 	"github.com/rs/zerolog"
 	"github.com/yuin/goldmark"
+	"github.com/yuin/goldmark/extension"
 	"go.mau.fi/whatsmeow/types/richresponse"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/event"
@@ -73,7 +74,7 @@ func (mc *MessageConverter) convertUnifiedRichResponseMessage(ctx context.Contex
 	}
 }
 
-var mdRender = goldmark.New(format.Extensions, format.HTMLOptions, goldmark.WithExtensions(mdext.EscapeHTML, mdext.ShortEmphasis, mdext.Math))
+var mdRender = goldmark.New(format.HTMLOptions, goldmark.WithExtensions(extension.Strikethrough, extension.Table, mdext.EscapeHTML, mdext.ShortEmphasis, mdext.Math))
 
 func (mc *MessageConverter) convertRichMarkdownText(ctx context.Context, text *richresponse.GenAIMarkdownTextUXPrimitive, buf *strings.Builder) error {
 	for _, ent := range text.InlineEntities {
