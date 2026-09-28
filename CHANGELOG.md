@@ -1,3 +1,8 @@
+# Unreleased
+
+* Fixed native WhatsApp "mark as unread" being bridged as a read receipt.
+  Marking a chat unread on a linked device now sets `m.marked_unread`.
+
 # v26.09
 
 * Bumped minimum Go version to 1.26.
