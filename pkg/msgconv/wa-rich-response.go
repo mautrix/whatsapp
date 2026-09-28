@@ -73,13 +73,9 @@ func (mc *MessageConverter) convertUnifiedRichResponseMessage(ctx context.Contex
 	}
 }
 
-var mdRender = goldmark.New(format.Extensions, format.HTMLOptions, goldmark.WithExtensions(mdext.EscapeHTML))
+var mdRender = goldmark.New(format.Extensions, format.HTMLOptions, goldmark.WithExtensions(mdext.EscapeHTML, mdext.ShortEmphasis, mdext.Math))
 
 func (mc *MessageConverter) convertRichMarkdownText(ctx context.Context, text *richresponse.GenAIMarkdownTextUXPrimitive, buf *strings.Builder) error {
-	if len(text.InlineEntities) == 0 {
-		buf.WriteString(parseWAFormattingToHTML(text.Text, true))
-		return nil
-	}
 	for _, ent := range text.InlineEntities {
 		switch meta := ent.Metadata.(type) {
 		//case *richresponse.GenAISearchCitationItem:
