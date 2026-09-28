@@ -16,9 +16,9 @@ import (
 
 type museImage struct {
 	DirectPath string `json:"direct_path"`
-	EncHash    string `json:"file_enc_sha256_b64"`
-	Hash       string `json:"file_sha256_b64"`
-	Key        string `json:"media_key_b64"`
+	EncHash    []byte `json:"file_enc_sha256_b64"`
+	Hash       []byte `json:"file_sha256_b64"`
+	Key        []byte `json:"media_key_b64"`
 	Length     int    `json:"file_length"`
 }
 
@@ -63,19 +63,16 @@ func (wa *WhatsAppClient) museAvatar(image museImage) *bridgev2.Avatar {
 	if image.DirectPath == "" || image.Length <= 0 || image.Length > 5<<20 {
 		return nil
 	}
-	encHash, e1 := base64.StdEncoding.DecodeString(image.EncHash)
-	hash, e2 := base64.StdEncoding.DecodeString(image.Hash)
-	key, e3 := base64.StdEncoding.DecodeString(image.Key)
-	if e1 != nil || e2 != nil || e3 != nil || len(encHash) != 32 || len(hash) != 32 || len(key) != 32 {
+	if len(image.EncHash) != 32 || len(image.Hash) != 32 || len(image.Key) != 32 {
 		return nil
 	}
 	return &bridgev2.Avatar{
-		ID: networkid.AvatarID(image.Hash),
+		ID: networkid.AvatarID(base64.StdEncoding.EncodeToString(image.Hash)),
 		Get: func(ctx context.Context) ([]byte, error) {
-			data, err := wa.Client.DownloadMediaWithPath(ctx, image.DirectPath, encHash, hash, key, whatsmeow.MediaImage, "image", false)
+			data, err := wa.Client.DownloadMediaWithPath(ctx, image.DirectPath, image.EncHash, image.Hash, image.Key, whatsmeow.MediaImage, "image", false)
 			if err != nil {
-				zerolog.Ctx(ctx).Warn().Str("error_type", fmt.Sprintf("%T", err)).Msg("Failed to download Muse avatar")
-				return nil, fmt.Errorf("failed to download Muse avatar: %T", err)
+				zerolog.Ctx(ctx).Warn().Err(err).Msg("Failed to download Muse avatar")
+				return nil, fmt.Errorf("failed to download Muse avatar: %w", err)
 			}
 			return data, nil
 		},
