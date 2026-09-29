@@ -97,8 +97,9 @@ func (wa *WhatsAppClient) requestMuseProfile(ctx context.Context) {
 }
 
 func museAvatarReady(portal *database.Portal) bool {
-	return portal.AvatarID == "" || (portal.AvatarMXC != "" &&
-		portal.AvatarID == networkid.AvatarID(base64.StdEncoding.EncodeToString(portal.AvatarHash[:])))
+	expectedHash, err := base64.StdEncoding.DecodeString(string(portal.AvatarID))
+	return err != nil || len(expectedHash) != 32 ||
+		(portal.AvatarMXC != "" && portal.AvatarHash == [32]byte(expectedHash))
 }
 
 func (wa *WhatsAppClient) handleMuseMetadata(ctx context.Context, data []byte) bool {
