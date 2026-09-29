@@ -35,6 +35,9 @@ func (wa *WhatsAppClient) getChatInfo(ctx context.Context, portalJID types.JID, 
 	switch portalJID.Server {
 	case types.DefaultUserServer, types.HiddenUserServer, types.BotServer:
 		wrapped = wa.wrapDMInfo(ctx, portalJID)
+		if portalJID == types.MuseJID {
+			go wa.requestMuseProfile(ctx)
+		}
 	case types.BroadcastServer:
 		if portalJID == types.StatusBroadcastJID {
 			wrapped = wa.wrapStatusBroadcastInfo(ctx)

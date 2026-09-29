@@ -40,6 +40,7 @@ type UserLoginMetadata struct {
 	LoggedInAt      jsontime.Unix `json:"logged_in_at,omitzero"`
 
 	AppStateRecoveryAttempted map[appstate.WAPatchName]time.Time `json:"app_state_recovery_attempted,omitempty"`
+	WASAResynced              bool                               `json:"wasa_resynced,omitzero"`
 
 	HistorySyncPortalsNeedCreating bool      `json:"history_sync_portals_need_creating,omitzero"`
 	ReachoutTimelockUntil          time.Time `json:"reachout_timelock_until,omitzero"`

@@ -127,6 +127,10 @@ type WhatsAppClient struct {
 
 	appStateRecoveryLock      sync.Mutex
 	appStateFullSyncAttempted map[appstate.WAPatchName]time.Time
+
+	wasaResyncLock         sync.Mutex
+	museProfileLock        sync.Mutex
+	lastMuseProfileRequest time.Time
 }
 
 var (
@@ -458,6 +462,10 @@ func (wa *WhatsAppClient) HandleMatrixViewingChat(ctx context.Context, msg *brid
 		if err != nil {
 			zerolog.Ctx(ctx).Warn().Err(err).Msg("Failed to set presence when viewing chat")
 		}
+	}
+
+	if msg.Portal != nil && msg.Portal.ID == waid.MakePortalID(types.MuseJID) {
+		go wa.requestMuseProfile(ctx)
 	}
 
 	if msg.Portal == nil || msg.Portal.Metadata.(*waid.PortalMetadata).LastSync.Add(5*time.Minute).After(time.Now()) {

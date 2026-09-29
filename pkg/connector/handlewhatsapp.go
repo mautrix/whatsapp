@@ -174,6 +174,12 @@ func (wa *WhatsAppClient) handleWAEvent(rawEvt any) (success bool) {
 	case *events.Connected:
 		log.Debug().Msg("Connected to WhatsApp socket")
 		wa.UserLogin.BridgeState.Send(status.BridgeState{StateEvent: status.StateConnected})
+		if wa.offlineSyncWaiter.Load() == nil {
+			go func() {
+				wa.resyncWASARootSecrets(ctx)
+				wa.requestMuseProfile(ctx)
+			}()
+		}
 		if len(wa.GetStore().PushName) > 0 {
 			go func() {
 				err := wa.updatePresence(ctx, types.PresenceUnavailable)
