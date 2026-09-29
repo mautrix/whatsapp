@@ -5,10 +5,12 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"runtime/debug"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/rs/zerolog"
+	"go.mau.fi/util/exerrors"
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/appstate"
 	"go.mau.fi/whatsmeow/proto/waAICommon"
@@ -32,6 +34,14 @@ type museImage struct {
 }
 
 func (wa *WhatsAppClient) resyncWASARootSecrets(ctx context.Context) {
+	defer func() {
+		v := recover()
+		if v != nil {
+			zerolog.Ctx(ctx).Err(exerrors.RecoverToError(v)).
+				Bytes("stack", debug.Stack()).
+				Msg("Error resyncing WASA root secrets")
+		}
+	}()
 	wa.wasaResyncLock.Lock()
 	defer wa.wasaResyncLock.Unlock()
 	if wa.offlineSyncWaiter.Load() != nil || !wa.Client.IsConnected() {
@@ -57,6 +67,14 @@ func (wa *WhatsAppClient) resyncWASARootSecrets(ctx context.Context) {
 }
 
 func (wa *WhatsAppClient) requestMuseProfile(ctx context.Context) {
+	defer func() {
+		v := recover()
+		if v != nil {
+			zerolog.Ctx(ctx).Err(exerrors.RecoverToError(v)).
+				Bytes("stack", debug.Stack()).
+				Msg("Error requesting Muse profile")
+		}
+	}()
 	if !wa.museProfileLock.TryLock() {
 		return
 	}

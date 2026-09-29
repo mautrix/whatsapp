@@ -927,9 +927,6 @@ func (wa *WhatsAppClient) handleWAAppStateSyncComplete(ctx context.Context, evt 
 	} else if evt.Name == appstate.WAPatchCriticalUnblockLow {
 		go wa.resyncContacts(false, true)
 	}
-	if evt.Name == appstate.WAPatchRegularHigh {
-		go wa.requestMuseProfile(ctx)
-	}
 	wa.appStateRecoveryLock.Lock()
 	defer wa.appStateRecoveryLock.Unlock()
 	meta := wa.UserLogin.Metadata.(*waid.UserLoginMetadata)
