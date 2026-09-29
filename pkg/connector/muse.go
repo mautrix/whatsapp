@@ -79,7 +79,7 @@ func (wa *WhatsAppClient) requestMuseProfile(ctx context.Context) {
 		return
 	}
 	defer wa.museProfileLock.Unlock()
-	if wa.offlineSyncWaiter.Load() != nil || !wa.Client.IsConnected() || time.Since(wa.lastMuseProfileRequest) < 5*time.Minute {
+	if wa.offlineSyncWaiter.Load() != nil || !wa.Client.IsConnected() || time.Since(wa.lastMuseProfileRequest) < 15*time.Minute {
 		return
 	}
 	portal, err := wa.Main.Bridge.DB.Portal.GetByKey(ctx, wa.makeWAPortalKey(types.MuseJID))
@@ -96,6 +96,7 @@ func (wa *WhatsAppClient) requestMuseProfile(ctx context.Context) {
 	} else if rootID == "" {
 		return
 	}
+	zerolog.Ctx(ctx).Info().Msg("Sending request to sync Muse profile")
 	wa.lastMuseProfileRequest = time.Now()
 	_, err = wa.Client.SendMessage(ctx, types.MuseJID, &waE2E.Message{
 		ProtocolMessage: &waE2E.ProtocolMessage{
