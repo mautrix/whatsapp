@@ -5,10 +5,15 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"time"
 
+	"github.com/google/uuid"
 	"github.com/rs/zerolog"
 	"go.mau.fi/whatsmeow"
+	"go.mau.fi/whatsmeow/proto/waAICommon"
+	"go.mau.fi/whatsmeow/proto/waE2E"
 	"go.mau.fi/whatsmeow/types"
+	"google.golang.org/protobuf/proto"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/bridgev2/simplevent"
@@ -20,6 +25,22 @@ type museImage struct {
 	Hash       []byte `json:"file_sha256_b64"`
 	Key        []byte `json:"media_key_b64"`
 	Length     int    `json:"file_length"`
+}
+
+func (wa *WhatsAppClient) requestMuseProfile(ctx context.Context) error {
+	_, err := wa.Client.SendMessage(ctx, types.MuseJID, &waE2E.Message{
+		ProtocolMessage: &waE2E.ProtocolMessage{
+			Type: waE2E.ProtocolMessage_AI_METADATA_OPERATION.Enum(),
+			AiMetadataOperation: &waAICommon.AIMetadataOperation{
+				HatchMetadataSync: &waAICommon.HatchMetadataSync{
+					Data:        []byte(`{"version":1,"type":"req","payload":{"method":"channel.bootstrap","params":{"sections":["agent.status","identity.updated","hitl.snapshot"]}}}`),
+					TimestampMS: proto.Int64(time.Now().UnixMilli()),
+					RequestID:   proto.String(uuid.NewString()),
+				},
+			},
+		},
+	})
+	return err
 }
 
 func (wa *WhatsAppClient) handleMuseMetadata(ctx context.Context, data []byte) bool {

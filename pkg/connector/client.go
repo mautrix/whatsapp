@@ -460,6 +460,12 @@ func (wa *WhatsAppClient) HandleMatrixViewingChat(ctx context.Context, msg *brid
 		}
 	}
 
+	if msg.Portal != nil && msg.Portal.ID == waid.MakePortalID(types.MuseJID) && !msg.Portal.NameIsCustom {
+		if err := wa.requestMuseProfile(ctx); err != nil {
+			zerolog.Ctx(ctx).Warn().Err(err).Msg("Failed to request Muse profile")
+		}
+	}
+
 	if msg.Portal == nil || msg.Portal.Metadata.(*waid.PortalMetadata).LastSync.Add(5*time.Minute).After(time.Now()) {
 		// If we resynced this portal within the last 5 minutes, don't do it again
 		return nil
