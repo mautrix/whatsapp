@@ -16,6 +16,7 @@ import (
 	"go.mau.fi/whatsmeow/types"
 	"google.golang.org/protobuf/proto"
 	"maunium.net/go/mautrix/bridgev2"
+	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/bridgev2/simplevent"
 
@@ -63,6 +64,13 @@ func (wa *WhatsAppClient) requestMuseProfile(ctx context.Context) {
 	if wa.offlineSyncWaiter.Load() != nil || !wa.Client.IsConnected() || time.Since(wa.lastMuseProfileRequest) < 5*time.Minute {
 		return
 	}
+	portal, err := wa.Main.Bridge.DB.Portal.GetByKey(ctx, wa.makeWAPortalKey(types.MuseJID))
+	if err != nil {
+		zerolog.Ctx(ctx).Warn().Err(err).Msg("Failed to check Muse profile")
+		return
+	} else if portal != nil && portal.NameIsCustom && portal.Name != "" && portal.NameSet && museAvatarReady(portal) {
+		return
+	}
 	rootID, err := wa.GetStore().ChatSettings.GetWASARootSecretID(ctx, types.MuseJID)
 	if err != nil {
 		zerolog.Ctx(ctx).Warn().Err(err).Msg("Failed to check Muse root secret")
@@ -88,6 +96,11 @@ func (wa *WhatsAppClient) requestMuseProfile(ctx context.Context) {
 	}
 }
 
+func museAvatarReady(portal *database.Portal) bool {
+	return portal.AvatarID == "" || (portal.AvatarMXC != "" &&
+		portal.AvatarID == networkid.AvatarID(base64.StdEncoding.EncodeToString(portal.AvatarHash[:])))
+}
+
 func (wa *WhatsAppClient) handleMuseMetadata(ctx context.Context, data []byte) bool {
 	var msg struct {
 		Type    string `json:"type"`
@@ -109,16 +122,22 @@ func (wa *WhatsAppClient) handleMuseMetadata(ctx context.Context, data []byte) b
 		return true
 	}
 	name := msg.Payload.Payload.Name
+	avatar := wa.museAvatar(msg.Payload.Payload.Avatar.Image)
 	return wa.UserLogin.QueueRemoteEvent(&simplevent.ChatInfoChange{
 		EventMeta: simplevent.EventMeta{
 			Type:         bridgev2.RemoteEventChatInfoChange,
 			PortalKey:    wa.makeWAPortalKey(types.MuseJID),
 			CreatePortal: true,
+			PreHandleFunc: func(_ context.Context, portal *bridgev2.Portal) {
+				if avatar != nil && !museAvatarReady(portal.Portal) {
+					portal.AvatarSet = false
+				}
+			},
 		},
 		ChatInfoChange: &bridgev2.ChatInfoChange{
 			ChatInfo: &bridgev2.ChatInfo{
 				Name:                       &name,
-				Avatar:                     wa.museAvatar(msg.Payload.Payload.Avatar.Image),
+				Avatar:                     avatar,
 				ExcludeChangesFromTimeline: true,
 			},
 		},
