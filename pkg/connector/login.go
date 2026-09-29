@@ -402,6 +402,7 @@ func (wl *WALogin) onLoginComplete(ctx context.Context) (*bridgev2.LoginStep, er
 			Timezone:   wl.Timezone,
 
 			HistorySyncPortalsNeedCreating: true,
+			WASAResynced:                   true,
 		},
 	}, &bridgev2.NewLoginParams{
 		DeleteOnConflict: true,

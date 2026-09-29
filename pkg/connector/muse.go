@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/rs/zerolog"
 	"go.mau.fi/whatsmeow"
+	"go.mau.fi/whatsmeow/appstate"
 	"go.mau.fi/whatsmeow/proto/waAICommon"
 	"go.mau.fi/whatsmeow/proto/waE2E"
 	"go.mau.fi/whatsmeow/types"
@@ -17,6 +18,8 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/bridgev2/simplevent"
+
+	"go.mau.fi/mautrix-whatsapp/pkg/waid"
 )
 
 type museImage struct {
@@ -27,8 +30,48 @@ type museImage struct {
 	Length     int    `json:"file_length"`
 }
 
-func (wa *WhatsAppClient) requestMuseProfile(ctx context.Context) error {
-	_, err := wa.Client.SendMessage(ctx, types.MuseJID, &waE2E.Message{
+func (wa *WhatsAppClient) resyncWASARootSecrets(ctx context.Context) {
+	wa.wasaResyncLock.Lock()
+	defer wa.wasaResyncLock.Unlock()
+	if wa.offlineSyncWaiter.Load() != nil || !wa.Client.IsConnected() {
+		return
+	}
+	meta := wa.UserLogin.Metadata.(*waid.UserLoginMetadata)
+	if meta.WASAResynced {
+		return
+	}
+	log := zerolog.Ctx(ctx)
+	log.Info().Msg("Resyncing WASA root secrets for existing login")
+	if err := wa.Client.FetchAppState(ctx, appstate.WAPatchRegularHigh, true, false); err != nil {
+		log.Err(err).Msg("Failed to resync WASA root secrets")
+		return
+	}
+	meta.WASAResynced = true
+	if err := wa.UserLogin.Save(ctx); err != nil {
+		meta.WASAResynced = false
+		log.Err(err).Msg("Failed to save WASA resync completion")
+		return
+	}
+	log.Info().Msg("Completed WASA root secret resync")
+}
+
+func (wa *WhatsAppClient) requestMuseProfile(ctx context.Context) {
+	if !wa.museProfileLock.TryLock() {
+		return
+	}
+	defer wa.museProfileLock.Unlock()
+	if wa.offlineSyncWaiter.Load() != nil || !wa.Client.IsConnected() || time.Since(wa.lastMuseProfileRequest) < 5*time.Minute {
+		return
+	}
+	rootID, err := wa.GetStore().ChatSettings.GetWASARootSecretID(ctx, types.MuseJID)
+	if err != nil {
+		zerolog.Ctx(ctx).Warn().Err(err).Msg("Failed to check Muse root secret")
+		return
+	} else if rootID == "" {
+		return
+	}
+	wa.lastMuseProfileRequest = time.Now()
+	_, err = wa.Client.SendMessage(ctx, types.MuseJID, &waE2E.Message{
 		ProtocolMessage: &waE2E.ProtocolMessage{
 			Type: waE2E.ProtocolMessage_AI_METADATA_OPERATION.Enum(),
 			AiMetadataOperation: &waAICommon.AIMetadataOperation{
@@ -40,7 +83,9 @@ func (wa *WhatsAppClient) requestMuseProfile(ctx context.Context) error {
 			},
 		},
 	})
-	return err
+	if err != nil {
+		zerolog.Ctx(ctx).Warn().Err(err).Msg("Failed to request Muse profile")
+	}
 }
 
 func (wa *WhatsAppClient) handleMuseMetadata(ctx context.Context, data []byte) bool {
