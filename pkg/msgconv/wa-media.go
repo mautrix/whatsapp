@@ -100,13 +100,17 @@ func (mc *MessageConverter) convertMediaMessage(
 		if err != nil {
 			panic(err)
 		}
-		part = &bridgev2.ConvertedMessagePart{
-			Type:    preparedMedia.Type,
-			Content: preparedMedia.MessageEventContent,
-			Extra:   preparedMedia.Extra,
-			DBMetadata: &waid.MessageMetadata{
-				DirectMediaMeta: directMediaMeta,
-			},
+		if mediaKeys.DirectPath == "" {
+			part = mc.makeMediaFailure(ctx, preparedMedia, mediaKeys, whatsmeow.ErrNoURLPresent)
+		} else {
+			part = &bridgev2.ConvertedMessagePart{
+				Type:    preparedMedia.Type,
+				Content: preparedMedia.MessageEventContent,
+				Extra:   preparedMedia.Extra,
+				DBMetadata: &waid.MessageMetadata{
+					DirectMediaMeta: directMediaMeta,
+				},
+			}
 		}
 	} else if err := mc.reuploadWhatsAppAttachment(ctx, msg, preparedMedia); err != nil {
 		part = mc.makeMediaFailure(ctx, preparedMedia, mediaKeys, err)
