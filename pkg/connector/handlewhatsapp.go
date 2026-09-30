@@ -733,10 +733,11 @@ func (wa *WhatsAppClient) handleWAMarkChatAsRead(ctx context.Context, evt *event
 	if evt.Action != nil && !evt.Action.GetRead() {
 		return wa.UserLogin.QueueRemoteEvent(&simplevent.MarkUnread{
 			EventMeta: simplevent.EventMeta{
-				Type:      bridgev2.RemoteEventMarkUnread,
-				PortalKey: wa.makeWAPortalKey(chatJID),
-				Sender:    wa.makeEventSender(ctx, wa.GetLID()),
-				Timestamp: evt.Timestamp,
+				Type:              bridgev2.RemoteEventMarkUnread,
+				PortalKey:         wa.makeWAPortalKey(chatJID),
+				UncertainReceiver: true,
+				Sender:            wa.makeEventSender(ctx, wa.GetLID()),
+				Timestamp:         evt.Timestamp,
 			},
 			Unread: true,
 		}).Success
