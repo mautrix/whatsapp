@@ -136,6 +136,9 @@ func (evt *WAMessageEvent) AddLogContext(c zerolog.Context) zerolog.Context {
 	if targetMsg := evt.GetTargetMessage(); targetMsg != "" {
 		c = c.Str("target_message_id", string(targetMsg))
 	}
+	if evt.parsedMessageType == "edit" {
+		c = c.Str("edit_inner_message_type", getMessageType(evt.Message.GetProtocolMessage().GetEditedMessage()))
+	}
 	return evt.MessageInfoWrapper.AddLogContext(c).Str("parsed_message_type", evt.parsedMessageType)
 }
 
