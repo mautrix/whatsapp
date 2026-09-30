@@ -204,6 +204,30 @@ func (evt *WAMessageEvent) ConvertEdit(ctx context.Context, portal *bridgev2.Por
 		}
 		meta.Edits = append(meta.Edits, evt.Info.ID)
 		previouslyConvertedPart = evt.wa.Main.GetMediaEditCache(portal, targetMessage)
+		if previouslyConvertedPart == nil && needsPreviousEditPart(editedMsg) {
+			editedEvent, err := evt.wa.Main.Bridge.Bot.GetEvent(ctx, portal.MXID, existing[0].MXID)
+			if err != nil {
+				zerolog.Ctx(ctx).Err(err).Msg("Failed to fetch existing event for edit")
+			} else if editedEvent != nil && editedEvent.Content.AsMessage().MsgType != "" {
+				zerolog.Ctx(ctx).Debug().Msg("Fetched existing edit from server for caption edit")
+				copiedExtra := make(map[string]any)
+				for _, key := range []string{"info", msgconv.FailedMediaField} {
+					val, ok := editedEvent.Content.Raw[key]
+					if ok {
+						copiedExtra[key] = val
+					}
+				}
+				previouslyConvertedPart = &bridgev2.ConvertedMessagePart{
+					ID:         existing[0].PartID,
+					Type:       editedEvent.Type,
+					Content:    editedEvent.Content.AsMessage(),
+					Extra:      copiedExtra,
+					DBMetadata: meta,
+				}
+			} else {
+				zerolog.Ctx(ctx).Debug().Msg("Didn't find existing edit on server for caption edit")
+			}
+		}
 	}
 
 	ctx = context.WithValue(ctx, msgconv.ContextKeyEditTargetID, evt.Message.GetProtocolMessage().GetKey().GetID())

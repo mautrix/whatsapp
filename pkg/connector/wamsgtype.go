@@ -159,3 +159,13 @@ func getMessageType(waMsg *waE2E.Message) string {
 		return "unknown"
 	}
 }
+
+func needsPreviousEditPart(waMsg *waE2E.Message) bool {
+	switch {
+	case waMsg.ImageMessage != nil, waMsg.StickerMessage != nil, waMsg.VideoMessage != nil,
+		waMsg.PtvMessage != nil, waMsg.AudioMessage != nil, waMsg.DocumentMessage != nil:
+		return true
+	default:
+		return false
+	}
+}
