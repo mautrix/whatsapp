@@ -664,7 +664,9 @@ func (wa *WhatsAppClient) HandleMarkedUnread(ctx context.Context, msg *bridgev2.
 		return err
 	}
 	defer wa.mcTrack(msg, time.Now(), &retErr)
-	return wa.Client.SendAppState(ctx, appstate.BuildMarkChatAsRead(chatJID, msg.Content.Unread, lastTS, lastKey))
+	// Matrix unread=true means the chat is unread. WhatsApp's action is the
+	// inverse: MarkChatAsReadAction.read=true means mark as read.
+	return wa.Client.SendAppState(ctx, appstate.BuildMarkChatAsRead(chatJID, !msg.Content.Unread, lastTS, lastKey))
 }
 
 func (wa *WhatsAppClient) HandleMatrixDeleteChat(ctx context.Context, msg *bridgev2.MatrixDeleteChat) (retErr error) {

@@ -733,6 +733,27 @@ func (wa *WhatsAppClient) handleWADeleteForMe(ctx context.Context, evt *events.D
 
 func (wa *WhatsAppClient) handleWAMarkChatAsRead(ctx context.Context, evt *events.MarkChatAsRead) bool {
 	chatJID := wa.maybeConvertJIDToLID(ctx, evt.JID)
+	if evt.Action == nil {
+		// No action payload: neither a mark-read receipt nor a mark-unread
+		// value can be determined. Do nothing rather than guess by falling
+		// through to the read-receipt path below.
+		return true
+	}
+	// Native "mark as unread" is MarkChatAsReadAction.read=false, including full
+	// app-state resyncs (evt.FromFullSync). A read receipt must not be emitted:
+	// bridgev2 turns that into MarkRead, which clears m.marked_unread.
+	if !evt.Action.GetRead() {
+		return wa.UserLogin.QueueRemoteEvent(&simplevent.MarkUnread{
+			EventMeta: simplevent.EventMeta{
+				Type:              bridgev2.RemoteEventMarkUnread,
+				PortalKey:         wa.makeWAPortalKey(chatJID),
+				UncertainReceiver: true,
+				Sender:            wa.makeEventSender(ctx, wa.GetLID()),
+				Timestamp:         evt.Timestamp,
+			},
+			Unread: true,
+		}).Success
+	}
 	return wa.UserLogin.QueueRemoteEvent(&simplevent.Receipt{
 		EventMeta: simplevent.EventMeta{
 			Type:      bridgev2.RemoteEventReadReceipt,
