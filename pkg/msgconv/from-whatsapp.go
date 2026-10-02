@@ -148,6 +148,7 @@ func (mc *MessageConverter) ToMatrix(
 	ctx = context.WithValue(ctx, contextKeyIntent, intent)
 	ctx = context.WithValue(ctx, contextKeyPortal, portal)
 	var part *bridgev2.ConvertedMessagePart
+	var extraParts []*bridgev2.ConvertedMessagePart
 	var contextInfo *waE2E.ContextInfo
 	switch {
 	case waMsg.Conversation != nil, waMsg.ExtendedTextMessage != nil:
@@ -217,7 +218,7 @@ func (mc *MessageConverter) ToMatrix(
 	case waMsg.ContactMessage != nil:
 		part, contextInfo = mc.convertContactMessage(ctx, waMsg.ContactMessage)
 	case waMsg.ContactsArrayMessage != nil:
-		part, contextInfo = mc.convertContactsArrayMessage(ctx, waMsg.ContactsArrayMessage)
+		part, extraParts, contextInfo = mc.convertContactsArrayMessage(ctx, waMsg.ContactsArrayMessage)
 	case waMsg.PlaceholderMessage != nil:
 		part, contextInfo = mc.convertPlaceholderMessage(ctx, waMsg)
 	case waMsg.GroupInviteMessage != nil:
@@ -232,26 +233,28 @@ func (mc *MessageConverter) ToMatrix(
 		part, contextInfo = mc.convertUnknownMessage(ctx, rawWaMsg)
 	}
 
-	part.Content.Mentions = &event.Mentions{}
-	if part.DBMetadata == nil {
-		part.DBMetadata = &waid.MessageMetadata{}
-	}
-	dbMeta := part.DBMetadata.(*waid.MessageMetadata)
-	dbMeta.SenderDeviceID = info.Sender.Device
-	if info.IsIncomingBroadcast() {
-		dbMeta.BroadcastListJID = &info.Chat
-		if part.Extra == nil {
-			part.Extra = map[string]any{}
-		}
-		part.Extra["fi.mau.whatsapp.source_broadcast_list"] = info.Chat.String()
-	}
-	mc.addMentions(ctx, contextInfo.GetMentionedJID(), part.Content)
-	if contextInfo.GetNonJIDMentions() == 1 {
-		part.Content.Mentions.Room = true
-	}
-
 	cm := &bridgev2.ConvertedMessage{
-		Parts: []*bridgev2.ConvertedMessagePart{part},
+		Parts: append([]*bridgev2.ConvertedMessagePart{part}, extraParts...),
+	}
+	for i, part := range cm.Parts {
+		part.ID = waid.MakeMessagePartID(i)
+		part.Content.Mentions = &event.Mentions{}
+		if part.DBMetadata == nil {
+			part.DBMetadata = &waid.MessageMetadata{}
+		}
+		dbMeta := part.DBMetadata.(*waid.MessageMetadata)
+		dbMeta.SenderDeviceID = info.Sender.Device
+		if info.IsIncomingBroadcast() {
+			dbMeta.BroadcastListJID = &info.Chat
+			if part.Extra == nil {
+				part.Extra = map[string]any{}
+			}
+			part.Extra["fi.mau.whatsapp.source_broadcast_list"] = info.Chat.String()
+		}
+		mc.addMentions(ctx, contextInfo.GetMentionedJID(), part.Content)
+		if contextInfo.GetNonJIDMentions() == 1 {
+			part.Content.Mentions.Room = true
+		}
 	}
 	if contextInfo.GetExpiration() > 0 {
 		cm.Disappear.Timer = time.Duration(contextInfo.GetExpiration()) * time.Second

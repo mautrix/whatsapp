@@ -18,6 +18,7 @@ package waid
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"go.mau.fi/whatsmeow/types"
@@ -92,6 +93,13 @@ func MakeMessageIDWithAltSender(chat, sender, altSender types.JID, id types.Mess
 
 func MakeFakeMessageID(chat, sender types.JID, data string) networkid.MessageID {
 	return networkid.MessageID(fmt.Sprintf("fake:%s:%s:%s", chat.ToNonAD().String(), sender.ToNonAD().String(), data))
+}
+
+func MakeMessagePartID(index int) networkid.PartID {
+	if index == 0 {
+		return ""
+	}
+	return networkid.PartID(strconv.Itoa(index))
 }
 
 type ParsedMessageID struct {
