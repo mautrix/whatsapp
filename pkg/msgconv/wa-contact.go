@@ -64,12 +64,23 @@ func (mc *MessageConverter) convertContactMessage(ctx context.Context, msg *waE2
 	return
 }
 
-func (mc *MessageConverter) convertContactsArrayMessage(ctx context.Context, msg *waE2E.ContactsArrayMessage) (*bridgev2.ConvertedMessagePart, *waE2E.ContextInfo) {
-	return &bridgev2.ConvertedMessagePart{
-		Type: event.EventMessage,
-		Content: &event.MessageEventContent{
-			MsgType: event.MsgNotice,
-			Body:    "Contact array messages are not yet supported",
-		},
-	}, msg.GetContextInfo()
+func (mc *MessageConverter) convertContactsArrayMessage(ctx context.Context, msg *waE2E.ContactsArrayMessage) (part *bridgev2.ConvertedMessagePart, extraParts []*bridgev2.ConvertedMessagePart, contextInfo *waE2E.ContextInfo) {
+	contextInfo = msg.GetContextInfo()
+	contacts := msg.GetContacts()
+	if len(contacts) == 0 {
+		part = &bridgev2.ConvertedMessagePart{
+			Type: event.EventMessage,
+			Content: &event.MessageEventContent{
+				MsgType: event.MsgNotice,
+				Body:    "Received an empty contact list",
+			},
+		}
+		return
+	}
+	part, _ = mc.convertContactMessage(ctx, contacts[0])
+	for _, contact := range contacts[1:] {
+		extraPart, _ := mc.convertContactMessage(ctx, contact)
+		extraParts = append(extraParts, extraPart)
+	}
+	return
 }
