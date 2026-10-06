@@ -445,7 +445,7 @@ func (mc *MessageConverter) makeMediaFailure(ctx context.Context, mediaInfo *Pre
 	var extra map[string]any
 	var dbMeta any
 	errorMsg := fmt.Sprintf("Failed to bridge %s, please view it on the WhatsApp app", mediaInfo.TypeDescription)
-	if keys != nil && (errors.Is(err, whatsmeow.ErrMediaDownloadFailedWith403) || errors.Is(err, whatsmeow.ErrMediaDownloadFailedWith404) || errors.Is(err, whatsmeow.ErrMediaDownloadFailedWith410)) {
+	if keys != nil && (errors.Is(err, whatsmeow.ErrMediaDownloadFailedWith403) || errors.Is(err, whatsmeow.ErrMediaDownloadFailedWith404) || errors.Is(err, whatsmeow.ErrMediaDownloadFailedWith410) || errors.Is(err, whatsmeow.ErrNoURLPresent)) {
 		logLevel = zerolog.DebugLevel
 		keys.DirectPath = ""
 		mediaInfo.FailedKeys = keys
