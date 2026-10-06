@@ -82,6 +82,8 @@ func (wa *WhatsAppClient) handleWAEvent(rawEvt any) (success bool) {
 
 	success = true
 	switch evt := rawEvt.(type) {
+	case *events.Blocklist:
+		success = wa.resyncBlocklist(ctx)()
 	case *events.Message:
 		success = wa.handleWAMessage(ctx, evt)
 	case *events.Receipt:
@@ -1015,4 +1017,94 @@ func (wa *WhatsAppClient) handleWAAppStateSyncError(ctx context.Context, evt *ev
 				Msg("Sent app state recovery request")
 		}
 	}()
+}
+
+func (wa *WhatsAppClient) resyncBlocklist(ctx context.Context) func() bool {
+	wa.blocklistLock.Lock()
+	defer wa.blocklistLock.Unlock()
+	return wa.resyncBlocklistUnlocked(ctx)
+}
+
+func noopUpdates() bool {
+	return true
+}
+
+func (wa *WhatsAppClient) resyncBlocklistUnlocked(ctx context.Context) func() bool {
+	meta := wa.UserLogin.Metadata.(*waid.UserLoginMetadata)
+	dhash := ptr.Val(meta.Blocklist).DHash
+	newBlocklist, err := wa.Client.GetBlocklist(ctx, dhash)
+	if err != nil {
+		zerolog.Ctx(ctx).Err(err).Msg("Failed to get new blocklist")
+		return noopUpdates
+	} else if newBlocklist == nil {
+		zerolog.Ctx(ctx).Debug().Msg("Blocklist didn't change")
+		return noopUpdates
+	}
+	updateEvents := wa.saveBlocklistUnlocked(ctx, newBlocklist)
+	return func() bool {
+		for _, evt := range updateEvents {
+			res := wa.UserLogin.QueueRemoteEvent(evt)
+			if !res.Success {
+				return false
+			}
+		}
+		return true
+	}
+}
+
+func (wa *WhatsAppClient) saveBlocklistUnlocked(ctx context.Context, newBlocklist *types.Blocklist) []*simplevent.ChatInfoChange {
+	if newBlocklist.AddressingMode != types.AddressingModeLID {
+		zerolog.Ctx(ctx).Warn().Msg("Non-LID addressing mode in blocklist")
+	}
+	meta := wa.UserLogin.Metadata.(*waid.UserLoginMetadata)
+	oldBlocklist := ptr.Val(meta.Blocklist)
+	removed, added := exslices.Diff(oldBlocklist.LIDs(), newBlocklist.LIDs())
+	var updateEvents []*simplevent.ChatInfoChange
+	for _, jid := range removed {
+		if evt := wa.makeBlockUpdateEvent(ctx, jid, false); evt != nil {
+			updateEvents = append(updateEvents, evt)
+		}
+	}
+	for _, jid := range added {
+		if evt := wa.makeBlockUpdateEvent(ctx, jid, true); evt != nil {
+			updateEvents = append(updateEvents, evt)
+		}
+	}
+	meta.Blocklist = newBlocklist
+	err := wa.UserLogin.Save(ctx)
+	if err != nil {
+		zerolog.Ctx(ctx).Err(err).Msg("Failed to save blocklist to login metadata")
+	}
+	return updateEvents
+}
+
+func (wa *WhatsAppClient) makeBlockUpdateEvent(ctx context.Context, jid types.JID, blocked bool) *simplevent.ChatInfoChange {
+	if jid.Server == types.DefaultUserServer {
+		var err error
+		jid, err = wa.GetStore().LIDs.GetLIDForPN(ctx, jid)
+		if err != nil {
+			zerolog.Ctx(ctx).Err(err).Stringer("pn", jid).Msg("Failed to get LID for blocklist update")
+			return nil
+		} else if jid.IsEmpty() {
+			zerolog.Ctx(ctx).Debug().Stringer("pn", jid).Msg("No LID for blocklist update")
+			return nil
+		}
+	} else if jid.Server != types.HiddenUserServer && jid.Server != types.BotServer {
+		zerolog.Ctx(ctx).Debug().Stringer("jid", jid).Msg("Unexpected JID server in blocklist")
+		return nil
+	}
+	return &simplevent.ChatInfoChange{
+		EventMeta: simplevent.EventMeta{
+			Type:      bridgev2.RemoteEventChatInfoChange,
+			PortalKey: wa.makeWAPortalKey(jid),
+			LogContext: func(c zerolog.Context) zerolog.Context {
+				return c.Str("wa_event_type", "blocklist update")
+			},
+		},
+		ChatInfoChange: &bridgev2.ChatInfoChange{
+			ChatInfo: &bridgev2.ChatInfo{
+				UserBlocked: &blocked,
+			},
+		},
+	}
 }

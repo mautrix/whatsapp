@@ -122,6 +122,7 @@ type WhatsAppClient struct {
 	isNewLogin         bool
 	pushNamesSynced    *exsync.Event
 	lastPresence       types.Presence
+	blocklistLock      sync.Mutex
 
 	disableNewsletter bool
 

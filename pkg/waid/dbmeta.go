@@ -45,6 +45,8 @@ type UserLoginMetadata struct {
 	HistorySyncPortalsNeedCreating bool      `json:"history_sync_portals_need_creating,omitzero"`
 	ReachoutTimelockUntil          time.Time `json:"reachout_timelock_until,omitzero"`
 
+	Blocklist *types.Blocklist `json:"blocklist,omitempty"`
+
 	MData json.RawMessage `json:"mdata,omitempty"`
 }
 

@@ -1,3 +1,19 @@
+// mautrix-whatsapp - A Matrix-WhatsApp puppeting bridge.
+// Copyright (C) 2026 Tulir Asokan
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Affero General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU Affero General Public License for more details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
 package connector
 
 import (
@@ -19,6 +35,7 @@ import (
 	"go.mau.fi/whatsmeow/proto/waCommon"
 	"go.mau.fi/whatsmeow/proto/waE2E"
 	"go.mau.fi/whatsmeow/types"
+	"go.mau.fi/whatsmeow/types/events"
 	"golang.org/x/image/draw"
 	"google.golang.org/protobuf/proto"
 	"maunium.net/go/mautrix/bridgev2"
@@ -46,6 +63,7 @@ var (
 	_ bridgev2.TagHandlingNetworkAPI            = (*WhatsAppClient)(nil)
 	_ bridgev2.MarkedUnreadHandlingNetworkAPI   = (*WhatsAppClient)(nil)
 	_ bridgev2.DeleteChatHandlingNetworkAPI     = (*WhatsAppClient)(nil)
+	_ bridgev2.UserBlockingNetworkAPI           = (*WhatsAppClient)(nil)
 )
 
 func (wa *WhatsAppClient) HandleMatrixPollStart(ctx context.Context, msg *bridgev2.MatrixPollStart) (result *bridgev2.MatrixMessageResponse, retErr error) {
@@ -690,4 +708,34 @@ func (wa *WhatsAppClient) HandleMatrixDeleteChat(ctx context.Context, msg *bridg
 	}
 	defer wa.mcTrack(msg, time.Now(), &retErr)
 	return wa.Client.SendAppState(ctx, appstate.BuildDeleteChat(chatJID, lastTS, lastKey, true))
+}
+
+func (wa *WhatsAppClient) HandleMatrixBlockUser(ctx context.Context, msg *bridgev2.MatrixBlockUser) error {
+	if wa.Client == nil {
+		return bridgev2.ErrNotLoggedIn
+	}
+	jid, err := waid.ParsePortalID(msg.Portal.ID)
+	if err != nil {
+		return err
+	}
+	if msg.Content.ReportSpam {
+		return fmt.Errorf("spam reporting is not supported")
+	}
+	action := events.BlocklistChangeActionUnblock
+	if msg.Content.Block {
+		action = events.BlocklistChangeActionBlock
+	}
+	blocklist, err := wa.Client.UpdateBlocklist(ctx, jid, action, "")
+	if err == nil {
+		wa.blocklistLock.Lock()
+		evts := wa.saveBlocklistUnlocked(ctx, blocklist)
+		wa.blocklistLock.Unlock()
+		for _, evt := range evts {
+			if evt.PortalKey == msg.Portal.PortalKey {
+				continue
+			}
+			wa.UserLogin.QueueRemoteEvent(evt)
+		}
+	}
+	return err
 }

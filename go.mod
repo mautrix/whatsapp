@@ -14,13 +14,13 @@ require (
 	github.com/yuin/goldmark v1.8.6
 	go.mau.fi/util v0.10.2-0.20260918225449-a4c0d5b86aa8
 	go.mau.fi/webp v0.3.0
-	go.mau.fi/whatsmeow v0.0.0-20260929112325-8b41cfe6d9c4
+	go.mau.fi/whatsmeow v0.0.0-20261006124319-9399289b022b
 	golang.org/x/image v0.46.0
 	golang.org/x/net v0.59.0
 	golang.org/x/sync v0.23.0
 	google.golang.org/protobuf v1.36.12
 	gopkg.in/yaml.v3 v3.0.1
-	maunium.net/go/mautrix v0.31.1-0.20260929190113-4aac2bbf2888
+	maunium.net/go/mautrix v0.31.1-0.20261005174338-57e1ea5dd74d
 )
 
 require (
