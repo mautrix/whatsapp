@@ -52,7 +52,7 @@ func (wa *WhatsAppConnector) GetCapabilities() *bridgev2.NetworkGeneralCapabilit
 }
 
 func (wa *WhatsAppConnector) GetBridgeInfoVersion() (info, caps int) {
-	return 1, 9
+	return 1, 10
 }
 
 const WAMaxFileSize = 2000 * 1024 * 1024
@@ -67,7 +67,7 @@ func supportedIfFFmpeg() event.CapabilitySupportLevel {
 }
 
 func capID() string {
-	base := "fi.mau.whatsapp.capabilities.2026_07_22"
+	base := "fi.mau.whatsapp.capabilities.2026_10_01"
 	if ffmpeg.Supported() {
 		return base + "+ffmpeg"
 	}
@@ -198,6 +198,7 @@ var whatsappCaps = &event.RoomFeatures{
 
 var whatsappDMCaps *event.RoomFeatures
 var whatsappCAGCaps *event.RoomFeatures
+var whatsappNoteToSelfCaps *event.RoomFeatures
 
 func init() {
 	whatsappDMCaps = ptr.Clone(whatsappCaps)
@@ -205,7 +206,13 @@ func init() {
 	whatsappDMCaps.State = event.StateFeatureMap{
 		event.StateBeeperDisappearingTimer.Type: {Level: event.CapLevelFullySupported},
 	}
+	whatsappDMCaps.BlockUser = true
 	whatsappDMCaps.MemberActions = nil
+
+	whatsappNoteToSelfCaps = ptr.Clone(whatsappDMCaps)
+	whatsappNoteToSelfCaps.ID = capID() + "+self"
+	whatsappNoteToSelfCaps.BlockUser = false
+
 	whatsappCAGCaps = ptr.Clone(whatsappCaps)
 	whatsappCAGCaps.ID = capID() + "+cag"
 	whatsappCAGCaps.Reply = event.CapLevelUnsupported
@@ -216,6 +223,10 @@ func (wa *WhatsAppClient) GetCapabilities(ctx context.Context, portal *bridgev2.
 	if portal.Metadata.(*waid.PortalMetadata).CommunityAnnouncementGroup {
 		return whatsappCAGCaps
 	} else if portal.RoomType == database.RoomTypeDM {
+		jid, err := waid.ParsePortalID(portal.ID)
+		if err == nil && wa.IsOwnJID(jid) {
+			return whatsappNoteToSelfCaps
+		}
 		return whatsappDMCaps
 	}
 	return whatsappCaps

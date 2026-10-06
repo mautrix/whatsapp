@@ -185,6 +185,11 @@ func (wa *WhatsAppClient) wrapDMInfo(ctx context.Context, jid types.JID) *bridge
 		},
 		ExcludeChangesFromTimeline: true,
 	}
+	var err error
+	info.UserBlocked, err = wa.isUserBlocked(ctx, jid)
+	if err != nil {
+		zerolog.Ctx(ctx).Warn().Err(err).Msg("Failed to get blocked state")
+	}
 	if jid.Server == types.BotServer {
 		info.Topic = ptr.Ptr(BotChatTopic)
 	}
@@ -570,4 +575,20 @@ func (wa *WhatsAppClient) wrapNewsletterInfo(ctx context.Context, info *types.Ne
 		},
 		Type: ptr.Ptr(database.RoomTypeDefault),
 	}
+}
+
+func (wa *WhatsAppClient) isUserBlocked(ctx context.Context, jid types.JID) (*bool, error) {
+	wa.blocklistLock.Lock()
+	defer wa.blocklistLock.Unlock()
+	meta := wa.UserLogin.Metadata.(*waid.UserLoginMetadata)
+	blocklist := meta.Blocklist
+	if blocklist == nil {
+		runHandlers := wa.resyncBlocklistUnlocked(ctx)
+		go runHandlers()
+		blocklist = meta.Blocklist
+	}
+	if blocklist == nil {
+		return nil, nil
+	}
+	return new(blocklist.IsBlocked(jid)), nil
 }
