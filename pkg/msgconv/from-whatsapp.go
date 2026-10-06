@@ -232,6 +232,7 @@ func (mc *MessageConverter) ToMatrix(
 		part, contextInfo = mc.convertUnknownMessage(ctx, rawWaMsg)
 	}
 
+	mc.addMessageData(ctx, part, waMsg, isViewOnce)
 	part.Content.Mentions = &event.Mentions{}
 	if part.DBMetadata == nil {
 		part.DBMetadata = &waid.MessageMetadata{}

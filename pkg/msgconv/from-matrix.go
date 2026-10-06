@@ -53,6 +53,7 @@ import (
 func (mc *MessageConverter) generateContextInfo(
 	ctx context.Context,
 	replyTo *database.Message,
+	relatesTo *event.RelatesTo,
 	portal *bridgev2.Portal,
 	perMessageTimer *event.BeeperDisappearingTimer,
 	roomMention bool,
@@ -63,7 +64,7 @@ func (mc *MessageConverter) generateContextInfo(
 		if err == nil {
 			contextInfo.StanzaID = proto.String(msgID.ID)
 			contextInfo.Participant = proto.String(msgID.Sender.String())
-			contextInfo.QuotedMessage = &waE2E.Message{Conversation: proto.String("")}
+			contextInfo.QuotedMessage = mc.getQuotedMessage(ctx, replyTo, relatesTo, portal)
 			contextInfo.QuotedType = waE2E.ContextInfo_EXPLICIT.Enum()
 		} else {
 			zerolog.Ctx(ctx).Warn().Err(err).
@@ -107,7 +108,7 @@ func (mc *MessageConverter) ToWhatsApp(
 	}
 
 	message := &waE2E.Message{}
-	contextInfo := mc.generateContextInfo(ctx, replyTo, portal, content.BeeperDisappearingTimer, content.Mentions != nil && content.Mentions.Room)
+	contextInfo := mc.generateContextInfo(ctx, replyTo, content.RelatesTo, portal, content.BeeperDisappearingTimer, content.Mentions != nil && content.Mentions.Room)
 
 	switch content.MsgType {
 	case event.MsgText, event.MsgNotice, event.MsgEmote:
