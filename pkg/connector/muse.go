@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"runtime/debug"
 	"time"
@@ -53,9 +54,15 @@ func (wa *WhatsAppClient) resyncWASARootSecrets(ctx context.Context) {
 	}
 	log := zerolog.Ctx(ctx)
 	log.Info().Msg("Resyncing WASA root secrets for existing login")
+	success := true
 	if err := wa.Client.FetchAppState(ctx, appstate.WAPatchRegularHigh, true, false); err != nil {
 		log.Err(err).Msg("Failed to resync WASA root secrets")
-		return
+		// Mark the sync as completed on mismatching LTHash errors, because those can get permanently stuck
+		// (retrying won't help). In case it's not stuck, a single call should be enough to request a resync.
+		if !errors.Is(err, appstate.ErrMismatchingLTHash) || ctx.Err() != nil {
+			return
+		}
+		success = false
 	}
 	meta.WASAResynced = true
 	if err := wa.UserLogin.Save(ctx); err != nil {
@@ -63,7 +70,11 @@ func (wa *WhatsAppClient) resyncWASARootSecrets(ctx context.Context) {
 		log.Err(err).Msg("Failed to save WASA resync completion")
 		return
 	}
-	log.Info().Msg("Completed WASA root secret resync")
+	if success {
+		log.Info().Msg("Completed WASA root secret resync")
+	} else {
+		log.Info().Msg("Marked WASA root resync as done despite errors")
+	}
 }
 
 func (wa *WhatsAppClient) requestMuseProfile(ctx context.Context) {
