@@ -104,7 +104,7 @@ func (mc *MessageConverter) getQuotedMessage(ctx context.Context, replyTo *datab
 	}
 	evt, err := mc.Bridge.Bot.GetEvent(ctx, portal.MXID, replyTo.MXID)
 	if err != nil {
-		log.Warn().Err(err).Msg("Failed to fetch quoted event")
+		log.Debug().Err(err).Msg("Failed to fetch quoted event")
 	} else if evt == nil {
 		log.Debug().Msg("Quoted event not found")
 	} else if evt.RoomID != "" && evt.RoomID != portal.MXID {
