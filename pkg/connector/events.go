@@ -24,7 +24,6 @@ import (
 	"time"
 
 	"github.com/rs/zerolog"
-	"go.mau.fi/util/ptr"
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/proto/waE2E"
 	"go.mau.fi/whatsmeow/proto/waMmsRetry"
@@ -250,14 +249,9 @@ func (evt *WAMessageEvent) ConvertEdit(ctx context.Context, portal *bridgev2.Por
 		}
 		editPart.TopLevelExtra["com.beeper.dont_render_edited"] = true
 	}
-	convertedEdit := &bridgev2.ConvertedEdit{
+	return &bridgev2.ConvertedEdit{
 		ModifiedParts: []*bridgev2.ConvertedEditPart{editPart},
-	}
-	if len(cm.Parts) > len(existing) {
-		convertedEdit.AddedParts = ptr.Clone(cm)
-		convertedEdit.AddedParts.Parts = cm.Parts[len(existing):]
-	}
-	return convertedEdit, nil
+	}, nil
 }
 
 func (evt *WAMessageEvent) GetTargetMessage() networkid.MessageID {

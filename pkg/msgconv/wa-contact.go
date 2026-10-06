@@ -19,8 +19,10 @@ package msgconv
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/rs/zerolog"
+	"go.mau.fi/util/ptr"
 	"go.mau.fi/whatsmeow/proto/waE2E"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/event"
@@ -64,23 +66,18 @@ func (mc *MessageConverter) convertContactMessage(ctx context.Context, msg *waE2
 	return
 }
 
-func (mc *MessageConverter) convertContactsArrayMessage(ctx context.Context, msg *waE2E.ContactsArrayMessage) (part *bridgev2.ConvertedMessagePart, extraParts []*bridgev2.ConvertedMessagePart, contextInfo *waE2E.ContextInfo) {
-	contextInfo = msg.GetContextInfo()
-	contacts := msg.GetContacts()
-	if len(contacts) == 0 {
-		part = &bridgev2.ConvertedMessagePart{
-			Type: event.EventMessage,
-			Content: &event.MessageEventContent{
-				MsgType: event.MsgNotice,
-				Body:    "Received an empty contact list",
-			},
-		}
-		return
+func (mc *MessageConverter) convertContactsArrayMessage(ctx context.Context, msg *waE2E.ContactsArrayMessage) (*bridgev2.ConvertedMessagePart, *waE2E.ContextInfo) {
+	name := msg.GetDisplayName()
+	if len(name) == 0 {
+		name = fmt.Sprintf("%d contacts", len(msg.GetContacts()))
 	}
-	part, _ = mc.convertContactMessage(ctx, contacts[0])
-	for _, contact := range contacts[1:] {
-		extraPart, _ := mc.convertContactMessage(ctx, contact)
-		extraParts = append(extraParts, extraPart)
+	vcards := make([]string, len(msg.GetContacts()))
+	for i, contact := range msg.GetContacts() {
+		vcards[i] = strings.TrimSpace(contact.GetVcard())
 	}
-	return
+	part, _ := mc.convertContactMessage(ctx, &waE2E.ContactMessage{
+		DisplayName: &name,
+		Vcard:       ptr.Ptr(strings.Join(vcards, "\n")),
+	})
+	return part, msg.GetContextInfo()
 }
