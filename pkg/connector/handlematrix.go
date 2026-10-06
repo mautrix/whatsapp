@@ -728,14 +728,16 @@ func (wa *WhatsAppClient) HandleMatrixBlockUser(ctx context.Context, msg *bridge
 	blocklist, err := wa.Client.UpdateBlocklist(ctx, jid, action, "")
 	if err == nil {
 		wa.blocklistLock.Lock()
+		defer wa.blocklistLock.Unlock()
 		evts := wa.saveBlocklistUnlocked(ctx, blocklist)
-		wa.blocklistLock.Unlock()
-		for _, evt := range evts {
-			if evt.PortalKey == msg.Portal.PortalKey {
-				continue
+		go func() {
+			for _, evt := range evts {
+				if evt.PortalKey == msg.Portal.PortalKey {
+					continue
+				}
+				wa.UserLogin.QueueRemoteEvent(evt)
 			}
-			wa.UserLogin.QueueRemoteEvent(evt)
-		}
+		}()
 	}
 	return err
 }
