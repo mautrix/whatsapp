@@ -1058,7 +1058,24 @@ func (wa *WhatsAppClient) saveBlocklistUnlocked(ctx context.Context, newBlocklis
 	}
 	meta := wa.UserLogin.Metadata.(*waid.UserLoginMetadata)
 	oldBlocklist := ptr.Val(meta.Blocklist)
-	removed, added := exslices.Diff(oldBlocklist.LIDs(), newBlocklist.LIDs())
+	currentlyBlockedDMs, err := wa.Main.Bridge.DB.Portal.GetAllBlockedDMsOf(ctx, wa.UserLogin.ID)
+	if err != nil {
+		zerolog.Ctx(ctx).Err(err).Msg("Failed to get currently blocked DMs")
+	}
+	// In addition to diffing the cached blocklist, fetch all blocked DM portals from the database
+	// to ensure any missed updates are retried.
+	oldBlockedLIDs := exslices.CastFuncFilter[types.JID](currentlyBlockedDMs, func(key networkid.PortalKey) (types.JID, bool) {
+		jid, _ := waid.ParsePortalID(key.ID)
+		return jid, !jid.IsEmpty()
+	})
+	removed, added := exslices.Diff(append(oldBlocklist.LIDs(), oldBlockedLIDs...), newBlocklist.LIDs())
+	zerolog.Ctx(ctx).Debug().
+		Int("old_count", len(oldBlocklist.Items)).
+		Int("db_count", len(currentlyBlockedDMs)).
+		Int("new_count", len(newBlocklist.Items)).
+		Any("removed", removed).
+		Any("added", added).
+		Msg("Syncing blocklist")
 	var updateEvents []*simplevent.ChatInfoChange
 	for _, jid := range removed {
 		if evt := wa.makeBlockUpdateEvent(ctx, jid, false); evt != nil {
@@ -1071,7 +1088,7 @@ func (wa *WhatsAppClient) saveBlocklistUnlocked(ctx context.Context, newBlocklis
 		}
 	}
 	meta.Blocklist = newBlocklist
-	err := wa.UserLogin.Save(ctx)
+	err = wa.UserLogin.Save(ctx)
 	if err != nil {
 		zerolog.Ctx(ctx).Err(err).Msg("Failed to save blocklist to login metadata")
 	}
