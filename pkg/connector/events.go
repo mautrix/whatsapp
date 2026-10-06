@@ -211,7 +211,7 @@ func (evt *WAMessageEvent) ConvertEdit(ctx context.Context, portal *bridgev2.Por
 			} else if editedEvent != nil && editedEvent.Content.AsMessage().MsgType != "" {
 				zerolog.Ctx(ctx).Debug().Msg("Fetched existing edit from server for caption edit")
 				copiedExtra := make(map[string]any)
-				for _, key := range []string{"info", msgconv.FailedMediaField} {
+				for _, key := range []string{"info", msgconv.FailedMediaField, msgconv.MessageDataField} {
 					val, ok := editedEvent.Content.Raw[key]
 					if ok {
 						copiedExtra[key] = val
