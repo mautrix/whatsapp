@@ -528,8 +528,14 @@ func (evt *WAMediaRetry) ConvertEdit(ctx context.Context, portal *bridgev2.Porta
 	} else if meta.FailedMediaMeta == nil {
 		return nil, fmt.Errorf("%w: message doesn't have media metadata", bridgev2.ErrIgnoringRemoteEvent)
 	}
+	member, err := evt.wa.Main.Bridge.Matrix.GetMemberInfo(ctx, portal.MXID, intent.GetMXID())
+	if err != nil {
+		return nil, fmt.Errorf("%w: failed to get sender membership: %w", bridgev2.ErrIgnoringRemoteEvent, err)
+	} else if member.Membership != event.MembershipJoin {
+		return nil, fmt.Errorf("%w: sender isn't in the room", bridgev2.ErrIgnoringRemoteEvent)
+	}
 	var mediaMeta msgconv.PreparedMedia
-	err := json.Unmarshal(meta.FailedMediaMeta, &mediaMeta)
+	err = json.Unmarshal(meta.FailedMediaMeta, &mediaMeta)
 	if err != nil {
 		return nil, fmt.Errorf("failed to unmarshal media metadata: %w", err)
 	}
