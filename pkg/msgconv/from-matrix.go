@@ -94,12 +94,12 @@ func (mc *MessageConverter) generateContextInfo(
 
 func (mc *MessageConverter) getQuotedMessage(ctx context.Context, replyTo *database.Message, relatesTo *event.RelatesTo, portal *bridgev2.Portal) *waE2E.Message {
 	log := zerolog.Ctx(ctx).With().Stringer("reply_to_event_id", replyTo.MXID).Logger()
-	if relatesTo != nil && relatesTo.InReplyTo != nil && relatesTo.GetReplyTo() == replyTo.MXID && len(relatesTo.InReplyTo.BeeperQuote) > 0 {
+	if relatesTo.GetReplyTo() == replyTo.MXID && len(relatesTo.InReplyTo.BeeperQuote) > 0 {
 		var content event.MessageEventContent
 		if err := json.Unmarshal(relatesTo.InReplyTo.BeeperQuote, &content); err != nil {
 			log.Warn().Err(err).Msg("Failed to parse quoted event content")
-		} else if quote := mc.convertQuote(ctx, content); quote != nil {
-			return quote
+		} else {
+			return mc.convertQuote(ctx, content)
 		}
 	}
 	evt, err := mc.Bridge.Bot.GetEvent(ctx, portal.MXID, replyTo.MXID)
@@ -110,21 +110,17 @@ func (mc *MessageConverter) getQuotedMessage(ctx context.Context, replyTo *datab
 	} else if evt.RoomID != "" && evt.RoomID != portal.MXID {
 		log.Warn().Msg("Quoted event is in a different room")
 	} else if evt.Unsigned.RedactedBecause == nil {
-		if quote := mc.convertQuote(ctx, *evt.Content.AsMessage()); quote != nil {
-			return quote
-		}
+		return mc.convertQuote(ctx, *evt.Content.AsMessage())
 	}
-	return &waE2E.Message{Conversation: proto.String("")}
+	return &waE2E.Message{Conversation: new("")}
 }
 
 func (mc *MessageConverter) convertQuote(ctx context.Context, content event.MessageEventContent) *waE2E.Message {
 	content.Mentions = &event.Mentions{}
 	content.RemoveReplyFallback()
+	content.RemovePerMessageProfileFallback()
 	text, _ := mc.parseText(ctx, &content)
-	if text == "" {
-		return nil
-	}
-	return &waE2E.Message{Conversation: proto.String(text)}
+	return &waE2E.Message{Conversation: &text}
 }
 
 func (mc *MessageConverter) ToWhatsApp(
