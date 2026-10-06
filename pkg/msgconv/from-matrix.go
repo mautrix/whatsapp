@@ -53,6 +53,7 @@ import (
 func (mc *MessageConverter) generateContextInfo(
 	ctx context.Context,
 	replyTo *database.Message,
+	relatesTo *event.RelatesTo,
 	portal *bridgev2.Portal,
 	perMessageTimer *event.BeeperDisappearingTimer,
 	roomMention bool,
@@ -63,7 +64,7 @@ func (mc *MessageConverter) generateContextInfo(
 		if err == nil {
 			contextInfo.StanzaID = proto.String(msgID.ID)
 			contextInfo.Participant = proto.String(msgID.Sender.String())
-			contextInfo.QuotedMessage = &waE2E.Message{Conversation: proto.String("")}
+			contextInfo.QuotedMessage = mc.getQuotedMessage(ctx, replyTo, relatesTo, portal)
 			contextInfo.QuotedType = waE2E.ContextInfo_EXPLICIT.Enum()
 		} else {
 			zerolog.Ctx(ctx).Warn().Err(err).
@@ -91,6 +92,41 @@ func (mc *MessageConverter) generateContextInfo(
 	return contextInfo
 }
 
+func (mc *MessageConverter) getQuotedMessage(ctx context.Context, replyTo *database.Message, relatesTo *event.RelatesTo, portal *bridgev2.Portal) *waE2E.Message {
+	log := zerolog.Ctx(ctx).With().Stringer("reply_to_event_id", replyTo.MXID).Logger()
+	if relatesTo != nil && relatesTo.InReplyTo != nil && relatesTo.GetReplyTo() == replyTo.MXID && len(relatesTo.InReplyTo.BeeperQuote) > 0 {
+		var content event.MessageEventContent
+		if err := json.Unmarshal(relatesTo.InReplyTo.BeeperQuote, &content); err != nil {
+			log.Warn().Err(err).Msg("Failed to parse quoted event content")
+		} else if quote := mc.convertQuote(ctx, content); quote != nil {
+			return quote
+		}
+	}
+	evt, err := mc.Bridge.Bot.GetEvent(ctx, portal.MXID, replyTo.MXID)
+	if err != nil {
+		log.Warn().Err(err).Msg("Failed to fetch quoted event")
+	} else if evt == nil {
+		log.Debug().Msg("Quoted event not found")
+	} else if evt.RoomID != "" && evt.RoomID != portal.MXID {
+		log.Warn().Msg("Quoted event is in a different room")
+	} else if evt.Unsigned.RedactedBecause == nil {
+		if quote := mc.convertQuote(ctx, *evt.Content.AsMessage()); quote != nil {
+			return quote
+		}
+	}
+	return &waE2E.Message{Conversation: proto.String("")}
+}
+
+func (mc *MessageConverter) convertQuote(ctx context.Context, content event.MessageEventContent) *waE2E.Message {
+	content.Mentions = &event.Mentions{}
+	content.RemoveReplyFallback()
+	text, _ := mc.parseText(ctx, &content)
+	if text == "" {
+		return nil
+	}
+	return &waE2E.Message{Conversation: proto.String(text)}
+}
+
 func (mc *MessageConverter) ToWhatsApp(
 	ctx context.Context,
 	client *whatsmeow.Client,
@@ -107,7 +143,7 @@ func (mc *MessageConverter) ToWhatsApp(
 	}
 
 	message := &waE2E.Message{}
-	contextInfo := mc.generateContextInfo(ctx, replyTo, portal, content.BeeperDisappearingTimer, content.Mentions != nil && content.Mentions.Room)
+	contextInfo := mc.generateContextInfo(ctx, replyTo, content.RelatesTo, portal, content.BeeperDisappearingTimer, content.Mentions != nil && content.Mentions.Room)
 
 	switch content.MsgType {
 	case event.MsgText, event.MsgNotice, event.MsgEmote:
