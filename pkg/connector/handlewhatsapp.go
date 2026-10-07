@@ -986,6 +986,7 @@ func (wa *WhatsAppClient) handleWAAppStateSyncError(ctx context.Context, evt *ev
 			err := wa.Client.FetchAppState(ctx, evt.Name, true, false)
 			if err != nil {
 				log.Err(err).Msg("Full app state sync failed")
+				wa.handleWAAppStateSyncError(ctx, &events.AppStateSyncError{Name: evt.Name, FullSync: true, Error: err})
 			} else {
 				log.Debug().Msg("Full app state sync succeeded")
 			}
