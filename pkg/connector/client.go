@@ -426,6 +426,14 @@ func (wa *WhatsAppClient) syncRemoteProfile(ctx context.Context, ghost *bridgev2
 		} else if ghost == nil {
 			return
 		}
+		if ghost.AvatarMXC == "" {
+			userInfo, err := wa.getUserInfo(ctx, waid.ParseUserID(ownID), "", true)
+			if err != nil {
+				zerolog.Ctx(ctx).Err(err).Msg("Failed to get own user info to sync remote profile")
+			} else {
+				ghost.UpdateInfo(ctx, userInfo)
+			}
+		}
 	}
 	if ghost.ID != ownID {
 		return
