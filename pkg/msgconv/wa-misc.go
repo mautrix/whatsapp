@@ -199,8 +199,9 @@ func (mc *MessageConverter) convertMessageHistoryNotice(ctx context.Context, inf
 	return &bridgev2.ConvertedMessagePart{
 		Type: event.EventMessage,
 		Content: &event.MessageEventContent{
-			MsgType: event.MsgNotice,
-			Body:    body,
+			MsgType:             event.MsgNotice,
+			Body:                body,
+			BeeperActionMessage: &event.BeeperActionMessage{Type: "message_history_notice"},
 		},
 	}, msg.GetContextInfo()
 }
