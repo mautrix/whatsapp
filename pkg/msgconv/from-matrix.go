@@ -193,7 +193,6 @@ func (mc *MessageConverter) ToWhatsApp(
 				DeprecatedLIDSession:   ptr.Ptr(false),
 			}
 		} else {
-			// TODO check permissions?
 			message.MessageContextInfo = &waE2E.MessageContextInfo{
 				MessageSecret: random.Bytes(32),
 			}

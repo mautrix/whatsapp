@@ -67,6 +67,10 @@ var (
 )
 
 func (wa *WhatsAppClient) HandleMatrixPollStart(ctx context.Context, msg *bridgev2.MatrixPollStart) (result *bridgev2.MatrixMessageResponse, retErr error) {
+	err := wa.checkCanSendAnnouncement(ctx, msg.Portal)
+	if err != nil {
+		return nil, err
+	}
 	waMsg, optionMap, err := wa.Main.MsgConv.PollStartToWhatsApp(ctx, msg.Content, msg.ReplyTo, msg.Portal)
 	if err != nil {
 		return nil, fmt.Errorf("failed to convert poll vote: %w", err)
@@ -96,6 +100,12 @@ func (wa *WhatsAppClient) HandleMatrixPollVote(ctx context.Context, msg *bridgev
 }
 
 func (wa *WhatsAppClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.MatrixMessage) (result *bridgev2.MatrixMessageResponse, retErr error) {
+	if msg.ThreadRoot == nil {
+		err := wa.checkCanSendAnnouncement(ctx, msg.Portal)
+		if err != nil {
+			return nil, err
+		}
+	}
 	waMsg, req, err := wa.Main.MsgConv.ToWhatsApp(ctx, wa.Client, msg.Event, msg.Content, msg.ReplyTo, msg.ThreadRoot, msg.Portal)
 	if err != nil {
 		return nil, fmt.Errorf("failed to convert message: %w", err)
@@ -104,8 +114,22 @@ func (wa *WhatsAppClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2
 	return wa.handleConvertedMatrixMessage(ctx, msg, waMsg, req)
 }
 
+func (wa *WhatsAppClient) checkCanSendAnnouncement(ctx context.Context, portal *bridgev2.Portal) error {
+	if !portal.Metadata.(*waid.PortalMetadata).CommunityAnnouncementGroup {
+		return nil
+	}
+	pls, err := wa.Main.Bridge.Matrix.GetPowerLevels(ctx, portal.MXID)
+	if err != nil {
+		return fmt.Errorf("failed to get power levels: %w", err)
+	} else if pls.GetUserLevel(wa.UserLogin.UserMXID) < adminPL {
+		return ErrNotCommunityAdmin
+	}
+	return nil
+}
+
 var ErrBroadcastSendDisabled = bridgev2.WrapErrorInStatus(errors.New("sending status messages is disabled")).WithErrorAsMessage().WithIsCertain(true).WithSendNotice(true).WithErrorReason(event.MessageStatusUnsupported)
 var ErrBroadcastReactionUnsupported = bridgev2.WrapErrorInStatus(errors.New("reacting to status messages is not currently supported")).WithErrorAsMessage().WithIsCertain(true).WithSendNotice(true).WithErrorReason(event.MessageStatusUnsupported)
+var ErrNotCommunityAdmin = bridgev2.WrapErrorInStatus(errors.New("only community admins can send announcements")).WithErrorAsMessage().WithIsCertain(true).WithSendNotice(true).WithErrorReason(event.MessageStatusNoPermission)
 
 func (wa *WhatsAppClient) handleConvertedMatrixMessage(ctx context.Context, msg *bridgev2.MatrixMessage, waMsg *waE2E.Message, req *whatsmeow.SendRequestExtra) (*bridgev2.MatrixMessageResponse, error) {
 	if req == nil {
