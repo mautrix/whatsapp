@@ -13,6 +13,7 @@ import (
 	"github.com/rs/zerolog"
 	"go.mau.fi/util/exsync"
 	"go.mau.fi/util/jsontime"
+	"go.mau.fi/util/ptr"
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
@@ -418,6 +419,7 @@ func (wl *WALogin) onLoginComplete(ctx context.Context) (*bridgev2.LoginStep, er
 		if err != nil {
 			wl.Log.Warn().Err(err).Msg("Prekey upload wait failed")
 		}
+		go c.syncGhost(c.JID.ToNonAD(), "login", ptr.Ptr(""))
 	}
 
 	return &bridgev2.LoginStep{
