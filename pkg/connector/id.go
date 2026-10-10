@@ -82,3 +82,18 @@ func (wa *WhatsAppClient) maybeConvertJIDToLID(ctx context.Context, jid types.JI
 	}
 	return jid
 }
+
+func (wa *WhatsAppClient) getRealSender(chat, sender types.JID, fromMe bool) types.JID {
+	if sender.IsEmpty() {
+		if fromMe {
+			if chat.Server == types.HiddenUserServer {
+				sender = wa.GetLID().ToNonAD()
+			} else {
+				sender = wa.JID.ToNonAD()
+			}
+		} else if chat.Server == types.DefaultUserServer || chat.Server == types.HiddenUserServer || chat.Server == types.BotServer {
+			sender = chat.ToNonAD()
+		}
+	}
+	return sender
+}
