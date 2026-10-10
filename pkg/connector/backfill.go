@@ -706,9 +706,16 @@ func (wa *WhatsAppClient) fetchMessagesFromPhone(ctx context.Context, portalJID 
 	if params.AnchorMessage == nil {
 		return nil, fmt.Errorf("anchor message is required to fetch messages from phone")
 	}
-	parsed, err := waid.ParseMessageID(params.AnchorMessage.ID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse anchor message ID: %w", err)
+	anchor := params.AnchorMessage
+	parsed, err := waid.ParseMessageID(anchor.ID)
+	for err != nil {
+		anchor, err = wa.Main.Bridge.DB.Message.GetFirstNonFakePartAfterTime(ctx, params.Portal.PortalKey, anchor.Timestamp)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get next anchor message: %w", err)
+		} else if anchor == nil {
+			return &bridgev2.FetchMessagesResponse{}, nil
+		}
+		parsed, err = waid.ParseMessageID(anchor.ID)
 	}
 
 	msgID := wa.Client.GenerateMessageID()
@@ -720,7 +727,7 @@ func (wa *WhatsAppClient) fetchMessagesFromPhone(ctx context.Context, portalJID 
 			IsGroup:  parsed.Chat.Server == types.GroupServer,
 		},
 		ID:        parsed.ID,
-		Timestamp: params.AnchorMessage.Timestamp,
+		Timestamp: anchor.Timestamp,
 	}, 50)
 	zerolog.Ctx(ctx).Debug().
 		Str("request_msg_id", msgID).
