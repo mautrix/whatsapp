@@ -721,7 +721,15 @@ func (wa *WhatsAppClient) handleWADeleteChat(ctx context.Context, evt *events.De
 
 func (wa *WhatsAppClient) handleWADeleteForMe(ctx context.Context, evt *events.DeleteForMe) bool {
 	chatJID := wa.maybeConvertJIDToLID(ctx, evt.ChatJID)
-	senderJID := wa.maybeConvertJIDToLID(ctx, evt.SenderJID)
+	var senderJID types.JID
+	if evt.IsFromMe {
+		senderJID = wa.GetLID()
+	} else if !evt.SenderJID.IsEmpty() {
+		senderJID = wa.maybeConvertJIDToLID(ctx, evt.SenderJID)
+	} else if chatJID.Server == types.HiddenUserServer || chatJID.Server == types.DefaultUserServer {
+		// The sender is only included in groups, in DMs it's always the other user
+		senderJID = chatJID
+	}
 	return wa.UserLogin.QueueRemoteEvent(&simplevent.MessageRemove{
 		EventMeta: simplevent.EventMeta{
 			Type:      bridgev2.RemoteEventMessageRemove,
