@@ -721,7 +721,7 @@ func (wa *WhatsAppClient) handleWADeleteChat(ctx context.Context, evt *events.De
 
 func (wa *WhatsAppClient) handleWADeleteForMe(ctx context.Context, evt *events.DeleteForMe) bool {
 	chatJID := wa.maybeConvertJIDToLID(ctx, evt.ChatJID)
-	senderJID := wa.maybeConvertJIDToLID(ctx, evt.SenderJID)
+	senderJID := wa.getRealSender(chatJID, wa.maybeConvertJIDToLID(ctx, evt.SenderJID), evt.IsFromMe)
 	return wa.UserLogin.QueueRemoteEvent(&simplevent.MessageRemove{
 		EventMeta: simplevent.EventMeta{
 			Type:      bridgev2.RemoteEventMessageRemove,

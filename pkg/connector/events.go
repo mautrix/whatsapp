@@ -469,19 +469,7 @@ func (evt *WAMediaRetry) AddLogContext(c zerolog.Context) zerolog.Context {
 }
 
 func (evt *WAMediaRetry) getRealSender() types.JID {
-	sender := evt.SenderID
-	if sender.IsEmpty() {
-		if evt.FromMe {
-			if evt.ChatID.Server == types.HiddenUserServer {
-				sender = evt.wa.GetLID().ToNonAD()
-			} else {
-				sender = evt.wa.JID.ToNonAD()
-			}
-		} else if evt.ChatID.Server == types.DefaultUserServer || evt.ChatID.Server == types.HiddenUserServer || evt.ChatID.Server == types.BotServer {
-			sender = evt.ChatID.ToNonAD()
-		}
-	}
-	return sender
+	return evt.wa.getRealSender(evt.ChatID, evt.SenderID, evt.FromMe)
 }
 
 func (evt *WAMediaRetry) GetSender() bridgev2.EventSender {
