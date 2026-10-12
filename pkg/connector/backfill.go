@@ -708,14 +708,17 @@ func (wa *WhatsAppClient) fetchMessagesFromPhone(ctx context.Context, portalJID 
 	}
 	anchor := params.AnchorMessage
 	parsed, err := waid.ParseMessageID(anchor.ID)
-	for err != nil {
-		anchor, err = wa.Main.Bridge.DB.Message.GetFirstNonFakePartAfterTime(ctx, params.Portal.PortalKey, anchor.Timestamp)
+	if err != nil {
+		anchor, err = wa.Main.Bridge.DB.Message.GetFirstPortalMessageExcludingIDPattern(ctx, params.Portal.PortalKey, "fake:%")
 		if err != nil {
-			return nil, fmt.Errorf("failed to get next anchor message: %w", err)
+			return nil, fmt.Errorf("failed to get first non-fake portal message: %w", err)
 		} else if anchor == nil {
 			return &bridgev2.FetchMessagesResponse{}, nil
 		}
 		parsed, err = waid.ParseMessageID(anchor.ID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse anchor message ID: %w", err)
+		}
 	}
 
 	msgID := wa.Client.GenerateMessageID()
