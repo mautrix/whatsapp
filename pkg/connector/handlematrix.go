@@ -439,6 +439,12 @@ func (wa *WhatsAppClient) HandleMatrixMembership(ctx context.Context, msg *bridg
 		default:
 			return nil, nil
 		}
+	} else if portalJID.Server == types.NewsletterServer {
+		if msg.Type != bridgev2.Leave {
+			return nil, fmt.Errorf("cannot change channel members")
+		}
+		defer wa.mcTrack(msg, time.Now(), &retErr)
+		return nil, wa.Client.UnfollowNewsletter(ctx, portalJID)
 	}
 
 	changes := make([]types.JID, 1)
@@ -690,7 +696,10 @@ func (wa *WhatsAppClient) HandleMatrixDeleteChat(ctx context.Context, msg *bridg
 	if err != nil {
 		return err
 	}
-	if chatJID.Server == types.GroupServer {
+	if chatJID.Server == types.NewsletterServer {
+		defer wa.mcTrack(msg, time.Now(), &retErr)
+		return wa.Client.UnfollowNewsletter(ctx, chatJID)
+	} else if chatJID.Server == types.GroupServer {
 		memberInfo, err := wa.Main.Bridge.Matrix.GetMemberInfo(ctx, msg.Portal.MXID, wa.UserLogin.UserMXID)
 		if err != nil {
 			return fmt.Errorf("failed to get own member info: %w", err)
