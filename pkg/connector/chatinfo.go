@@ -10,6 +10,7 @@ import (
 	"go.mau.fi/util/jsontime"
 	"go.mau.fi/util/ptr"
 	"go.mau.fi/whatsmeow"
+	"go.mau.fi/whatsmeow/appstate"
 	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
 	"maunium.net/go/mautrix/bridgev2"
@@ -116,9 +117,16 @@ func (wa *WhatsAppClient) applyChatSettings(ctx context.Context, chatID types.JI
 			return
 		}
 	}
-	info.UserLocal = &bridgev2.UserLocalPortalInfo{
-		MutedUntil: ptr.Ptr(chat.MutedUntil),
+	wa.appStateRecoveryLock.Lock()
+	_, muteStateBroken := wa.UserLogin.Metadata.(*waid.UserLoginMetadata).AppStateRecoveryAttempted[appstate.WAPatchRegularHigh]
+	wa.appStateRecoveryLock.Unlock()
+	userLocal := &bridgev2.UserLocalPortalInfo{}
+	if !muteStateBroken {
+		userLocal.MutedUntil = ptr.Ptr(chat.MutedUntil)
+	} else if info.UserLocal != nil {
+		userLocal.MutedUntil = info.UserLocal.MutedUntil
 	}
+	info.UserLocal = userLocal
 	if chat.Pinned {
 		info.UserLocal.Tag = ptr.Ptr(wa.Main.Config.PinnedTag)
 	} else if chat.Archived {
