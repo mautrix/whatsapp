@@ -106,6 +106,7 @@ func (wa *WhatsAppClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2
 
 var ErrBroadcastSendDisabled = bridgev2.WrapErrorInStatus(errors.New("sending status messages is disabled")).WithErrorAsMessage().WithIsCertain(true).WithSendNotice(true).WithErrorReason(event.MessageStatusUnsupported)
 var ErrBroadcastReactionUnsupported = bridgev2.WrapErrorInStatus(errors.New("reacting to status messages is not currently supported")).WithErrorAsMessage().WithIsCertain(true).WithSendNotice(true).WithErrorReason(event.MessageStatusUnsupported)
+var ErrNotCommunityAdmin = bridgev2.WrapErrorInStatus(errors.New("only community admins can send announcements")).WithErrorAsMessage().WithIsCertain(true).WithSendNotice(true).WithErrorReason(event.MessageStatusNoPermission)
 
 func (wa *WhatsAppClient) handleConvertedMatrixMessage(ctx context.Context, msg *bridgev2.MatrixMessage, waMsg *waE2E.Message, req *whatsmeow.SendRequestExtra) (*bridgev2.MatrixMessageResponse, error) {
 	if req == nil {
@@ -116,6 +117,7 @@ func (wa *WhatsAppClient) handleConvertedMatrixMessage(ctx context.Context, msg 
 	} else {
 		req.ID = wa.Client.GenerateMessageID()
 	}
+	req.CheckPermissions = true
 
 	chatJID, err := waid.ParsePortalID(msg.Portal.ID)
 	if err != nil {
@@ -134,6 +136,9 @@ func (wa *WhatsAppClient) handleConvertedMatrixMessage(ctx context.Context, msg 
 	zerolog.Ctx(ctx).Trace().Any("payload", waMsg).Msg("Outgoing message payload")
 	resp, err := wa.Client.SendMessage(ctx, chatJID, waMsg, *req)
 	if err != nil {
+		if errors.Is(err, whatsmeow.ErrNoPermissionInGroup) {
+			return nil, ErrNotCommunityAdmin
+		}
 		return nil, err
 	}
 	var pickedMessageID networkid.MessageID

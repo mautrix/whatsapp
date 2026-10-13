@@ -276,6 +276,8 @@ func setTopicID(id, topic string) bridgev2.ExtraUpdater[*bridgev2.Portal] {
 
 func (wa *WhatsAppClient) wrapGroupInfo(ctx context.Context, info *types.GroupInfo) *bridgev2.ChatInfo {
 	sendEventPL := defaultPL
+	// Community announcement groups allow non-admins to send threaded replies.
+	// Power levels can't represent that, but the power level is checked separately when handling messages.
 	if info.IsAnnounce && !info.IsDefaultSubGroup {
 		sendEventPL = adminPL
 	}
@@ -306,6 +308,7 @@ func (wa *WhatsAppClient) wrapGroupInfo(ctx context.Context, info *types.GroupIn
 					event.StateRoomName:                metaChangePL,
 					event.StateRoomAvatar:              metaChangePL,
 					event.StateTopic:                   metaChangePL,
+					event.EventEncrypted:               defaultPL, // Need to always allow encrypted events for poll responses
 					event.EventReaction:                defaultPL,
 					event.EventRedaction:               defaultPL,
 					event.EventUnstablePollResponse:    defaultPL,
@@ -572,12 +575,13 @@ func (wa *WhatsAppClient) wrapNewsletterInfo(ctx context.Context, info *types.Ne
 				StateDefault:  ptr.Ptr(nobodyPL),
 				Ban:           ptr.Ptr(nobodyPL),
 				Events: map[event.Type]int{
-					event.StateRoomName:             adminPL,
-					event.StateRoomAvatar:           adminPL,
-					event.StateTopic:                adminPL,
-					event.EventReaction:             defaultPL,
-					event.EventRedaction:            defaultPL,
-					event.EventUnstablePollResponse: defaultPL,
+					event.StateRoomName:   adminPL,
+					event.StateRoomAvatar: adminPL,
+					event.StateTopic:      adminPL,
+					event.EventReaction:   defaultPL,
+					event.EventRedaction:  defaultPL,
+					// TODO support poll votes in channels
+					//event.EventUnstablePollResponse: defaultPL,
 				},
 			},
 		},

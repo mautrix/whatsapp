@@ -539,6 +539,7 @@ func (evt *WAMediaRetry) ConvertEdit(ctx context.Context, portal *bridgev2.Porta
 			log.Debug().Msg("Got error response in media retry notification, but response also contains a new download URL - trying to download")
 		}
 	}
+	log.Trace().Any("retry_content", retryData).Msg("Decrypted successful media retry response")
 	err = evt.wa.mediaRetryLock.Acquire(ctx, 1)
 	if err != nil {
 		return nil, fmt.Errorf("failed to acquire media retry lock: %w", err)
