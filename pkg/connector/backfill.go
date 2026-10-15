@@ -147,6 +147,7 @@ func (wa *WhatsAppClient) downloadAndSaveWAHistorySyncData(ctx context.Context, 
 		return
 	}
 	if blob.GetSyncType() == waHistorySync.HistorySync_ON_DEMAND {
+		wa.finishOnDemandHistorySyncRequest(evt.GetPeerDataRequestSessionID())
 		wa.handleOnDemandHistorySync(ctx, blob)
 		if err = wa.Main.DB.HSNotif.Delete(ctx, rowid); err != nil {
 			log.Err(err).Msg("Failed to delete queued on-demand history sync notification")
@@ -722,6 +723,12 @@ func (wa *WhatsAppClient) fetchMessagesFromPhone(ctx context.Context, portalJID 
 	}
 
 	msgID := wa.Client.GenerateMessageID()
+	if !wa.startOnDemandHistorySyncRequest(ctx, portalJID, msgID) {
+		return &bridgev2.FetchMessagesResponse{
+			HasMore: true,
+			Pending: true,
+		}, nil
+	}
 	reqData := wa.Client.BuildHistorySyncRequest(&types.MessageInfo{
 		MessageSource: types.MessageSource{
 			Chat:     portalJID,
@@ -743,12 +750,86 @@ func (wa *WhatsAppClient) fetchMessagesFromPhone(ctx context.Context, portalJID 
 		Peer: true,
 	})
 	if err != nil {
+		wa.onDemandHistorySyncLock.Lock()
+		delete(wa.onDemandHistorySyncRequests, portalJID)
+		wa.onDemandHistorySyncLock.Unlock()
 		return nil, fmt.Errorf("failed to send history sync request: %w", err)
 	}
 	return &bridgev2.FetchMessagesResponse{
 		HasMore: true,
 		Pending: true,
 	}, nil
+}
+
+const (
+	onDemandHistorySyncTimeout      = 10 * time.Second
+	onDemandHistorySyncFailureLimit = 10
+	onDemandHistorySyncCooldown     = 2 * time.Hour
+)
+
+type onDemandHistorySyncRequest struct {
+	ID     types.MessageID
+	SentAt time.Time
+}
+
+func (wa *WhatsAppClient) startOnDemandHistorySyncRequest(ctx context.Context, portalJID types.JID, msgID types.MessageID) bool {
+	log := zerolog.Ctx(ctx)
+	wa.onDemandHistorySyncLock.Lock()
+	defer wa.onDemandHistorySyncLock.Unlock()
+	now := time.Now()
+	for chatJID, req := range wa.onDemandHistorySyncRequests {
+		if now.Sub(req.SentAt) < onDemandHistorySyncTimeout {
+			continue
+		}
+		delete(wa.onDemandHistorySyncRequests, chatJID)
+		if now.Sub(wa.onDemandHistorySyncFirstFailure) >= onDemandHistorySyncCooldown {
+			wa.onDemandHistorySyncFirstFailure = now
+			wa.onDemandHistorySyncFailures = 0
+		}
+		wa.onDemandHistorySyncFailures++
+		log.Debug().
+			Str("request_msg_id", req.ID).
+			Stringer("portal_jid", chatJID).
+			Time("sent_at", req.SentAt).
+			Int("failure_count", wa.onDemandHistorySyncFailures).
+			Msg("History sync request timed out")
+		if wa.onDemandHistorySyncFailures >= onDemandHistorySyncFailureLimit {
+			wa.onDemandHistorySyncDisabledUntil = now.Add(onDemandHistorySyncCooldown)
+			log.Warn().
+				Int("failure_count", wa.onDemandHistorySyncFailures).
+				Time("disabled_until", wa.onDemandHistorySyncDisabledUntil).
+				Msg("Too many history sync requests timed out, pausing requests to phone")
+		}
+	}
+	if now.Before(wa.onDemandHistorySyncDisabledUntil) {
+		log.Debug().
+			Stringer("portal_jid", portalJID).
+			Time("disabled_until", wa.onDemandHistorySyncDisabledUntil).
+			Msg("Not sending history sync request, requests to phone are paused")
+		return false
+	} else if req, inFlight := wa.onDemandHistorySyncRequests[portalJID]; inFlight {
+		log.Debug().
+			Str("in_flight_request_msg_id", req.ID).
+			Stringer("portal_jid", portalJID).
+			Time("sent_at", req.SentAt).
+			Msg("Not sending history sync request, previous request is still in flight")
+		return false
+	}
+	wa.onDemandHistorySyncRequests[portalJID] = onDemandHistorySyncRequest{ID: msgID, SentAt: now}
+	return true
+}
+
+func (wa *WhatsAppClient) finishOnDemandHistorySyncRequest(sessionID string) {
+	wa.onDemandHistorySyncLock.Lock()
+	defer wa.onDemandHistorySyncLock.Unlock()
+	for chatJID, req := range wa.onDemandHistorySyncRequests {
+		if req.ID == sessionID {
+			delete(wa.onDemandHistorySyncRequests, chatJID)
+		}
+	}
+	wa.onDemandHistorySyncFailures = 0
+	wa.onDemandHistorySyncFirstFailure = time.Time{}
+	wa.onDemandHistorySyncDisabledUntil = time.Time{}
 }
 
 func (wa *WhatsAppClient) handleOnDemandHistorySync(ctx context.Context, blob *waHistorySync.HistorySync) {
