@@ -88,6 +88,7 @@ func (wa *WhatsAppClient) mediaRequestLoop(ctx context.Context) {
 		return
 	case <-time.After(startIn):
 	}
+	wa.sendMediaRequests(ctx)
 	ticker := time.NewTicker(24 * time.Hour)
 	defer ticker.Stop()
 	for {
