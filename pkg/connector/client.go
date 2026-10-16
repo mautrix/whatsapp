@@ -135,11 +135,8 @@ type WhatsAppClient struct {
 	museProfileLock        sync.Mutex
 	lastMuseProfileRequest time.Time
 
-	onDemandHistorySyncLock          sync.Mutex
-	onDemandHistorySyncRequests      map[types.JID]onDemandHistorySyncRequest
-	onDemandHistorySyncFailures      int
-	onDemandHistorySyncFirstFailure  time.Time
-	onDemandHistorySyncDisabledUntil time.Time
+	onDemandHistorySyncLock     sync.Mutex
+	onDemandHistorySyncRequests map[types.JID]onDemandHistorySyncRequest
 }
 
 var (
