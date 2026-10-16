@@ -142,7 +142,10 @@ func getMessageType(waMsg *waE2E.Message) string {
 	case waMsg.StickerPackMessage != nil:
 		return "sticker pack"
 	case waMsg.AlbumMessage != nil:
-		return "album" // or maybe these should be ignored?
+		if waMsg.GetAlbumMessage().GetContextInfo().GetStanzaID() == "" {
+			return "ignore"
+		}
+		return "album"
 	case waMsg.SendPaymentMessage != nil, waMsg.RequestPaymentMessage != nil,
 		waMsg.DeclinePaymentRequestMessage != nil, waMsg.CancelPaymentRequestMessage != nil,
 		waMsg.PaymentInviteMessage != nil:
