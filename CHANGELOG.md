@@ -1,3 +1,28 @@
+# v26.10
+
+* Added support for new rich response messages used by the Muse AI bot.
+* Added support for bridging custom profile set for Muse.
+* Added automatic one-time resync of keys needed to decrypt Muse messages.
+* Added support for blocking and unblocking users on WhatsApp.
+* Added support for contact array messages (thanks to [@voska] in [#961]).
+* Added partial support for filling quoted message when sending replies to
+  WhatsApp.
+* Changed undecryptable message resends to only bridge as edits and never as new
+  messages, to avoid races if the message was deleted before the resend.
+* Changed login to wait for OTKs to be successfully uploaded, as the login will
+  fail if the bridge is stopped before that point.
+* Changed chat info syncing to not bridge mute status if app state sync is
+  failing.
+* Changed power levels to allow poll votes in read-only groups even if the room
+  is encrypted.
+* Fixed backfilled media retries not getting sent if configured for local time.
+* Fixed "delete for me" from WhatsApp not being bridged correctly in DMs.
+* Fixed very long WhatsApp messages not being bridged.
+* Fixed document message caption edits not being handled correctly.
+
+[@voska]: https://github.com/voska
+[#961]: https://github.com/mautrix/whatsapp/pull/961
+
 # v26.09
 
 * Bumped minimum Go version to 1.26.
