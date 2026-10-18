@@ -84,10 +84,14 @@ func MakeMessageID(chat, sender types.JID, id types.MessageID) networkid.Message
 }
 
 func MakeMessageIDWithAltSender(chat, sender, altSender types.JID, id types.MessageID) networkid.MessageID {
+	return MakeMessageID(chat, pickMessageIDSender(chat, sender, altSender), id)
+}
+
+func pickMessageIDSender(chat, sender, altSender types.JID) types.JID {
 	if chat.Server == types.HiddenUserServer && sender.Server == types.DefaultUserServer && altSender.Server == types.HiddenUserServer {
-		sender = altSender
+		return altSender
 	}
-	return MakeMessageID(chat, sender, id)
+	return sender
 }
 
 func MakeFakeMessageID(chat, sender types.JID, data string) networkid.MessageID {
