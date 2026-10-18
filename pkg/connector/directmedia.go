@@ -220,11 +220,7 @@ func (wa *WhatsAppConnector) downloadMessageDirectMedia(ctx context.Context, par
 }
 
 func (wa *WhatsAppConnector) getDirectMediaMessageWithLIDSender(ctx context.Context, parsedID *waid.ParsedMediaID) (*database.Message, error) {
-	ul := wa.Bridge.GetCachedUserLoginByID(parsedID.UserLogin)
-	if ul == nil {
-		return nil, nil
-	}
-	lid, err := ul.Client.(*WhatsAppClient).GetStore().LIDs.GetLIDForPN(ctx, parsedID.Message.Sender)
+	lid, err := wa.DeviceStore.LIDMap.GetLIDForPN(ctx, parsedID.Message.Sender)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get LID for sender: %w", err)
 	} else if lid.IsEmpty() {
