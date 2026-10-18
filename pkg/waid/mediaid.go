@@ -39,7 +39,7 @@ const (
 
 func MakeMediaID(messageInfo *types.MessageInfo, idOverride types.MessageID, receiver networkid.UserLoginID, version []byte) networkid.MediaID {
 	compactChat := compactJID(messageInfo.Chat.ToNonAD())
-	compactSender := compactJID(messageInfo.Sender.ToNonAD())
+	compactSender := compactJID(pickMessageIDSender(messageInfo.Chat, messageInfo.Sender, messageInfo.SenderAlt).ToNonAD())
 	receiverID := compactJID(ParseUserLoginID(receiver, 0))
 	var compactID []byte
 	if idOverride != "" {
