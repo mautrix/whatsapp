@@ -714,19 +714,16 @@ func (wa *WhatsAppClient) handleWADeleteChat(ctx context.Context, evt *events.De
 			PortalKey: wa.makeWAPortalKey(chatJID),
 			Timestamp: evt.Timestamp,
 			PreHandleWithResultFunc: func(ctx context.Context, portal *bridgev2.Portal) *bridgev2.EventHandlingResult {
-				messageRange := evt.Action.GetMessageRange()
-				deletedUpTo := max(messageRange.GetLastMessageTimestamp(), messageRange.GetLastSystemMessageTimestamp())
-				if deletedUpTo == 0 {
+				if evt.Timestamp.UnixMilli() == 0 {
 					return nil
 				}
 				lastMessage, err := wa.Main.Bridge.DB.Message.GetLastNInPortal(ctx, portal.PortalKey, 1)
 				if err != nil {
-					zerolog.Ctx(ctx).Err(err).Msg("Failed to get last message to check chat delete range")
-				} else if len(lastMessage) == 1 && lastMessage[0].Timestamp.Unix() > deletedUpTo {
+					zerolog.Ctx(ctx).Err(err).Msg("Failed to get last message to check if chat delete is outdated")
+				} else if len(lastMessage) == 1 && lastMessage[0].Timestamp.After(evt.Timestamp) {
 					zerolog.Ctx(ctx).Debug().
 						Time("last_message_ts", lastMessage[0].Timestamp).
-						Time("deleted_up_to", time.Unix(deletedUpTo, 0)).
-						Msg("Ignoring chat delete that doesn't cover the latest message")
+						Msg("Ignoring chat delete that is older than the last message")
 					return ptr.Ptr(bridgev2.EventHandlingResultIgnored)
 				}
 				return nil
