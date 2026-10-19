@@ -88,21 +88,22 @@ func wrapWhatsAppError(err error) error {
 }
 
 // wrapWhatsAppRespError turns an error from a whatsmeow request made during login or provisioning into
-// an HTTP error, keeping the original error in the chain.
+// an HTTP error, keeping the original error in the chain. Clients retry 429 and 502-504 automatically,
+// which isn't wanted for provisioning requests, so those statuses aren't used.
 func wrapWhatsAppRespError(err error) error {
 	var mapped bridgev2.RespError
 	var disconnectErr *whatsmeow.DisconnectedError
 	switch {
 	case errors.Is(err, whatsmeow.ErrIQRateOverLimit):
-		mapped = bridgev2.RespError(mautrix.MLimitExceeded.WithMessage("Rate limited by WhatsApp. Try again later."))
+		mapped = bridgev2.RespError(mautrix.MLimitExceeded.WithMessage("Rate limited by WhatsApp. Try again later.").WithStatus(http.StatusBadRequest))
 	case errors.Is(err, whatsmeow.ErrNotConnected), errors.Is(err, whatsmeow.ErrClientIsNil), errors.As(err, &disconnectErr):
-		mapped = bridgev2.RespError(mautrix.MUnknown.WithMessage("Not connected to WhatsApp").WithStatus(http.StatusServiceUnavailable))
+		mapped = bridgev2.RespError(mautrix.MUnknown.WithMessage("Not connected to WhatsApp"))
 	case errors.Is(err, whatsmeow.ErrIQTimedOut), errors.Is(err, context.DeadlineExceeded):
-		mapped = bridgev2.RespError(mautrix.MUnknown.WithMessage("WhatsApp didn't respond in time").WithStatus(http.StatusGatewayTimeout))
+		mapped = bridgev2.RespError(mautrix.MUnknown.WithMessage("WhatsApp didn't respond in time"))
 	case errors.Is(err, whatsmeow.ErrIQForbidden), errors.Is(err, whatsmeow.ErrIQNotAuthorized):
 		mapped = bridgev2.RespError(mautrix.MForbidden.WithMessage("WhatsApp denied the request"))
 	default:
-		mapped = bridgev2.RespError(mautrix.MUnknown.WithMessage("Request to WhatsApp failed").WithStatus(http.StatusBadGateway))
+		mapped = bridgev2.RespError(mautrix.MUnknown.WithMessage("Request to WhatsApp failed"))
 	}
 	return fmt.Errorf("%w: %w", mapped, err)
 }
