@@ -259,6 +259,7 @@ func (wa *WhatsAppClient) handleWAEvent(rawEvt any) (success bool) {
 		wa.UserLogin.BridgeState.Send(status.BridgeState{
 			StateEvent: status.StateBadCredentials,
 			Error:      WATemporaryBan,
+			UserAction: status.UserActionOpenNative,
 			Message:    evt.String(),
 		})
 		wa.notifyOfflineSyncWaiter(fmt.Errorf("temporary ban: %s", evt.String()))

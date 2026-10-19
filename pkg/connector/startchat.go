@@ -88,7 +88,7 @@ func (wa *WhatsAppClient) validateIdentifer(ctx context.Context, number string) 
 	} else if entry, ok := isOnWhatsappCache.Get(number); ok && time.Since(entry.ts) < 4*time.Hour {
 		return entry.jid, nil
 	} else if resp, err := wa.Client.IsOnWhatsApp(ctx, []string{number}); err != nil {
-		return types.EmptyJID, fmt.Errorf("failed to check if number is on WhatsApp: %w", err)
+		return types.EmptyJID, wrapWhatsAppRespError(fmt.Errorf("failed to check if number is on WhatsApp: %w", err))
 	} else if len(resp) == 0 {
 		return types.EmptyJID, fmt.Errorf("the server did not respond to the query")
 	} else if !resp[0].IsIn {
@@ -128,7 +128,7 @@ func (wa *WhatsAppClient) startChatPNToLID(ctx context.Context, jid types.JID) (
 		} else if lid.IsEmpty() {
 			resp, err := wa.Client.GetUserInfo(ctx, []types.JID{jid})
 			if err != nil {
-				return jid, fmt.Errorf("failed to get user info for phone number: %w", err)
+				return jid, wrapWhatsAppRespError(fmt.Errorf("failed to get user info for phone number: %w", err))
 			} else if info, ok := resp[jid]; !ok {
 				return jid, fmt.Errorf("server didn't return user info for phone number")
 			} else if info.LID.IsEmpty() {
@@ -292,7 +292,7 @@ func (wa *WhatsAppClient) CreateGroup(ctx context.Context, params *bridgev2.Grou
 	}
 	resp, err := wa.Client.CreateGroup(ctx, req)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create group: %w", err)
+		return nil, wrapWhatsAppRespError(fmt.Errorf("failed to create group: %w", err))
 	}
 	failedParticipants := make(map[networkid.UserID]*bridgev2.CreateChatFailedParticipant)
 	filteredParticipants := resp.Participants[:0]

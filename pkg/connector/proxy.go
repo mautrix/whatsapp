@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"time"
 
 	"github.com/rs/zerolog"
 	"go.mau.fi/whatsmeow"
@@ -14,11 +15,13 @@ import (
 
 // TODO move proxy stuff to mautrix-go
 
+var getProxyClient = &http.Client{Timeout: 30 * time.Second}
+
 type respGetProxy struct {
 	ProxyURL string `json:"proxy_url"`
 }
 
-func (wa *WhatsAppConnector) getProxy(reason string) (string, error) {
+func (wa *WhatsAppConnector) getProxy(ctx context.Context, reason string) (string, error) {
 	if wa.Config.GetProxyURL == "" {
 		return wa.Config.Proxy, nil
 	}
@@ -29,15 +32,17 @@ func (wa *WhatsAppConnector) getProxy(reason string) (string, error) {
 	q := parsed.Query()
 	q.Set("reason", reason)
 	parsed.RawQuery = q.Encode()
-	req, err := http.NewRequest(http.MethodGet, parsed.String(), nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, parsed.String(), nil)
 	if err != nil {
 		return "", fmt.Errorf("failed to prepare request: %w", err)
 	}
 	req.Header.Set("User-Agent", mautrix.DefaultUserAgent)
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := getProxyClient.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("failed to send request: %w", err)
-	} else if resp.StatusCode >= 300 || resp.StatusCode < 200 {
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 300 || resp.StatusCode < 200 {
 		return "", fmt.Errorf("unexpected status code %d", resp.StatusCode)
 	}
 	var respData respGetProxy
@@ -56,7 +61,7 @@ func (wa *WhatsAppConnector) updateProxy(ctx context.Context, client *whatsmeow.
 	if isLogin {
 		reason = "login"
 	}
-	if proxy, err := wa.getProxy(reason); err != nil {
+	if proxy, err := wa.getProxy(ctx, reason); err != nil {
 		return fmt.Errorf("failed to get proxy address: %w", err)
 	} else if proxy == "" {
 		return nil
