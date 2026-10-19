@@ -27,12 +27,15 @@ import (
 	"image/color"
 	"image/jpeg"
 	"net/http"
+	"os"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/rs/zerolog"
+	"go.mau.fi/util/exmime"
 	"go.mau.fi/util/ffmpeg"
 	"go.mau.fi/util/ptr"
 	"go.mau.fi/util/random"
@@ -515,6 +518,44 @@ func (mc *MessageConverter) convertToWebP(img []byte) ([]byte, int, error) {
 	return webpBuffer.Bytes(), size, nil
 }
 
+func convertUnsupportedVideoCodec(ctx context.Context, data []byte, mime string) ([]byte, string, error) {
+	if !ffmpeg.Supported() || !ffmpeg.ProbeSupported() {
+		return data, mime, nil
+	}
+	tempdir, err := os.MkdirTemp("", "mautrix_whatsapp_video_*")
+	if err != nil {
+		return nil, mime, err
+	}
+	defer os.RemoveAll(tempdir)
+	inputPath := filepath.Join(tempdir, "input"+exmime.ExtensionFromMimetype(mime))
+	err = os.WriteFile(inputPath, data, 0600)
+	if err != nil {
+		return nil, mime, err
+	}
+	probe, err := ffmpeg.Probe(ctx, inputPath)
+	if err != nil {
+		zerolog.Ctx(ctx).Warn().Err(err).Msg("Failed to probe video, sending it as-is")
+		return data, mime, nil
+	}
+	supported := !slices.ContainsFunc(probe.Streams, func(stream *ffmpeg.Stream) bool {
+		return (stream.CodecType == "video" && stream.Disposition.AttachedPic == 0 && stream.CodecName != "h264") ||
+			(stream.CodecType == "audio" && stream.CodecName != "aac")
+	})
+	if supported {
+		return data, mime, nil
+	}
+	outputPath := filepath.Join(tempdir, "output.mp4")
+	err = ffmpeg.ConvertPathWithDestination(ctx, inputPath, outputPath, nil, []string{
+		"-pix_fmt", "yuv420p", "-c:v", "h264", "-b:v", "2M", "-c:a", "aac", "-movflags", "+faststart",
+		"-filter:v", "crop='floor(in_w/2)*2:floor(in_h/2)*2'",
+	}, false)
+	if err != nil {
+		return nil, mime, err
+	}
+	data, err = os.ReadFile(outputPath)
+	return data, "video/mp4", err
+}
+
 func (mc *MessageConverter) getOriginalBridgedSticker(ctx context.Context, info *event.BridgedSticker) (*types.StickerPackItem, error) {
 	if info == nil || info.Network != StickerSourceID || !strings.HasPrefix(info.PackURL, StickerPackURLPrefix) || info.ID == "" {
 		return nil, nil
@@ -609,7 +650,10 @@ func (mc *MessageConverter) reuploadFileToWhatsApp(
 	case event.MsgVideo:
 		switch mime {
 		case "video/mp4", "video/3gpp":
-			// allowed
+			data, mime, err = convertUnsupportedVideoCodec(ctx, data, mime)
+			if err != nil {
+				return nil, nil, mime, fmt.Errorf("%w (%s to h264): %w", bridgev2.ErrMediaConvertFailed, mime, err)
+			}
 		case "video/webm", "video/quicktime":
 			sourceFormat := "webm"
 			if mime == "video/quicktime" {
