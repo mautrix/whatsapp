@@ -52,14 +52,12 @@ func wrapWhatsAppError(err error) error {
 	case errors.Is(err, whatsmeow.ErrNotConnected), errors.Is(err, whatsmeow.ErrClientIsNil):
 		return bridgev2.WrapErrorInStatus(err).
 			WithMessage("not connected to WhatsApp").
-			WithErrorReason(event.MessageStatusNetworkError).
 			WithIsCertain(true).
 			WithSendNotice(true)
 	case errors.Is(err, whatsmeow.ErrMessageTimedOut), errors.Is(err, whatsmeow.ErrIQTimedOut),
 		errors.Is(err, context.DeadlineExceeded), errors.As(err, &disconnectErr):
 		return bridgev2.WrapErrorInStatus(err).
 			WithMessage("no response from WhatsApp").
-			WithErrorReason(event.MessageStatusNetworkError).
 			WithIsCertain(false).
 			WithSendNotice(true)
 	case errors.Is(err, whatsmeow.ErrIQRateOverLimit):
