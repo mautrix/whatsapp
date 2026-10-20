@@ -320,6 +320,7 @@ func (mc *MessageConverter) ToMatrix(
 		}
 		cm.ThreadRoot = ptr.Ptr(waid.MakeMessageID(chat, pcp, commentTarget.GetID()))
 	}
+	mc.cutOffLongMessage(part.Content)
 
 	return cm
 }
