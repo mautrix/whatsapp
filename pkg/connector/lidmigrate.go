@@ -278,7 +278,7 @@ func (wa *WhatsAppConnector) removeRejoinedPNGhosts(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to get LID portals: %w", err)
 	}
-	var removed int
+	var removed, failed int
 	for _, key := range lidPortalKeys {
 		lid, err := waid.ParsePortalID(key.ID)
 		if err != nil || lid.Server != types.HiddenUserServer {
@@ -300,6 +300,7 @@ func (wa *WhatsAppConnector) removeRejoinedPNGhosts(ctx context.Context) error {
 		member, err := wa.Bridge.Matrix.GetMemberInfo(ctx, portal.MXID, wa.Bridge.Matrix.FormatGhostMXID(pnUserID))
 		if err != nil {
 			log.Warn().Err(err).Stringer("room_id", portal.MXID).Msg("Failed to get PN ghost membership")
+			failed++
 			continue
 		} else if member == nil || member.Membership != event.MembershipJoin {
 			continue
@@ -314,14 +315,18 @@ func (wa *WhatsAppConnector) removeRejoinedPNGhosts(ctx context.Context) error {
 		}, time.Time{})
 		if err != nil {
 			log.Err(err).Stringer("room_id", portal.MXID).Stringer("pn", pn).Msg("Failed to remove PN ghost from LID DM")
+			failed++
 			continue
 		}
 		removed++
 	}
 	log.Info().
 		Int("removed_ghosts", removed).
+		Int("failed", failed).
 		Int("total_lid_portals", len(lidPortalKeys)).
 		Msg("Finished removing rejoined PN ghosts from LID DMs")
-	wa.Bridge.DB.KV.Set(ctx, "whatsapp_lid_dm_pn_ghosts_removed", "true")
+	if failed == 0 && ctx.Err() == nil {
+		wa.Bridge.DB.KV.Set(ctx, "whatsapp_lid_dm_pn_ghosts_removed", "true")
+	}
 	return nil
 }
