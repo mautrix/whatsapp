@@ -187,7 +187,7 @@ func (mc *MessageConverter) ToMatrix(
 	case waMsg.EventMessage != nil:
 		part, contextInfo = mc.convertEventMessage(ctx, waMsg.EventMessage)
 	case waMsg.PinInChatMessage != nil:
-		part, contextInfo = mc.convertPinInChatMessage(ctx, waMsg.PinInChatMessage)
+		part, contextInfo = mc.convertPinInChatMessage(ctx, info, waMsg.PinInChatMessage)
 	case waMsg.KeepInChatMessage != nil:
 		part, contextInfo = mc.convertKeepInChatMessage(ctx, waMsg.KeepInChatMessage)
 	case waMsg.RichResponseMessage != nil:

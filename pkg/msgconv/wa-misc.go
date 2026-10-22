@@ -322,10 +322,18 @@ func (mc *MessageConverter) convertEventMessage(ctx context.Context, msg *waE2E.
 	}, msg.GetContextInfo()
 }
 
-func (mc *MessageConverter) convertPinInChatMessage(ctx context.Context, msg *waE2E.PinInChatMessage) (*bridgev2.ConvertedMessagePart, *waE2E.ContextInfo) {
+func (mc *MessageConverter) convertPinInChatMessage(ctx context.Context, info *types.MessageInfo, msg *waE2E.PinInChatMessage) (*bridgev2.ConvertedMessagePart, *waE2E.ContextInfo) {
 	body := "Pinned a message"
 	if msg.GetType() == waE2E.PinInChatMessage_UNPIN_FOR_ALL {
 		body = "Unpinned a message"
+	}
+	var contextInfo *waE2E.ContextInfo
+	if target, err := waid.ParseMessageID(KeyToMessageID(ctx, getClient(ctx), info.Chat, info.Sender, msg.GetKey())); err == nil {
+		contextInfo = &waE2E.ContextInfo{
+			StanzaID:    proto.String(target.ID),
+			Participant: proto.String(target.Sender.String()),
+			RemoteJID:   proto.String(target.Chat.String()),
+		}
 	}
 
 	return &bridgev2.ConvertedMessagePart{
@@ -334,7 +342,7 @@ func (mc *MessageConverter) convertPinInChatMessage(ctx context.Context, msg *wa
 			MsgType: event.MsgNotice,
 			Body:    body,
 		},
-	}, nil
+	}, contextInfo
 }
 
 func (mc *MessageConverter) convertKeepInChatMessage(ctx context.Context, msg *waE2E.KeepInChatMessage) (*bridgev2.ConvertedMessagePart, *waE2E.ContextInfo) {
