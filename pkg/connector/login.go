@@ -171,7 +171,7 @@ func (wl *WALogin) Start(ctx context.Context) (*bridgev2.LoginStep, error) {
 	err := wl.Client.Connect()
 	if err != nil {
 		wl.Log.Err(err).Msg("Failed to connect to WhatsApp for QR login")
-		return nil, err
+		return nil, wrapWhatsAppRespError(err)
 	}
 	ctx, cancel := context.WithTimeout(ctx, LoginConnectWait)
 	defer cancel()
@@ -202,7 +202,7 @@ func (wl *WALogin) SubmitUserInput(ctx context.Context, input map[string]string)
 	err := wl.Client.Connect()
 	if err != nil {
 		wl.Log.Err(err).Msg("Failed to connect to WhatsApp for phone code login")
-		return nil, err
+		return nil, wrapWhatsAppRespError(err)
 	}
 	connectCtx, cancelConnect := context.WithTimeout(ctx, LoginConnectWait)
 	err = wl.WaitForQRs.Wait(connectCtx)
@@ -223,7 +223,7 @@ func (wl *WALogin) SubmitUserInput(ctx context.Context, input map[string]string)
 		} else if errors.Is(err, whatsmeow.ErrIQRateOverLimit) {
 			return nil, ErrRateLimitedByWhatsApp
 		}
-		return nil, err
+		return nil, wrapWhatsAppRespError(err)
 	}
 	wl.Log.Debug().Msg("Phone code login started")
 	return &bridgev2.LoginStep{
@@ -461,7 +461,7 @@ func (wl *WALogin) SubmitWebAuthnResponse(ctx context.Context, rawResp json.RawM
 	if err != nil {
 		wl.Log.Err(err).Msg("Failed to send WebAuthn response")
 		wl.Cancel()
-		return nil, err
+		return nil, wrapWhatsAppRespError(err)
 	}
 	select {
 	case <-ctx.Done():
@@ -480,7 +480,7 @@ func (wl *WALogin) SubmitWebAuthnResponse(ctx context.Context, rawResp json.RawM
 		if err != nil {
 			wl.Log.Err(err).Msg("Failed to send WebAuthn confirmation")
 			wl.Cancel()
-			return nil, err
+			return nil, wrapWhatsAppRespError(err)
 		}
 	case <-wl.LoginComplete.GetChan():
 	}
