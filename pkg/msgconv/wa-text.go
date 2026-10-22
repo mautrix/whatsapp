@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"html"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -42,14 +43,27 @@ func (mc *MessageConverter) convertTextMessage(ctx context.Context, msg *waE2E.M
 	}
 	contextInfo = msg.GetExtendedTextMessage().GetContextInfo()
 	mc.parseFormatting(part.Content, false, false)
-	if len(part.Content.FormattedBody) > 20000 {
-		part.Content.Body = part.Content.Body[:500] + "[...]"
-	}
-	if len(part.Content.FormattedBody) > 40000 {
-		part.Content.FormattedBody = part.Content.FormattedBody[:40000] + "<br><em>[long message cut off]</em>"
-	}
 	part.Content.BeeperLinkPreviews = mc.convertURLPreviewToBeeper(ctx, msg.GetExtendedTextMessage())
 	return
+}
+
+func (mc *MessageConverter) cutOffLongMessage(content *event.MessageEventContent) {
+	if len(content.FormattedBody) <= 20000 && len(content.Body) <= 20000 {
+		return
+	}
+	if content.FormattedBody == "" {
+		if len(content.Body) > 40000 {
+			content.Body = content.Body[:40000] + "\n\n[long message cut off]"
+		}
+	} else if len(content.Body) > 500 {
+		content.Body = content.Body[:500] + "[...]"
+	}
+	if len(content.FormattedBody) > 40000 {
+		content.FormattedBody = content.FormattedBody[:40000] + "<br><em>[long message cut off]</em>"
+	}
+	if content.Mentions != nil {
+		content.Mentions.UserIDs = slices.DeleteFunc(content.Mentions.UserIDs, mc.Bridge.IsGhostMXID)
+	}
 }
 
 func (mc *MessageConverter) parseFormatting(content *event.MessageEventContent, allowInlineURL, forceHTML bool) {
