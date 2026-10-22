@@ -169,6 +169,10 @@ func (wa *WhatsAppConnector) Start(ctx context.Context) error {
 		if err != nil {
 			wa.Bridge.Log.Err(err).Msg("Failed to sync mismatching ghosts")
 		}
+		err = wa.removeRejoinedPNGhosts(wa.Bridge.BackgroundCtx)
+		if err != nil {
+			wa.Bridge.Log.Err(err).Msg("Failed to remove rejoined PN ghosts")
+		}
 	}()
 	return nil
 }

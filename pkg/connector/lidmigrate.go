@@ -18,6 +18,7 @@ package connector
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -25,9 +26,11 @@ import (
 	"go.mau.fi/util/dbutil"
 	"go.mau.fi/whatsmeow/types"
 
+	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/event"
+	"maunium.net/go/mautrix/id"
 
 	"go.mau.fi/mautrix-whatsapp/pkg/waid"
 )
@@ -267,3 +270,72 @@ func (wa *WhatsAppConnector) syncMismatchingGhosts(ctx context.Context) error {
 	wa.Bridge.DB.KV.Set(ctx, "whatsapp_lid_avatars_resynced", "true")
 	return nil
 }
+
+func (wa *WhatsAppConnector) removeRejoinedPNGhosts(ctx context.Context) error {
+	if wa.Bridge.Background || wa.Bridge.DB.KV.Get(ctx, "whatsapp_lid_dm_pn_ghosts_removed") == "true" {
+		return nil
+	}
+	log := zerolog.Ctx(ctx).With().Str("action", "remove rejoined pn ghosts").Logger()
+	const findLIDPortals = "SELECT id, mxid FROM portal WHERE bridge_id=$1 AND room_type='dm' AND id LIKE '%@lid' AND mxid IS NOT NULL"
+	lidPortals, err := scanLIDPortal.NewRowIter(wa.Bridge.DB.Query(ctx, findLIDPortals, wa.Bridge.ID)).AsList()
+	if err != nil {
+		return fmt.Errorf("failed to get LID portals: %w", err)
+	}
+	var removed, failed int
+	for _, portal := range lidPortals {
+		lid, err := waid.ParsePortalID(portal.ID)
+		if err != nil || lid.Server != types.HiddenUserServer {
+			continue
+		}
+		pn, err := wa.DeviceStore.LIDMap.GetPNForLID(ctx, lid)
+		if err != nil {
+			return fmt.Errorf("failed to get PN for LID portal %s: %w", portal.ID, err)
+		} else if pn.IsEmpty() {
+			continue
+		}
+		pnUserID := waid.MakeUserID(pn)
+		member, err := wa.Bridge.Matrix.GetMemberInfo(ctx, portal.MXID, wa.Bridge.Matrix.FormatGhostMXID(pnUserID))
+		if err != nil {
+			log.Warn().Err(err).Stringer("room_id", portal.MXID).Msg("Failed to get PN ghost membership")
+			failed++
+			continue
+		} else if member == nil || member.Membership != event.MembershipJoin {
+			continue
+		}
+		pnGhost, err := wa.Bridge.GetGhostByID(ctx, pnUserID)
+		if err != nil {
+			return fmt.Errorf("failed to get PN ghost for %s: %w", pn, err)
+		}
+		_, err = pnGhost.Intent.SendState(ctx, portal.MXID, event.StateMember, pnGhost.Intent.GetMXID().String(), &event.Content{
+			Parsed: &event.MemberEventContent{Membership: event.MembershipLeave, Reason: "Migrating to LIDs"},
+			Raw:    map[string]any{"com.beeper.exclude_from_timeline": true},
+		}, time.Time{})
+		if err != nil {
+			log.Err(err).Stringer("room_id", portal.MXID).Stringer("pn", pn).Msg("Failed to remove PN ghost from LID DM")
+			if !errors.Is(err, mautrix.MForbidden) && !errors.Is(err, mautrix.MNotFound) {
+				failed++
+			}
+			continue
+		}
+		removed++
+	}
+	log.Info().
+		Int("removed_ghosts", removed).
+		Int("failed", failed).
+		Int("total_lid_portals", len(lidPortals)).
+		Msg("Finished removing rejoined PN ghosts from LID DMs")
+	if failed == 0 && ctx.Err() == nil {
+		wa.Bridge.DB.KV.Set(ctx, "whatsapp_lid_dm_pn_ghosts_removed", "true")
+	}
+	return nil
+}
+
+type lidPortal struct {
+	ID   networkid.PortalID
+	MXID id.RoomID
+}
+
+var scanLIDPortal = dbutil.ConvertRowFn[lidPortal](func(row dbutil.Scannable) (portal lidPortal, err error) {
+	err = row.Scan(&portal.ID, &portal.MXID)
+	return
+})
