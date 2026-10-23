@@ -31,6 +31,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/rs/zerolog"
 	"github.com/tidwall/gjson"
@@ -39,6 +40,7 @@ import (
 	"go.mau.fi/util/random"
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/types"
+	"golang.org/x/sync/semaphore"
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
@@ -130,75 +132,37 @@ func (mc *MessageConverter) DownloadImagePack(ctx context.Context, userLoginID n
 	ctx = context.WithValue(ctx, contextKeyClient, client)
 	ctx = context.WithValue(ctx, contextKeyIntent, mc.Bridge.Bot)
 	ctx = context.WithValue(ctx, contextKeyPortal, (*bridgev2.Portal)(nil))
+	shortcodes := make([]string, len(pack.Stickers))
+	images := make([]*event.ImagePackImage, len(pack.Stickers))
+	var wg sync.WaitGroup
+	wg.Add(len(pack.Stickers))
+	sema := semaphore.NewWeighted(int64(StickerPackDownloadParallelism))
+	var errorList []error
+	var errorLock sync.Mutex
 	for i, sticker := range pack.Stickers {
-		shortcode := sticker.PreviewWebpID
-		if shortcode == "" {
-			shortcode = fmt.Sprintf("%s_img%d", pack.StickerPackID, i+1)
-		}
-		body := sticker.AccessibilityText
-		var emoji string
-		if len(sticker.Emojis) > 0 {
-			emoji = sticker.Emojis[0]
-			if body == "" {
-				body = strings.Join(sticker.Emojis, " ")
+		go func() {
+			defer wg.Done()
+			if sema.Acquire(ctx, 1) != nil {
+				return
 			}
-		}
-		part := &PreparedMedia{
-			Type: event.EventSticker,
-			MessageEventContent: &event.MessageEventContent{
-				Body: body,
-				Info: &event.FileInfo{
-					MimeType: sticker.MimeType,
-					Width:    sticker.Width,
-					Height:   sticker.Height,
-					Size:     int(sticker.FileSize),
-					BridgedSticker: &event.BridgedSticker{
-						Network: StickerSourceID,
-						ID:      base64.StdEncoding.EncodeToString(sticker.FileHash),
-						Emoji:   emoji,
-						PackURL: canonicalURL,
-					},
-				},
-			},
-			TypeDescription: "sticker",
-		}
-		dbKey := database.Key(fmt.Sprintf("stickercache:%x", part.Info.BridgedSticker.ID))
-		fixStickerDimensions(part.Info)
-		var packed *event.ImagePackImage
-		if mc.DirectMedia {
-			dbKey = ""
-			if part.Info.MimeType == "application/was" {
-				part.Info.MimeType = "video/lottie+json"
-			}
-			part.URL, err = mc.Bridge.Matrix.GenerateContentURI(ctx, waid.MakeStickerPackMediaID(pack.StickerPackID, sticker.FileHash, userLoginID))
+			defer sema.Release(1)
+			var err error
+			shortcodes[i], images[i], err = mc.convertPackSticker(ctx, userLoginID, pack, canonicalURL, i, sticker)
 			if err != nil {
-				panic(fmt.Errorf("failed to generate content URI: %w", err))
+				errorLock.Lock()
+				errorList = append(errorList, err)
+				errorLock.Unlock()
 			}
-		} else if cached := mc.Bridge.DB.KV.Get(ctx, dbKey); cached != "" {
-			err = json.Unmarshal([]byte(cached), &packed)
-			if err != nil {
-				return nil, fmt.Errorf("failed to unmarshal cached sticker data: %w", err)
-			}
-		} else {
-			err = mc.reuploadWhatsAppAttachment(ctx, sticker, part)
-			if err != nil {
-				return nil, fmt.Errorf("failed to reupload sticker %q: %w", sticker.GetDirectPath(), err)
-			}
-		}
-		if packed == nil {
-			packed = &event.ImagePackImage{
-				URL:  part.URL,
-				Body: part.Body,
-				Info: part.Info,
-			}
-			if dbKey != "" {
-				data, _ := json.Marshal(packed)
-				if data != nil {
-					mc.Bridge.DB.KV.Set(ctx, dbKey, string(data))
-				}
-			}
-		}
-		content.Images[shortcode] = packed
+		}()
+	}
+	wg.Wait()
+	if err = ctx.Err(); err != nil {
+		return nil, err
+	} else if err = errors.Join(errorList...); err != nil {
+		return nil, err
+	}
+	for i, shortcode := range shortcodes {
+		content.Images[shortcode] = images[i]
 	}
 
 	return &bridgev2.ImportedImagePack{
@@ -206,6 +170,85 @@ func (mc *MessageConverter) DownloadImagePack(ctx context.Context, userLoginID n
 		Extra:     topLevelExtra,
 		Shortcode: pack.StickerPackID,
 	}, nil
+}
+
+func (mc *MessageConverter) convertPackSticker(
+	ctx context.Context,
+	userLoginID networkid.UserLoginID,
+	pack *types.StickerPack,
+	canonicalURL string,
+	i int,
+	sticker *types.StickerPackItem,
+) (string, *event.ImagePackImage, error) {
+	shortcode := sticker.PreviewWebpID
+	if shortcode == "" {
+		shortcode = fmt.Sprintf("%s_img%d", pack.StickerPackID, i+1)
+	}
+	body := sticker.AccessibilityText
+	var emoji string
+	if len(sticker.Emojis) > 0 {
+		emoji = sticker.Emojis[0]
+		if body == "" {
+			body = strings.Join(sticker.Emojis, " ")
+		}
+	}
+	part := &PreparedMedia{
+		Type: event.EventSticker,
+		MessageEventContent: &event.MessageEventContent{
+			Body: body,
+			Info: &event.FileInfo{
+				MimeType: sticker.MimeType,
+				Width:    sticker.Width,
+				Height:   sticker.Height,
+				Size:     int(sticker.FileSize),
+				BridgedSticker: &event.BridgedSticker{
+					Network: StickerSourceID,
+					ID:      base64.StdEncoding.EncodeToString(sticker.FileHash),
+					Emoji:   emoji,
+					PackURL: canonicalURL,
+				},
+			},
+		},
+		TypeDescription: "sticker",
+	}
+	dbKey := database.Key(fmt.Sprintf("stickercache:%x", part.Info.BridgedSticker.ID))
+	fixStickerDimensions(part.Info)
+	var packed *event.ImagePackImage
+	var err error
+	if mc.DirectMedia {
+		dbKey = ""
+		if part.Info.MimeType == "application/was" {
+			part.Info.MimeType = "video/lottie+json"
+		}
+		part.URL, err = mc.Bridge.Matrix.GenerateContentURI(ctx, waid.MakeStickerPackMediaID(pack.StickerPackID, sticker.FileHash, userLoginID))
+		if err != nil {
+			panic(fmt.Errorf("failed to generate content URI: %w", err))
+		}
+	} else if cached := mc.Bridge.DB.KV.Get(ctx, dbKey); cached != "" {
+		err = json.Unmarshal([]byte(cached), &packed)
+		if err != nil {
+			return "", nil, fmt.Errorf("failed to unmarshal cached sticker data: %w", err)
+		}
+	} else {
+		err = mc.reuploadWhatsAppAttachment(ctx, sticker, part)
+		if err != nil {
+			return "", nil, fmt.Errorf("failed to reupload sticker %q: %w", sticker.GetDirectPath(), err)
+		}
+	}
+	if packed == nil {
+		packed = &event.ImagePackImage{
+			URL:  part.URL,
+			Body: part.Body,
+			Info: part.Info,
+		}
+		if dbKey != "" {
+			data, _ := json.Marshal(packed)
+			if data != nil {
+				mc.Bridge.DB.KV.Set(ctx, dbKey, string(data))
+			}
+		}
+	}
+	return shortcode, packed, nil
 }
 
 type StickerMetadata struct {
@@ -236,6 +279,9 @@ func (sm *StickerMetadata) ToMatrix(content *event.MessageEventContent) {
 }
 
 const StickerSourceID = "whatsapp"
+
+var StickerPackDownloadParallelism = 8
+
 const StickerPackURLPrefix = "https://wa.me/stickerpack/"
 
 func PackAnimatedSticker(data []byte) ([]byte, error) {
