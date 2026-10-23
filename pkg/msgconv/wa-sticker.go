@@ -222,7 +222,7 @@ func (mc *MessageConverter) convertPackSticker(
 		}
 		part.URL, err = mc.Bridge.Matrix.GenerateContentURI(ctx, waid.MakeStickerPackMediaID(pack.StickerPackID, sticker.FileHash, userLoginID))
 		if err != nil {
-			panic(fmt.Errorf("failed to generate content URI: %w", err))
+			return "", nil, fmt.Errorf("failed to generate content URI: %w", err)
 		}
 	} else if cached := mc.Bridge.DB.KV.Get(ctx, dbKey); cached != "" {
 		err = json.Unmarshal([]byte(cached), &packed)
