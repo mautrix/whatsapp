@@ -148,13 +148,7 @@ func fnSync(ce *commands.Event) {
 	case "appstate":
 		names := appstate.AllPatchNames[:]
 		if len(ce.Args) > 1 {
-			names = exslices.CastFuncFilter(ce.Args[1:], func(name string) (appstate.WAPatchName, bool) {
-				if !slices.Contains(appstate.AllPatchNames[:], appstate.WAPatchName(name)) {
-					ce.Reply("Invalid app state name `%s`", name)
-					return "", false
-				}
-				return appstate.WAPatchName(name), true
-			})
+			names = parseAppStateNames(ce, ce.Args[1:])
 		}
 		for _, name := range names {
 			err := wa.Client.FetchAppState(ce.Ctx, name, true, false)
@@ -172,6 +166,50 @@ func fnSync(ce *commands.Event) {
 	default:
 		ce.Reply("Unknown sync target `%s`", ce.Args[0])
 	}
+}
+
+func parseAppStateNames(ce *commands.Event, args []string) []appstate.WAPatchName {
+	return exslices.CastFuncFilter(args, func(name string) (appstate.WAPatchName, bool) {
+		if !slices.Contains(appstate.AllPatchNames[:], appstate.WAPatchName(name)) {
+			ce.Reply("Invalid app state name `%s`", name)
+			return "", false
+		}
+		return appstate.WAPatchName(name), true
+	})
+}
+
+var cmdResetAppState = &commands.FullHandler{
+	Func: fnResetAppState,
+	Name: "reset-appstate",
+	Help: commands.HelpMeta{
+		Section:     commands.HelpSectionAdmin,
+		Description: "Ask your phone to reset broken app state. This logs out all linked devices.",
+		Args:        "<names...>",
+	},
+	RequiresLogin: true,
+}
+
+func fnResetAppState(ce *commands.Event) {
+	login := ce.User.GetDefaultLogin()
+	if login == nil {
+		ce.Reply("Login not found")
+		return
+	}
+	if len(ce.Args) == 0 {
+		ce.Reply("Usage: `$cmdprefix reset-appstate <names...>`\n\nThis logs out all linked devices, including the bridge. You'll have to log in again afterwards.")
+		return
+	}
+	names := parseAppStateNames(ce, ce.Args)
+	if len(names) == 0 {
+		return
+	}
+	wa := login.Client.(*WhatsAppClient)
+	_, err := wa.Client.SendPeerMessage(ce.Ctx, whatsmeow.BuildFatalAppStateExceptionNotification(names...))
+	if err != nil {
+		ce.Reply("Failed to send app state reset request: %v", err)
+		return
+	}
+	ce.Reply("Sent app state reset request. Your phone should log out all linked devices shortly, after which you can log in again.")
 }
 
 var cmdInviteLink = &commands.FullHandler{
