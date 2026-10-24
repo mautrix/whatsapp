@@ -200,7 +200,7 @@ func fnResetAppState(ce *commands.Event) {
 		return
 	}
 	names := parseAppStateNames(ce, ce.Args)
-	if len(names) == 0 {
+	if len(names) != len(ce.Args) {
 		return
 	}
 	wa := login.Client.(*WhatsAppClient)
