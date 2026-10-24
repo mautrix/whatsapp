@@ -141,6 +141,7 @@ func (wa *WhatsAppClient) handleConvertedMatrixMessage(ctx context.Context, msg 
 		}
 		return nil, wrapWhatsAppError(err)
 	}
+	wa.sendDailyUnifiedSession()
 	var pickedMessageID networkid.MessageID
 	if resp.Sender == wa.GetLID() {
 		pickedMessageID = wrappedMsgID2

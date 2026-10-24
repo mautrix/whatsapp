@@ -124,6 +124,7 @@ type WhatsAppClient struct {
 	isNewLogin         bool
 	pushNamesSynced    *exsync.Event
 	lastPresence       types.Presence
+	lastUnifiedSession atomic.Int64
 	blocklistLock      sync.Mutex
 
 	disableNewsletter bool
@@ -509,6 +510,15 @@ func (wa *WhatsAppClient) updatePresence(ctx context.Context, presence types.Pre
 		wa.lastPresence = presence
 	}
 	return err
+}
+
+func (wa *WhatsAppClient) sendDailyUnifiedSession() {
+	last := wa.lastUnifiedSession.Load()
+	if time.Since(time.Unix(last, 0)) < 24*time.Hour || !wa.lastUnifiedSession.CompareAndSwap(last, time.Now().Unix()) {
+		return
+	}
+	//lint:ignore SA1019 this is supposed to be dangerous
+	go wa.Client.DangerousInternals().SendUnifiedSession()
 }
 
 func (wa *WhatsAppClient) DownloadImagePack(ctx context.Context, url string) (*bridgev2.ImportedImagePack, error) {
