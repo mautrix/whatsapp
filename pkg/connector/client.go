@@ -517,6 +517,7 @@ func (wa *WhatsAppClient) sendDailyUnifiedSession() {
 	if time.Since(time.Unix(last, 0)) < 24*time.Hour || !wa.lastUnifiedSession.CompareAndSwap(last, time.Now().Unix()) {
 		return
 	}
+	//lint:ignore SA1019 this is supposed to be dangerous
 	go wa.Client.DangerousInternals().SendUnifiedSession()
 }
 
