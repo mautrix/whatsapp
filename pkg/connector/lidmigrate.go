@@ -211,6 +211,30 @@ func (wa *WhatsAppConnector) migrateToLIDDMs(ctx context.Context) error {
 	return nil
 }
 
+func (wa *WhatsAppConnector) migrateMetaAIPortals(ctx context.Context) error {
+	if wa.Bridge.Background || wa.Bridge.DB.KV.Get(ctx, "whatsapp_meta_ai_portals_migrated") == "true" {
+		return nil
+	}
+	log := zerolog.Ctx(ctx).With().Str("action", "migrate meta ai portals").Logger()
+	const findMetaAIPortals = "SELECT id, receiver FROM portal WHERE bridge_id=$1 AND id=$2"
+	portalKeys, err := scanPortalKey.NewRowIter(wa.Bridge.DB.Query(ctx, findMetaAIPortals, wa.Bridge.ID, waid.MakePortalID(types.MetaAIJID))).AsList()
+	if err != nil {
+		return fmt.Errorf("failed to get Meta AI portals: %w", err)
+	}
+	for _, key := range portalKeys {
+		res, err := wa.reIDPhoneDMToLID(ctx, types.MetaAIJID, types.NewMetaAIJID, key.Receiver)
+		if err != nil {
+			return fmt.Errorf("failed to re-ID Meta AI portal for %s: %w", key.Receiver, err)
+		}
+		log.Info().
+			Str("receiver", string(key.Receiver)).
+			Stringer("result", res).
+			Msg("Re-ID'd Meta AI phone number portal")
+	}
+	wa.Bridge.DB.KV.Set(ctx, "whatsapp_meta_ai_portals_migrated", "true")
+	return nil
+}
+
 func (wa *WhatsAppConnector) syncMismatchingGhosts(ctx context.Context) error {
 	if wa.Bridge.Background || wa.Bridge.DB.KV.Get(ctx, "whatsapp_lid_avatars_resynced") == "true" {
 		return nil
