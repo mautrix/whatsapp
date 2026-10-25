@@ -47,6 +47,8 @@ func (wa *WhatsAppClient) FindAltTargetMessage(ctx context.Context, targetMsg ne
 		if err != nil {
 			return nil, err
 		}
+	} else if parsed.Chat == types.NewMetaAIJID {
+		altChat = types.MetaAIJID
 	}
 	if !altSender.IsEmpty() {
 		altSenderID := *parsed
@@ -58,6 +60,8 @@ func (wa *WhatsAppClient) FindAltTargetMessage(ctx context.Context, targetMsg ne
 		altChatID.Chat = altChat
 		if altSender.Server == types.DefaultUserServer {
 			altChatID.Sender = altSender
+		} else if parsed.Sender == types.NewMetaAIJID {
+			altChatID.Sender = types.MetaAIJID
 		}
 		alts = append(alts, altChatID.String())
 	}
