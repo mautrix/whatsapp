@@ -26,7 +26,10 @@ import (
 	"image"
 	"image/color"
 	"image/jpeg"
+	"io"
 	"net/http"
+	"os"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -530,40 +533,135 @@ func (mc *MessageConverter) reuploadFileToWhatsApp(
 	ctx context.Context, content *event.MessageEventContent,
 ) (*whatsmeow.UploadResponse, []byte, string, error) {
 	mime := content.GetInfo().MimeType
-	fileName := content.Body
-	if content.FileName != "" {
-		fileName = content.FileName
-	}
-	var data []byte
-	var err error
-	var sticker *types.StickerPackItem
-	if sticker, err = mc.getOriginalBridgedSticker(ctx, content.Info.BridgedSticker); err != nil {
+	if sticker, err := mc.getOriginalBridgedSticker(ctx, content.Info.BridgedSticker); err != nil {
 		zerolog.Ctx(ctx).Warn().Err(err).
 			Msg("Failed to get original bridged sticker, falling back to downloading from URL")
-		data, err = mc.Bridge.Bot.DownloadMedia(ctx, content.URL, content.File)
 	} else if sticker != nil {
-		if sticker.MimeType == "application/was" {
-			data, err = getClient(ctx).Download(ctx, sticker)
-			mime = sticker.MimeType
-		} else {
-			data, err = mc.Bridge.Bot.DownloadMedia(ctx, content.URL, content.File)
-		}
 		content.Info.Width = sticker.Width
 		content.Info.Height = sticker.Height
-	} else {
-		data, err = mc.Bridge.Bot.DownloadMedia(ctx, content.URL, content.File)
+		if sticker.MimeType == "application/was" {
+			data, err := getClient(ctx).Download(ctx, sticker)
+			if err != nil {
+				return nil, nil, "", fmt.Errorf("%w: %w", bridgev2.ErrMediaDownloadFailed, err)
+			}
+			return mc.reuploadBytesToWhatsApp(ctx, content, data, sticker.MimeType)
+		}
 	}
-	if err != nil {
+	var uploaded *whatsmeow.UploadResponse
+	var thumbnail []byte
+	var reuploadErr error
+	err := mc.Bridge.Bot.DownloadMediaToFile(ctx, content.URL, content.File, false, func(f *os.File) error {
+		uploaded, thumbnail, mime, reuploadErr = mc.reuploadFileFromDiskToWhatsApp(ctx, content, f, mime)
+		return reuploadErr
+	})
+	if reuploadErr != nil {
+		return nil, nil, mime, reuploadErr
+	} else if err != nil {
 		return nil, nil, "", fmt.Errorf("%w: %w", bridgev2.ErrMediaDownloadFailed, err)
 	}
+	return uploaded, thumbnail, mime, nil
+}
 
+func (mc *MessageConverter) reuploadFileFromDiskToWhatsApp(
+	ctx context.Context, content *event.MessageEventContent, f *os.File, mime string,
+) (*whatsmeow.UploadResponse, []byte, string, error) {
 	if mime == "" {
-		mime = http.DetectContentType(data)
+		header := make([]byte, 512)
+		n, err := f.ReadAt(header, 0)
+		if err != nil && !errors.Is(err, io.EOF) {
+			return nil, nil, "", fmt.Errorf("%w: failed to read file header: %w", bridgev2.ErrMediaDownloadFailed, err)
+		}
+		mime = http.DetectContentType(header[:n])
 	}
 	if mime == "image/gif" {
 		content.MsgType = event.MsgVideo
 	}
 
+	var mediaType whatsmeow.MediaType
+	switch content.MsgType {
+	case event.MessageType(event.EventSticker.Type), event.MsgImage:
+		data, err := io.ReadAll(f)
+		if err != nil {
+			return nil, nil, "", fmt.Errorf("%w: %w", bridgev2.ErrMediaDownloadFailed, err)
+		}
+		return mc.reuploadBytesToWhatsApp(ctx, content, data, mime)
+	case event.MsgVideo:
+		var sourceFormat string
+		var extraArgs []string
+		switch mime {
+		case "video/mp4", "video/3gpp":
+			// allowed
+		case "video/webm":
+			sourceFormat = "webm"
+		case "video/quicktime":
+			sourceFormat = "mov"
+		case "image/gif":
+			sourceFormat = "gif"
+			extraArgs = []string{"-movflags", "+faststart"}
+		default:
+			return nil, nil, mime, fmt.Errorf("%w %s in video message", bridgev2.ErrUnsupportedMediaType, mime)
+		}
+		if sourceFormat != "" {
+			tempDir, err := os.MkdirTemp("", "mautrix-whatsapp-video-*")
+			if err != nil {
+				return nil, nil, mime, fmt.Errorf("%w (%s to mp4): %w", bridgev2.ErrMediaConvertFailed, sourceFormat, err)
+			}
+			defer os.RemoveAll(tempDir)
+			outputPath := filepath.Join(tempDir, "output.mp4")
+			err = ffmpeg.ConvertPathWithDestination(ctx, f.Name(), outputPath, []string{"-f", sourceFormat}, append([]string{
+				"-pix_fmt", "yuv420p", "-c:v", "h264", "-b:v", "2M",
+				"-filter:v", "crop='floor(in_w/2)*2:floor(in_h/2)*2'",
+			}, extraArgs...), false)
+			if err != nil {
+				return nil, nil, mime, fmt.Errorf("%w (%s to mp4): %w", bridgev2.ErrMediaConvertFailed, sourceFormat, err)
+			}
+			converted, err := os.Open(outputPath)
+			if err != nil {
+				return nil, nil, mime, fmt.Errorf("%w (%s to mp4): %w", bridgev2.ErrMediaConvertFailed, sourceFormat, err)
+			}
+			defer converted.Close()
+			f = converted
+			mime = "video/mp4"
+		}
+		mediaType = whatsmeow.MediaVideo
+	case event.MsgAudio:
+		switch mime {
+		case "audio/aac", "audio/mp4", "audio/amr", "audio/mpeg", "audio/ogg; codecs=opus":
+			// Allowed
+		case "audio/ogg":
+			// Hopefully it's opus already
+			mime = "audio/ogg; codecs=opus"
+		default:
+			return nil, nil, mime, fmt.Errorf("%w %s in audio message", bridgev2.ErrUnsupportedMediaType, mime)
+		}
+		mediaType = whatsmeow.MediaAudio
+	default:
+		mediaType = whatsmeow.MediaDocument
+	}
+
+	uploaded, err := getClient(ctx).UploadReader(ctx, f, nil, mediaType)
+	if err != nil {
+		mc.logUploadFailure(ctx, content, mime)
+		return nil, nil, "", fmt.Errorf("%w: %w", bridgev2.ErrMediaReuploadFailed, err)
+	}
+	var thumbnail []byte
+	// Audio doesn't have thumbnails
+	if mediaType != whatsmeow.MediaAudio {
+		if _, err = f.Seek(0, io.SeekStart); err == nil {
+			thumbnail, err = mc.downloadThumbnail(ctx, f, content.GetInfo().ThumbnailURL, content.GetInfo().ThumbnailFile, false)
+		}
+		// Ignore format errors for non-image files, we don't care about those thumbnails
+		if err != nil && !errors.Is(err, image.ErrFormat) {
+			zerolog.Ctx(ctx).Warn().Err(err).Msg("Failed to generate thumbnail for media message")
+		}
+	}
+	return &uploaded, thumbnail, mime, nil
+}
+
+func (mc *MessageConverter) reuploadBytesToWhatsApp(
+	ctx context.Context, content *event.MessageEventContent, data []byte, mime string,
+) (*whatsmeow.UploadResponse, []byte, string, error) {
+	var err error
 	var mediaType whatsmeow.MediaType
 	var isSticker bool
 	switch content.MsgType {
@@ -592,7 +690,7 @@ func (mc *MessageConverter) reuploadFileToWhatsApp(
 				mime = "image/webp"
 			}
 		}
-	case event.MsgImage:
+	default:
 		mediaType = whatsmeow.MediaImage
 		switch mime {
 		case "image/jpeg":
@@ -606,72 +704,30 @@ func (mc *MessageConverter) reuploadFileToWhatsApp(
 		default:
 			return nil, nil, mime, fmt.Errorf("%w %s in image message", bridgev2.ErrUnsupportedMediaType, mime)
 		}
-	case event.MsgVideo:
-		switch mime {
-		case "video/mp4", "video/3gpp":
-			// allowed
-		case "video/webm", "video/quicktime":
-			sourceFormat := "webm"
-			if mime == "video/quicktime" {
-				sourceFormat = "mov"
-			}
-			data, err = ffmpeg.ConvertBytes(ctx, data, ".mp4", []string{"-f", sourceFormat}, []string{
-				"-pix_fmt", "yuv420p", "-c:v", "h264", "-b:v", "2M",
-				"-filter:v", "crop='floor(in_w/2)*2:floor(in_h/2)*2'",
-			}, mime)
-			if err != nil {
-				return nil, nil, mime, fmt.Errorf("%w (%s to mp4): %w", bridgev2.ErrMediaConvertFailed, sourceFormat, err)
-			}
-			mime = "video/mp4"
-		case "image/gif":
-			data, err = ffmpeg.ConvertBytes(ctx, data, ".mp4", []string{"-f", "gif"}, []string{
-				"-pix_fmt", "yuv420p", "-c:v", "h264", "-b:v", "2M", "-movflags", "+faststart",
-				"-filter:v", "crop='floor(in_w/2)*2:floor(in_h/2)*2'",
-			}, mime)
-			if err != nil {
-				return nil, nil, "image/gif", fmt.Errorf("%w (gif to mp4): %w", bridgev2.ErrMediaConvertFailed, err)
-			}
-			mime = "video/mp4"
-		default:
-			return nil, nil, mime, fmt.Errorf("%w %s in video message", bridgev2.ErrUnsupportedMediaType, mime)
-		}
-		mediaType = whatsmeow.MediaVideo
-	case event.MsgAudio:
-		switch mime {
-		case "audio/aac", "audio/mp4", "audio/amr", "audio/mpeg", "audio/ogg; codecs=opus":
-			// Allowed
-		case "audio/ogg":
-			// Hopefully it's opus already
-			mime = "audio/ogg; codecs=opus"
-		default:
-			return nil, nil, mime, fmt.Errorf("%w %s in audio message", bridgev2.ErrUnsupportedMediaType, mime)
-		}
-		mediaType = whatsmeow.MediaAudio
-	case event.MsgFile:
-		fallthrough
-	default:
-		mediaType = whatsmeow.MediaDocument
 	}
 
 	uploaded, err := getClient(ctx).Upload(ctx, data, mediaType)
 	if err != nil {
-		zerolog.Ctx(ctx).Debug().
-			Str("file_name", fileName).
-			Str("mime_type", mime).
-			Bool("is_voice_clip", content.MSC3245Voice != nil).
-			Msg("Failed upload media")
+		mc.logUploadFailure(ctx, content, mime)
 		return nil, nil, "", fmt.Errorf("%w: %w", bridgev2.ErrMediaReuploadFailed, err)
 	}
-	var thumbnail []byte
-	// Audio doesn't have thumbnails
-	if mediaType != whatsmeow.MediaAudio {
-		thumbnail, err = mc.downloadThumbnail(ctx, data, content.GetInfo().ThumbnailURL, content.GetInfo().ThumbnailFile, isSticker)
-		// Ignore format errors for non-image files, we don't care about those thumbnails
-		if err != nil && (!errors.Is(err, image.ErrFormat) || mediaType == whatsmeow.MediaImage) {
-			zerolog.Ctx(ctx).Warn().Err(err).Msg("Failed to generate thumbnail for image message")
-		}
+	thumbnail, err := mc.downloadThumbnail(ctx, bytes.NewReader(data), content.GetInfo().ThumbnailURL, content.GetInfo().ThumbnailFile, isSticker)
+	if err != nil {
+		zerolog.Ctx(ctx).Warn().Err(err).Msg("Failed to generate thumbnail for image message")
 	}
 	return &uploaded, thumbnail, mime, nil
+}
+
+func (mc *MessageConverter) logUploadFailure(ctx context.Context, content *event.MessageEventContent, mime string) {
+	fileName := content.Body
+	if content.FileName != "" {
+		fileName = content.FileName
+	}
+	zerolog.Ctx(ctx).Debug().
+		Str("file_name", fileName).
+		Str("mime_type", mime).
+		Bool("is_voice_clip", content.MSC3245Voice != nil).
+		Msg("Failed upload media")
 }
 
 func parseGeoURI(uri string) (lat, long float64, err error) {

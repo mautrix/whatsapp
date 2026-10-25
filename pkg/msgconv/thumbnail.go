@@ -23,6 +23,7 @@ import (
 	"image"
 	"image/jpeg"
 	"image/png"
+	"io"
 
 	"github.com/rs/zerolog"
 	"golang.org/x/image/draw"
@@ -33,8 +34,8 @@ import (
 const thumbnailMaxSize = 72
 const thumbnailMinSize = 24
 
-func createThumbnailAndGetSize(source []byte, pngThumbnail bool) ([]byte, int, int, error) {
-	src, _, err := image.Decode(bytes.NewReader(source))
+func createThumbnailAndGetSize(source io.Reader, pngThumbnail bool) ([]byte, int, int, error) {
+	src, _, err := image.Decode(source)
 	if err != nil {
 		return nil, 0, 0, fmt.Errorf("failed to decode thumbnail: %w", err)
 	}
@@ -78,18 +79,18 @@ func createThumbnailAndGetSize(source []byte, pngThumbnail bool) ([]byte, int, i
 	return buf.Bytes(), width, height, nil
 }
 
-func createThumbnail(source []byte, png bool) ([]byte, error) {
+func createThumbnail(source io.Reader, png bool) ([]byte, error) {
 	data, _, _, err := createThumbnailAndGetSize(source, png)
 	return data, err
 }
 
-func (mc *MessageConverter) downloadThumbnail(ctx context.Context, original []byte, thumbnailURL id.ContentURIString, thumbnailFile *event.EncryptedFileInfo, png bool) ([]byte, error) {
+func (mc *MessageConverter) downloadThumbnail(ctx context.Context, original io.Reader, thumbnailURL id.ContentURIString, thumbnailFile *event.EncryptedFileInfo, png bool) ([]byte, error) {
 	if len(thumbnailURL) == 0 && thumbnailFile == nil {
 		// just fall back to making thumbnail of original
 	} else if thumbnail, err := mc.Bridge.Bot.DownloadMedia(ctx, thumbnailURL, thumbnailFile); err != nil {
 		zerolog.Ctx(ctx).Warn().Err(err).Msg("Failed to download thumbnail in event, falling back to generating thumbnail from source")
 	} else {
-		return createThumbnail(thumbnail, png)
+		return createThumbnail(bytes.NewReader(thumbnail), png)
 	}
 	return createThumbnail(original, png)
 }

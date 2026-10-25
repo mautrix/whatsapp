@@ -150,7 +150,7 @@ func (mc *MessageConverter) convertURLPreviewToWhatsApp(ctx context.Context, con
 		dest.ThumbnailDirectPath = &uploadResp.DirectPath
 		dest.MediaKey = uploadResp.MediaKey
 		var width, height int
-		dest.JPEGThumbnail, width, height, err = createThumbnailAndGetSize(data, false)
+		dest.JPEGThumbnail, width, height, err = createThumbnailAndGetSize(bytes.NewReader(data), false)
 		if err != nil {
 			log.Err(err).Msg("Failed to create JPEG thumbnail for URL preview")
 		}
