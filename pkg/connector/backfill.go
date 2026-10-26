@@ -594,36 +594,22 @@ func (wa *WhatsAppClient) FetchMessages(ctx context.Context, params bridgev2.Fet
 	resp.Forward = params.Forward
 	resp.MarkRead = markRead
 	if params.Forward && !markRead && conv != nil && !ptr.Val(conv.MarkedAsUnread) {
-		resp.ReadUpTo = wa.historySyncReadUpTo(portalJID, messages, int(ptr.Val(conv.UnreadCount)))
+		resp.ReadUpTo = historySyncReadUpTo(resp.Messages, int(ptr.Val(conv.UnreadCount)))
 	}
 	return resp, nil
 }
 
-func (wa *WhatsAppClient) historySyncReadUpTo(portalJID types.JID, newestFirst []*waWeb.WebMessageInfo, unreadCount int) time.Time {
-	cli := wa.Client
-	if unreadCount <= 0 || cli == nil {
+func historySyncReadUpTo(messages []*bridgev2.BackfillMessage, unreadCount int) time.Time {
+	if unreadCount <= 0 {
 		return time.Time{}
 	}
-	seen := make(exmaps.Set[string])
-	for _, msg := range newestFirst {
-		if msg.GetKey().GetFromMe() || !seen.Add(msg.GetKey().GetID()) {
+	for i := len(messages) - 1; i >= 0; i-- {
+		if messages[i].Sender.IsFromMe {
 			continue
-		}
-		evt, err := cli.ParseWebMessage(portalJID, msg)
-		if err != nil {
-			continue
-		}
-		switch msgType := getMessageType(evt.Message); msgType {
-		case "ignore", "reaction", "reaction remove", "encrypted reaction", "poll update", "revoke", "edit", "disappearing timer change":
-			continue
-		default:
-			if strings.HasPrefix(msgType, "unknown_protocol_") {
-				continue
-			}
 		}
 		unreadCount--
 		if unreadCount == 0 {
-			return time.Unix(int64(msg.GetMessageTimestamp()), 0).Add(-time.Nanosecond)
+			return messages[i].Timestamp.Add(-time.Nanosecond)
 		}
 	}
 	return time.Time{}
