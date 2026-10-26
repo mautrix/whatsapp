@@ -603,9 +603,18 @@ func historySyncReadUpTo(newestFirst []*waWeb.WebMessageInfo, unreadCount int) t
 	if unreadCount <= 0 {
 		return time.Time{}
 	}
+	seen := make(exmaps.Set[string])
 	for _, msg := range newestFirst {
-		if msg.GetKey().GetFromMe() {
+		if msg.GetKey().GetFromMe() || !seen.Add(msg.GetKey().GetID()) {
 			continue
+		}
+		switch msgType := getMessageType(msg.GetMessage()); msgType {
+		case "ignore", "reaction", "reaction remove", "encrypted reaction", "poll update", "revoke", "edit", "disappearing timer change":
+			continue
+		default:
+			if strings.HasPrefix(msgType, "unknown_protocol_") {
+				continue
+			}
 		}
 		unreadCount--
 		if unreadCount == 0 {
