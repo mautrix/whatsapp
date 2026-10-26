@@ -594,13 +594,14 @@ func (wa *WhatsAppClient) FetchMessages(ctx context.Context, params bridgev2.Fet
 	resp.Forward = params.Forward
 	resp.MarkRead = markRead
 	if params.Forward && !markRead && conv != nil && !ptr.Val(conv.MarkedAsUnread) {
-		resp.ReadUpTo = historySyncReadUpTo(messages, int(ptr.Val(conv.UnreadCount)))
+		resp.ReadUpTo = wa.historySyncReadUpTo(portalJID, messages, int(ptr.Val(conv.UnreadCount)))
 	}
 	return resp, nil
 }
 
-func historySyncReadUpTo(newestFirst []*waWeb.WebMessageInfo, unreadCount int) time.Time {
-	if unreadCount <= 0 {
+func (wa *WhatsAppClient) historySyncReadUpTo(portalJID types.JID, newestFirst []*waWeb.WebMessageInfo, unreadCount int) time.Time {
+	cli := wa.Client
+	if unreadCount <= 0 || cli == nil {
 		return time.Time{}
 	}
 	seen := make(exmaps.Set[string])
@@ -608,7 +609,11 @@ func historySyncReadUpTo(newestFirst []*waWeb.WebMessageInfo, unreadCount int) t
 		if msg.GetKey().GetFromMe() || !seen.Add(msg.GetKey().GetID()) {
 			continue
 		}
-		switch msgType := getMessageType(msg.GetMessage()); msgType {
+		evt, err := cli.ParseWebMessage(portalJID, msg)
+		if err != nil {
+			continue
+		}
+		switch msgType := getMessageType(evt.Message); msgType {
 		case "ignore", "reaction", "reaction remove", "encrypted reaction", "poll update", "revoke", "edit", "disappearing timer change":
 			continue
 		default:
