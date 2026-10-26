@@ -249,7 +249,9 @@ func (wa *WhatsAppClient) handleWAHistorySync(
 		} else {
 			totalMessageCount += len(conv.GetMessages())
 		}
-		if jid.Server == types.DefaultUserServer {
+		if jid == types.MetaAIJID {
+			jid = types.NewMetaAIJID
+		} else if jid.Server == types.DefaultUserServer {
 			lid, err := wa.GetStore().LIDs.GetLIDForPN(ctx, jid)
 			if err != nil {
 				log.Err(err).Stringer("pn", jid).Msg("Failed to get LID for phone number in history sync")
@@ -803,7 +805,9 @@ func (wa *WhatsAppClient) handleOnDemandHistorySync(ctx context.Context, blob *w
 			zerolog.Ctx(ctx).Err(err).Str("jid", conv.GetID()).Msg("Failed to parse portal JID")
 			continue
 		}
-		if portalJID.Server == types.DefaultUserServer {
+		if portalJID == types.MetaAIJID {
+			portalJID = types.NewMetaAIJID
+		} else if portalJID.Server == types.DefaultUserServer {
 			lid, err := wa.GetStore().LIDs.GetLIDForPN(ctx, portalJID)
 			if err != nil {
 				zerolog.Ctx(ctx).Err(err).Stringer("lid", portalJID).Msg("Failed to get LID for phone number in on-demand history sync")
