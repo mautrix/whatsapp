@@ -435,7 +435,7 @@ func (wa *WhatsAppClient) createPortalsFromHistorySync(ctx context.Context) {
 			return
 		}
 		wrappedInfo, err := wa.getChatInfo(ctx, conv.ChatJID, conv, true)
-		if errors.Is(err, whatsmeow.ErrNotInGroup) || errors.Is(err, whatsmeow.ErrGroupNotFound) {
+		if errors.Is(err, whatsmeow.ErrNotInGroup) || errors.Is(err, whatsmeow.ErrGroupNotFound) || errors.Is(err, ErrNewsletterNotFound) {
 			log.Debug().Err(err).Stringer("chat_jid", conv.ChatJID).
 				Msg("Skipping creating room because the user is not a participant")
 			//err = wa.Main.DB.Message.DeleteAllInChat(ctx, wa.UserLogin.ID, conv.ChatJID)
