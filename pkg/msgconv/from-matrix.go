@@ -518,27 +518,27 @@ func (mc *MessageConverter) convertToWebP(img []byte) ([]byte, int, error) {
 	return webpBuffer.Bytes(), size, nil
 }
 
-func convertUnsupportedVideoCodec(ctx context.Context, data []byte, mime string) ([]byte, string) {
+func convertUnsupportedVideoCodec(ctx context.Context, data []byte, mime string) ([]byte, string, error) {
 	if !ffmpeg.Supported() || !ffmpeg.ProbeSupported() {
-		return data, mime
+		return data, mime, nil
 	}
 	log := zerolog.Ctx(ctx)
 	tempdir, err := os.MkdirTemp("", "mautrix_whatsapp_video_*")
 	if err != nil {
 		log.Warn().Err(err).Msg("Failed to create temp dir for video, sending it as-is")
-		return data, mime
+		return data, mime, nil
 	}
 	defer os.RemoveAll(tempdir)
 	inputPath := filepath.Join(tempdir, "input"+exmime.ExtensionFromMimetype(mime))
 	err = os.WriteFile(inputPath, data, 0600)
 	if err != nil {
 		log.Warn().Err(err).Msg("Failed to write video to temp file, sending it as-is")
-		return data, mime
+		return data, mime, nil
 	}
 	probe, err := ffmpeg.Probe(ctx, inputPath)
 	if err != nil {
 		log.Warn().Err(err).Msg("Failed to probe video, sending it as-is")
-		return data, mime
+		return data, mime, nil
 	}
 	videoSupported := !slices.ContainsFunc(probe.Streams, func(stream *ffmpeg.Stream) bool {
 		return stream.CodecType == "video" && stream.Disposition.AttachedPic == 0 && stream.CodecName != "h264"
@@ -547,7 +547,7 @@ func convertUnsupportedVideoCodec(ctx context.Context, data []byte, mime string)
 		return stream.CodecType == "audio" && stream.CodecName != "aac"
 	})
 	if videoSupported && audioSupported {
-		return data, mime
+		return data, mime, nil
 	}
 	videoArgs := []string{"-c:v", "copy"}
 	if !videoSupported {
@@ -559,15 +559,13 @@ func convertUnsupportedVideoCodec(ctx context.Context, data []byte, mime string)
 	outputPath := filepath.Join(tempdir, "output.mp4")
 	err = ffmpeg.ConvertPathWithDestination(ctx, inputPath, outputPath, nil, append(videoArgs, "-c:a", "aac", "-movflags", "+faststart"), false)
 	if err != nil {
-		log.Warn().Err(err).Msg("Failed to convert video to h264, sending it as-is")
-		return data, mime
+		return nil, mime, err
 	}
 	converted, err := os.ReadFile(outputPath)
 	if err != nil {
-		log.Warn().Err(err).Msg("Failed to read converted video, sending it as-is")
-		return data, mime
+		return nil, mime, err
 	}
-	return converted, "video/mp4"
+	return converted, "video/mp4", nil
 }
 
 func (mc *MessageConverter) getOriginalBridgedSticker(ctx context.Context, info *event.BridgedSticker) (*types.StickerPackItem, error) {
@@ -664,7 +662,10 @@ func (mc *MessageConverter) reuploadFileToWhatsApp(
 	case event.MsgVideo:
 		switch mime {
 		case "video/mp4", "video/3gpp":
-			data, mime = convertUnsupportedVideoCodec(ctx, data, mime)
+			data, mime, err = convertUnsupportedVideoCodec(ctx, data, mime)
+			if err != nil {
+				return nil, nil, mime, fmt.Errorf("%w (%s to h264): %w", bridgev2.ErrMediaConvertFailed, mime, err)
+			}
 		case "video/webm", "video/quicktime":
 			sourceFormat := "webm"
 			if mime == "video/quicktime" {
