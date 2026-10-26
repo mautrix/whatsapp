@@ -73,6 +73,12 @@ func wrapWhatsAppError(err error) error {
 			WithStatus(event.MessageStatusFail).
 			WithIsCertain(true).
 			WithSendNotice(true)
+	case errors.Is(err, whatsmeow.ErrRecipientNotOnWhatsApp):
+		return bridgev2.WrapErrorInStatus(err).
+			WithMessage("this phone number isn't on WhatsApp").
+			WithStatus(event.MessageStatusFail).
+			WithIsCertain(true).
+			WithSendNotice(true)
 	case errors.Is(err, whatsmeow.ErrServerReturnedError), errors.As(err, &iqErr):
 		return bridgev2.WrapErrorInStatus(err).
 			WithMessage("WhatsApp returned an error").
