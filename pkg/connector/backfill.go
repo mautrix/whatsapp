@@ -593,7 +593,26 @@ func (wa *WhatsAppClient) FetchMessages(ctx context.Context, params bridgev2.Fet
 	resp.HasMore = hasMore
 	resp.Forward = params.Forward
 	resp.MarkRead = markRead
+	if params.Forward && !markRead && conv != nil && !ptr.Val(conv.MarkedAsUnread) {
+		resp.ReadUpTo = historySyncReadUpTo(messages, int(ptr.Val(conv.UnreadCount)))
+	}
 	return resp, nil
+}
+
+func historySyncReadUpTo(newestFirst []*waWeb.WebMessageInfo, unreadCount int) time.Time {
+	if unreadCount <= 0 {
+		return time.Time{}
+	}
+	for _, msg := range newestFirst {
+		if msg.GetKey().GetFromMe() {
+			continue
+		}
+		unreadCount--
+		if unreadCount == 0 {
+			return time.Unix(int64(msg.GetMessageTimestamp()), 0).Add(-time.Nanosecond)
+		}
+	}
+	return time.Time{}
 }
 
 func (wa *WhatsAppClient) deleteHistorySyncMessages(ctx context.Context, portalJID types.JID, newestTS, oldestTS uint64) {
