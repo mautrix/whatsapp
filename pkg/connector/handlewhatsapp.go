@@ -514,6 +514,10 @@ func (wa *WhatsAppClient) handleWAReceipt(ctx context.Context, evt *events.Recei
 	} else if evt.Chat.Server == types.NewsletterServer {
 		messageSender = evt.Chat
 	}
+	var messageSenderAlt types.JID
+	if evt.MessageSender.IsEmpty() && evt.Chat.Server == types.BotServer {
+		messageSenderAlt = wa.JID
+	}
 	var chatAlt types.JID
 	if evt.Chat.Server == types.DefaultUserServer {
 		chatLID, _ := wa.GetStore().LIDs.GetLIDForPN(ctx, evt.Chat)
@@ -526,6 +530,9 @@ func (wa *WhatsAppClient) handleWAReceipt(ctx context.Context, evt *events.Recei
 		targets = append(targets, waid.MakeMessageID(evt.Chat, messageSender, id))
 		if !chatAlt.IsEmpty() {
 			targets = append(targets, waid.MakeMessageID(chatAlt, messageSender, id))
+		}
+		if !messageSenderAlt.IsEmpty() {
+			targets = append(targets, waid.MakeMessageID(evt.Chat, messageSenderAlt, id))
 		}
 	}
 	senderLID := evt.Sender
