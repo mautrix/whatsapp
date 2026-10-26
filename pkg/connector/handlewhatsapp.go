@@ -513,6 +513,8 @@ func (wa *WhatsAppClient) handleWAReceipt(ctx context.Context, evt *events.Recei
 		messageSender = evt.MessageSender
 	} else if evt.Chat.Server == types.NewsletterServer {
 		messageSender = evt.Chat
+	} else if evt.Chat.Server == types.BotServer {
+		messageSender = wa.JID
 	}
 	var chatAlt types.JID
 	if evt.Chat.Server == types.DefaultUserServer {
