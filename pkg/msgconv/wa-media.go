@@ -255,10 +255,10 @@ func fixStickerDimensions(info *event.FileInfo) {
 		info.Width = WhatsAppStickerSize
 		info.Height = WhatsAppStickerSize
 	} else if info.Width > info.Height {
-		info.Height /= info.Width / WhatsAppStickerSize
+		info.Height = info.Height * WhatsAppStickerSize / info.Width
 		info.Width = WhatsAppStickerSize
 	} else {
-		info.Width /= info.Height / WhatsAppStickerSize
+		info.Width = info.Width * WhatsAppStickerSize / info.Height
 		info.Height = WhatsAppStickerSize
 	}
 }
