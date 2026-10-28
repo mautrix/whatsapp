@@ -259,6 +259,7 @@ func (wa *WhatsAppClient) handleWAEvent(rawEvt any) (success bool) {
 		wa.UserLogin.BridgeState.Send(status.BridgeState{StateEvent: status.StateUnknownError, Error: WAClientOutdated})
 		wa.notifyOfflineSyncWaiter(fmt.Errorf("client outdated"))
 	case *events.TemporaryBan:
+		wa.tempBanned.Store(true)
 		state := status.BridgeState{
 			StateEvent: status.StateBadCredentials,
 			Error:      WATemporaryBan,

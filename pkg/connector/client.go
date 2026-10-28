@@ -115,6 +115,7 @@ type WhatsAppClient struct {
 	historySyncWakeup  chan struct{}
 	stopLoops          atomic.Pointer[context.CancelFunc]
 	tempBanReconnect   atomic.Pointer[context.CancelFunc]
+	tempBanned         atomic.Bool
 	resyncQueue        map[types.JID]resyncQueueItem
 	resyncQueueLock    sync.Mutex
 	nextResync         time.Time
@@ -231,6 +232,7 @@ func (wa *WhatsAppClient) connect(ctx context.Context) bool {
 		return false
 	}
 	wa.stopTempBanReconnect()
+	wa.tempBanned.Store(false)
 	wa.UserLogin.BridgeState.Send(status.BridgeState{StateEvent: status.StateConnecting})
 	wa.Main.firstClientConnectOnce.Do(wa.Main.onFirstClientConnect)
 	if err := wa.Main.updateProxy(ctx, wa.Client, false); err != nil {
@@ -446,8 +448,7 @@ func (wa *WhatsAppClient) LogoutRemote(ctx context.Context) {
 }
 
 func (wa *WhatsAppClient) IsLoggedIn() bool {
-	return wa.Client != nil && wa.Client.IsLoggedIn() &&
-		wa.UserLogin.BridgeState.GetPrevUnsent().StateEvent != status.StateBadCredentials
+	return wa.Client != nil && wa.Client.IsLoggedIn() && !wa.tempBanned.Load()
 }
 
 func (wa *WhatsAppClient) syncRemoteProfile(ctx context.Context, ghost *bridgev2.Ghost) {
