@@ -108,6 +108,7 @@ var ErrBroadcastSendDisabled = bridgev2.WrapErrorInStatus(errors.New("sending st
 var ErrBroadcastReactionUnsupported = bridgev2.WrapErrorInStatus(errors.New("reacting to status messages is not currently supported")).WithErrorAsMessage().WithIsCertain(true).WithSendNotice(true).WithErrorReason(event.MessageStatusUnsupported).WithStatus(event.MessageStatusFail)
 var ErrNotCommunityAdmin = bridgev2.WrapErrorInStatus(errors.New("only community admins can send announcements")).WithErrorAsMessage().WithIsCertain(true).WithSendNotice(true).WithErrorReason(event.MessageStatusNoPermission).WithStatus(event.MessageStatusFail)
 var ErrEmptyGroupName = bridgev2.WrapErrorInStatus(errors.New("WhatsApp group names can't be empty")).WithErrorAsMessage().WithIsCertain(true).WithSendNotice(true).WithErrorReason(event.MessageStatusUnsupported).WithStatus(event.MessageStatusFail)
+var ErrAddBlockedByPrivacy = bridgev2.WrapErrorInStatus(errors.New("this user's privacy settings don't allow adding them to groups")).WithErrorAsMessage().WithIsCertain(true).WithSendNotice(true).WithErrorReason(event.MessageStatusNoPermission).WithStatus(event.MessageStatusFail)
 
 func (wa *WhatsAppClient) handleConvertedMatrixMessage(ctx context.Context, msg *bridgev2.MatrixMessage, waMsg *waE2E.Message, req *whatsmeow.SendRequestExtra) (*bridgev2.MatrixMessageResponse, error) {
 	if req == nil {
@@ -140,7 +141,7 @@ func (wa *WhatsAppClient) handleConvertedMatrixMessage(ctx context.Context, msg 
 		if errors.Is(err, whatsmeow.ErrNoPermissionInGroup) {
 			return nil, ErrNotCommunityAdmin
 		}
-		return nil, wrapWhatsAppError(err)
+		return nil, wa.wrapSendError(err)
 	}
 	var pickedMessageID networkid.MessageID
 	if resp.Sender == wa.GetLID() {
@@ -219,7 +220,7 @@ func (wa *WhatsAppClient) HandleMatrixReaction(ctx context.Context, msg *bridgev
 		Metadata: &waid.ReactionMetadata{
 			SenderDeviceID: wa.JID.Device,
 		},
-	}, wrapWhatsAppError(err)
+	}, wa.wrapSendError(err)
 }
 
 func (wa *WhatsAppClient) HandleMatrixReactionRemove(ctx context.Context, msg *bridgev2.MatrixReactionRemove) (retErr error) {
@@ -249,7 +250,7 @@ func (wa *WhatsAppClient) HandleMatrixReactionRemove(ctx context.Context, msg *b
 	defer wa.mcTrack(msg, time.Now(), &retErr)
 	resp, err := wa.Client.SendMessage(ctx, portalJID, reactionMsg, extra)
 	zerolog.Ctx(ctx).Trace().Any("response", resp).Msg("WhatsApp reaction response")
-	return wrapWhatsAppError(err)
+	return wa.wrapSendError(err)
 }
 
 func (wa *WhatsAppClient) HandleMatrixEdit(ctx context.Context, edit *bridgev2.MatrixEdit) (retErr error) {
@@ -289,7 +290,7 @@ func (wa *WhatsAppClient) HandleMatrixEdit(ctx context.Context, edit *bridgev2.M
 		ID: editID,
 	})
 	log.Trace().Any("response", resp).Msg("WhatsApp edit response")
-	return wrapWhatsAppError(err)
+	return wa.wrapSendError(err)
 }
 
 func (wa *WhatsAppClient) HandleMatrixMessageRemove(ctx context.Context, msg *bridgev2.MatrixMessageRemove) (retErr error) {
@@ -314,7 +315,7 @@ func (wa *WhatsAppClient) HandleMatrixMessageRemove(ctx context.Context, msg *br
 
 	resp, err := wa.Client.SendMessage(ctx, portalJID, revokeMessage, extra)
 	log.Trace().Any("response", resp).Msg("WhatsApp delete response")
-	return wrapWhatsAppError(err)
+	return wa.wrapSendError(err)
 }
 
 func (wa *WhatsAppClient) HandleMatrixReadReceipt(ctx context.Context, receipt *bridgev2.MatrixReadReceipt) (retErr error) {
@@ -484,6 +485,8 @@ func (wa *WhatsAppClient) HandleMatrixMembership(ctx context.Context, msg *bridg
 		return nil, wrapWhatsAppError(err)
 	} else if len(resp) == 0 {
 		return nil, fmt.Errorf("no response for participant change")
+	} else if resp[0].Error == 403 && action == whatsmeow.ParticipantChangeAdd {
+		return nil, ErrAddBlockedByPrivacy
 	} else if resp[0].Error != 0 {
 		return nil, fmt.Errorf("failed to change participant: code %d", resp[0].Error)
 	}
