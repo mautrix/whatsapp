@@ -260,12 +260,17 @@ func (wa *WhatsAppClient) handleWAEvent(rawEvt any) (success bool) {
 		wa.UserLogin.BridgeState.Send(status.BridgeState{StateEvent: status.StateUnknownError, Error: WAClientOutdated})
 		wa.notifyOfflineSyncWaiter(fmt.Errorf("client outdated"))
 	case *events.TemporaryBan:
-		wa.UserLogin.BridgeState.Send(status.BridgeState{
+		state := status.BridgeState{
 			StateEvent: status.StateBadCredentials,
 			Error:      WATemporaryBan,
 			UserAction: status.UserActionRestart,
 			Message:    evt.String(),
-		})
+		}
+		if evt.Expire > 0 {
+			state.Info = map[string]any{"until": time.Now().Add(evt.Expire)}
+			wa.scheduleTempBanReconnect(ctx, evt.Expire)
+		}
+		wa.UserLogin.BridgeState.Send(state)
 		wa.notifyOfflineSyncWaiter(fmt.Errorf("temporary ban: %s", evt.String()))
 	default:
 		log.Debug().Type("event_type", rawEvt).Msg("Unhandled WhatsApp event")
