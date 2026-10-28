@@ -237,7 +237,11 @@ func (wa *WhatsAppClient) handleWAEvent(rawEvt any) (success bool) {
 		})
 		wa.notifyOfflineSyncWaiter(fmt.Errorf("stream error: %s", message))
 	case *events.StreamReplaced:
-		wa.UserLogin.BridgeState.Send(status.BridgeState{StateEvent: status.StateUnknownError, Error: WAStreamReplaced})
+		wa.UserLogin.BridgeState.Send(status.BridgeState{
+			StateEvent: status.StateBadCredentials,
+			Error:      WAStreamReplaced,
+			UserAction: status.UserActionRestart,
+		})
 		wa.notifyOfflineSyncWaiter(fmt.Errorf("stream replaced"))
 	case *events.KeepAliveTimeout:
 		wa.UserLogin.BridgeState.Send(status.BridgeState{StateEvent: status.StateTransientDisconnect, Error: WAKeepaliveTimeout})
