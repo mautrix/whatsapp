@@ -91,7 +91,9 @@ func (mc *MessageConverter) convertMediaMessage(
 		var err error
 		portal := getPortal(ctx)
 		idOverride := getEditTargetID(ctx)
-		preparedMedia.URL, err = portal.Bridge.Matrix.GenerateContentURI(ctx, waid.MakeMediaID(messageInfo, idOverride, portal.Receiver, getMediaIDVersion(msg)))
+		preparedMedia.URL, preparedMedia.File, err = portal.Bridge.GenerateContentURI(
+			ctx, portal.MXID, waid.MakeMediaID(messageInfo, idOverride, portal.Receiver, getMediaIDVersion(msg)),
+		)
 		if err != nil {
 			panic(fmt.Errorf("failed to generate content URI: %w", err))
 		}
@@ -253,10 +255,10 @@ func fixStickerDimensions(info *event.FileInfo) {
 		info.Width = WhatsAppStickerSize
 		info.Height = WhatsAppStickerSize
 	} else if info.Width > info.Height {
-		info.Height /= info.Width / WhatsAppStickerSize
+		info.Height = info.Height * WhatsAppStickerSize / info.Width
 		info.Width = WhatsAppStickerSize
 	} else {
-		info.Width /= info.Height / WhatsAppStickerSize
+		info.Width = info.Width * WhatsAppStickerSize / info.Height
 		info.Height = WhatsAppStickerSize
 	}
 }

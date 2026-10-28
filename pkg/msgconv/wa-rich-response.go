@@ -66,10 +66,15 @@ func (mc *MessageConverter) convertUnifiedRichResponseMessage(ctx context.Contex
 			Extra: extra,
 		}
 	}
+	content := format.HTMLToContent(htmlBuf.String())
+	if len(data)+len(content.Body)+len(content.FormattedBody) > 40000 {
+		delete(extra, "fi.mau.whatsapp.rich_message")
+		delete(extra, "fi.mau.whatsapp.non_json_rich_message")
+	}
 	extra["fi.mau.whatsapp.rich_response_id"] = rrMsg.ResponseID
 	return &bridgev2.ConvertedMessagePart{
 		Type:    event.EventMessage,
-		Content: new(format.HTMLToContent(htmlBuf.String())),
+		Content: &content,
 		Extra:   extra,
 	}
 }
