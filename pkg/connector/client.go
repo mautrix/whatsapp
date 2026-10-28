@@ -446,7 +446,8 @@ func (wa *WhatsAppClient) LogoutRemote(ctx context.Context) {
 }
 
 func (wa *WhatsAppClient) IsLoggedIn() bool {
-	return wa.Client != nil && wa.Client.IsLoggedIn()
+	return wa.Client != nil && wa.Client.IsLoggedIn() &&
+		wa.UserLogin.BridgeState.GetPrevUnsent().StateEvent != status.StateBadCredentials
 }
 
 func (wa *WhatsAppClient) syncRemoteProfile(ctx context.Context, ghost *bridgev2.Ghost) {
