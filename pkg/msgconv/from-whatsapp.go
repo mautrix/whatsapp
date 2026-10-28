@@ -187,7 +187,7 @@ func (mc *MessageConverter) ToMatrix(
 	case waMsg.EventMessage != nil:
 		part, contextInfo = mc.convertEventMessage(ctx, waMsg.EventMessage)
 	case waMsg.PinInChatMessage != nil:
-		part, contextInfo = mc.convertPinInChatMessage(ctx, waMsg.PinInChatMessage)
+		part, contextInfo = mc.convertPinInChatMessage(ctx, info, waMsg.PinInChatMessage)
 	case waMsg.KeepInChatMessage != nil:
 		part, contextInfo = mc.convertKeepInChatMessage(ctx, waMsg.KeepInChatMessage)
 	case waMsg.RichResponseMessage != nil:
@@ -320,6 +320,7 @@ func (mc *MessageConverter) ToMatrix(
 		}
 		cm.ThreadRoot = ptr.Ptr(waid.MakeMessageID(chat, pcp, commentTarget.GetID()))
 	}
+	mc.cutOffLongMessage(part.Content)
 
 	return cm
 }

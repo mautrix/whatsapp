@@ -249,7 +249,9 @@ func (wa *WhatsAppClient) handleWAHistorySync(
 		} else {
 			totalMessageCount += len(conv.GetMessages())
 		}
-		if jid.Server == types.DefaultUserServer {
+		if jid == types.MetaAIJID {
+			jid = types.NewMetaAIJID
+		} else if jid.Server == types.DefaultUserServer {
 			lid, err := wa.GetStore().LIDs.GetLIDForPN(ctx, jid)
 			if err != nil {
 				log.Err(err).Stringer("pn", jid).Msg("Failed to get LID for phone number in history sync")
@@ -435,7 +437,7 @@ func (wa *WhatsAppClient) createPortalsFromHistorySync(ctx context.Context) {
 			return
 		}
 		wrappedInfo, err := wa.getChatInfo(ctx, conv.ChatJID, conv, true)
-		if errors.Is(err, whatsmeow.ErrNotInGroup) || errors.Is(err, whatsmeow.ErrGroupNotFound) {
+		if errors.Is(err, whatsmeow.ErrNotInGroup) || errors.Is(err, whatsmeow.ErrGroupNotFound) || errors.Is(err, ErrNewsletterNotFound) {
 			log.Debug().Err(err).Stringer("chat_jid", conv.ChatJID).
 				Msg("Skipping creating room because the user is not a participant")
 			//err = wa.Main.DB.Message.DeleteAllInChat(ctx, wa.UserLogin.ID, conv.ChatJID)
@@ -593,7 +595,26 @@ func (wa *WhatsAppClient) FetchMessages(ctx context.Context, params bridgev2.Fet
 	resp.HasMore = hasMore
 	resp.Forward = params.Forward
 	resp.MarkRead = markRead
+	if params.Forward && !markRead && conv != nil && !ptr.Val(conv.MarkedAsUnread) {
+		resp.ReadUpTo = historySyncReadUpTo(resp.Messages, int(ptr.Val(conv.UnreadCount)))
+	}
 	return resp, nil
+}
+
+func historySyncReadUpTo(messages []*bridgev2.BackfillMessage, unreadCount int) time.Time {
+	if unreadCount <= 0 {
+		return time.Time{}
+	}
+	for i := len(messages) - 1; i >= 0; i-- {
+		if messages[i].Sender.IsFromMe {
+			continue
+		}
+		unreadCount--
+		if unreadCount == 0 {
+			return messages[i].Timestamp.Add(-time.Nanosecond)
+		}
+	}
+	return time.Time{}
 }
 
 func (wa *WhatsAppClient) deleteHistorySyncMessages(ctx context.Context, portalJID types.JID, newestTS, oldestTS uint64) {
@@ -803,7 +824,9 @@ func (wa *WhatsAppClient) handleOnDemandHistorySync(ctx context.Context, blob *w
 			zerolog.Ctx(ctx).Err(err).Str("jid", conv.GetID()).Msg("Failed to parse portal JID")
 			continue
 		}
-		if portalJID.Server == types.DefaultUserServer {
+		if portalJID == types.MetaAIJID {
+			portalJID = types.NewMetaAIJID
+		} else if portalJID.Server == types.DefaultUserServer {
 			lid, err := wa.GetStore().LIDs.GetLIDForPN(ctx, portalJID)
 			if err != nil {
 				zerolog.Ctx(ctx).Err(err).Stringer("lid", portalJID).Msg("Failed to get LID for phone number in on-demand history sync")

@@ -84,6 +84,7 @@ func (wa *WhatsAppConnector) LoadUserLogin(ctx context.Context, login *bridgev2.
 		w.Client.ManualHistorySyncDownload = true
 		w.Client.SendReportingTokens = true
 		w.Client.AutomaticMessageRerequestFromPhone = true
+		w.Client.UnifiedSessionInterval = 24 * time.Hour
 		w.Client.GetMessageForRetry = w.trackNotFoundRetry
 		w.Client.PreRetryCallback = w.trackFoundRetry
 		w.Client.BackgroundEventCtx = w.UserLogin.Log.WithContext(wa.Bridge.BackgroundCtx)
