@@ -175,6 +175,7 @@ func (wa *WhatsAppClient) handleWAEvent(rawEvt any) (success bool) {
 
 	case *events.Connected:
 		log.Debug().Msg("Connected to WhatsApp socket")
+		wa.tempBanned.Store(false)
 		wa.UserLogin.BridgeState.Send(status.BridgeState{StateEvent: status.StateConnected})
 		if wa.offlineSyncWaiter.Load() == nil {
 			go func() {

@@ -232,7 +232,6 @@ func (wa *WhatsAppClient) connect(ctx context.Context) bool {
 		return false
 	}
 	wa.stopTempBanReconnect()
-	wa.tempBanned.Store(false)
 	wa.UserLogin.BridgeState.Send(status.BridgeState{StateEvent: status.StateConnecting})
 	wa.Main.firstClientConnectOnce.Do(wa.Main.onFirstClientConnect)
 	if err := wa.Main.updateProxy(ctx, wa.Client, false); err != nil {
