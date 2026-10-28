@@ -323,7 +323,6 @@ func (wl *WALogin) handleEvent(rawEvt any) {
 		wl.LoginError = ErrUnexpectedDisconnect
 	case *events.ManualLoginReconnect:
 		wl.Received515.Set()
-		// PairSuccess is dispatched separately and may arrive after the 515.
 		return
 	default:
 		wl.Log.Warn().Type("event_type", evt).Msg("Got unexpected event")
