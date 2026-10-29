@@ -164,7 +164,19 @@ func (wa *WhatsAppConnector) downloadStickerDirectMedia(ctx context.Context, par
 		return nil, fmt.Errorf("no WhatsApp client found on login %s", parsedID.UserLogin)
 	}
 	sticker, err := wa.MsgConv.GetCachedSticker(ctx, waClient.Client, parsedID.Sticker.PackID, parsedID.Sticker.FileHash)
-	if err != nil {
+	var httpErr whatsmeow.DownloadHTTPError
+	if errors.As(err, &httpErr) {
+		switch httpErr.StatusCode {
+		case http.StatusNotFound, http.StatusGone:
+			return nil, mautrix.MNotFound.WithMessage("Sticker pack not found")
+		case http.StatusUnauthorized, http.StatusForbidden:
+			return nil, mautrix.MForbidden.WithMessage("WhatsApp denied access to the sticker pack")
+		case http.StatusTooManyRequests:
+			return nil, mautrix.MLimitExceeded.WithMessage("Rate limited by WhatsApp while fetching the sticker pack").WithCanRetry(true)
+		default:
+			return nil, mautrix.MUnknown.WithMessage("WhatsApp returned HTTP %d while fetching the sticker pack", httpErr.StatusCode).WithStatus(http.StatusBadGateway).WithCanRetry(true)
+		}
+	} else if err != nil {
 		return nil, err
 	} else if sticker == nil {
 		return nil, mautrix.MNotFound.WithMessage("Sticker not found in pack")

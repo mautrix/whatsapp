@@ -21,11 +21,16 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
+	"strings"
+	"time"
 
 	"go.mau.fi/whatsmeow"
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/event"
+
+	"go.mau.fi/mautrix-whatsapp/pkg/waid"
 )
 
 // wrapConversionError turns a failure to convert a Matrix event into a message status. Nothing has been
@@ -83,6 +88,50 @@ func wrapWhatsAppError(err error) error {
 			WithMessage("unexpected error from WhatsApp").
 			WithSendNotice(true)
 	}
+}
+
+// wrapSendError turns an error from sending a message to WhatsApp into a message status.
+func (wa *WhatsAppClient) wrapSendError(err error) error {
+	switch sendErrorCode(err) {
+	case 403:
+		return bridgev2.WrapErrorInStatus(err).
+			WithMessage("you don't have permission to do that on WhatsApp").
+			WithErrorReason(event.MessageStatusNoPermission).
+			WithStatus(event.MessageStatusFail).
+			WithIsCertain(true).
+			WithSendNotice(true)
+	case 463:
+		msg := "WhatsApp has temporarily restricted your account from messaging new contacts"
+		if until := wa.UserLogin.Metadata.(*waid.UserLoginMetadata).ReachoutTimelockUntil; until.After(time.Now()) {
+			msg = fmt.Sprintf("WhatsApp has restricted your account from messaging new contacts until %s", until.UTC().Format("Jan 2, 2006 at 3:04 PM MST"))
+		}
+		return bridgev2.WrapErrorInStatus(err).
+			WithMessage(msg).
+			WithErrorReason(event.MessageStatusNoPermission).
+			WithStatus(event.MessageStatusFail).
+			WithIsCertain(true).
+			WithSendNotice(true)
+	case 421, 479:
+		return bridgev2.WrapErrorInStatus(err).
+			WithMessage("WhatsApp rejected the message").
+			WithErrorReason(event.MessageStatusNetworkError).
+			WithStatus(event.MessageStatusFail).
+			WithIsCertain(true).
+			WithSendNotice(true)
+	default:
+		return wrapWhatsAppError(err)
+	}
+}
+
+// sendErrorCode returns the code WhatsApp rejected a message with, which whatsmeow only includes in the
+// error text.
+func sendErrorCode(err error) int {
+	if !errors.Is(err, whatsmeow.ErrServerReturnedError) {
+		return 0
+	}
+	_, codeStr, _ := strings.Cut(err.Error(), whatsmeow.ErrServerReturnedError.Error()+" ")
+	code, _ := strconv.Atoi(codeStr)
+	return code
 }
 
 // wrapWhatsAppRespError turns an error from a whatsmeow request made during login or provisioning into
