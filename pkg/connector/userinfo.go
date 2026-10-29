@@ -30,7 +30,7 @@ var ResyncJitterSeconds = 3600
 
 func (wa *WhatsAppClient) EnqueueGhostResync(ghost *bridgev2.Ghost) {
 	lastSync := ghost.Metadata.(*waid.GhostMetadata).LastSync.Time
-	if lastSync.Add(ResyncMinInterval).After(time.Now()) {
+	if ghost.AvatarID != "" && lastSync.Add(ResyncMinInterval).After(time.Now()) {
 		return
 	}
 	wa.resyncQueueLock.Lock()
@@ -118,12 +118,14 @@ func (wa *WhatsAppClient) doGhostResync(ctx context.Context, queue map[types.JID
 	var portals []*bridgev2.Portal
 	for jid, item := range queue {
 		var lastSync time.Time
+		unknownAvatar := false
 		if item.ghost != nil {
 			lastSync = item.ghost.Metadata.(*waid.GhostMetadata).LastSync.Time
+			unknownAvatar = item.ghost.AvatarID == ""
 		} else if item.portal != nil {
 			lastSync = item.portal.Metadata.(*waid.PortalMetadata).LastSync.Time
 		}
-		if lastSync.Add(ResyncMinInterval).After(time.Now()) {
+		if !unknownAvatar && lastSync.Add(ResyncMinInterval).After(time.Now()) {
 			log.Debug().
 				Stringer("jid", jid).
 				Time("last_sync", lastSync).
@@ -165,7 +167,7 @@ func (wa *WhatsAppClient) doGhostResync(ctx context.Context, queue map[types.JID
 			log.Warn().Stringer("jid", jid).Msg("Didn't get info for puppet in background sync")
 			continue
 		}
-		userInfo, err := wa.getUserInfo(ctx, jid, info.PictureID, info.PictureID != "" && string(ghost.AvatarID) != info.PictureID)
+		userInfo, err := wa.getUserInfo(ctx, jid, info.PictureID, ghost.AvatarID == "" || (info.PictureID != "" && string(ghost.AvatarID) != info.PictureID))
 		if err != nil {
 			log.Err(err).Stringer("jid", jid).Msg("Failed to get user info for puppet in background sync")
 			continue
