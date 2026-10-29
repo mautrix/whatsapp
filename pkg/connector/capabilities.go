@@ -30,6 +30,8 @@ var WhatsAppGeneralCaps = &bridgev2.NetworkGeneralCapabilities{
 				TypeDescription: "a group chat",
 
 				Name:         bridgev2.GroupFieldCapability{Allowed: true, MaxLength: 100},
+				Avatar:       bridgev2.GroupFieldCapability{Allowed: true},
+				Topic:        bridgev2.GroupFieldCapability{Allowed: true},
 				Disappear:    bridgev2.GroupFieldCapability{Allowed: true, DisappearSettings: waDisappearingCap},
 				Participants: bridgev2.GroupFieldCapability{Allowed: true, Required: true, MinLength: 1},
 				Parent:       bridgev2.GroupFieldCapability{Allowed: true},
