@@ -472,16 +472,19 @@ func (wa *WhatsAppClient) syncAltGhostWithInfo(ctx context.Context, jid types.JI
 }
 
 func makeInfoFromGhost(ghost *bridgev2.Ghost) *bridgev2.UserInfo {
-	return &bridgev2.UserInfo{
-		Identifiers: ghost.Identifiers,
-		Name:        &ghost.Name,
-		Avatar: &bridgev2.Avatar{
-			ID:     ghost.AvatarID,
-			Remove: ghost.AvatarID == "" || ghost.AvatarMXC == "",
-			MXC:    ghost.AvatarMXC,
-			Hash:   ghost.AvatarHash,
-		},
+	info := &bridgev2.UserInfo{
+		Identifiers:  ghost.Identifiers,
+		Name:         &ghost.Name,
 		IsBot:        &ghost.IsBot,
 		ExtraProfile: ghost.ExtraProfile,
 	}
+	if ghost.AvatarID != "" {
+		info.Avatar = &bridgev2.Avatar{
+			ID:     ghost.AvatarID,
+			Remove: ghost.AvatarMXC == "",
+			MXC:    ghost.AvatarMXC,
+			Hash:   ghost.AvatarHash,
+		}
+	}
+	return info
 }
