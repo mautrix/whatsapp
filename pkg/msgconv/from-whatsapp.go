@@ -17,6 +17,7 @@
 package msgconv
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"html"
@@ -92,7 +93,7 @@ func (mc *MessageConverter) getBasicUserInfo(ctx context.Context, user types.JID
 		portal := getPortal(ctx)
 		login := mc.Bridge.GetCachedUserLoginByID(waid.MakeUserLoginID(pnJID))
 		if login != nil && (portal.Receiver == "" || portal.Receiver == login.ID) {
-			return login.UserMXID, ghost.Name, nil
+			return login.UserMXID, cmp.Or(login.RemoteProfile.Name, ghost.Name), nil
 		}
 	}
 	return ghost.Intent.GetMXID(), ghost.Name, nil
