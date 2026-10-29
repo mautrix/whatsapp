@@ -137,6 +137,7 @@ var (
 	_ bridgev2.LoginProcessDisplayAndWait = (*WALogin)(nil)
 	_ bridgev2.LoginProcessUserInput      = (*WALogin)(nil)
 	_ bridgev2.LoginProcessWithOverride   = (*WALogin)(nil)
+	_ bridgev2.LoginProcessWithParams     = (*WALogin)(nil)
 	_ bridgev2.LoginProcessWebAuthn       = (*WALogin)(nil)
 )
 
@@ -144,6 +145,14 @@ const LoginConnectWait = 30 * time.Second
 const LoginPairPhoneWait = 30 * time.Second
 
 func (wl *WALogin) Start(ctx context.Context) (*bridgev2.LoginStep, error) {
+	return wl.StartWithParams(ctx, bridgev2.LoginStartParams{})
+}
+
+func (wl *WALogin) StartWithOverride(ctx context.Context, old *bridgev2.UserLogin) (*bridgev2.LoginStep, error) {
+	return wl.StartWithParams(ctx, bridgev2.LoginStartParams{Override: old})
+}
+
+func (wl *WALogin) StartWithParams(ctx context.Context, params bridgev2.LoginStartParams) (*bridgev2.LoginStep, error) {
 	wl.Main.firstClientConnectOnce.Do(wl.Main.onFirstClientConnect)
 	device := wl.Main.DeviceStore.NewDevice()
 	wl.Client = whatsmeow.NewClient(device, waLog.Zerolog(wl.Log))
@@ -153,8 +162,20 @@ func (wl *WALogin) Start(ctx context.Context) (*bridgev2.LoginStep, error) {
 	if err := wl.Main.updateProxy(ctx, wl.Client, true); err != nil {
 		return nil, err
 	}
+	if params.WebSocketHTTP != nil {
+		wl.Client.SetPreLoginHTTPClient(&http.Client{Transport: params.WebSocketHTTP})
+	}
 
 	if wl.PhoneCode {
+		if params.Override != nil {
+			phoneNumber := fmt.Sprintf("+%s", params.Override.ID)
+			wl.Log.Debug().
+				Str("phone_number", phoneNumber).
+				Msg("Auto-submitting phone number for relogin")
+			return wl.SubmitUserInput(ctx, map[string]string{
+				"phone_number": phoneNumber,
+			})
+		}
 		return &bridgev2.LoginStep{
 			Type:   bridgev2.LoginStepTypeUserInput,
 			StepID: LoginStepIDPhoneNumber,
@@ -182,20 +203,6 @@ func (wl *WALogin) Start(ctx context.Context) (*bridgev2.LoginStep, error) {
 		return nil, err
 	}
 	return makeQRStep(wl.QRs[0]), nil
-}
-
-func (wl *WALogin) StartWithOverride(ctx context.Context, old *bridgev2.UserLogin) (*bridgev2.LoginStep, error) {
-	step, err := wl.Start(ctx)
-	if err == nil && step != nil && old != nil && step.StepID == LoginStepIDPhoneNumber {
-		phoneNumber := fmt.Sprintf("+%s", old.ID)
-		wl.Log.Debug().
-			Str("phone_number", phoneNumber).
-			Msg("Auto-submitting phone number for relogin")
-		return wl.SubmitUserInput(ctx, map[string]string{
-			"phone_number": phoneNumber,
-		})
-	}
-	return step, err
 }
 
 func (wl *WALogin) SubmitUserInput(ctx context.Context, input map[string]string) (*bridgev2.LoginStep, error) {
@@ -316,6 +323,7 @@ func (wl *WALogin) handleEvent(rawEvt any) {
 		wl.LoginError = ErrUnexpectedDisconnect
 	case *events.ManualLoginReconnect:
 		wl.Received515.Set()
+		return
 	default:
 		wl.Log.Warn().Type("event_type", evt).Msg("Got unexpected event")
 		return
