@@ -243,7 +243,16 @@ func (wa *WhatsAppConnector) GenerateTransactionID(_ id.UserID, _ id.RoomID, _ e
 }
 
 func (wa *WhatsAppConnector) ResetHTTPTransport() {
-	// No-op for now, whatsmeow doesn't use the shared transport config yet
+	for _, login := range wa.Bridge.GetAllCachedUserLogins() {
+		client := login.Client.(*WhatsAppClient).Client
+		if client == nil {
+			continue
+		}
+		err := wa.updateProxy(login.Log.WithContext(wa.Bridge.BackgroundCtx), client, false)
+		if err != nil {
+			login.Log.Err(err).Msg("Failed to recreate HTTP clients")
+		}
+	}
 }
 
 func (wa *WhatsAppConnector) ResetNetworkConnections() {
