@@ -54,23 +54,38 @@ func (wa *WhatsAppConnector) getProxy(ctx context.Context, reason string) (strin
 }
 
 func (wa *WhatsAppConnector) updateProxy(ctx context.Context, client *whatsmeow.Client, isLogin bool) error {
-	if wa.Config.ProxyOnlyLogin && !isLogin {
-		return nil
+	var proxy string
+	if !wa.Config.ProxyOnlyLogin || isLogin {
+		reason := "connect"
+		if isLogin {
+			reason = "login"
+		}
+		var err error
+		proxy, err = wa.getProxy(ctx, reason)
+		if err != nil {
+			return fmt.Errorf("failed to get proxy address: %w", err)
+		}
 	}
-	reason := "connect"
-	if isLogin {
-		reason = "login"
+	settings := wa.Bridge.GetHTTPClientSettings().WithGlobalTimeout(0)
+	direct := settings.Compile()
+	proxied := direct
+	if proxy != "" {
+		proxySettings, err := settings.WithProxy(proxy)
+		if err != nil {
+			return fmt.Errorf("failed to set proxy address: %w", err)
+		}
+		proxied = proxySettings.Compile()
 	}
-	if proxy, err := wa.getProxy(ctx, reason); err != nil {
-		return fmt.Errorf("failed to get proxy address: %w", err)
-	} else if proxy == "" {
-		return nil
-	} else if err = client.SetProxyAddress(proxy, whatsmeow.SetProxyOptions{
-		OnlyLogin: wa.Config.ProxyOnlyLogin,
-		NoMedia:   wa.Config.ProxyOnlyLogin,
-	}); err != nil {
-		return fmt.Errorf("failed to set proxy address: %w", err)
+	client.SetPreLoginHTTPClient(proxied)
+	if wa.Config.ProxyOnlyLogin {
+		client.SetWebsocketHTTPClient(direct)
+		client.SetMediaHTTPClient(direct)
+	} else {
+		client.SetWebsocketHTTPClient(proxied)
+		client.SetMediaHTTPClient(proxied)
 	}
-	zerolog.Ctx(ctx).Debug().Msg("Enabled proxy")
+	if proxy != "" {
+		zerolog.Ctx(ctx).Debug().Msg("Enabled proxy")
+	}
 	return nil
 }

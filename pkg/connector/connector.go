@@ -242,21 +242,7 @@ func (wa *WhatsAppConnector) GenerateTransactionID(_ id.UserID, _ id.RoomID, _ e
 	return networkid.RawTransactionID(whatsmeow.WebMessageIDPrefix + strings.ToUpper(hex.EncodeToString(random.Bytes(9))))
 }
 
-func (wa *WhatsAppConnector) applyHTTPDialer(client *whatsmeow.Client) {
-	dial := wa.Bridge.GetHTTPClientSettings().Dial
-	if dial == nil {
-		return
-	}
-	transport := http.DefaultTransport.(*http.Transport).Clone()
-	transport.DialContext = dial
-	client.SetWebsocketHTTPClient(&http.Client{Transport: transport})
-	client.SetPreLoginHTTPClient(&http.Client{Transport: transport})
-	client.SetMediaHTTPClient(&http.Client{Transport: transport})
-}
-
-func (wa *WhatsAppConnector) ResetHTTPTransport() {
-	// No-op for now, whatsmeow doesn't use the shared transport config yet
-}
+func (wa *WhatsAppConnector) ResetHTTPTransport() {}
 
 func (wa *WhatsAppConnector) ResetNetworkConnections() {
 	for _, login := range wa.Bridge.GetAllCachedUserLogins() {

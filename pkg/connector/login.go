@@ -156,7 +156,6 @@ func (wl *WALogin) StartWithParams(ctx context.Context, params bridgev2.LoginSta
 	wl.Main.firstClientConnectOnce.Do(wl.Main.onFirstClientConnect)
 	device := wl.Main.DeviceStore.NewDevice()
 	wl.Client = whatsmeow.NewClient(device, waLog.Zerolog(wl.Log))
-	wl.Main.applyHTTPDialer(wl.Client)
 	wl.Client.EnableAutoReconnect = false
 	wl.Client.DisableLoginAutoReconnect = true
 	wl.EventHandlerID = wl.Client.AddEventHandler(wl.handleEvent)
