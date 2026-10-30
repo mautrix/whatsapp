@@ -49,6 +49,9 @@ func (mc *MessageConverter) convertMediaMessage(
 	isViewOnce bool,
 	cachedPart *bridgev2.ConvertedMessagePart,
 ) (part *bridgev2.ConvertedMessagePart, contextInfo *waE2E.ContextInfo) {
+	if viewOnceMsg, ok := msg.(MediaMessageWithViewOnce); ok && viewOnceMsg.GetViewOnce() {
+		isViewOnce = true
+	}
 	if mc.DisableViewOnce && isViewOnce {
 		body := "You received a view once message. For added privacy, you can only open it on the WhatsApp app."
 		if messageInfo.IsFromMe {
@@ -230,6 +233,11 @@ type MediaMessageWithThumbnail interface {
 type MediaMessageWithCaption interface {
 	MediaMessage
 	GetCaption() string
+}
+
+type MediaMessageWithViewOnce interface {
+	MediaMessage
+	GetViewOnce() bool
 }
 
 type MediaMessageWithDimensions interface {
