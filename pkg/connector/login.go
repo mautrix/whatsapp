@@ -288,6 +288,7 @@ func (wl *WALogin) handleEvent(rawEvt any) {
 			wl.QRs[i] = strings.Replace(code, evt.OldSecret, evt.NewSecret, 1)
 		}
 		wl.ADVRotate.Set()
+		return
 	case *events.QRScannedWithoutMultidevice:
 		wl.Log.Error().Msg("QR code scanned without multidevice enabled")
 		wl.LoginError = ErrLoginMultideviceNotEnabled
@@ -372,9 +373,14 @@ func (wl *WALogin) Wait(ctx context.Context) (*bridgev2.LoginStep, error) {
 		case <-wl.PasskeyRequest.GetChan():
 			return wl.makePasskeyStep()
 		case <-wl.ADVRotate.GetChan():
-			wl.Log.Debug().Msg("ADV secret was rotated, returning new QR immediately")
 			wl.ADVRotate.Clear()
-			return makeQRStep(wl.QRs[nextIndex]), nil
+			if currentIndex < 0 || currentIndex >= len(wl.QRs) {
+				wl.Log.Debug().Msg("ADV secret was rotated, but no QRs are left to return")
+				wl.Cancel()
+				return nil, ErrLoginTimeout
+			}
+			wl.Log.Debug().Msg("ADV secret was rotated, returning current QR immediately")
+			return makeQRStep(wl.QRs[currentIndex]), nil
 		case <-wl.LoginComplete.GetChan():
 			// continue
 		}
