@@ -246,6 +246,11 @@ func (wa *WhatsAppClient) handleWAHistorySync(
 		} else if jid.Server == types.BroadcastServer {
 			log.Debug().Stringer("chat_jid", jid).Msg("Skipping broadcast list in history sync")
 			continue
+		} else if jid == types.PSAJID {
+			// New messages in the official updates chat aren't bridged because they use a different path,
+			// so drop history as well. This should be removed if the PSA chat gets properly bridged in the future.
+			log.Debug().Stringer("chat_jid", jid).Msg("Skipping PSA in history sync")
+			continue
 		} else {
 			totalMessageCount += len(conv.GetMessages())
 		}
