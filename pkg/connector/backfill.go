@@ -593,10 +593,11 @@ func (wa *WhatsAppClient) FetchMessages(ctx context.Context, params bridgev2.Fet
 			}
 		}
 	}
-	resp, err := wa.convertHistorySyncMessages(ctx, params.Portal, portalJID, messages, true)
+	resp, err := wa.convertHistorySyncMessages(ctx, params.Portal, portalJID, messages, true, !params.Forward && !hasMore)
 	if err != nil {
 		return nil, fmt.Errorf("failed to convert messages: %w", err)
 	}
+	// TODO might be better to always set true here and let GetBetween return an empty result to mark as false?
 	resp.HasMore = hasMore
 	resp.Forward = params.Forward
 	resp.MarkRead = markRead
@@ -654,6 +655,7 @@ func (wa *WhatsAppClient) convertHistorySyncMessages(
 	portalJID types.JID,
 	messages []*waWeb.WebMessageInfo,
 	explodeOnError bool,
+	deleteEverything bool,
 ) (*bridgev2.FetchMessagesResponse, error) {
 	cli := wa.Client
 	if cli == nil {
@@ -709,9 +711,11 @@ func (wa *WhatsAppClient) convertHistorySyncMessages(
 		Messages: convertedMessages,
 		Cursor:   networkid.PaginationCursor(strconv.FormatUint(oldestTS, 10)),
 		CompleteCallback: func() {
-			// TODO this only deletes after backfilling. If there's no need for backfill after a relogin,
-			//      the messages will be stuck in the database
-			wa.deleteHistorySyncMessages(ctx, portalJID, newestTS, oldestTS)
+			if deleteEverything {
+				wa.deleteHistorySyncMessages(ctx, portalJID, 1<<62, oldestTS)
+			} else {
+				wa.deleteHistorySyncMessages(ctx, portalJID, newestTS, oldestTS)
+			}
 			if len(mediaRequests) > 0 {
 				go func(ctx context.Context) {
 					for _, req := range mediaRequests {
@@ -872,7 +876,7 @@ func (wa *WhatsAppClient) handleOnDemandHistorySync(ctx context.Context, blob *w
 					Int("message_count", len(messages)).
 					Stringer("end_of_history_type", conv.GetEndOfHistoryTransferType()).
 					Msg("Converting messages to bridge from on-demand history sync")
-				resp, err := wa.convertHistorySyncMessages(ctx, portal, portalJID, messages, false)
+				resp, err := wa.convertHistorySyncMessages(ctx, portal, portalJID, messages, false, false)
 				if err != nil {
 					return nil, err
 				}
