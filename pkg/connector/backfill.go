@@ -533,6 +533,7 @@ func (wa *WhatsAppClient) FetchMessages(ctx context.Context, params bridgev2.Fet
 	} else {
 		if params.AnchorMessage != nil {
 			endTime = ptr.Ptr(params.AnchorMessage.Timestamp)
+			wa.deleteAlreadyBridgedHistorySyncMessages(ctx, params.Portal, portalJID, params.AnchorMessage.Timestamp)
 		}
 		if params.Cursor != "" {
 			endTimeUnix, err := strconv.ParseInt(string(params.Cursor), 10, 64)
@@ -643,6 +644,34 @@ func (wa *WhatsAppClient) deleteHistorySyncMessages(ctx context.Context, portalJ
 	}
 }
 
+// Backfill only extends the timeline outwards, so buffered messages between the oldest and newest
+// bridged message (e.g. ones resent by a later history sync) would otherwise never be deleted.
+func (wa *WhatsAppClient) deleteAlreadyBridgedHistorySyncMessages(ctx context.Context, portal *bridgev2.Portal, portalJID types.JID, oldestBridged time.Time) {
+	newestBridged, err := wa.Main.Bridge.DB.Message.GetLastPartAtOrBeforeTime(ctx, portal.PortalKey, time.Now())
+	if err != nil {
+		zerolog.Ctx(ctx).Warn().Err(err).Msg("Failed to get last message in portal to delete already bridged history sync messages")
+		return
+	} else if newestBridged == nil {
+		return
+	}
+	newestTS, oldestTS := uint64(newestBridged.Timestamp.Unix()), uint64(oldestBridged.Unix())
+	rows, err := wa.Main.DB.Message.DeleteBetween(ctx, wa.UserLogin.ID, portalJID, newestTS, oldestTS)
+	if err != nil {
+		zerolog.Ctx(ctx).Warn().Err(err).
+			Stringer("portal_jid", portalJID).
+			Uint64("newest_ts", newestTS).
+			Uint64("oldest_ts", oldestTS).
+			Msg("Failed to delete already bridged history sync messages from database")
+	} else if rows > 0 {
+		zerolog.Ctx(ctx).Debug().
+			Stringer("portal_jid", portalJID).
+			Uint64("newest_ts", newestTS).
+			Uint64("oldest_ts", oldestTS).
+			Int64("rows_affected", rows).
+			Msg("Deleted already bridged history sync messages from database")
+	}
+}
+
 func (wa *WhatsAppClient) convertHistorySyncMessages(
 	ctx context.Context,
 	portal *bridgev2.Portal,
@@ -704,8 +733,6 @@ func (wa *WhatsAppClient) convertHistorySyncMessages(
 		Messages: convertedMessages,
 		Cursor:   networkid.PaginationCursor(strconv.FormatUint(oldestTS, 10)),
 		CompleteCallback: func() {
-			// TODO this only deletes after backfilling. If there's no need for backfill after a relogin,
-			//      the messages will be stuck in the database
 			wa.deleteHistorySyncMessages(ctx, portalJID, newestTS, oldestTS)
 			if len(mediaRequests) > 0 {
 				go func(ctx context.Context) {
