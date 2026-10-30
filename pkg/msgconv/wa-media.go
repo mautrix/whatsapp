@@ -49,7 +49,7 @@ func (mc *MessageConverter) convertMediaMessage(
 	isViewOnce bool,
 	cachedPart *bridgev2.ConvertedMessagePart,
 ) (part *bridgev2.ConvertedMessagePart, contextInfo *waE2E.ContextInfo) {
-	if viewOnceMsg, ok := msg.(interface{ GetViewOnce() bool }); ok && viewOnceMsg.GetViewOnce() {
+	if viewOnceMsg, ok := msg.(MediaMessageWithViewOnce); ok && viewOnceMsg.GetViewOnce() {
 		isViewOnce = true
 	}
 	if mc.DisableViewOnce && isViewOnce {
@@ -233,6 +233,11 @@ type MediaMessageWithThumbnail interface {
 type MediaMessageWithCaption interface {
 	MediaMessage
 	GetCaption() string
+}
+
+type MediaMessageWithViewOnce interface {
+	MediaMessage
+	GetViewOnce() bool
 }
 
 type MediaMessageWithDimensions interface {
