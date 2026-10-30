@@ -242,7 +242,18 @@ func (wa *WhatsAppConnector) GenerateTransactionID(_ id.UserID, _ id.RoomID, _ e
 	return networkid.RawTransactionID(whatsmeow.WebMessageIDPrefix + strings.ToUpper(hex.EncodeToString(random.Bytes(9))))
 }
 
-func (wa *WhatsAppConnector) ResetHTTPTransport() {}
+func (wa *WhatsAppConnector) ResetHTTPTransport() {
+	for _, login := range wa.Bridge.GetAllCachedUserLogins() {
+		client := login.Client.(*WhatsAppClient).Client
+		if client == nil {
+			continue
+		}
+		err := wa.updateProxy(login.Log.WithContext(wa.Bridge.BackgroundCtx), client, false)
+		if err != nil {
+			login.Log.Err(err).Msg("Failed to recreate HTTP clients")
+		}
+	}
+}
 
 func (wa *WhatsAppConnector) ResetNetworkConnections() {
 	for _, login := range wa.Bridge.GetAllCachedUserLogins() {
