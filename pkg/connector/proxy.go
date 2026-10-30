@@ -67,23 +67,23 @@ func (wa *WhatsAppConnector) updateProxy(ctx context.Context, client *whatsmeow.
 		}
 	}
 	settings := wa.Bridge.GetHTTPClientSettings().WithGlobalTimeout(0)
-	direct := settings.Compile()
-	proxied := direct
+	if settings.HTTPProxy == nil {
+		settings.HTTPProxy = http.ProxyFromEnvironment
+	}
+	proxySettings := settings
 	if proxy != "" {
-		proxySettings, err := settings.WithProxy(proxy)
+		var err error
+		proxySettings, err = settings.WithProxy(proxy)
 		if err != nil {
 			return fmt.Errorf("failed to set proxy address: %w", err)
 		}
-		proxied = proxySettings.Compile()
 	}
-	client.SetPreLoginHTTPClient(proxied)
+	client.SetPreLoginHTTPClient(proxySettings.Compile())
 	if wa.Config.ProxyOnlyLogin {
-		client.SetWebsocketHTTPClient(direct)
-		client.SetMediaHTTPClient(direct)
-	} else {
-		client.SetWebsocketHTTPClient(proxied)
-		client.SetMediaHTTPClient(proxied)
+		proxySettings = settings
 	}
+	client.SetWebsocketHTTPClient(proxySettings.Compile())
+	client.SetMediaHTTPClient(proxySettings.WithResponseHeaderTimeout(0).Compile())
 	if proxy != "" {
 		zerolog.Ctx(ctx).Debug().Msg("Enabled proxy")
 	}
