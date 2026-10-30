@@ -175,6 +175,7 @@ func (wa *WhatsAppClient) handleWAEvent(rawEvt any) (success bool) {
 
 	case *events.Connected:
 		log.Debug().Msg("Connected to WhatsApp socket")
+		wa.tempBanned.Store(false)
 		wa.UserLogin.BridgeState.Send(status.BridgeState{StateEvent: status.StateConnected})
 		if wa.offlineSyncWaiter.Load() == nil {
 			go func() {
@@ -237,7 +238,11 @@ func (wa *WhatsAppClient) handleWAEvent(rawEvt any) (success bool) {
 		})
 		wa.notifyOfflineSyncWaiter(fmt.Errorf("stream error: %s", message))
 	case *events.StreamReplaced:
-		wa.UserLogin.BridgeState.Send(status.BridgeState{StateEvent: status.StateUnknownError, Error: WAStreamReplaced})
+		wa.UserLogin.BridgeState.Send(status.BridgeState{
+			StateEvent: status.StateBadCredentials,
+			Error:      WAStreamReplaced,
+			UserAction: status.UserActionRestart,
+		})
 		wa.notifyOfflineSyncWaiter(fmt.Errorf("stream replaced"))
 	case *events.KeepAliveTimeout:
 		wa.UserLogin.BridgeState.Send(status.BridgeState{StateEvent: status.StateTransientDisconnect, Error: WAKeepaliveTimeout})
@@ -256,12 +261,18 @@ func (wa *WhatsAppClient) handleWAEvent(rawEvt any) (success bool) {
 		wa.UserLogin.BridgeState.Send(status.BridgeState{StateEvent: status.StateUnknownError, Error: WAClientOutdated})
 		wa.notifyOfflineSyncWaiter(fmt.Errorf("client outdated"))
 	case *events.TemporaryBan:
-		wa.UserLogin.BridgeState.Send(status.BridgeState{
+		wa.tempBanned.Store(true)
+		state := status.BridgeState{
 			StateEvent: status.StateBadCredentials,
 			Error:      WATemporaryBan,
 			UserAction: status.UserActionRestart,
 			Message:    evt.String(),
-		})
+		}
+		if evt.Expire > 0 {
+			state.Info = map[string]any{"until": time.Now().Add(evt.Expire)}
+			wa.scheduleTempBanReconnect(ctx, evt.Expire)
+		}
+		wa.UserLogin.BridgeState.Send(state)
 		wa.notifyOfflineSyncWaiter(fmt.Errorf("temporary ban: %s", evt.String()))
 	default:
 		log.Debug().Type("event_type", rawEvt).Msg("Unhandled WhatsApp event")

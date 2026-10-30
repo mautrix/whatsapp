@@ -114,6 +114,8 @@ type WhatsAppClient struct {
 
 	historySyncWakeup  chan struct{}
 	stopLoops          atomic.Pointer[context.CancelFunc]
+	tempBanReconnect   atomic.Pointer[context.CancelFunc]
+	tempBanned         atomic.Bool
 	resyncQueue        map[types.JID]resyncQueueItem
 	resyncQueueLock    sync.Mutex
 	nextResync         time.Time
@@ -229,6 +231,7 @@ func (wa *WhatsAppClient) connect(ctx context.Context) bool {
 		wa.UserLogin.BridgeState.Send(state)
 		return false
 	}
+	wa.stopTempBanReconnect()
 	wa.UserLogin.BridgeState.Send(status.BridgeState{StateEvent: status.StateConnecting})
 	wa.Main.firstClientConnectOnce.Do(wa.Main.onFirstClientConnect)
 	if err := wa.Main.updateProxy(ctx, wa.Client, false); err != nil {
@@ -395,7 +398,33 @@ func (wa *WhatsAppClient) callStopLoops() {
 	}
 }
 
+func (wa *WhatsAppClient) scheduleTempBanReconnect(ctx context.Context, expire time.Duration) {
+	waitCtx, cancel := context.WithCancel(ctx)
+	if oldCancel := wa.tempBanReconnect.Swap(&cancel); oldCancel != nil {
+		(*oldCancel)()
+	}
+	go func() {
+		defer cancel()
+		select {
+		case <-time.After(expire):
+		case <-waitCtx.Done():
+			return
+		}
+		if wa.tempBanReconnect.CompareAndSwap(&cancel, nil) {
+			zerolog.Ctx(ctx).Info().Msg("Temporary ban expired, reconnecting")
+			wa.Connect(ctx)
+		}
+	}()
+}
+
+func (wa *WhatsAppClient) stopTempBanReconnect() {
+	if cancel := wa.tempBanReconnect.Swap(nil); cancel != nil {
+		(*cancel)()
+	}
+}
+
 func (wa *WhatsAppClient) Disconnect() {
+	wa.stopTempBanReconnect()
 	wa.callStopLoops()
 	if cli := wa.Client; cli != nil {
 		cli.Disconnect()
@@ -418,7 +447,7 @@ func (wa *WhatsAppClient) LogoutRemote(ctx context.Context) {
 }
 
 func (wa *WhatsAppClient) IsLoggedIn() bool {
-	return wa.Client != nil && wa.Client.IsLoggedIn()
+	return wa.Client != nil && wa.Client.IsLoggedIn() && !wa.tempBanned.Load()
 }
 
 func (wa *WhatsAppClient) syncRemoteProfile(ctx context.Context, ghost *bridgev2.Ghost) {
