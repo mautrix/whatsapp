@@ -237,7 +237,11 @@ func (wa *WhatsAppClient) handleWAEvent(rawEvt any) (success bool) {
 		})
 		wa.notifyOfflineSyncWaiter(fmt.Errorf("stream error: %s", message))
 	case *events.StreamReplaced:
-		wa.UserLogin.BridgeState.Send(status.BridgeState{StateEvent: status.StateUnknownError, Error: WAStreamReplaced})
+		wa.UserLogin.BridgeState.Send(status.BridgeState{
+			StateEvent:         status.StateUnknownError,
+			Error:              WAStreamReplaced,
+			BlockAutoReconnect: true,
+		})
 		wa.notifyOfflineSyncWaiter(fmt.Errorf("stream replaced"))
 	case *events.KeepAliveTimeout:
 		wa.UserLogin.BridgeState.Send(status.BridgeState{StateEvent: status.StateTransientDisconnect, Error: WAKeepaliveTimeout})
@@ -253,7 +257,11 @@ func (wa *WhatsAppClient) handleWAEvent(rawEvt any) (success bool) {
 		wa.notifyOfflineSyncWaiter(fmt.Errorf("connection failure: %s (%s)", evt.Reason, evt.Message))
 	case *events.ClientOutdated:
 		wa.UserLogin.Log.Error().Msg("Got a client outdated connect failure. The bridge is likely out of date, please update immediately.")
-		wa.UserLogin.BridgeState.Send(status.BridgeState{StateEvent: status.StateUnknownError, Error: WAClientOutdated})
+		wa.UserLogin.BridgeState.Send(status.BridgeState{
+			StateEvent:         status.StateUnknownError,
+			Error:              WAClientOutdated,
+			BlockAutoReconnect: true,
+		})
 		wa.notifyOfflineSyncWaiter(fmt.Errorf("client outdated"))
 	case *events.TemporaryBan:
 		wa.UserLogin.BridgeState.Send(status.BridgeState{
