@@ -692,6 +692,9 @@ func (wa *WhatsAppClient) convertHistorySyncMessages(
 		if !wa.ensureAltJIDs(ctx, &evt.Info.MessageSource, false) {
 			return nil, fmt.Errorf("failed to ensure alt JIDs for message %s", evt.Info.ID)
 		}
+		if evt.Info.IsFromMe {
+			wa.addPreviousOwnLID(ctx, pickLID(evt.Info.Sender, evt.Info.SenderAlt))
+		}
 		isViewOnce := evt.IsViewOnce || evt.IsViewOnceV2 || evt.IsViewOnceV2Extension
 		converted, mediaReq := wa.convertHistorySyncMessage(
 			ctx, cli, portal, &evt.Info, evt.Message, evt.RawMessage, isViewOnce, msg.Reactions,
