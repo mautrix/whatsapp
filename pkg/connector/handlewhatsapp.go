@@ -961,7 +961,16 @@ func (wa *WhatsAppClient) handleWAAppStateSyncComplete(ctx context.Context, evt 
 	wa.appStateRecoveryLock.Lock()
 	defer wa.appStateRecoveryLock.Unlock()
 	meta := wa.UserLogin.Metadata.(*waid.UserLoginMetadata)
-	if ts, exists := meta.AppStateRecoveryAttempted[evt.Name]; exists {
+	if ts, exists := meta.AppStateRecoveryAttempted[evt.Name]; exists && evt.Recovery {
+		delete(wa.appStateFullSyncAttempted, evt.Name)
+		log.Info().
+			Time("recovery_ts", ts).
+			Msg("Applied app state recovery response, keeping recovery marked as attempted")
+		wa.UserLogin.TrackAnalytics("WhatsApp Appstate Recovery Success", map[string]any{
+			"patch_name":    evt.Name,
+			"from_recovery": true,
+		})
+	} else if exists {
 		delete(wa.appStateFullSyncAttempted, evt.Name)
 		delete(meta.AppStateRecoveryAttempted, evt.Name)
 		err := wa.UserLogin.Save(ctx)
