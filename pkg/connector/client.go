@@ -55,6 +55,7 @@ func (wa *WhatsAppConnector) LoadUserLogin(ctx context.Context, login *bridgev2.
 		mediaRetryLock:            semaphore.NewWeighted(wa.Config.HistorySync.MediaRequests.MaxAsyncHandle),
 		pushNamesSynced:           exsync.NewEvent(),
 		appStateFullSyncAttempted: make(map[appstate.WAPatchName]time.Time),
+		previousOwnLIDs:           exsync.NewSetWithItems(login.Metadata.(*waid.UserLoginMetadata).PreviousOwnLIDs),
 
 		onDemandHistorySyncRequests: make(map[types.JID]onDemandHistorySyncRequest),
 
@@ -138,6 +139,9 @@ type WhatsAppClient struct {
 
 	onDemandHistorySyncLock     sync.Mutex
 	onDemandHistorySyncRequests map[types.JID]onDemandHistorySyncRequest
+
+	previousOwnLIDs     *exsync.Set[types.JID]
+	previousOwnLIDsLock sync.Mutex
 }
 
 var (
@@ -206,7 +210,26 @@ func (wa *WhatsAppClient) IsThisUser(_ context.Context, userID networkid.UserID)
 
 func (wa *WhatsAppClient) IsOwnJID(jid types.JID) bool {
 	return (jid.Server == types.DefaultUserServer && jid.User == wa.JID.User) ||
-		(jid.Server == types.HiddenUserServer && jid.User == wa.GetLID().User)
+		(jid.Server == types.HiddenUserServer && jid.User == wa.GetLID().User) ||
+		wa.previousOwnLIDs.Has(jid.ToNonAD())
+}
+
+func (wa *WhatsAppClient) addPreviousOwnLID(ctx context.Context, jid types.JID) {
+	if jid.Server != types.HiddenUserServer || wa.IsOwnJID(jid) {
+		return
+	}
+	jid = jid.ToNonAD()
+	wa.previousOwnLIDsLock.Lock()
+	defer wa.previousOwnLIDsLock.Unlock()
+	if !wa.previousOwnLIDs.Add(jid) {
+		return
+	}
+	zerolog.Ctx(ctx).Info().Stringer("lid", jid).Msg("Found previous own LID in history sync")
+	wa.UserLogin.Metadata.(*waid.UserLoginMetadata).PreviousOwnLIDs = wa.previousOwnLIDs.AsList()
+	err := wa.UserLogin.Save(ctx)
+	if err != nil {
+		zerolog.Ctx(ctx).Err(err).Msg("Failed to save user login after adding previous own LID")
+	}
 }
 
 func (wa *WhatsAppClient) GetLID() types.JID {
