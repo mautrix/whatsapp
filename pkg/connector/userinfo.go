@@ -480,7 +480,7 @@ func makeInfoFromGhost(ghost *bridgev2.Ghost) *bridgev2.UserInfo {
 		IsBot:        &ghost.IsBot,
 		ExtraProfile: ghost.ExtraProfile,
 	}
-	if ghost.AvatarID != "" {
+	if ghost.AvatarID != "" && ghost.AvatarID != "unauthorized" {
 		info.Avatar = &bridgev2.Avatar{
 			ID:     ghost.AvatarID,
 			Remove: ghost.AvatarMXC == "",
