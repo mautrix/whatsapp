@@ -474,7 +474,9 @@ func (evt *WAMediaRetry) getRealSender() types.JID {
 
 func (evt *WAMediaRetry) GetSender() bridgev2.EventSender {
 	realSender := pickLID(evt.getRealSender(), evt.senderLID)
-	return evt.wa.makeEventSender(evt.wa.Main.Bridge.BackgroundCtx, realSender)
+	sender := evt.wa.makeEventSender(evt.wa.Main.Bridge.BackgroundCtx, realSender)
+	sender.ForceEditOrigSender = true
+	return sender
 }
 
 func (evt *WAMediaRetry) GetTargetMessage() networkid.MessageID {
