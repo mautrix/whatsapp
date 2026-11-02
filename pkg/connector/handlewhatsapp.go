@@ -970,7 +970,9 @@ func (wa *WhatsAppClient) handleWAAppStateSyncComplete(ctx context.Context, evt 
 	defer wa.appStateRecoveryLock.Unlock()
 	meta := wa.UserLogin.Metadata.(*waid.UserLoginMetadata)
 	if ts, exists := meta.AppStateRecoveryAttempted[evt.Name]; exists {
-		delete(wa.appStateFullSyncAttempted, evt.Name)
+		if !evt.Recovery {
+			delete(wa.appStateFullSyncAttempted, evt.Name)
+		}
 		delete(meta.AppStateRecoveryAttempted, evt.Name)
 		err := wa.UserLogin.Save(ctx)
 		if err != nil {
@@ -1008,7 +1010,7 @@ func (wa *WhatsAppClient) handleWAAppStateSyncError(ctx context.Context, evt *ev
 		return
 	}
 	if !evt.FullSync {
-		if !lastFullSync.IsZero() {
+		if !lastFullSync.IsZero() && time.Since(lastFullSync) < 48*time.Hour {
 			log.Debug().
 				Err(evt.Error).
 				Time("last_full_sync_attempt", lastFullSync).
