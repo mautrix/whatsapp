@@ -799,10 +799,12 @@ type onDemandHistorySyncRequest struct {
 	SentAt time.Time
 }
 
+const onDemandHistorySyncRequestTimeout = 1 * time.Hour
+
 func (wa *WhatsAppClient) startOnDemandHistorySyncRequest(ctx context.Context, portalJID types.JID, msgID types.MessageID) bool {
 	wa.onDemandHistorySyncLock.Lock()
 	defer wa.onDemandHistorySyncLock.Unlock()
-	if req, inFlight := wa.onDemandHistorySyncRequests[portalJID]; inFlight {
+	if req, inFlight := wa.onDemandHistorySyncRequests[portalJID]; inFlight && time.Since(req.SentAt) < onDemandHistorySyncRequestTimeout {
 		zerolog.Ctx(ctx).Debug().
 			Str("in_flight_request_msg_id", req.ID).
 			Stringer("portal_jid", portalJID).
