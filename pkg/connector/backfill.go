@@ -142,8 +142,16 @@ func (wa *WhatsAppClient) downloadAndSaveWAHistorySyncData(ctx context.Context, 
 		Str("peer_data_request_session_id", evt.GetPeerDataRequestSessionID()).
 		Msg("Downloading history sync")
 	blob, err := wa.Client.DownloadHistorySync(log.WithContext(ctx), evt, true)
-	if err != nil {
+	if errors.Is(err, whatsmeow.ErrMediaDownloadFailedWith403) || errors.Is(err, whatsmeow.ErrMediaDownloadFailedWith404) || errors.Is(err, whatsmeow.ErrMediaDownloadFailedWith410) {
+		log.Err(err).Msg("History sync blob is no longer available, dropping notification")
+		if err = wa.Main.DB.HSNotif.Delete(ctx, rowid); err != nil {
+			log.Err(err).Msg("Failed to delete queued history sync notification")
+			errored = true
+		}
+		return
+	} else if err != nil {
 		log.Err(err).Msg("Failed to download history sync")
+		errored = true
 		return
 	}
 	if blob.GetSyncType() == waHistorySync.HistorySync_ON_DEMAND {
@@ -171,6 +179,7 @@ func (wa *WhatsAppClient) downloadAndSaveWAHistorySyncData(ctx context.Context, 
 	})
 	if err != nil {
 		log.Err(err).Msg("Failed to store history sync notification data")
+		errored = true
 	} else {
 		resetTimer = blob.GetSyncType() == waHistorySync.HistorySync_INITIAL_BOOTSTRAP ||
 			blob.GetSyncType() == waHistorySync.HistorySync_RECENT ||
