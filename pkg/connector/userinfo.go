@@ -29,12 +29,15 @@ var ResyncLoopInterval = 4 * time.Hour
 var ResyncJitterSeconds = 3600
 
 func (wa *WhatsAppClient) EnqueueGhostResync(ghost *bridgev2.Ghost) {
+	jid := waid.ParseUserID(ghost.ID)
+	if jid.Server == types.BotServer {
+		return
+	}
 	lastSync := ghost.Metadata.(*waid.GhostMetadata).LastSync.Time
 	if ghost.AvatarID != "" && lastSync.Add(ResyncMinInterval).After(time.Now()) {
 		return
 	}
 	wa.resyncQueueLock.Lock()
-	jid := waid.ParseUserID(ghost.ID)
 	if _, exists := wa.resyncQueue[jid]; !exists {
 		wa.resyncQueue[jid] = resyncQueueItem{ghost: ghost}
 		nextResyncIn := time.Until(wa.nextResync).String()
