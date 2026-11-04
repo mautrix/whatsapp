@@ -300,7 +300,11 @@ func (wa *WhatsAppConnector) syncMismatchingGhosts(ctx context.Context) error {
 }
 
 func (wa *WhatsAppConnector) removeRejoinedPNGhosts(ctx context.Context) error {
-	if wa.Bridge.Background || wa.Bridge.DB.KV.Get(ctx, "whatsapp_lid_dm_pn_ghosts_removed") == "true" {
+	if wa.Bridge.Background || wa.Bridge.DB.KV.Get(ctx, "whatsapp_lid_dm_pn_ghosts_removed_v2") == "true" {
+		return nil
+	}
+	stateGetter, ok := wa.Bridge.Matrix.(bridgev2.MatrixConnectorWithArbitraryRoomState)
+	if !ok {
 		return nil
 	}
 	log := zerolog.Ctx(ctx).With().Str("action", "remove rejoined pn ghosts").Logger()
@@ -322,12 +326,14 @@ func (wa *WhatsAppConnector) removeRejoinedPNGhosts(ctx context.Context) error {
 			continue
 		}
 		pnUserID := waid.MakeUserID(pn)
-		member, err := wa.Bridge.Matrix.GetMemberInfo(ctx, portal.MXID, wa.Bridge.Matrix.FormatGhostMXID(pnUserID))
-		if err != nil {
+		memberEvt, err := stateGetter.GetStateEvent(ctx, portal.MXID, event.StateMember, wa.Bridge.Matrix.FormatGhostMXID(pnUserID).String())
+		if errors.Is(err, mautrix.MNotFound) || errors.Is(err, mautrix.MForbidden) {
+			continue
+		} else if err != nil {
 			log.Warn().Err(err).Stringer("room_id", portal.MXID).Msg("Failed to get PN ghost membership")
 			failed++
 			continue
-		} else if member == nil || member.Membership != event.MembershipJoin {
+		} else if memberEvt == nil || memberEvt.Content.AsMember().Membership != event.MembershipJoin {
 			continue
 		}
 		pnGhost, err := wa.Bridge.GetGhostByID(ctx, pnUserID)
@@ -345,6 +351,12 @@ func (wa *WhatsAppConnector) removeRejoinedPNGhosts(ctx context.Context) error {
 			}
 			continue
 		}
+		log.Debug().
+			Stringer("room_id", portal.MXID).
+			Stringer("pn", pn).
+			Stringer("join_sender", memberEvt.Sender).
+			Time("join_ts", time.UnixMilli(memberEvt.Timestamp)).
+			Msg("Removed PN ghost from LID DM")
 		removed++
 	}
 	log.Info().
@@ -353,7 +365,7 @@ func (wa *WhatsAppConnector) removeRejoinedPNGhosts(ctx context.Context) error {
 		Int("total_lid_portals", len(lidPortals)).
 		Msg("Finished removing rejoined PN ghosts from LID DMs")
 	if failed == 0 && ctx.Err() == nil {
-		wa.Bridge.DB.KV.Set(ctx, "whatsapp_lid_dm_pn_ghosts_removed", "true")
+		wa.Bridge.DB.KV.Set(ctx, "whatsapp_lid_dm_pn_ghosts_removed_v2", "true")
 	}
 	return nil
 }
