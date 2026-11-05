@@ -319,7 +319,7 @@ func (wa *WhatsAppClient) HandleMatrixMessageRemove(ctx context.Context, msg *br
 }
 
 func (wa *WhatsAppClient) HandleMatrixReadReceipt(ctx context.Context, receipt *bridgev2.MatrixReadReceipt) (retErr error) {
-	if !receipt.ReadUpTo.After(receipt.LastRead) {
+	if receipt.Receipt.IsThread() || !receipt.ReadUpTo.After(receipt.LastRead) {
 		return nil
 	}
 	if receipt.LastRead.IsZero() {
