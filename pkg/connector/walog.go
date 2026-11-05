@@ -17,26 +17,27 @@
 package connector
 
 import (
+	"sync/atomic"
+
 	"github.com/rs/zerolog"
-	"go.mau.fi/util/exsync"
 	waBinary "go.mau.fi/whatsmeow/binary"
 	waLog "go.mau.fi/whatsmeow/util/log"
 )
 
 type whatsmeowLogger struct {
 	waLog.Logger
-	pings *exsync.Set[string]
+	lastPing *atomic.Pointer[string]
 }
 
 func newWhatsmeowLogger(log zerolog.Logger) waLog.Logger {
-	return &whatsmeowLogger{Logger: waLog.Zerolog(log), pings: exsync.NewSet[string]()}
+	return &whatsmeowLogger{Logger: waLog.Zerolog(log), lastPing: &atomic.Pointer[string]{}}
 }
 
 func (l *whatsmeowLogger) Sub(module string) waLog.Logger {
 	sub := l.Logger.Sub(module)
 	switch module {
 	case "Send", "Recv":
-		return &nodeLogger{Logger: sub, pings: l.pings, send: module == "Send"}
+		return &nodeLogger{Logger: sub, lastPing: l.lastPing, send: module == "Send"}
 	default:
 		return sub
 	}
@@ -44,8 +45,8 @@ func (l *whatsmeowLogger) Sub(module string) waLog.Logger {
 
 type nodeLogger struct {
 	waLog.Logger
-	pings *exsync.Set[string]
-	send  bool
+	lastPing *atomic.Pointer[string]
+	send     bool
 }
 
 func (l *nodeLogger) Debugf(msg string, args ...any) {
@@ -53,9 +54,10 @@ func (l *nodeLogger) Debugf(msg string, args ...any) {
 		if node, ok := args[0].(*waBinary.Node); ok && node.Tag == "iq" && node.Content == nil {
 			id, _ := node.Attrs["id"].(string)
 			if l.send && node.Attrs["xmlns"] == "w:p" && node.Attrs["type"] == "get" {
-				l.pings.Add(id)
+				l.lastPing.Store(&id)
 				return
-			} else if !l.send && node.Attrs["type"] == "result" && l.pings.Pop(id) {
+			} else if last := l.lastPing.Load(); !l.send && node.Attrs["type"] == "result" && last != nil && *last == id {
+				l.lastPing.CompareAndSwap(last, nil)
 				return
 			}
 		}
