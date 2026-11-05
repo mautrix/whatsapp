@@ -28,4 +28,5 @@ repos:
       - id: prevent-literal-http-methods
       - id: zerolog-ban-global-log
       - id: bridgelint
+        language: system
         verbose: true
