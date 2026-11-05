@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"runtime/debug"
 	"time"
@@ -57,9 +56,9 @@ func (wa *WhatsAppClient) resyncWASARootSecrets(ctx context.Context) {
 	success := true
 	if err := wa.Client.FetchAppState(ctx, appstate.WAPatchRegularHigh, true, false); err != nil {
 		log.Err(err).Msg("Failed to resync WASA root secrets")
-		// Mark the sync as completed on mismatching LTHash errors, because those can get permanently stuck
-		// (retrying won't help). In case it's not stuck, a single call should be enough to request a resync.
-		if !errors.Is(err, appstate.ErrMismatchingLTHash) || ctx.Err() != nil {
+		// Mark the sync as completed on errors too, because some get permanently stuck (mismatching LTHash,
+		// expired patch blobs), and a failed full sync already requests app state recovery from the phone.
+		if ctx.Err() != nil {
 			return
 		}
 		success = false
