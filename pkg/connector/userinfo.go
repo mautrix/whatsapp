@@ -119,6 +119,7 @@ func (wa *WhatsAppClient) doGhostResync(ctx context.Context, queue map[types.JID
 	var ghostJIDs []types.JID
 	var ghosts []*bridgev2.Ghost
 	var portals []*bridgev2.Portal
+	selectedGhosts := make(map[types.JID]*bridgev2.Ghost)
 	for jid, item := range queue {
 		var lastSync time.Time
 		unknownAvatar := false
@@ -136,11 +137,22 @@ func (wa *WhatsAppClient) doGhostResync(ctx context.Context, queue map[types.JID
 			continue
 		}
 		if item.ghost != nil {
-			ghosts = append(ghosts, item.ghost)
-			ghostJIDs = append(ghostJIDs, jid)
+			selectedGhosts[jid] = item.ghost
 		} else if item.portal != nil {
 			portals = append(portals, item.portal)
 		}
+	}
+	for jid, ghost := range selectedGhosts {
+		if jid.Server == types.DefaultUserServer {
+			lid, err := wa.GetStore().LIDs.GetLIDForPN(ctx, jid)
+			if err != nil {
+				log.Warn().Err(err).Stringer("jid", jid).Msg("Failed to get LID for background sync")
+			} else if _, lidSelected := selectedGhosts[lid]; lidSelected {
+				continue
+			}
+		}
+		ghosts = append(ghosts, ghost)
+		ghostJIDs = append(ghostJIDs, jid)
 	}
 	for _, portal := range portals {
 		wa.UserLogin.QueueRemoteEvent(&simplevent.ChatResync{
