@@ -32,5 +32,11 @@ jobs:
           go install honnef.co/go/tools/cmd/staticcheck@latest
           export PATH="$HOME/go/bin:$PATH"
 
+      - name: Cache pre-commit
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/pre-commit
+          key: pre-commit-go${{ matrix.go-version }}-${{ hashFiles('.pre-commit-config.yaml') }}
+
       - name: Run pre-commit
-        uses: pre-commit/action@v3.0.1
+        run: pipx run pre-commit run --all-files --show-diff-on-failure --color=always
