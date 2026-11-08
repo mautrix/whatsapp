@@ -566,6 +566,15 @@ func (wa *WhatsAppClient) FetchMessages(ctx context.Context, params bridgev2.Fet
 			anchorID = parsedID.ID
 		}
 	}
+	var lastMessageTS uint64
+	if !params.Forward {
+		lastMessage, err := wa.Main.Bridge.DB.Message.GetLastPartAtOrBeforeTime(ctx, params.Portal.PortalKey, time.Now())
+		if err != nil {
+			return nil, fmt.Errorf("failed to get last message in portal: %w", err)
+		} else if lastMessage != nil {
+			lastMessageTS = uint64(lastMessage.Timestamp.Unix())
+		}
+	}
 	var hasMore bool
 	if !params.Forward && wa.Main.Config.HistorySync.BackwardsOnDemand {
 		hasMore = conv != nil && ptr.Val(conv.EndOfHistoryTransferType) == waHistorySync.Conversation_COMPLETE_BUT_MORE_MESSAGES_REMAIN_ON_PRIMARY
@@ -576,10 +585,8 @@ func (wa *WhatsAppClient) FetchMessages(ctx context.Context, params bridgev2.Fet
 	} else if len(messages) == 0 || (len(messages) == 1 && anchorID != "" && messages[0].GetKey().GetID() == anchorID) {
 		if startTime != nil {
 			wa.deleteHistorySyncMessages(ctx, portalJID, 1<<62, uint64(startTime.Unix()))
-		} else if endTime != nil {
-			wa.deleteHistorySyncMessages(ctx, portalJID, uint64(endTime.Unix()), 0)
 		} else {
-			wa.deleteHistorySyncMessages(ctx, portalJID, 0, 0)
+			wa.deleteHistorySyncMessages(ctx, portalJID, lastMessageTS, 0)
 		}
 		hasMore = hasMore && params.AnchorMessage != nil
 		if hasMore && !params.AllowSlowFetch {
@@ -611,8 +618,8 @@ func (wa *WhatsAppClient) FetchMessages(ctx context.Context, params bridgev2.Fet
 	var deleteUpTo uint64
 	if !params.Forward && !hasMore {
 		deleteUpTo = 1 << 62
-		if endTime != nil {
-			deleteUpTo = uint64(endTime.Unix())
+		if lastMessageTS != 0 {
+			deleteUpTo = lastMessageTS
 		}
 	}
 	resp, err := wa.convertHistorySyncMessages(ctx, params.Portal, portalJID, messages, true, deleteUpTo)
