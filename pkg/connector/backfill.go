@@ -399,6 +399,8 @@ func (wa *WhatsAppClient) handleWAHistorySync(
 	return nil
 }
 
+const historySyncQueuedTimeout = 10 * time.Minute
+
 func (wa *WhatsAppClient) createPortalsFromHistorySync(ctx context.Context) {
 	log := wa.UserLogin.Log.With().
 		Str("action", "create portals from history sync").
@@ -442,7 +444,7 @@ func (wa *WhatsAppClient) createPortalsFromHistorySync(ctx context.Context) {
 			// We don't currently support new PSAs, so don't bother backfilling them either
 			wg.Done()
 			continue
-		} else if wa.historySyncQueued.Has(conv.ChatJID) {
+		} else if queuedAt, ok := wa.historySyncQueued.Get(conv.ChatJID); ok && time.Since(queuedAt) < historySyncQueuedTimeout {
 			wg.Done()
 			continue
 		}
@@ -485,7 +487,7 @@ func (wa *WhatsAppClient) createPortalsFromHistorySync(ctx context.Context) {
 			wg.Done()
 			continue
 		}
-		wa.historySyncQueued.Add(conv.ChatJID)
+		wa.historySyncQueued.Set(conv.ChatJID, time.Now())
 		res := wa.UserLogin.QueueRemoteEvent(&simplevent.ChatResync{
 			EventMeta: simplevent.EventMeta{
 				Type: bridgev2.RemoteEventChatResync,
@@ -501,7 +503,7 @@ func (wa *WhatsAppClient) createPortalsFromHistorySync(ctx context.Context) {
 					if err != nil {
 						zerolog.Ctx(ctx).Err(err).Msg("Failed to mark conversation as bridged")
 					}
-					wa.historySyncQueued.Remove(conv.ChatJID)
+					wa.historySyncQueued.Delete(conv.ChatJID)
 					wg.Done()
 				},
 			},
@@ -509,7 +511,7 @@ func (wa *WhatsAppClient) createPortalsFromHistorySync(ctx context.Context) {
 			LatestMessageTS: conv.LastMessageTimestamp,
 		})
 		if !res.Success {
-			wa.historySyncQueued.Remove(conv.ChatJID)
+			wa.historySyncQueued.Delete(conv.ChatJID)
 			log.Debug().Msg("Cancelling history sync portal creation loop")
 			return
 		}
@@ -517,7 +519,7 @@ func (wa *WhatsAppClient) createPortalsFromHistorySync(ctx context.Context) {
 	log.Info().Int("conversation_count", len(conversations)).Msg("Finished creating portals from history sync")
 	go func() {
 		wg.Wait()
-		if wa.historySyncQueued.Size() > 0 {
+		if wa.historySyncQueued.Len() > 0 {
 			return
 		}
 		wa.UserLogin.Metadata.(*waid.UserLoginMetadata).HistorySyncPortalsNeedCreating = false
