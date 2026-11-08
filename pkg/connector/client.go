@@ -50,6 +50,7 @@ func (wa *WhatsAppConnector) LoadUserLogin(ctx context.Context, login *bridgev2.
 		MC:        noopMCInstance,
 
 		historySyncWakeup:         make(chan struct{}, 1),
+		historySyncQueued:         exsync.NewSet[types.JID](),
 		resyncQueue:               make(map[types.JID]resyncQueueItem),
 		directMediaRetries:        make(map[networkid.MessageID]*directMediaRetry),
 		mediaRetryLock:            semaphore.NewWeighted(wa.Config.HistorySync.MediaRequests.MaxAsyncHandle),
@@ -114,6 +115,7 @@ type WhatsAppClient struct {
 	MC        mClient
 
 	historySyncWakeup  chan struct{}
+	historySyncQueued  *exsync.Set[types.JID]
 	stopLoops          atomic.Pointer[context.CancelFunc]
 	resyncQueue        map[types.JID]resyncQueueItem
 	resyncQueueLock    sync.Mutex

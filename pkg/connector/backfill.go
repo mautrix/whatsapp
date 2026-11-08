@@ -442,6 +442,9 @@ func (wa *WhatsAppClient) createPortalsFromHistorySync(ctx context.Context) {
 			// We don't currently support new PSAs, so don't bother backfilling them either
 			wg.Done()
 			continue
+		} else if wa.historySyncQueued.Has(conv.ChatJID) {
+			wg.Done()
+			continue
 		}
 		// TODO can the chat info fetch be avoided entirely?
 		select {
@@ -482,6 +485,7 @@ func (wa *WhatsAppClient) createPortalsFromHistorySync(ctx context.Context) {
 			wg.Done()
 			continue
 		}
+		wa.historySyncQueued.Add(conv.ChatJID)
 		res := wa.UserLogin.QueueRemoteEvent(&simplevent.ChatResync{
 			EventMeta: simplevent.EventMeta{
 				Type: bridgev2.RemoteEventChatResync,
@@ -497,6 +501,7 @@ func (wa *WhatsAppClient) createPortalsFromHistorySync(ctx context.Context) {
 					if err != nil {
 						zerolog.Ctx(ctx).Err(err).Msg("Failed to mark conversation as bridged")
 					}
+					wa.historySyncQueued.Remove(conv.ChatJID)
 					wg.Done()
 				},
 			},
@@ -504,6 +509,7 @@ func (wa *WhatsAppClient) createPortalsFromHistorySync(ctx context.Context) {
 			LatestMessageTS: conv.LastMessageTimestamp,
 		})
 		if !res.Success {
+			wa.historySyncQueued.Remove(conv.ChatJID)
 			log.Debug().Msg("Cancelling history sync portal creation loop")
 			return
 		}
@@ -511,6 +517,9 @@ func (wa *WhatsAppClient) createPortalsFromHistorySync(ctx context.Context) {
 	log.Info().Int("conversation_count", len(conversations)).Msg("Finished creating portals from history sync")
 	go func() {
 		wg.Wait()
+		if wa.historySyncQueued.Size() > 0 {
+			return
+		}
 		wa.UserLogin.Metadata.(*waid.UserLoginMetadata).HistorySyncPortalsNeedCreating = false
 		err = wa.UserLogin.Save(ctx)
 		if err != nil {
