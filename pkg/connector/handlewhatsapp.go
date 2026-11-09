@@ -374,6 +374,14 @@ func (wa *WhatsAppClient) handleWAMessage(ctx context.Context, evt *events.Messa
 	if assocType := messageAssoc.GetAssociationType(); assocType == waE2E.MessageAssociation_HD_IMAGE_DUAL_UPLOAD || assocType == waE2E.MessageAssociation_HD_VIDEO_DUAL_UPLOAD {
 		parentKey := messageAssoc.GetParentMessageKey()
 		protocolMsg, shouldHideEdit := makeHDMediaReplacementEdit(evt.Message, parentKey)
+		if protocolMsg.GetEditedMessage() == nil {
+			wa.UserLogin.Log.Debug().
+				Str("message_id", evt.Info.ID).
+				Str("parent_id", parentKey.GetID()).
+				Stringer("assoc_type", assocType).
+				Msg("Ignoring HD replacement message without replacement content")
+			return
+		}
 		dontRenderEdited = shouldHideEdit
 		wa.UserLogin.Log.Debug().
 			Str("message_id", evt.Info.ID).
