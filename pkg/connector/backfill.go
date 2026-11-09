@@ -298,6 +298,9 @@ func (wa *WhatsAppClient) handleWAHistorySync(
 					Int("msg_index", i).
 					Str("msg_id", rawMsg.GetMessage().GetKey().GetID()).
 					Uint64("msg_time_seconds", rawMsg.GetMessage().GetMessageTimestamp()).
+					Stringer("stub_type", rawMsg.GetMessage().GetMessageStubType()).
+					Str("message_type", getMessageType(rawMsg.GetMessage().GetMessage())).
+					Bool("from_me", rawMsg.GetMessage().GetKey().GetFromMe()).
 					Msg("Dropping historical message due to parse error")
 				log.Trace().
 					Any("web_message_info", rawMsg.GetMessage()).
