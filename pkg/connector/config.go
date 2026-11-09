@@ -53,6 +53,7 @@ type Config struct {
 	InitialAutoReconnect        bool          `yaml:"initial_auto_reconnect"`
 	UseWhatsAppRetryStore       bool          `yaml:"use_whatsapp_retry_store"`
 	MaxMemberSync               int           `yaml:"max_member_sync"`
+	DisableContactSync          bool          `yaml:"disable_contact_sync"`
 	LazyAvatars                 bool          `yaml:"lazy_avatars"`
 
 	AnimatedSticker msgconv.AnimatedStickerConfig `yaml:"animated_sticker"`
@@ -132,6 +133,7 @@ func upgradeConfig(helper up.Helper) {
 	helper.Copy(up.Bool, "initial_auto_reconnect")
 	helper.Copy(up.Bool, "use_whatsapp_retry_store")
 	helper.Copy(up.Int, "max_member_sync")
+	helper.Copy(up.Bool, "disable_contact_sync")
 	helper.Copy(up.Bool, "lazy_avatars")
 
 	helper.Copy(up.Str, "animated_sticker", "target")

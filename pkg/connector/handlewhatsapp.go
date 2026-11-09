@@ -165,13 +165,13 @@ func (wa *WhatsAppClient) handleWAEvent(rawEvt any) (success bool) {
 		if err != nil {
 			log.Err(err).Msg("Failed to update push name in store")
 		}
-		go wa.syncGhost(wa.JID.ToNonAD(), "push name setting", nil)
+		go wa.syncContactGhost(wa.JID.ToNonAD(), "push name setting", nil)
 	case *events.Contact:
-		go wa.syncGhost(evt.JID, "contact event", nil)
+		go wa.syncContactGhost(evt.JID, "contact event", nil)
 	case *events.PushName:
-		go wa.syncGhost(evt.JID, "push name event", nil)
+		go wa.syncContactGhost(evt.JID, "push name event", nil)
 	case *events.BusinessName:
-		go wa.syncGhost(evt.JID, "business name event", nil)
+		go wa.syncContactGhost(evt.JID, "business name event", nil)
 
 	case *events.Connected:
 		log.Debug().Msg("Connected to WhatsApp socket")
@@ -810,9 +810,18 @@ func (wa *WhatsAppClient) syncGhost(jid types.JID, reason string, pictureID *str
 	go wa.syncRemoteProfile(ctx, ghost)
 }
 
+func (wa *WhatsAppClient) syncContactGhost(jid types.JID, reason string, pictureID *string) {
+	if wa.Main.Config.DisableContactSync &&
+		jid.ToNonAD() != wa.JID.ToNonAD() &&
+		jid.ToNonAD() != wa.LID.ToNonAD() {
+		return
+	}
+	wa.syncGhost(jid, reason, pictureID)
+}
+
 func (wa *WhatsAppClient) handleWAPictureUpdate(ctx context.Context, evt *events.Picture) bool {
 	if evt.JID.Server == types.DefaultUserServer || evt.JID.Server == types.HiddenUserServer || evt.JID.Server == types.BotServer {
-		go wa.syncGhost(evt.JID, "picture event", &evt.PictureID)
+		go wa.syncContactGhost(evt.JID, "picture event", &evt.PictureID)
 		return true
 	} else {
 		var changes bridgev2.ChatInfo
