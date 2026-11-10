@@ -165,8 +165,10 @@ func (mc *MessageConverter) ToWhatsApp(
 		message.LocationMessage = &waE2E.LocationMessage{
 			DegreesLatitude:  &lat,
 			DegreesLongitude: &long,
-			Comment:          &content.Body,
 			ContextInfo:      contextInfo,
+		}
+		if content.Body != "" && content.Body != content.GeoURI {
+			message.LocationMessage.Name = &content.Body
 		}
 	default:
 		return nil, nil, fmt.Errorf("%w %s", bridgev2.ErrUnsupportedMessageType, content.MsgType)
