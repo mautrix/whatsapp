@@ -167,8 +167,14 @@ func (mc *MessageConverter) ToWhatsApp(
 			DegreesLongitude: &long,
 			ContextInfo:      contextInfo,
 		}
-		if content.Body != "" && content.Body != content.GeoURI {
-			message.LocationMessage.Name = &content.Body
+		name := content.Body
+		if msc3488, ok := evt.Content.Raw["org.matrix.msc3488.location"].(map[string]any); ok {
+			if description, ok := msc3488["description"].(string); ok && description != "" {
+				name = description
+			}
+		}
+		if name != "" && !strings.Contains(name, "geo:") && !strings.Contains(name, "\n") {
+			message.LocationMessage.Name = &name
 		}
 	default:
 		return nil, nil, fmt.Errorf("%w %s", bridgev2.ErrUnsupportedMessageType, content.MsgType)
