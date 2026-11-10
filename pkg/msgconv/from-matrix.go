@@ -694,11 +694,15 @@ func (mc *MessageConverter) reuploadFileToWhatsApp(
 		mediaType = whatsmeow.MediaVideo
 	case event.MsgAudio:
 		if content.MSC3245Voice != nil && mime != "audio/ogg; codecs=opus" && mime != "audio/ogg" && ffmpeg.Supported() {
-			data, err = ffmpeg.ConvertBytes(ctx, data, ".ogg", []string{}, []string{"-vn", "-c:a", "libopus"}, mime)
-			if err != nil {
+			converted, err := ffmpeg.ConvertBytes(ctx, data, ".ogg", []string{}, []string{"-vn", "-c:a", "libopus"}, mime)
+			if err == nil {
+				data = converted
+				mime = "audio/ogg; codecs=opus"
+			} else if mime == "audio/aac" || mime == "audio/mp4" || mime == "audio/amr" || mime == "audio/mpeg" {
+				zerolog.Ctx(ctx).Warn().Err(err).Str("mime", mime).Msg("Failed to convert voice message to ogg, continuing with original file")
+			} else {
 				return nil, nil, mime, fmt.Errorf("%w (voice to ogg): %w", bridgev2.ErrMediaConvertFailed, err)
 			}
-			mime = "audio/ogg; codecs=opus"
 		}
 		switch mime {
 		case "audio/aac", "audio/mp4", "audio/amr", "audio/mpeg", "audio/ogg; codecs=opus":
