@@ -210,7 +210,7 @@ func (mc *MessageConverter) CaptionEditToWhatsApp(
 	content *event.MessageEventContent,
 	portal *bridgev2.Portal,
 ) *waE2E.Message {
-	if content.MsgType != event.MsgImage && content.MsgType != event.MsgVideo && content.MsgType != event.MsgFile {
+	if (content.MsgType != event.MsgImage && content.MsgType != event.MsgVideo && content.MsgType != event.MsgFile) || content.GetInfo().MimeType == "" {
 		return nil
 	}
 	ctx = context.WithValue(ctx, contextKeyClient, client)
@@ -221,14 +221,14 @@ func (mc *MessageConverter) CaptionEditToWhatsApp(
 		caption, contextInfo.MentionedJID = mc.parseText(ctx, content)
 	}
 	switch {
+	case content.MsgType == event.MsgVideo, content.Info.MimeType == "image/gif":
+		return &waE2E.Message{VideoMessage: &waE2E.VideoMessage{Caption: proto.String(caption), ContextInfo: contextInfo}}
 	case content.MsgType == event.MsgFile:
 		return &waE2E.Message{DocumentWithCaptionMessage: &waE2E.FutureProofMessage{
 			Message: &waE2E.Message{
 				DocumentMessage: &waE2E.DocumentMessage{Caption: proto.String(caption), ContextInfo: contextInfo},
 			},
 		}}
-	case content.MsgType == event.MsgVideo, content.GetInfo().MimeType == "image/gif":
-		return &waE2E.Message{VideoMessage: &waE2E.VideoMessage{Caption: proto.String(caption), ContextInfo: contextInfo}}
 	default:
 		return &waE2E.Message{ImageMessage: &waE2E.ImageMessage{Caption: proto.String(caption), ContextInfo: contextInfo}}
 	}
