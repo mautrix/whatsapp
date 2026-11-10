@@ -293,7 +293,10 @@ func (wa *WhatsAppClient) handleWAHistorySync(
 		for i, rawMsg := range rawMessages {
 			// Don't store messages that will just be skipped.
 			msgEvt, err := wa.Client.ParseWebMessage(jid, rawMsg.GetMessage())
-			if err != nil {
+			if err != nil && getMessageType(rawMsg.GetMessage().GetMessage()) == "ignore" {
+				ignoredTypes++
+				continue
+			} else if err != nil {
 				log.Warn().Err(err).
 					Int("msg_index", i).
 					Str("msg_id", rawMsg.GetMessage().GetKey().GetID()).
