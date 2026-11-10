@@ -119,9 +119,6 @@ var whatsappCaps = &event.RoomFeatures{
 			MimeTypes: map[string]event.CapabilitySupportLevel{
 				"audio/ogg; codecs=opus": event.CapLevelFullySupported,
 				"audio/ogg":              event.CapLevelUnsupported,
-				"audio/mp4":              supportedIfFFmpeg(),
-				"audio/aac":              supportedIfFFmpeg(),
-				"audio/mpeg":             supportedIfFFmpeg(),
 				"audio/webm":             supportedIfFFmpeg(),
 			},
 			Caption: event.CapLevelDropped,
