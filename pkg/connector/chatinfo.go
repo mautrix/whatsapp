@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -244,6 +245,13 @@ const (
 	defaultPL    = 0
 )
 
+var alwaysAllowedGroupEvents = map[event.Type]int{
+	event.EventEncrypted:            defaultPL, // Need to always allow encrypted events for poll responses
+	event.EventReaction:             defaultPL,
+	event.EventRedaction:            defaultPL,
+	event.EventUnstablePollResponse: defaultPL,
+}
+
 func setDefaultSubGroupFlag(isCommunityAnnouncementGroup bool) bridgev2.ExtraUpdater[*bridgev2.Portal] {
 	return func(_ context.Context, portal *bridgev2.Portal) bool {
 		meta := portal.Metadata.(*waid.PortalMetadata)
@@ -311,10 +319,6 @@ func (wa *WhatsAppClient) wrapGroupInfo(ctx context.Context, info *types.GroupIn
 					event.StateRoomName:                metaChangePL,
 					event.StateRoomAvatar:              metaChangePL,
 					event.StateTopic:                   metaChangePL,
-					event.EventEncrypted:               defaultPL, // Need to always allow encrypted events for poll responses
-					event.EventReaction:                defaultPL,
-					event.EventRedaction:               defaultPL,
-					event.EventUnstablePollResponse:    defaultPL,
 					event.StateBeeperDisappearingTimer: metaChangePL,
 				},
 			},
@@ -326,6 +330,7 @@ func (wa *WhatsAppClient) wrapGroupInfo(ctx context.Context, info *types.GroupIn
 		},
 		ExtraUpdates: extraUpdater,
 	}
+	maps.Copy(wrapped.Members.PowerLevels.Events, alwaysAllowedGroupEvents)
 	var hasSelf bool
 	for _, pcp := range info.Participants {
 		member := bridgev2.ChatMember{
@@ -445,10 +450,7 @@ func (wa *WhatsAppClient) wrapGroupInfoChange(ctx context.Context, evt *events.G
 			} else {
 				memberChanges.PowerLevels.EventsDefault = ptr.Ptr(defaultPL)
 			}
-			memberChanges.PowerLevels.Events[event.EventEncrypted] = defaultPL
-			memberChanges.PowerLevels.Events[event.EventReaction] = defaultPL
-			memberChanges.PowerLevels.Events[event.EventRedaction] = defaultPL
-			memberChanges.PowerLevels.Events[event.EventUnstablePollResponse] = defaultPL
+			maps.Copy(memberChanges.PowerLevels.Events, alwaysAllowedGroupEvents)
 		}
 		if evt.Locked != nil {
 			metaChangePL := defaultPL
