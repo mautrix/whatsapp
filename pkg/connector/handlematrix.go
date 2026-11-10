@@ -273,7 +273,7 @@ func (wa *WhatsAppClient) HandleMatrixEdit(ctx context.Context, edit *bridgev2.M
 		return fmt.Errorf("failed to parse portal ID: %w", err)
 	}
 
-	waMsg := wa.Main.MsgConv.CaptionEditToWhatsApp(ctx, wa.Client, edit.Content, edit.Portal)
+	waMsg := wa.Main.MsgConv.CaptionEditToWhatsApp(ctx, wa.Client, edit.Event, edit.Content, edit.Portal)
 	if waMsg == nil {
 		waMsg, _, err = wa.Main.MsgConv.ToWhatsApp(ctx, wa.Client, edit.Event, edit.Content, nil, nil, edit.Portal)
 		if err != nil {

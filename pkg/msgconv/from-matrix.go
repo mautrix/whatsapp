@@ -207,30 +207,40 @@ func (mc *MessageConverter) ToWhatsApp(
 func (mc *MessageConverter) CaptionEditToWhatsApp(
 	ctx context.Context,
 	client *whatsmeow.Client,
+	evt *event.Event,
 	content *event.MessageEventContent,
 	portal *bridgev2.Portal,
 ) *waE2E.Message {
-	if (content.MsgType != event.MsgImage && content.MsgType != event.MsgVideo && content.MsgType != event.MsgFile) || content.GetInfo().MimeType == "" {
+	mime := content.GetInfo().MimeType
+	if mime == "" {
 		return nil
+	} else if mime == "image/gif" {
+		content.MsgType = event.MsgVideo
 	}
 	ctx = context.WithValue(ctx, contextKeyClient, client)
 	ctx = context.WithValue(ctx, contextKeyPortal, portal)
 	contextInfo := mc.generateContextInfo(ctx, nil, content.RelatesTo, portal, content.BeeperDisappearingTimer, content.Mentions != nil && content.Mentions.Room)
-	var caption string
-	if content.FileName != "" && content.Body != content.FileName {
-		caption, contextInfo.MentionedJID = mc.parseText(ctx, content)
-	}
+	msg := mc.constructMediaMessage(ctx, content, evt, &whatsmeow.UploadResponse{}, nil, contextInfo, mime)
 	switch {
-	case content.MsgType == event.MsgVideo, content.Info.MimeType == "image/gif":
-		return &waE2E.Message{VideoMessage: &waE2E.VideoMessage{Caption: proto.String(caption), ContextInfo: contextInfo}}
-	case content.MsgType == event.MsgFile:
+	case msg.GetImageMessage() != nil:
+		return &waE2E.Message{ImageMessage: &waE2E.ImageMessage{
+			Caption:     msg.ImageMessage.Caption,
+			ContextInfo: contextInfo,
+		}}
+	case msg.GetVideoMessage() != nil:
+		return &waE2E.Message{VideoMessage: &waE2E.VideoMessage{
+			Caption:     msg.VideoMessage.Caption,
+			ContextInfo: contextInfo,
+		}}
+	case msg.GetDocumentMessage() != nil, msg.GetDocumentWithCaptionMessage() != nil:
 		return &waE2E.Message{DocumentWithCaptionMessage: &waE2E.FutureProofMessage{
-			Message: &waE2E.Message{
-				DocumentMessage: &waE2E.DocumentMessage{Caption: proto.String(caption), ContextInfo: contextInfo},
-			},
+			Message: &waE2E.Message{DocumentMessage: &waE2E.DocumentMessage{
+				Caption:     proto.String(msg.GetDocumentWithCaptionMessage().GetMessage().GetDocumentMessage().GetCaption()),
+				ContextInfo: contextInfo,
+			}},
 		}}
 	default:
-		return &waE2E.Message{ImageMessage: &waE2E.ImageMessage{Caption: proto.String(caption), ContextInfo: contextInfo}}
+		return nil
 	}
 }
 
