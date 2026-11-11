@@ -96,6 +96,14 @@ func (wa *WhatsAppClient) historySyncLoop(ctx context.Context) {
 		}
 		if resetTimer {
 			timerPending.Store(true)
+			wa.historySyncPortalGen.Add(1)
+			if meta := wa.UserLogin.Metadata.(*waid.UserLoginMetadata); !meta.HistorySyncPortalsNeedCreating {
+				meta.HistorySyncPortalsNeedCreating = true
+				err := wa.UserLogin.Save(ctx)
+				if err != nil {
+					wa.UserLogin.Log.Err(err).Msg("Failed to save user login history sync portals need creating flag")
+				}
+			}
 		}
 		if timerPending.Load() {
 			dispatchTimer.Reset(wa.Main.Config.HistorySync.DispatchWait)
@@ -417,6 +425,7 @@ func (wa *WhatsAppClient) createPortalsFromHistorySync(ctx context.Context) {
 		}
 	}()
 	ctx = log.WithContext(ctx)
+	gen := wa.historySyncPortalGen.Load()
 	limit := wa.Main.Config.HistorySync.MaxInitialConversations
 	loginTS := wa.UserLogin.Metadata.(*waid.UserLoginMetadata).LoggedInAt
 	conversations, err := wa.Main.DB.Conversation.GetRecent(ctx, wa.UserLogin.ID, limit, loginTS)
@@ -517,6 +526,9 @@ func (wa *WhatsAppClient) createPortalsFromHistorySync(ctx context.Context) {
 	log.Info().Int("conversation_count", len(conversations)).Msg("Finished creating portals from history sync")
 	go func() {
 		wg.Wait()
+		if wa.historySyncPortalGen.Load() != gen {
+			return
+		}
 		wa.UserLogin.Metadata.(*waid.UserLoginMetadata).HistorySyncPortalsNeedCreating = false
 		err = wa.UserLogin.Save(ctx)
 		if err != nil {
