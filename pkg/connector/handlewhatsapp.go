@@ -353,7 +353,7 @@ func (wa *WhatsAppClient) handleWAMessage(ctx context.Context, evt *events.Messa
 	}
 	if protocol := evt.Message.GetProtocolMessage(); evt.Info.Chat == types.MuseJID && protocol.GetType() == waE2E.ProtocolMessage_AI_METADATA_OPERATION {
 		if sync := protocol.GetAiMetadataOperation().GetHatchMetadataSync(); sync != nil {
-			return wa.handleMuseMetadata(ctx, sync.GetData())
+			return wa.handleMuseMetadata(ctx, sync)
 		}
 		return
 	}
