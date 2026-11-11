@@ -363,7 +363,7 @@ func museApprovalContent(portal *bridgev2.Portal, meta *waid.MuseApprovalMeta, f
 
 func convertMuseApproval(ctx context.Context, portal *bridgev2.Portal, intent bridgev2.MatrixAPI, meta *waid.MuseApprovalMeta) (*bridgev2.ConvertedMessage, error) {
 	prefix := portal.Bridge.Config.CommandPrefix
-	footer := fmt.Sprintf("Reply to this message with `%s approval-allow` or `%s approval-deny`, or use the WhatsApp app.", prefix, prefix)
+	footer := fmt.Sprintf("Reply to this message with %s approval-allow or %s approval-deny, or use the WhatsApp app.", prefix, prefix)
 	return &bridgev2.ConvertedMessage{
 		Parts: []*bridgev2.ConvertedMessagePart{{
 			Type:       event.EventMessage,
@@ -421,13 +421,13 @@ func (wa *WhatsAppClient) decideMuseApproval(ctx context.Context, approvalID, de
 			}
 			_ = json.Unmarshal(resp.Body, &body)
 			if body.ErrorMessage != "" {
-				return fmt.Errorf("Muse rejected the decision: %s", body.ErrorMessage)
+				return fmt.Errorf("muse rejected the decision: %s", body.ErrorMessage)
 			}
-			return fmt.Errorf("Muse rejected the decision (%s)", cmp.Or(body.ErrorCode, resp.Status))
+			return fmt.Errorf("muse rejected the decision (%s)", cmp.Or(body.ErrorCode, resp.Status))
 		}
 		return nil
 	case <-time.After(30 * time.Second):
-		return fmt.Errorf("Muse didn't confirm the decision")
+		return fmt.Errorf("muse didn't confirm the decision")
 	case <-ctx.Done():
 		return ctx.Err()
 	}
@@ -491,7 +491,7 @@ func fnMuseApproval(ce *commands.Event) {
 		ce.Reply("Not logged in")
 	} else if err = login.Client.(*WhatsAppClient).decideMuseApproval(ce.Ctx, meta.ID, kind); err != nil {
 		ce.Log.Err(err).Str("approval_id", meta.ID).Str("decision", kind).Msg("Failed to send Muse approval decision")
-		ce.Reply("%v. Use the WhatsApp app instead.", err)
+		ce.Reply("Couldn't send the decision: %v. Use the WhatsApp app instead.", err)
 	} else {
 		ce.React("✅")
 	}
