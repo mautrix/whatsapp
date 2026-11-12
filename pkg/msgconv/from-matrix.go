@@ -168,6 +168,11 @@ func (mc *MessageConverter) ToWhatsApp(
 			Comment:          &content.Body,
 			ContextInfo:      contextInfo,
 		}
+		if msc3488, ok := evt.Content.Raw["org.matrix.msc3488.location"].(map[string]any); ok {
+			if description, ok := msc3488["description"].(string); ok && description != "" {
+				message.LocationMessage.Name = &description
+			}
+		}
 	default:
 		return nil, nil, fmt.Errorf("%w %s", bridgev2.ErrUnsupportedMessageType, content.MsgType)
 	}
