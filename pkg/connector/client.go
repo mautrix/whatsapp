@@ -32,6 +32,7 @@ import (
 	"go.mau.fi/whatsmeow/proto/waWa6"
 	"go.mau.fi/whatsmeow/store"
 	"go.mau.fi/whatsmeow/types"
+	"go.mau.fi/whatsmeow/types/events"
 	"go.mau.fi/whatsmeow/util/keys"
 	waLog "go.mau.fi/whatsmeow/util/log"
 	"golang.org/x/sync/semaphore"
@@ -122,6 +123,9 @@ type WhatsAppClient struct {
 	directMediaLock    sync.Mutex
 	avatarLock         exsync.KeyedMutex[types.JID]
 	mediaRetryLock     *semaphore.Weighted
+	mediaRetryQueue    []*events.MediaRetry
+	mediaRetryRunning  bool
+	mediaRetryQLock    sync.Mutex
 	offlineSyncWaiter  atomic.Pointer[chan error]
 	isNewLogin         bool
 	pushNamesSynced    *exsync.Event

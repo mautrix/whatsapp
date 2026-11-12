@@ -117,7 +117,7 @@ func (wa *WhatsAppClient) handleWAEvent(rawEvt any) (success bool) {
 	case *events.HistorySync:
 		wa.UserLogin.Log.Warn().Msg("Unexpected history sync event received")
 	case *events.MediaRetry:
-		go wa.handleWAMediaRetry(ctx, evt)
+		wa.queueWAMediaRetry(ctx, evt)
 
 	case *events.GroupInfo:
 		success = wa.handleWAGroupInfoChange(ctx, evt)
@@ -472,6 +472,33 @@ func (wa *WhatsAppClient) handleWAUndecryptableMessage(ctx context.Context, evt 
 		Type: evt.UnavailableType,
 	})
 	return res.Success
+}
+
+func (wa *WhatsAppClient) queueWAMediaRetry(ctx context.Context, evt *events.MediaRetry) {
+	wa.mediaRetryQLock.Lock()
+	defer wa.mediaRetryQLock.Unlock()
+	wa.mediaRetryQueue = append(wa.mediaRetryQueue, evt)
+	if !wa.mediaRetryRunning {
+		wa.mediaRetryRunning = true
+		go wa.mediaRetryLoop(ctx)
+	}
+}
+
+func (wa *WhatsAppClient) mediaRetryLoop(ctx context.Context) {
+	for {
+		wa.mediaRetryQLock.Lock()
+		if len(wa.mediaRetryQueue) == 0 {
+			wa.mediaRetryQueue = nil
+			wa.mediaRetryRunning = false
+			wa.mediaRetryQLock.Unlock()
+			return
+		}
+		evt := wa.mediaRetryQueue[0]
+		wa.mediaRetryQueue[0] = nil
+		wa.mediaRetryQueue = wa.mediaRetryQueue[1:]
+		wa.mediaRetryQLock.Unlock()
+		wa.handleWAMediaRetry(ctx, evt)
+	}
 }
 
 func (wa *WhatsAppClient) handleWAMediaRetry(ctx context.Context, evt *events.MediaRetry) {
