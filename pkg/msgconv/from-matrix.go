@@ -204,6 +204,46 @@ func (mc *MessageConverter) ToWhatsApp(
 	return message, extra, nil
 }
 
+func (mc *MessageConverter) CaptionEditToWhatsApp(
+	ctx context.Context,
+	client *whatsmeow.Client,
+	evt *event.Event,
+	content *event.MessageEventContent,
+	portal *bridgev2.Portal,
+) *waE2E.Message {
+	mime := content.GetInfo().MimeType
+	if mime == "" {
+		return nil
+	} else if mime == "image/gif" {
+		content.MsgType = event.MsgVideo
+	}
+	ctx = context.WithValue(ctx, contextKeyClient, client)
+	ctx = context.WithValue(ctx, contextKeyPortal, portal)
+	contextInfo := mc.generateContextInfo(ctx, nil, content.RelatesTo, portal, content.BeeperDisappearingTimer, content.Mentions != nil && content.Mentions.Room)
+	msg := mc.constructMediaMessage(ctx, content, evt, &whatsmeow.UploadResponse{}, nil, contextInfo, mime)
+	switch {
+	case msg.GetImageMessage() != nil:
+		return &waE2E.Message{ImageMessage: &waE2E.ImageMessage{
+			Caption:     msg.ImageMessage.Caption,
+			ContextInfo: contextInfo,
+		}}
+	case msg.GetVideoMessage() != nil:
+		return &waE2E.Message{VideoMessage: &waE2E.VideoMessage{
+			Caption:     msg.VideoMessage.Caption,
+			ContextInfo: contextInfo,
+		}}
+	case msg.GetDocumentMessage() != nil, msg.GetDocumentWithCaptionMessage() != nil:
+		return &waE2E.Message{DocumentWithCaptionMessage: &waE2E.FutureProofMessage{
+			Message: &waE2E.Message{DocumentMessage: &waE2E.DocumentMessage{
+				Caption:     proto.String(msg.GetDocumentWithCaptionMessage().GetMessage().GetDocumentMessage().GetCaption()),
+				ContextInfo: contextInfo,
+			}},
+		}}
+	default:
+		return nil
+	}
+}
+
 func (mc *MessageConverter) constructMediaMessage(
 	ctx context.Context,
 	content *event.MessageEventContent,
