@@ -193,7 +193,7 @@ func (wa *WhatsAppConnector) migrateToLIDDMs(ctx context.Context) error {
 		if err != nil {
 			return fmt.Errorf("failed to get LID for PN portal %s: %w", key.ID, err)
 		} else if lid.IsEmpty() {
-			log.Warn().Stringer("pn", pnJID).Msg("No LID for PN portal")
+			log.Debug().Stringer("pn", pnJID).Msg("No LID for PN portal")
 			wa.unmigratedDMs.Add(key)
 			missingLID++
 			continue
