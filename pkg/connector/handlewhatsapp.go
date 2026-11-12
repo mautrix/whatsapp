@@ -117,7 +117,7 @@ func (wa *WhatsAppClient) handleWAEvent(rawEvt any) (success bool) {
 	case *events.HistorySync:
 		wa.UserLogin.Log.Warn().Msg("Unexpected history sync event received")
 	case *events.MediaRetry:
-		success = wa.handleWAMediaRetry(ctx, evt)
+		go wa.handleWAMediaRetry(ctx, evt)
 
 	case *events.GroupInfo:
 		success = wa.handleWAGroupInfoChange(ctx, evt)
@@ -474,7 +474,7 @@ func (wa *WhatsAppClient) handleWAUndecryptableMessage(ctx context.Context, evt 
 	return res.Success
 }
 
-func (wa *WhatsAppClient) handleWAMediaRetry(ctx context.Context, evt *events.MediaRetry) bool {
+func (wa *WhatsAppClient) handleWAMediaRetry(ctx context.Context, evt *events.MediaRetry) {
 	wa.phoneSeen(evt.Timestamp)
 	var senderLID, chatLID types.JID
 	var err error
@@ -484,7 +484,7 @@ func (wa *WhatsAppClient) handleWAMediaRetry(ctx context.Context, evt *events.Me
 			wa.UserLogin.Log.Err(err).
 				Stringer("sender_id", evt.SenderID).
 				Msg("Failed to get LID for media retry sender")
-			return false
+			return
 		}
 	}
 	if evt.ChatID.Server == types.DefaultUserServer {
@@ -493,16 +493,15 @@ func (wa *WhatsAppClient) handleWAMediaRetry(ctx context.Context, evt *events.Me
 			wa.UserLogin.Log.Err(err).
 				Stringer("chat_id", evt.ChatID).
 				Msg("Failed to get LID for media retry chat")
-			return false
+			return
 		}
 	}
-	res := wa.UserLogin.QueueRemoteEvent(&WAMediaRetry{
+	wa.UserLogin.QueueRemoteEvent(&WAMediaRetry{
 		MediaRetry: evt,
 		wa:         wa,
 		senderLID:  senderLID,
 		chatLID:    chatLID,
 	})
-	return res.Success
 }
 
 func (wa *WhatsAppClient) handleWAReceipt(ctx context.Context, evt *events.Receipt) (success bool) {
