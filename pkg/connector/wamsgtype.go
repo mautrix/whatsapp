@@ -156,6 +156,40 @@ func getMessageType(waMsg *waE2E.Message) string {
 		return "chat"
 	case waMsg.PlaceholderMessage != nil:
 		return "placeholder"
+	case waMsg.PinInChatMessage != nil:
+		return "pin"
+	case waMsg.RichResponseMessage != nil:
+		return "rich response"
+	case waMsg.CallLogMesssage != nil:
+		return "call log"
+	case waMsg.SpoilerMessage != nil:
+		return "spoiler"
+	case waMsg.QuestionMessage != nil:
+		return "question"
+	case waMsg.QuestionReplyMessage != nil:
+		return "question reply"
+	case waMsg.PollAddOptionMessage != nil:
+		return "poll add option"
+	case waMsg.GroupStatusMessage != nil, waMsg.GroupStatusMessageV2 != nil:
+		return "group status"
+	case waMsg.GroupStatusMentionMessage != nil:
+		return "group status mention"
+	case waMsg.StatusNotificationMessage != nil:
+		return "status notification"
+	case waMsg.EventInviteMessage != nil:
+		return "event invite"
+	case waMsg.MusicMessage != nil:
+		return "music"
+	case waMsg.NewsletterAdminProfileMessage != nil:
+		return "newsletter admin profile"
+	case waMsg.NewsletterScheduledMessage != nil:
+		return "newsletter scheduled"
+	case waMsg.AssociatedChildMessage != nil:
+		return "associated child"
+	case waMsg.BotForwardedMessage != nil:
+		return "bot forwarded"
+	case waMsg.AudioStickerMessage != nil:
+		return "audio sticker"
 	case waMsg.SenderKeyDistributionMessage != nil, waMsg.StickerSyncRmrMessage != nil, waMsg.MessageHistoryBundle != nil:
 		return "ignore"
 	default:
