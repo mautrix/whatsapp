@@ -76,8 +76,7 @@ func (mc *MessageConverter) getBasicUserInfo(ctx context.Context, user types.JID
 	var pnJID types.JID
 	if user.Server == types.DefaultUserServer {
 		pnJID = user
-	} else if user.Server == types.HiddenUserServer {
-		cli := getClient(ctx)
+	} else if cli := getClient(ctx); user.Server == types.HiddenUserServer && cli != nil {
 		if user.User == cli.Store.GetLID().User {
 			pnJID = cli.Store.GetJID()
 		} else {
