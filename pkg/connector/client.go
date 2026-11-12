@@ -56,6 +56,7 @@ func (wa *WhatsAppConnector) LoadUserLogin(ctx context.Context, login *bridgev2.
 		pushNamesSynced:           exsync.NewEvent(),
 		appStateFullSyncAttempted: make(map[appstate.WAPatchName]time.Time),
 		previousOwnLIDs:           exsync.NewSetWithItems(login.Metadata.(*waid.UserLoginMetadata).PreviousOwnLIDs),
+		museRequests:              exsync.NewMap[string, chan museResponse](),
 
 		onDemandHistorySyncRequests: make(map[types.JID]onDemandHistorySyncRequest),
 
@@ -136,6 +137,7 @@ type WhatsAppClient struct {
 	wasaResyncLock         sync.Mutex
 	museProfileLock        sync.Mutex
 	lastMuseProfileRequest time.Time
+	museRequests           *exsync.Map[string, chan museResponse]
 
 	onDemandHistorySyncLock     sync.Mutex
 	onDemandHistorySyncRequests map[types.JID]onDemandHistorySyncRequest
