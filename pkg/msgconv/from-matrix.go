@@ -700,7 +700,14 @@ func (mc *MessageConverter) reuploadFileToWhatsApp(
 			// Hopefully it's opus already
 			mime = "audio/ogg; codecs=opus"
 		default:
-			return nil, nil, mime, fmt.Errorf("%w %s in audio message", bridgev2.ErrUnsupportedMediaType, mime)
+			if content.MSC3245Voice == nil || !ffmpeg.Supported() {
+				return nil, nil, mime, fmt.Errorf("%w %s in audio message", bridgev2.ErrUnsupportedMediaType, mime)
+			}
+			data, err = ffmpeg.ConvertBytes(ctx, data, ".ogg", []string{}, []string{"-vn", "-c:a", "libopus"}, mime)
+			if err != nil {
+				return nil, nil, mime, fmt.Errorf("%w (voice to ogg): %w", bridgev2.ErrMediaConvertFailed, err)
+			}
+			mime = "audio/ogg; codecs=opus"
 		}
 		mediaType = whatsmeow.MediaAudio
 	case event.MsgFile:
