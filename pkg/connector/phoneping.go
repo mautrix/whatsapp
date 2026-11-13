@@ -31,17 +31,18 @@ import (
 var _ status.BridgeStateFiller = (*WhatsAppClient)(nil)
 
 func (wa *WhatsAppClient) FillBridgeState(state status.BridgeState) status.BridgeState {
+	if state.Info == nil {
+		state.Info = make(map[string]any)
+	}
 	if !wa.PhoneRecentlySeen(false) && state.StateEvent == status.StateConnected {
-		// TODO transient disconnect is wrong, this should be bad credentials or connected
-		state.StateEvent = status.StateTransientDisconnect
-		state.Error = WAPhoneOffline
 		state.UserAction = status.UserActionOpenNative
+		state.Info[status.InfoKeyNotice] = map[string]any{
+			"code":    WAPhoneOffline,
+			"message": status.BridgeStateHumanErrors[WAPhoneOffline],
+		}
 	}
 	rtu := wa.UserLogin.Metadata.(*waid.UserLoginMetadata).ReachoutTimelockUntil
 	if !rtu.IsZero() {
-		if state.Info == nil {
-			state.Info = make(map[string]any)
-		}
 		state.Info["reachout_timelock_until"] = rtu
 	}
 	return state
@@ -116,14 +117,14 @@ func (wa *WhatsAppClient) phoneSeen(ts time.Time) {
 	meta.PhoneLastSeen = jsontime.U(ts)
 	if !hadBeenSeen {
 		isConnected := wa.IsLoggedIn() && wa.Client.IsConnected()
-		prevStateError := wa.UserLogin.BridgeState.GetPrev().Error
-		if prevStateError == WAPhoneOffline && isConnected {
-			log.Debug().Msg("Saw phone after current bridge state said it has been offline, switching state back to connected")
+		prevState := wa.UserLogin.BridgeState.GetPrevUnsent()
+		if prevState.StateEvent == status.StateConnected && isConnected {
+			log.Debug().Msg("Saw phone after current bridge state said it has been offline, removing notice from bridge state")
 			wa.UserLogin.BridgeState.Send(status.BridgeState{StateEvent: status.StateConnected})
 		} else {
 			log.Debug().
 				Bool("is_connected", isConnected).
-				Str("prev_error", string(prevStateError)).
+				Str("prev_state", string(prevState.StateEvent)).
 				Msg("Saw phone after current bridge state said it has been offline, not sending new bridge state")
 		}
 	}
