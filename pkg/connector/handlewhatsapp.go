@@ -215,6 +215,7 @@ func (wa *WhatsAppClient) handleWAEvent(rawEvt any) (success bool) {
 		wa.handleWALogout(ctx, evt.Reason, evt.OnConnect)
 		wa.notifyOfflineSyncWaiter(fmt.Errorf("logged out: %s", evt.Reason))
 	case *events.Disconnected:
+		wa.UserLogin.BridgeState.Send(status.BridgeState{StateEvent: status.StateTransientDisconnect, Error: WADisconnected})
 		wa.notifyOfflineSyncWaiter(fmt.Errorf("disconnected"))
 	case *events.StreamError:
 		var message string
