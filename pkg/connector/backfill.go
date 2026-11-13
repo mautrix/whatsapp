@@ -572,6 +572,15 @@ func (wa *WhatsAppClient) FetchMessages(ctx context.Context, params bridgev2.Fet
 			anchorID = parsedID.ID
 		}
 	}
+	var lastMessageTS uint64
+	if !params.Forward {
+		lastMessage, err := wa.Main.Bridge.DB.Message.GetLastPartAtOrBeforeTime(ctx, params.Portal.PortalKey, time.Now())
+		if err != nil {
+			return nil, fmt.Errorf("failed to get last message in portal: %w", err)
+		} else if lastMessage != nil {
+			lastMessageTS = uint64(lastMessage.Timestamp.Unix())
+		}
+	}
 	var hasMore bool
 	if !params.Forward && wa.Main.Config.HistorySync.BackwardsOnDemand {
 		hasMore = conv != nil && ptr.Val(conv.EndOfHistoryTransferType) == waHistorySync.Conversation_COMPLETE_BUT_MORE_MESSAGES_REMAIN_ON_PRIMARY
@@ -580,7 +589,11 @@ func (wa *WhatsAppClient) FetchMessages(ctx context.Context, params bridgev2.Fet
 	if err != nil {
 		return nil, fmt.Errorf("failed to load messages from database: %w", err)
 	} else if len(messages) == 0 || (len(messages) == 1 && anchorID != "" && messages[0].GetKey().GetID() == anchorID) {
-		wa.deleteHistorySyncMessages(ctx, portalJID, 0, 0)
+		if startTime != nil {
+			wa.deleteHistorySyncMessages(ctx, portalJID, 1<<62, uint64(startTime.Unix()))
+		} else {
+			wa.deleteHistorySyncMessages(ctx, portalJID, lastMessageTS, 0)
+		}
 		hasMore = hasMore && params.AnchorMessage != nil
 		if hasMore && !params.AllowSlowFetch {
 			return &bridgev2.FetchMessagesResponse{
@@ -608,7 +621,14 @@ func (wa *WhatsAppClient) FetchMessages(ctx context.Context, params bridgev2.Fet
 			}
 		}
 	}
-	resp, err := wa.convertHistorySyncMessages(ctx, params.Portal, portalJID, messages, true, !params.Forward && !hasMore)
+	var deleteUpTo uint64
+	if !params.Forward && !hasMore {
+		deleteUpTo = 1 << 62
+		if lastMessageTS != 0 {
+			deleteUpTo = lastMessageTS
+		}
+	}
+	resp, err := wa.convertHistorySyncMessages(ctx, params.Portal, portalJID, messages, true, deleteUpTo)
 	if err != nil {
 		return nil, fmt.Errorf("failed to convert messages: %w", err)
 	}
@@ -670,7 +690,7 @@ func (wa *WhatsAppClient) convertHistorySyncMessages(
 	portalJID types.JID,
 	messages []*waWeb.WebMessageInfo,
 	explodeOnError bool,
-	deleteEverything bool,
+	deleteUpTo uint64,
 ) (*bridgev2.FetchMessagesResponse, error) {
 	cli := wa.Client
 	if cli == nil {
@@ -729,11 +749,7 @@ func (wa *WhatsAppClient) convertHistorySyncMessages(
 		Messages: convertedMessages,
 		Cursor:   networkid.PaginationCursor(strconv.FormatUint(oldestTS, 10)),
 		CompleteCallback: func() {
-			if deleteEverything {
-				wa.deleteHistorySyncMessages(ctx, portalJID, 1<<62, oldestTS)
-			} else {
-				wa.deleteHistorySyncMessages(ctx, portalJID, newestTS, oldestTS)
-			}
+			wa.deleteHistorySyncMessages(ctx, portalJID, max(newestTS, deleteUpTo), oldestTS)
 			if len(mediaRequests) > 0 {
 				go func(ctx context.Context) {
 					for _, req := range mediaRequests {
@@ -896,7 +912,7 @@ func (wa *WhatsAppClient) handleOnDemandHistorySync(ctx context.Context, blob *w
 					Int("message_count", len(messages)).
 					Stringer("end_of_history_type", conv.GetEndOfHistoryTransferType()).
 					Msg("Converting messages to bridge from on-demand history sync")
-				resp, err := wa.convertHistorySyncMessages(ctx, portal, portalJID, messages, false, false)
+				resp, err := wa.convertHistorySyncMessages(ctx, portal, portalJID, messages, false, 0)
 				if err != nil {
 					return nil, err
 				}
