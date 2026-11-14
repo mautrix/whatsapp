@@ -267,7 +267,7 @@ func (evt *WAMessageEvent) GetTargetMessage() networkid.MessageID {
 			With().Str("action", "get edit target message").Str("message_id", evt.Info.ID).Logger().
 			WithContext(evt.wa.Main.Bridge.BackgroundCtx)
 		key := protocolMsg.GetKey()
-		if evt.Info.IsGroup && !key.GetFromMe() && key.GetParticipant() == "" {
+		if key != nil && evt.Info.IsGroup && !key.GetFromMe() && key.GetParticipant() == "" {
 			key = &waCommon.MessageKey{RemoteJID: key.RemoteJID, FromMe: proto.Bool(true), ID: key.ID}
 		}
 		return msgconv.KeyToMessageID(ctx, evt.wa.Client, evt.Info.Chat, evt.Info.Sender, key)
