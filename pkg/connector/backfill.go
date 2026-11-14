@@ -788,7 +788,7 @@ func (wa *WhatsAppClient) fetchMessagesFromPhone(ctx context.Context, portalJID 
 		ID:        parsed.ID,
 		Timestamp: anchor.Timestamp,
 	}
-	if cursorAnchor := parseOnDemandAnchorCursor(params.Cursor, portalJID); cursorAnchor != nil && cursorAnchor.Timestamp.Before(anchorInfo.Timestamp) {
+	if cursorAnchor := parseOnDemandAnchorCursor(params.Cursor, portalJID); cursorAnchor != nil && !cursorAnchor.Timestamp.After(anchorInfo.Timestamp) {
 		anchorInfo = cursorAnchor
 	}
 	reqData := wa.Client.BuildHistorySyncRequest(anchorInfo, 50)
