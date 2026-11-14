@@ -555,7 +555,8 @@ func (wa *WhatsAppClient) FetchMessages(ctx context.Context, params bridgev2.Fet
 			endTime = ptr.Ptr(params.AnchorMessage.Timestamp)
 		}
 		if params.Cursor != "" {
-			endTimeUnix, err := strconv.ParseInt(string(params.Cursor), 10, 64)
+			cursorTS, _, _ := strings.Cut(string(params.Cursor), ":")
+			endTimeUnix, err := strconv.ParseInt(cursorTS, 10, 64)
 			if err != nil {
 				return nil, fmt.Errorf("failed to parse cursor: %w", err)
 			}
@@ -777,7 +778,7 @@ func (wa *WhatsAppClient) fetchMessagesFromPhone(ctx context.Context, portalJID 
 			Pending: true,
 		}, nil
 	}
-	reqData := wa.Client.BuildHistorySyncRequest(&types.MessageInfo{
+	anchorInfo := &types.MessageInfo{
 		MessageSource: types.MessageSource{
 			Chat:     portalJID,
 			Sender:   parsed.Sender,
@@ -786,7 +787,11 @@ func (wa *WhatsAppClient) fetchMessagesFromPhone(ctx context.Context, portalJID 
 		},
 		ID:        parsed.ID,
 		Timestamp: anchor.Timestamp,
-	}, 50)
+	}
+	if cursorAnchor := parseOnDemandAnchorCursor(params.Cursor, portalJID); cursorAnchor != nil && !cursorAnchor.Timestamp.After(anchorInfo.Timestamp) {
+		anchorInfo = cursorAnchor
+	}
+	reqData := wa.Client.BuildHistorySyncRequest(anchorInfo, 50)
 	zerolog.Ctx(ctx).Debug().
 		Str("request_msg_id", msgID).
 		Stringer("portal_jid", portalJID).
@@ -807,6 +812,31 @@ func (wa *WhatsAppClient) fetchMessagesFromPhone(ctx context.Context, portalJID 
 		HasMore: true,
 		Pending: true,
 	}, nil
+}
+
+func makeOnDemandAnchorCursor(msg *waWeb.WebMessageInfo) networkid.PaginationCursor {
+	return networkid.PaginationCursor(fmt.Sprintf("%d:%t:%s", msg.GetMessageTimestamp(), msg.GetKey().GetFromMe(), msg.GetKey().GetID()))
+}
+
+func parseOnDemandAnchorCursor(cursor networkid.PaginationCursor, portalJID types.JID) *types.MessageInfo {
+	tsStr, rest, ok := strings.Cut(string(cursor), ":")
+	if !ok {
+		return nil
+	}
+	fromMeStr, msgID, ok := strings.Cut(rest, ":")
+	ts, err := strconv.ParseInt(tsStr, 10, 64)
+	if !ok || err != nil || msgID == "" {
+		return nil
+	}
+	return &types.MessageInfo{
+		MessageSource: types.MessageSource{
+			Chat:     portalJID,
+			IsFromMe: fromMeStr == "true",
+			IsGroup:  portalJID.Server == types.GroupServer,
+		},
+		ID:        msgID,
+		Timestamp: time.Unix(ts, 0),
+	}
 }
 
 type onDemandHistorySyncRequest struct {
@@ -901,6 +931,9 @@ func (wa *WhatsAppClient) handleOnDemandHistorySync(ctx context.Context, blob *w
 					return nil, err
 				}
 				resp.HasMore = conv.GetEndOfHistoryTransferType() == waHistorySync.Conversation_COMPLETE_BUT_MORE_MESSAGES_REMAIN_ON_PRIMARY
+				if len(resp.Messages) == 0 && resp.HasMore {
+					resp.Cursor = makeOnDemandAnchorCursor(messages[len(messages)-1])
+				}
 				return resp, nil
 			},
 		})
