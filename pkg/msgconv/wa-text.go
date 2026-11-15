@@ -53,7 +53,7 @@ func (mc *MessageConverter) cutOffLongMessage(content *event.MessageEventContent
 	size := len(content.Body) + len(content.FormattedBody)
 	if content.Mentions != nil {
 		for _, userID := range content.Mentions.UserIDs {
-			size += len(userID)
+			size += len(userID) * 2
 		}
 	}
 	if size <= 40000 {
