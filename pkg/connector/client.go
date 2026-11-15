@@ -24,6 +24,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/nyaruka/phonenumbers"
 	"github.com/rs/zerolog"
 	"go.mau.fi/util/exsync"
 	"go.mau.fi/whatsmeow"
@@ -54,6 +55,7 @@ func (wa *WhatsAppConnector) LoadUserLogin(ctx context.Context, login *bridgev2.
 		resyncQueue:               make(map[types.JID]resyncQueueItem),
 		directMediaRetries:        make(map[networkid.MessageID]*directMediaRetry),
 		mediaRetryLock:            semaphore.NewWeighted(wa.Config.HistorySync.MediaRequests.MaxAsyncHandle),
+		mediaRetryReceived:        make(chan struct{}, wa.Config.HistorySync.MediaRequests.MaxAsyncHandle),
 		pushNamesSynced:           exsync.NewEvent(),
 		appStateFullSyncAttempted: make(map[appstate.WAPatchName]time.Time),
 		previousOwnLIDs:           exsync.NewSetWithItems(login.Metadata.(*waid.UserLoginMetadata).PreviousOwnLIDs),
@@ -124,6 +126,7 @@ type WhatsAppClient struct {
 	directMediaLock    sync.Mutex
 	avatarLock         exsync.KeyedMutex[types.JID]
 	mediaRetryLock     *semaphore.Weighted
+	mediaRetryReceived chan struct{}
 	offlineSyncWaiter  atomic.Pointer[chan error]
 	isNewLogin         bool
 	pushNamesSynced    *exsync.Event
@@ -263,6 +266,7 @@ func (wa *WhatsAppClient) connect(ctx context.Context) bool {
 		return false
 	}
 	wa.initMC()
+	wa.fillTimezone(ctx)
 	wa.startLoops()
 	wa.Client.BackgroundEventCtx = wa.UserLogin.Log.WithContext(wa.Main.Bridge.BackgroundCtx)
 	zerolog.Ctx(ctx).Debug().Msg("Connecting to WhatsApp")
@@ -280,6 +284,29 @@ func (wa *WhatsAppClient) connect(ctx context.Context) bool {
 		return false
 	}
 	return true
+}
+
+func (wa *WhatsAppClient) fillTimezone(ctx context.Context) {
+	meta := wa.UserLogin.Metadata.(*waid.UserLoginMetadata)
+	if meta.Timezone != "" {
+		return
+	}
+	num, err := phonenumbers.Parse("+"+wa.JID.User, "")
+	if err != nil {
+		return
+	}
+	timezones, err := phonenumbers.GetTimezonesForNumber(num)
+	if err != nil || len(timezones) == 0 {
+		return
+	} else if _, err = time.LoadLocation(timezones[0]); err != nil {
+		return
+	}
+	meta.Timezone = timezones[0]
+	zerolog.Ctx(ctx).Info().Str("timezone", meta.Timezone).Msg("Set user timezone based on phone number")
+	err = wa.UserLogin.Save(ctx)
+	if err != nil {
+		zerolog.Ctx(ctx).Err(err).Msg("Failed to save user login after setting timezone")
+	}
 }
 
 func (wa *WhatsAppClient) notifyOfflineSyncWaiter(err error) {

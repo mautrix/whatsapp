@@ -9,6 +9,7 @@ tool go.mau.fi/util/cmd/maubuild
 require (
 	github.com/google/uuid v1.6.0
 	github.com/lib/pq v1.12.3
+	github.com/nyaruka/phonenumbers v1.8.1
 	github.com/rs/zerolog v1.35.1
 	github.com/tidwall/gjson v1.20.0
 	github.com/yuin/goldmark v1.8.6

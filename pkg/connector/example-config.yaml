@@ -126,6 +126,7 @@ history_sync:
         # If request_method is "local_time", what time should the requests be sent (in minutes after midnight)?
         request_local_time: 120
         # Maximum number of media request responses to handle in parallel per user.
+        # The daily local_time batch also waits for responses to keep at most this many requests pending.
         max_async_handle: 2
     # Use on-demand history sync requests for fetching older messages?
     # This only applies when using the backfill queue, never for forward backfills.

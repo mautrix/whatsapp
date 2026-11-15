@@ -502,6 +502,10 @@ func (wa *WhatsAppClient) handleWAMediaRetry(ctx context.Context, evt *events.Me
 		senderLID:  senderLID,
 		chatLID:    chatLID,
 	})
+	select {
+	case wa.mediaRetryReceived <- struct{}{}:
+	default:
+	}
 	return res.Success
 }
 

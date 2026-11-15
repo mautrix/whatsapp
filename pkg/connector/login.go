@@ -111,7 +111,6 @@ type WALogin struct {
 	Client    *whatsmeow.Client
 	Log       zerolog.Logger
 	PhoneCode bool
-	Timezone  string
 
 	QRs           []string
 	StartTime     time.Time
@@ -414,7 +413,6 @@ func (wl *WALogin) onLoginComplete(ctx context.Context) (*bridgev2.LoginStep, er
 		Metadata: &waid.UserLoginMetadata{
 			WADeviceID: wl.LoginSuccess.ID.Device,
 			LoggedInAt: jsontime.UnixNow(),
-			Timezone:   wl.Timezone,
 
 			HistorySyncPortalsNeedCreating: true,
 			WASAResynced:                   true,
