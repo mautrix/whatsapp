@@ -17,10 +17,13 @@
 package connector
 
 import (
+	"cmp"
 	"context"
 	"fmt"
+	"slices"
 	"time"
 
+	"github.com/nyaruka/phonenumbers"
 	"github.com/rs/zerolog"
 	"go.mau.fi/whatsmeow/types"
 	"maunium.net/go/mautrix/bridgev2"
@@ -67,13 +70,46 @@ func (wa *WhatsAppClient) processFailedMedia(ctx context.Context, portalKey netw
 	return nil
 }
 
+func guessTimezone(jid types.JID) *time.Location {
+	num, err := phonenumbers.Parse("+"+jid.User, "")
+	if err != nil {
+		return nil
+	}
+	names, err := phonenumbers.GetTimezonesForNumber(num)
+	if err != nil {
+		return nil
+	}
+	locs := make([]*time.Location, 0, len(names))
+	for _, name := range names {
+		if loc, err := time.LoadLocation(name); err == nil {
+			locs = append(locs, loc)
+		}
+	}
+	if len(locs) == 0 {
+		return nil
+	}
+	now := time.Now()
+	slices.SortFunc(locs, func(a, b *time.Location) int {
+		_, aOffset := now.In(a).Zone()
+		_, bOffset := now.In(b).Zone()
+		return cmp.Compare(aOffset, bOffset)
+	})
+	return locs[len(locs)/2]
+}
+
 func (wa *WhatsAppClient) mediaRequestLoop(ctx context.Context) {
 	log := wa.UserLogin.Log.With().Str("loop", "media requests").Logger()
 	ctx = log.WithContext(ctx)
-	meta := wa.UserLogin.Metadata.(*waid.UserLoginMetadata)
-	userTz, err := meta.LoadTimezone()
+	userTz, err := wa.UserLogin.Metadata.(*waid.UserLoginMetadata).LoadTimezone()
+	if err != nil {
+		log.Warn().Err(err).Msg("Failed to load user timezone")
+	} else if userTz == nil {
+		userTz = guessTimezone(wa.JID)
+	}
 	var startIn time.Duration
-	if err == nil && userTz != nil {
+	var tzName string
+	if userTz != nil {
+		tzName = userTz.String()
 		now := time.Now()
 		startAt := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, userTz)
 		startAt = startAt.Add(time.Duration(wa.Main.Config.HistorySync.MediaRequests.RequestLocalTime) * time.Minute)
@@ -85,7 +121,7 @@ func (wa *WhatsAppClient) mediaRequestLoop(ctx context.Context) {
 		startIn = 8 * time.Hour
 	}
 	log.Info().
-		Str("timezone", meta.Timezone).
+		Str("timezone", tzName).
 		Time("start_at", time.Now().Add(startIn)).
 		Msg("Waiting to send media requests")
 	select {
@@ -115,16 +151,23 @@ func (wa *WhatsAppClient) sendMediaRequests(ctx context.Context) {
 		return
 	}
 	zerolog.Ctx(ctx).Info().Int("request_count", len(reqs)).Msg("Sending media requests")
-	var inFlight int64
+	for drained := false; !drained; {
+		select {
+		case <-wa.mediaRetryReceived:
+		default:
+			drained = true
+		}
+	}
+	maxPending := max(wa.Main.Config.HistorySync.MediaRequests.MaxAsyncHandle, 1)
+	var pending int64
 	for _, req := range reqs {
-		if inFlight >= wa.Main.Config.HistorySync.MediaRequests.MaxAsyncHandle {
+		if pending >= maxPending {
 			select {
 			case <-wa.mediaRetryReceived:
-			case <-time.After(30 * time.Second):
+				pending--
 			case <-ctx.Done():
 				return
 			}
-			inFlight--
 		}
 		if cli := wa.Client; ctx.Err() != nil || cli == nil || !cli.IsConnected() {
 			zerolog.Ctx(ctx).Warn().Msg("Not connected, leaving remaining media requests for the next run")
@@ -132,7 +175,7 @@ func (wa *WhatsAppClient) sendMediaRequests(ctx context.Context) {
 		}
 		wa.sendMediaRequest(ctx, req)
 		if req.Status == wadb.MediaBackfillRequestStatusRequested {
-			inFlight++
+			pending++
 		}
 	}
 }
@@ -140,7 +183,7 @@ func (wa *WhatsAppClient) sendMediaRequests(ctx context.Context) {
 func (wa *WhatsAppClient) sendMediaRequest(ctx context.Context, req *wadb.MediaRequest) {
 	log := zerolog.Ctx(ctx).With().Str("action", "send media request").Str("message_id", string(req.MessageID)).Logger()
 	defer func() {
-		err := wa.Main.DB.MediaRequest.Put(ctx, req)
+		err := wa.Main.DB.MediaRequest.Put(context.WithoutCancel(ctx), req)
 		if err != nil {
 			log.Err(err).Msg("Failed to save media request status")
 		}
