@@ -169,6 +169,7 @@ func (mc *MessageConverter) DownloadImagePack(ctx context.Context, userLoginID n
 			dbKey = ""
 			if part.Info.MimeType == "application/was" {
 				part.Info.MimeType = "video/lottie+json"
+				part.Info.Size = 0
 			}
 			part.URL, err = mc.Bridge.Matrix.GenerateContentURI(ctx, waid.MakeStickerPackMediaID(pack.StickerPackID, sticker.FileHash, userLoginID))
 			if err != nil {
