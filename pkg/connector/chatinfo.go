@@ -436,24 +436,28 @@ func (wa *WhatsAppClient) wrapGroupInfoChange(ctx context.Context, evt *events.G
 		if memberChanges == nil {
 			memberChanges = &bridgev2.ChatMemberList{}
 		}
-		memberChanges.PowerLevels = &bridgev2.PowerLevelOverrides{}
+		memberChanges.PowerLevels = &bridgev2.PowerLevelOverrides{
+			Events: make(map[event.Type]int),
+		}
 		if evt.Announce != nil {
 			if evt.Announce.IsAnnounce {
 				memberChanges.PowerLevels.EventsDefault = ptr.Ptr(adminPL)
 			} else {
 				memberChanges.PowerLevels.EventsDefault = ptr.Ptr(defaultPL)
 			}
+			memberChanges.PowerLevels.Events[event.EventEncrypted] = defaultPL
+			memberChanges.PowerLevels.Events[event.EventReaction] = defaultPL
+			memberChanges.PowerLevels.Events[event.EventRedaction] = defaultPL
+			memberChanges.PowerLevels.Events[event.EventUnstablePollResponse] = defaultPL
 		}
 		if evt.Locked != nil {
 			metaChangePL := defaultPL
 			if evt.Locked.IsLocked {
 				metaChangePL = adminPL
 			}
-			memberChanges.PowerLevels.Events = map[event.Type]int{
-				event.StateRoomName:   metaChangePL,
-				event.StateRoomAvatar: metaChangePL,
-				event.StateTopic:      metaChangePL,
-			}
+			memberChanges.PowerLevels.Events[event.StateRoomName] = metaChangePL
+			memberChanges.PowerLevels.Events[event.StateRoomAvatar] = metaChangePL
+			memberChanges.PowerLevels.Events[event.StateTopic] = metaChangePL
 		}
 	}
 	return &bridgev2.ChatInfoChange{
