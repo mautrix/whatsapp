@@ -52,7 +52,7 @@ func (wa *WhatsAppConnector) GetCapabilities() *bridgev2.NetworkGeneralCapabilit
 }
 
 func (wa *WhatsAppConnector) GetBridgeInfoVersion() (info, caps int) {
-	return 1, 10
+	return 1, 11
 }
 
 const WAMaxFileSize = 2000 * 1024 * 1024
@@ -67,7 +67,7 @@ func supportedIfFFmpeg() event.CapabilitySupportLevel {
 }
 
 func capID() string {
-	base := "fi.mau.whatsapp.capabilities.2026_10_01"
+	base := "fi.mau.whatsapp.capabilities.2026_11_16"
 	if ffmpeg.Supported() {
 		return base + "+ffmpeg"
 	}
@@ -125,6 +125,7 @@ var whatsappCaps = &event.RoomFeatures{
 		},
 		event.CapMsgSticker: {
 			MimeTypes: map[string]event.CapabilitySupportLevel{
+				"image/gif":  supportedIfFFmpeg(),
 				"image/webp": event.CapLevelFullySupported,
 				"image/png":  event.CapLevelPartialSupport,
 				"image/jpeg": event.CapLevelPartialSupport,

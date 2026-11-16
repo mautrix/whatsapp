@@ -237,6 +237,7 @@ func (mc *MessageConverter) constructMediaMessage(
 				FileLength:    proto.Uint64(uploaded.FileLength),
 				URL:           proto.String(uploaded.URL),
 				IsLottie:      proto.Bool(mime == "application/was"),
+				IsAnimated:    proto.Bool(content.Info.MauGIF),
 			},
 		}
 	case event.MsgAudio:
@@ -518,6 +519,13 @@ func (mc *MessageConverter) convertToWebP(img []byte) ([]byte, int, error) {
 	return webpBuffer.Bytes(), size, nil
 }
 
+func convertGIFToWebP(ctx context.Context, data []byte) ([]byte, error) {
+	return ffmpeg.ConvertBytes(ctx, data, ".webp", []string{"-f", "gif"}, []string{
+		"-c:v", "libwebp_anim", "-loop", "0",
+		"-filter:v", "scale=512:512:force_original_aspect_ratio=decrease,pad=512:512:(ow-iw)/2:(oh-ih)/2:color=0x00000000",
+	}, "image/gif")
+}
+
 func convertUnsupportedVideoCodec(ctx context.Context, data []byte, mime string) ([]byte, string, error) {
 	if !ffmpeg.Supported() || !ffmpeg.ProbeSupported() {
 		return data, mime, nil
@@ -613,7 +621,7 @@ func (mc *MessageConverter) reuploadFileToWhatsApp(
 	if mime == "" {
 		mime = http.DetectContentType(data)
 	}
-	if mime == "image/gif" {
+	if mime == "image/gif" && content.MsgType != event.MessageType(event.EventSticker.Type) {
 		content.MsgType = event.MsgVideo
 	}
 
@@ -623,7 +631,16 @@ func (mc *MessageConverter) reuploadFileToWhatsApp(
 	case event.MessageType(event.EventSticker.Type):
 		isSticker = true
 		mediaType = whatsmeow.MediaImage
-		if mime == "video/lottie+json" {
+		if mime == "image/gif" {
+			data, err = convertGIFToWebP(ctx, data)
+			if err != nil {
+				return nil, nil, "image/webp", fmt.Errorf("%w (gif to webp): %w", bridgev2.ErrMediaConvertFailed, err)
+			}
+			content.Info.Width = 512
+			content.Info.Height = 512
+			content.Info.MauGIF = true
+			mime = "image/webp"
+		} else if mime == "video/lottie+json" {
 			// This likely won't work
 			data, err = PackAnimatedSticker(data)
 			if err != nil {
