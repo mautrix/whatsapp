@@ -18,7 +18,7 @@ var m = mxmain.BridgeMain{
 	Name:        "mautrix-whatsapp",
 	URL:         "https://github.com/mautrix/whatsapp",
 	Description: "A Matrix-WhatsApp puppeting bridge.",
-	Version:     "26.10",
+	Version:     "26.11",
 	SemCalVer:   true,
 	Connector:   &connector.WhatsAppConnector{},
 }
