@@ -162,7 +162,7 @@ func (mc *MessageConverter) DownloadImagePack(ctx context.Context, userLoginID n
 			},
 			TypeDescription: "sticker",
 		}
-		dbKey := database.Key(fmt.Sprintf("stickercache:%x", part.Info.BridgedSticker.ID))
+		dbKey := database.Key(fmt.Sprintf("stickercache:v2:%x", part.Info.BridgedSticker.ID))
 		fixStickerDimensions(part.Info)
 		var packed *event.ImagePackImage
 		if mc.DirectMedia {
@@ -319,6 +319,9 @@ func (mc *MessageConverter) convertAnimatedSticker(ctx context.Context, fileInfo
 	}
 	input := bytes.NewReader(data)
 	fileInfo.Info.MimeType = "image/" + c.Target
+	if c.Target == "webm" {
+		fileInfo.Info.MimeType = "video/webm"
+	}
 	fileInfo.FileName = "sticker." + c.Target
 	switch c.Target {
 	case "png":
