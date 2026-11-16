@@ -458,6 +458,9 @@ func (wa *WhatsAppClient) handleWAUndecryptableMessage(ctx context.Context, evt 
 		Str("decrypt_fail", string(evt.DecryptFailMode)).
 		Msg("Received undecryptable WhatsApp message")
 	wa.trackUndecryptable(evt)
+	if evt.Info.Chat == types.MuseJID && evt.Info.Sender.IsBot() {
+		go wa.resyncMissingMuseSecret(ctx, evt.Info.MsgMetaInfo)
+	}
 	if evt.DecryptFailMode == events.DecryptFailHide {
 		return true
 	}

@@ -76,6 +76,55 @@ func (wa *WhatsAppClient) resyncWASARootSecrets(ctx context.Context) {
 	}
 }
 
+func (wa *WhatsAppClient) resyncMissingMuseSecret(ctx context.Context, meta types.MsgMetaInfo) {
+	defer func() {
+		v := recover()
+		if v != nil {
+			zerolog.Ctx(ctx).Err(exerrors.RecoverToError(v)).
+				Bytes("stack", debug.Stack()).
+				Msg("Error resyncing missing Muse secret")
+		}
+	}()
+	targetSender := meta.TargetSender
+	if targetSender.IsEmpty() {
+		targetSender = wa.GetStore().GetLID()
+	}
+	if meta.TargetID == "" || targetSender.IsEmpty() || !wa.wasaResyncLock.TryLock() {
+		return
+	}
+	defer wa.wasaResyncLock.Unlock()
+	if !wa.UserLogin.Metadata.(*waid.UserLoginMetadata).WASAResynced || wa.offlineSyncWaiter.Load() != nil || !wa.Client.IsConnected() {
+		return
+	}
+	log := zerolog.Ctx(ctx).With().Str("target_id", meta.TargetID).Logger()
+	secret, _, err := wa.GetStore().MsgSecrets.GetMessageSecret(ctx, types.MuseJID, targetSender, meta.TargetID)
+	if err != nil {
+		log.Err(err).Msg("Failed to check Muse message secret")
+		return
+	} else if secret != nil {
+		return
+	}
+	wa.appStateRecoveryLock.Lock()
+	lastFullSync := wa.appStateFullSyncAttempted[appstate.WAPatchRegularHigh]
+	recentlySynced := !lastFullSync.IsZero() && time.Since(lastFullSync) < 48*time.Hour
+	if !recentlySynced {
+		wa.appStateFullSyncAttempted[appstate.WAPatchRegularHigh] = time.Now()
+	}
+	wa.appStateRecoveryLock.Unlock()
+	if recentlySynced {
+		log.Debug().Time("last_full_sync_attempt", lastFullSync).Msg("Muse secret is missing, but regular_high full sync already attempted")
+		return
+	}
+	log.Info().Msg("Muse secret is missing, resyncing regular_high")
+	if err = wa.Client.FetchAppState(ctx, appstate.WAPatchRegularHigh, true, false); err != nil {
+		log.Err(err).Msg("Failed to resync regular_high for missing Muse secret")
+	} else if secret, _, _ = wa.GetStore().MsgSecrets.GetMessageSecret(ctx, types.MuseJID, targetSender, meta.TargetID); secret != nil {
+		log.Info().Msg("Got missing Muse secret from regular_high")
+	} else {
+		log.Warn().Msg("Muse secret is still missing after regular_high resync")
+	}
+}
+
 func (wa *WhatsAppClient) requestMuseProfile(ctx context.Context) {
 	defer func() {
 		v := recover()
