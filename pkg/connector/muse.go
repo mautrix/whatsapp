@@ -93,7 +93,7 @@ func (wa *WhatsAppClient) resyncMissingMuseSecret(ctx context.Context, meta type
 		return
 	}
 	defer wa.wasaResyncLock.Unlock()
-	if !wa.UserLogin.Metadata.(*waid.UserLoginMetadata).WASAResynced || wa.offlineSyncWaiter.Load() != nil || !wa.Client.IsConnected() {
+	if wa.museSecretResyncTarget == meta.TargetID || !wa.UserLogin.Metadata.(*waid.UserLoginMetadata).WASAResynced || wa.offlineSyncWaiter.Load() != nil || !wa.Client.IsConnected() {
 		return
 	}
 	log := zerolog.Ctx(ctx).With().Str("target_id", meta.TargetID).Logger()
@@ -115,6 +115,7 @@ func (wa *WhatsAppClient) resyncMissingMuseSecret(ctx context.Context, meta type
 		log.Debug().Time("last_full_sync_attempt", lastFullSync).Msg("Muse secret is missing, but regular_high full sync already attempted")
 		return
 	}
+	wa.museSecretResyncTarget = meta.TargetID
 	log.Info().Msg("Muse secret is missing, resyncing regular_high")
 	if err = wa.Client.FetchAppState(ctx, appstate.WAPatchRegularHigh, true, false); err != nil {
 		log.Err(err).Msg("Failed to resync regular_high for missing Muse secret")

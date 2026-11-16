@@ -138,6 +138,7 @@ type WhatsAppClient struct {
 	wasaResyncLock         sync.Mutex
 	museProfileLock        sync.Mutex
 	lastMuseProfileRequest time.Time
+	museSecretResyncTarget types.MessageID
 
 	onDemandHistorySyncLock     sync.Mutex
 	onDemandHistorySyncRequests map[types.JID]onDemandHistorySyncRequest
