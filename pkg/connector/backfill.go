@@ -818,6 +818,14 @@ func (wa *WhatsAppClient) fetchMessagesFromPhone(ctx context.Context, portalJID 
 }
 
 func (wa *WhatsAppClient) getFirstRealPortalMessage(ctx context.Context, portalKey networkid.PortalKey) (*database.Message, *waid.ParsedMessageID, error) {
+	for _, excludePattern := range []string{"fake:%", "%:FAKE::%"} {
+		anchor, err := wa.Main.Bridge.DB.Message.GetFirstPortalMessageExcludingIDPattern(ctx, portalKey, excludePattern)
+		if err != nil || anchor == nil {
+			return nil, nil, err
+		} else if parsed, err := waid.ParseMessageID(anchor.ID); err == nil {
+			return anchor, parsed, nil
+		}
+	}
 	var anchor *database.Message
 	var parsed *waid.ParsedMessageID
 	err := wa.Main.Bridge.DB.Message.IterPortalMessages(ctx, portalKey).Iter(func(msg *database.Message) (bool, error) {
