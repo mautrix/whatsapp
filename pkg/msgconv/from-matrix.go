@@ -104,7 +104,10 @@ func (mc *MessageConverter) allowRoomMention(ctx context.Context, portal *bridge
 		zerolog.Ctx(ctx).Err(err).Msg("Failed to get power levels to check room mention permission")
 		return false
 	}
-	return pls.GetUserLevel(sender) >= pls.Notifications.Room()
+	if pls.Notifications == nil || pls.Notifications.RoomPtr == nil {
+		return true
+	}
+	return pls.GetUserLevel(sender) >= *pls.Notifications.RoomPtr
 }
 
 func (mc *MessageConverter) getQuotedMessage(ctx context.Context, replyTo *database.Message, relatesTo *event.RelatesTo, portal *bridgev2.Portal) *waE2E.Message {
