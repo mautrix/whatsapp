@@ -21,6 +21,7 @@ import (
 	"go.mau.fi/whatsmeow/proto/waHistorySync"
 	"go.mau.fi/whatsmeow/proto/waWeb"
 	"go.mau.fi/whatsmeow/types"
+	"google.golang.org/protobuf/encoding/protowire"
 	"google.golang.org/protobuf/proto"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
@@ -304,6 +305,8 @@ func (wa *WhatsAppClient) handleWAHistorySync(
 					Stringer("stub_type", rawMsg.GetMessage().GetMessageStubType()).
 					Str("message_type", getMessageType(rawMsg.GetMessage().GetMessage())).
 					Bool("from_me", rawMsg.GetMessage().GetKey().GetFromMe()).
+					Ints32("unknown_fields", unknownProtoFields(rawMsg.GetMessage())).
+					Ints32("unknown_key_fields", unknownProtoFields(rawMsg.GetMessage().GetKey())).
 					Msg("Dropping historical message due to parse error")
 				log.Trace().
 					Any("web_message_info", rawMsg.GetMessage()).
@@ -703,6 +706,11 @@ func (wa *WhatsAppClient) convertHistorySyncMessages(
 				Int("msg_index", i).
 				Str("msg_id", msg.GetKey().GetID()).
 				Uint64("msg_time_seconds", msg.GetMessageTimestamp()).
+				Stringer("stub_type", msg.GetMessageStubType()).
+				Str("message_type", getMessageType(msg.GetMessage())).
+				Bool("from_me", msg.GetKey().GetFromMe()).
+				Ints32("unknown_fields", unknownProtoFields(msg)).
+				Ints32("unknown_key_fields", unknownProtoFields(msg.GetKey())).
 				Msg("Dropping historical message due to parse error")
 			zerolog.Ctx(ctx).Trace().
 				Any("web_message_info", msg.GetMessage()).
@@ -818,6 +826,25 @@ func (wa *WhatsAppClient) fetchMessagesFromPhone(ctx context.Context, portalJID 
 		HasMore: true,
 		Pending: true,
 	}, nil
+}
+
+func unknownProtoFields(msg proto.Message) []int32 {
+	var fields []int32
+	unknown := msg.ProtoReflect().GetUnknown()
+	for len(unknown) > 0 {
+		num, typ, n := protowire.ConsumeTag(unknown)
+		if n < 0 {
+			break
+		}
+		unknown = unknown[n:]
+		n = protowire.ConsumeFieldValue(num, typ, unknown)
+		if n < 0 {
+			break
+		}
+		unknown = unknown[n:]
+		fields = append(fields, int32(num))
+	}
+	return fields
 }
 
 type onDemandHistorySyncRequest struct {
