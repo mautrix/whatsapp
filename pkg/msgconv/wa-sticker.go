@@ -31,6 +31,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/rs/zerolog"
 	"github.com/tidwall/gjson"
@@ -39,6 +40,7 @@ import (
 	"go.mau.fi/util/random"
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/types"
+	"golang.org/x/image/riff"
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
@@ -386,6 +388,44 @@ func extractWebPStickerMetadata(data []byte) (*StickerMetadata, error) {
 		return nil, fmt.Errorf("failed to parse sticker metadata JSON: %w", err)
 	}
 	return &meta, nil
+}
+
+const maxAnimatedStickerSize = 500 * 1024
+const maxAnimatedStickerDuration = 10 * time.Second
+
+func validateWebPStickerLimits(data []byte) error {
+	if len(data) > maxAnimatedStickerSize {
+		return fmt.Errorf("%w: converted sticker is %.1f KiB, maximum is 500 KiB", bridgev2.ErrMediaTooLarge, float64(len(data))/1024)
+	}
+	form, chunks, err := riff.NewReader(bytes.NewReader(data))
+	if err != nil {
+		return fmt.Errorf("failed to read converted sticker: %w", err)
+	} else if string(form[:]) != "WEBP" {
+		return fmt.Errorf("converted sticker is not WebP")
+	}
+	var duration time.Duration
+	for {
+		chunkID, _, chunk, err := chunks.Next()
+		if err == io.EOF {
+			return nil
+		} else if err != nil {
+			return fmt.Errorf("failed to read converted sticker chunk: %w", err)
+		} else if string(chunkID[:]) != "ANMF" {
+			continue
+		}
+		var header [16]byte
+		if _, err = io.ReadFull(chunk, header[:]); err != nil {
+			return fmt.Errorf("failed to read converted sticker frame: %w", err)
+		}
+
+		// ANMF stores the frame duration as a 24-bit little-endian millisecond value.
+		// https://www.rfc-editor.org/rfc/rfc9649.html#animation
+		frameMS := uint32(header[12]) | uint32(header[13])<<8 | uint32(header[14])<<16
+		duration += time.Duration(frameMS) * time.Millisecond
+		if duration > maxAnimatedStickerDuration {
+			return fmt.Errorf("%w: converted sticker exceeds the maximum of 10 seconds", bridgev2.ErrMediaDurationTooLong)
+		}
+	}
 }
 
 func findWebPChunk(data []byte, chunkType string) ([]byte, error) {
