@@ -107,7 +107,10 @@ func (mc *MessageConverter) allowRoomMention(ctx context.Context, portal *bridge
 		zerolog.Ctx(ctx).Err(err).Msg("Failed to get power levels to check room mention permission")
 		return false
 	}
-	return pls.GetUserLevel(sender) >= pls.Notifications.Room()
+	if pls.Notifications == nil || pls.Notifications.RoomPtr == nil {
+		return true
+	}
+	return pls.GetUserLevel(sender) >= *pls.Notifications.RoomPtr
 }
 
 var roomMentionRegex = regexp.MustCompile(`(^|\s)@room($|[\s,!?]|\.(?:\s|$))`)
