@@ -18,6 +18,7 @@ package msgconv
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -108,6 +109,13 @@ func (mc *MessageConverter) convertTemplateButtonReplyMessage(ctx context.Contex
 	}, msg.GetContextInfo()
 }
 
+type nativeFlowButtonParams struct {
+	DisplayText string `json:"display_text"`
+	URL         string `json:"url"`
+	PhoneNumber string `json:"phone_number"`
+	CopyCode    string `json:"copy_code"`
+}
+
 func (mc *MessageConverter) convertInteractiveMessage(ctx context.Context, info *types.MessageInfo, msg *waE2E.InteractiveMessage) (*bridgev2.ConvertedMessagePart, *waE2E.ContextInfo) {
 	content := msg.GetBody().GetText()
 	switch interactive := msg.GetInteractiveMessage().(type) {
@@ -117,11 +125,30 @@ func (mc *MessageConverter) convertInteractiveMessage(ctx context.Context, info 
 		// There doesn't seem to be much content here, maybe it's just meant to show the body/header/footer?
 	case *waE2E.InteractiveMessage_NativeFlowMessage_:
 		if buttons := interactive.NativeFlowMessage.GetButtons(); len(buttons) > 0 {
+			addButtonText := false
 			descriptions := make([]string, len(buttons))
 			for i, button := range buttons {
-				descriptions[i] = fmt.Sprintf("<%s>", button.GetName())
+				var params nativeFlowButtonParams
+				_ = json.Unmarshal([]byte(button.GetButtonParamsJSON()), &params)
+				switch {
+				case button.GetName() == "cta_url" && params.URL != "" && params.DisplayText != "":
+					descriptions[i] = fmt.Sprintf("[%s](%s)", params.DisplayText, params.URL)
+				case button.GetName() == "cta_call" && params.PhoneNumber != "" && params.DisplayText != "":
+					descriptions[i] = fmt.Sprintf("[%s](tel:%s)", params.DisplayText, params.PhoneNumber)
+				case button.GetName() == "cta_copy" && params.CopyCode != "" && params.DisplayText != "":
+					descriptions[i] = fmt.Sprintf("%s: `%s`", params.DisplayText, params.CopyCode)
+				case params.DisplayText != "":
+					descriptions[i] = fmt.Sprintf("<%s>", params.DisplayText)
+					addButtonText = true
+				default:
+					descriptions[i] = fmt.Sprintf("<%s>", button.GetName())
+					addButtonText = true
+				}
 			}
-			content = fmt.Sprintf("%s\n\n%s\nUse the WhatsApp app to click buttons", content, strings.Join(descriptions, " - "))
+			content = fmt.Sprintf("%s\n\n%s", content, strings.Join(descriptions, " - "))
+			if addButtonText {
+				content += "\nUse the WhatsApp app to click buttons"
+			}
 		}
 	case *waE2E.InteractiveMessage_CarouselMessage_:
 		content = fmt.Sprintf("%s\n\nUnsupported carousel message", content)
