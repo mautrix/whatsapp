@@ -636,6 +636,9 @@ func (mc *MessageConverter) reuploadFileToWhatsApp(
 			if err != nil {
 				return nil, nil, "image/webp", fmt.Errorf("%w (gif to webp): %w", bridgev2.ErrMediaConvertFailed, err)
 			}
+			if err = validateWebPStickerLimits(data); err != nil {
+				return nil, nil, "image/webp", err
+			}
 			content.Info.Width = 512
 			content.Info.Height = 512
 			content.Info.MauGIF = true
