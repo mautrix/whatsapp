@@ -2,11 +2,13 @@ package connector
 
 import (
 	"context"
+	"maps"
 	"time"
 
 	"go.mau.fi/util/ffmpeg"
 	"go.mau.fi/util/jsontime"
 	"go.mau.fi/util/ptr"
+	"go.mau.fi/whatsmeow/types"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/event"
@@ -52,7 +54,7 @@ func (wa *WhatsAppConnector) GetCapabilities() *bridgev2.NetworkGeneralCapabilit
 }
 
 func (wa *WhatsAppConnector) GetBridgeInfoVersion() (info, caps int) {
-	return 1, 10
+	return 1, 11
 }
 
 const WAMaxFileSize = 2000 * 1024 * 1024
@@ -67,7 +69,7 @@ func supportedIfFFmpeg() event.CapabilitySupportLevel {
 }
 
 func capID() string {
-	base := "fi.mau.whatsapp.capabilities.2026_10_01"
+	base := "fi.mau.whatsapp.capabilities.2026_11_17"
 	if ffmpeg.Supported() {
 		return base + "+ffmpeg"
 	}
@@ -196,6 +198,7 @@ var whatsappCaps = &event.RoomFeatures{
 	DeleteChat:           true,
 }
 
+var whatsappGroupCaps *event.RoomFeatures
 var whatsappDMCaps *event.RoomFeatures
 var whatsappCAGCaps *event.RoomFeatures
 var whatsappNoteToSelfCaps *event.RoomFeatures
@@ -213,7 +216,12 @@ func init() {
 	whatsappNoteToSelfCaps.ID = capID() + "+self"
 	whatsappNoteToSelfCaps.BlockUser = false
 
-	whatsappCAGCaps = ptr.Clone(whatsappCaps)
+	whatsappGroupCaps = ptr.Clone(whatsappCaps)
+	whatsappGroupCaps.ID = capID() + "+group"
+	whatsappGroupCaps.Formatting = maps.Clone(whatsappCaps.Formatting)
+	whatsappGroupCaps.Formatting[event.FmtAtRoomMention] = event.CapLevelFullySupported
+
+	whatsappCAGCaps = ptr.Clone(whatsappGroupCaps)
 	whatsappCAGCaps.ID = capID() + "+cag"
 	whatsappCAGCaps.Reply = event.CapLevelUnsupported
 	whatsappCAGCaps.Thread = event.CapLevelFullySupported
@@ -222,12 +230,15 @@ func init() {
 func (wa *WhatsAppClient) GetCapabilities(ctx context.Context, portal *bridgev2.Portal) *event.RoomFeatures {
 	if portal.Metadata.(*waid.PortalMetadata).CommunityAnnouncementGroup {
 		return whatsappCAGCaps
-	} else if portal.RoomType == database.RoomTypeDM {
-		jid, err := waid.ParsePortalID(portal.ID)
+	}
+	jid, err := waid.ParsePortalID(portal.ID)
+	if portal.RoomType == database.RoomTypeDM {
 		if err == nil && wa.IsOwnJID(jid) {
 			return whatsappNoteToSelfCaps
 		}
 		return whatsappDMCaps
+	} else if portal.RoomType == database.RoomTypeDefault && err == nil && jid.Server == types.GroupServer {
+		return whatsappGroupCaps
 	}
 	return whatsappCaps
 }
