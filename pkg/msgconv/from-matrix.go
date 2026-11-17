@@ -639,6 +639,9 @@ func (mc *MessageConverter) reuploadFileToWhatsApp(
 			if err = validateWebPStickerLimits(data); err != nil {
 				return nil, nil, "image/webp", err
 			}
+
+			// Stickers must be exactly 512 x 512 pixels per WhatsApp specs
+			// https://github.com/WhatsApp/stickers/blob/main/Android/README.md
 			content.Info.Width = 512
 			content.Info.Height = 512
 			content.Info.MauGIF = true

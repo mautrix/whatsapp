@@ -417,7 +417,9 @@ func validateWebPStickerLimits(data []byte) error {
 		if _, err = io.ReadFull(chunk, header[:]); err != nil {
 			return fmt.Errorf("failed to read converted sticker frame: %w", err)
 		}
+
 		// ANMF stores the frame duration as a 24-bit little-endian millisecond value.
+		// https://www.rfc-editor.org/rfc/rfc9649.html#animation
 		frameMS := uint32(header[12]) | uint32(header[13])<<8 | uint32(header[14])<<16
 		duration += time.Duration(frameMS) * time.Millisecond
 		if duration > maxAnimatedStickerDuration {
