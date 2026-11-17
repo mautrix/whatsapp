@@ -244,6 +244,27 @@ const (
 	defaultPL    = 0
 )
 
+const maxGroupSizeForMemberAtAll = 32
+
+func setRoomMentionPL(level int) func(*event.PowerLevelsEventContent) bool {
+	return func(content *event.PowerLevelsEventContent) bool {
+		if content.Notifications != nil && content.Notifications.RoomPtr != nil && *content.Notifications.RoomPtr == level {
+			return false
+		}
+		if content.Notifications == nil {
+			content.Notifications = &event.NotificationPowerLevels{}
+		}
+		content.Notifications.RoomPtr = ptr.Ptr(level)
+		return true
+	}
+}
+
+func (wa *WhatsAppClient) enqueueResyncAfterMemberChange(_ context.Context, portal *bridgev2.Portal) bool {
+	portal.Metadata.(*waid.PortalMetadata).LastSync.Time = time.Time{}
+	wa.EnqueuePortalResync(portal, false)
+	return false
+}
+
 func setDefaultSubGroupFlag(isCommunityAnnouncementGroup bool) bridgev2.ExtraUpdater[*bridgev2.Portal] {
 	return func(_ context.Context, portal *bridgev2.Portal) bool {
 		meta := portal.Metadata.(*waid.PortalMetadata)
@@ -288,6 +309,10 @@ func (wa *WhatsAppClient) wrapGroupInfo(ctx context.Context, info *types.GroupIn
 	if info.IsLocked {
 		metaChangePL = adminPL
 	}
+	roomMentionPL := defaultPL
+	if max(len(info.Participants), info.ParticipantCount) > maxGroupSizeForMemberAtAll {
+		roomMentionPL = adminPL
+	}
 	extraUpdater := bridgev2.MergeExtraUpdaters(
 		wa.makePortalAvatarFetcher("", types.EmptyJID, time.Time{}),
 		setDefaultSubGroupFlag(info.IsDefaultSubGroup && info.IsAnnounce),
@@ -317,6 +342,7 @@ func (wa *WhatsAppClient) wrapGroupInfo(ctx context.Context, info *types.GroupIn
 					event.EventUnstablePollResponse:    defaultPL,
 					event.StateBeeperDisappearingTimer: metaChangePL,
 				},
+				Custom: setRoomMentionPL(roomMentionPL),
 			},
 		},
 		ExcludeChangesFromTimeline: true,
@@ -402,6 +428,12 @@ func (wa *WhatsAppClient) wrapGroupInfoChange(ctx context.Context, evt *events.G
 		if evt.Link != nil && evt.Link.Type == types.GroupLinkChangeTypeParent {
 			changes.ParentID = ptr.Ptr(waid.MakePortalID(evt.Link.Group.JID))
 		}
+	}
+	if len(evt.Join) > 0 || len(evt.Leave) > 0 {
+		if changes == nil {
+			changes = &bridgev2.ChatInfo{}
+		}
+		changes.ExtraUpdates = bridgev2.MergeExtraUpdaters(changes.ExtraUpdates, wa.enqueueResyncAfterMemberChange)
 	}
 	var memberChanges *bridgev2.ChatMemberList
 	if evt.Join != nil || evt.Leave != nil || evt.Promote != nil || evt.Demote != nil {

@@ -51,9 +51,9 @@ func (mc *MessageConverter) msc1767ToWhatsApp(ctx context.Context, msg event.MSC
 		parseCtx := format.NewContext(ctx)
 		parseCtx.ReturnData["allowed_mentions"] = allowedMentions
 		parseCtx.ReturnData["output_mentions"] = &mentions
-		return mc.HTMLParser.Parse(msg.HTML, parseCtx), mentions
+		return roomMentionToWhatsApp(mc.HTMLParser.Parse(msg.HTML, parseCtx), allowedMentions), mentions
 	}
-	return msg.Text, mentions
+	return roomMentionToWhatsApp(msg.Text, allowedMentions), mentions
 }
 
 var (

@@ -29,6 +29,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -352,7 +353,17 @@ func (mc *MessageConverter) parseText(ctx context.Context, content *event.Messag
 	} else {
 		text = content.Body
 	}
+	text = roomMentionToWhatsApp(text, content.Mentions)
 	return
+}
+
+var roomMentionRegex = regexp.MustCompile(`@room\b`)
+
+func roomMentionToWhatsApp(text string, mentions *event.Mentions) string {
+	if mentions == nil || !mentions.Room {
+		return text
+	}
+	return roomMentionRegex.ReplaceAllLiteralString(text, "@all")
 }
 
 func (mc *MessageConverter) constructTextMessage(
