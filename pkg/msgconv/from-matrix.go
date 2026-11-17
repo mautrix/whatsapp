@@ -96,21 +96,20 @@ func (mc *MessageConverter) generateContextInfo(
 	return contextInfo
 }
 
-func (mc *MessageConverter) allowRoomMention(ctx context.Context, portal *bridgev2.Portal, sender id.UserID, mentions *event.Mentions) bool {
+func (mc *MessageConverter) allowRoomMention(ctx context.Context, portal *bridgev2.Portal, origSender *bridgev2.OrigSender, mentions *event.Mentions) bool {
 	if mentions == nil || !mentions.Room || portal.RoomType != database.RoomTypeDefault {
 		return false
 	} else if jid, err := waid.ParsePortalID(portal.ID); err != nil || jid.Server != types.GroupServer {
 		return false
+	} else if origSender == nil {
+		return true
 	}
 	pls, err := portal.Bridge.Matrix.GetPowerLevels(ctx, portal.MXID)
 	if err != nil {
 		zerolog.Ctx(ctx).Err(err).Msg("Failed to get power levels to check room mention permission")
 		return false
 	}
-	if pls.Notifications == nil || pls.Notifications.RoomPtr == nil {
-		return true
-	}
-	return pls.GetUserLevel(sender) >= *pls.Notifications.RoomPtr
+	return pls.GetUserLevel(origSender.UserID) >= pls.Notifications.Room()
 }
 
 var roomMentionRegex = regexp.MustCompile(`(^|\s)@room($|[\s,!?]|\.(?:\s|$))`)
@@ -161,6 +160,7 @@ func (mc *MessageConverter) ToWhatsApp(
 	replyTo,
 	threadRoot *database.Message,
 	portal *bridgev2.Portal,
+	origSender *bridgev2.OrigSender,
 ) (*waE2E.Message, *whatsmeow.SendRequestExtra, error) {
 	ctx = context.WithValue(ctx, contextKeyClient, client)
 	ctx = context.WithValue(ctx, contextKeyPortal, portal)
@@ -169,7 +169,7 @@ func (mc *MessageConverter) ToWhatsApp(
 	}
 
 	message := &waE2E.Message{}
-	contextInfo := mc.generateContextInfo(ctx, replyTo, content.RelatesTo, portal, content.BeeperDisappearingTimer, mc.allowRoomMention(ctx, portal, evt.Sender, content.Mentions))
+	contextInfo := mc.generateContextInfo(ctx, replyTo, content.RelatesTo, portal, content.BeeperDisappearingTimer, mc.allowRoomMention(ctx, portal, origSender, content.Mentions))
 
 	switch content.MsgType {
 	case event.MsgText, event.MsgNotice, event.MsgEmote:
