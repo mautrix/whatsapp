@@ -2,6 +2,7 @@ package connector
 
 import (
 	"context"
+	"maps"
 	"time"
 
 	"go.mau.fi/util/ffmpeg"
@@ -67,7 +68,7 @@ func supportedIfFFmpeg() event.CapabilitySupportLevel {
 }
 
 func capID() string {
-	base := "fi.mau.whatsapp.capabilities.2026_10_01"
+	base := "fi.mau.whatsapp.capabilities.2026_11_17"
 	if ffmpeg.Supported() {
 		return base + "+ffmpeg"
 	}
@@ -88,6 +89,7 @@ var whatsappCaps = &event.RoomFeatures{
 		event.FmtOrderedList:   event.CapLevelFullySupported,
 		event.FmtListStart:     event.CapLevelFullySupported,
 		event.FmtBlockquote:    event.CapLevelFullySupported,
+		event.FmtAtRoomMention: event.CapLevelFullySupported,
 
 		event.FmtInlineLink: event.CapLevelPartialSupport,
 		event.FmtHeaders:    event.CapLevelPartialSupport,
@@ -203,6 +205,8 @@ var whatsappNoteToSelfCaps *event.RoomFeatures
 func init() {
 	whatsappDMCaps = ptr.Clone(whatsappCaps)
 	whatsappDMCaps.ID = capID() + "+dm"
+	whatsappDMCaps.Formatting = maps.Clone(whatsappCaps.Formatting)
+	delete(whatsappDMCaps.Formatting, event.FmtAtRoomMention)
 	whatsappDMCaps.State = event.StateFeatureMap{
 		event.StateBeeperDisappearingTimer.Type: {Level: event.CapLevelFullySupported},
 	}
