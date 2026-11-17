@@ -76,6 +76,7 @@ func (mc *MessageConverter) PollStartToWhatsApp(
 	contextInfo := mc.generateContextInfo(ctx, replyTo, content.RelatesTo, portal, nil, mc.allowRoomMention(ctx, portal, sender, content.Mentions))
 	var question string
 	question, contextInfo.MentionedJID = mc.msc1767ToWhatsApp(ctx, content.PollStart.Question, content.Mentions)
+	question = roomMentionToWhatsApp(question, contextInfo)
 	if len(question) == 0 {
 		return nil, nil, errPollMissingQuestion
 	}

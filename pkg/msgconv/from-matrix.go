@@ -29,6 +29,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -96,7 +97,9 @@ func (mc *MessageConverter) generateContextInfo(
 }
 
 func (mc *MessageConverter) allowRoomMention(ctx context.Context, portal *bridgev2.Portal, sender id.UserID, mentions *event.Mentions) bool {
-	if mentions == nil || !mentions.Room {
+	if mentions == nil || !mentions.Room || portal.RoomType != database.RoomTypeDefault {
+		return false
+	} else if jid, err := waid.ParsePortalID(portal.ID); err != nil || jid.Server != types.GroupServer {
 		return false
 	}
 	pls, err := portal.Bridge.Matrix.GetPowerLevels(ctx, portal.MXID)
@@ -104,10 +107,16 @@ func (mc *MessageConverter) allowRoomMention(ctx context.Context, portal *bridge
 		zerolog.Ctx(ctx).Err(err).Msg("Failed to get power levels to check room mention permission")
 		return false
 	}
-	if pls.Notifications == nil || pls.Notifications.RoomPtr == nil {
-		return true
+	return pls.GetUserLevel(sender) >= pls.Notifications.Room()
+}
+
+var roomMentionRegex = regexp.MustCompile(`(^|\s)@room($|[\s,!?]|\.(?:\s|$))`)
+
+func roomMentionToWhatsApp(text string, contextInfo *waE2E.ContextInfo) string {
+	if contextInfo.GetNonJIDMentions() != 1 {
+		return text
 	}
-	return pls.GetUserLevel(sender) >= *pls.Notifications.RoomPtr
+	return roomMentionRegex.ReplaceAllString(text, "${1}@all${2}")
 }
 
 func (mc *MessageConverter) getQuotedMessage(ctx context.Context, replyTo *database.Message, relatesTo *event.RelatesTo, portal *bridgev2.Portal) *waE2E.Message {
@@ -231,6 +240,7 @@ func (mc *MessageConverter) constructMediaMessage(
 	var caption string
 	if content.FileName != "" && content.Body != content.FileName {
 		caption, contextInfo.MentionedJID = mc.parseText(ctx, content)
+		caption = roomMentionToWhatsApp(caption, contextInfo)
 	}
 	switch content.MsgType {
 	case event.MessageType(event.EventSticker.Type):
@@ -381,6 +391,7 @@ func (mc *MessageConverter) constructTextMessage(
 		return mc.constructGroupInviteMessage(ctx, content, groupInvite, contextInfo)
 	}
 	text, mentions := mc.parseText(ctx, content)
+	text = roomMentionToWhatsApp(text, contextInfo)
 	if len(mentions) > 0 {
 		contextInfo.MentionedJID = mentions
 	}
@@ -409,6 +420,7 @@ func (mc *MessageConverter) constructGroupInviteMessage(
 		return nil, fmt.Errorf("failed to parse invite meta: %w", err)
 	}
 	text, mentions := mc.parseText(ctx, content)
+	text = roomMentionToWhatsApp(text, contextInfo)
 	if len(mentions) > 0 {
 		contextInfo.MentionedJID = mentions
 	}

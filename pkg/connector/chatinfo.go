@@ -246,23 +246,6 @@ const (
 
 const maxAllMentionMembers = 32
 
-func setRoomMentionPL(memberCount int) func(*event.PowerLevelsEventContent) bool {
-	roomPL := defaultPL
-	if memberCount > maxAllMentionMembers {
-		roomPL = adminPL
-	}
-	return func(content *event.PowerLevelsEventContent) bool {
-		if content.Notifications != nil && content.Notifications.RoomPtr != nil && *content.Notifications.RoomPtr == roomPL {
-			return false
-		}
-		if content.Notifications == nil {
-			content.Notifications = &event.NotificationPowerLevels{}
-		}
-		content.Notifications.RoomPtr = ptr.Ptr(roomPL)
-		return true
-	}
-}
-
 func setDefaultSubGroupFlag(isCommunityAnnouncementGroup bool) bridgev2.ExtraUpdater[*bridgev2.Portal] {
 	return func(_ context.Context, portal *bridgev2.Portal) bool {
 		meta := portal.Metadata.(*waid.PortalMetadata)
@@ -307,6 +290,10 @@ func (wa *WhatsAppClient) wrapGroupInfo(ctx context.Context, info *types.GroupIn
 	if info.IsLocked {
 		metaChangePL = adminPL
 	}
+	roomMentionPL := defaultPL
+	if max(len(info.Participants), info.ParticipantCount) > maxAllMentionMembers {
+		roomMentionPL = adminPL
+	}
 	extraUpdater := bridgev2.MergeExtraUpdaters(
 		wa.makePortalAvatarFetcher("", types.EmptyJID, time.Time{}),
 		setDefaultSubGroupFlag(info.IsDefaultSubGroup && info.IsAnnounce),
@@ -325,7 +312,7 @@ func (wa *WhatsAppClient) wrapGroupInfo(ctx context.Context, info *types.GroupIn
 				EventsDefault: &sendEventPL,
 				StateDefault:  ptr.Ptr(nobodyPL),
 				Ban:           ptr.Ptr(nobodyPL),
-				Custom:        setRoomMentionPL(len(info.Participants)),
+				RoomMention:   &roomMentionPL,
 				// TODO allow invites if bridge config says to allow them, or maybe if relay mode is enabled?
 				Events: map[event.Type]int{
 					event.StateRoomName:                metaChangePL,
