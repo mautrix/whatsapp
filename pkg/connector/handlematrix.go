@@ -67,7 +67,7 @@ var (
 )
 
 func (wa *WhatsAppClient) HandleMatrixPollStart(ctx context.Context, msg *bridgev2.MatrixPollStart) (result *bridgev2.MatrixMessageResponse, retErr error) {
-	waMsg, optionMap, err := wa.Main.MsgConv.PollStartToWhatsApp(ctx, msg.Content, msg.ReplyTo, msg.Portal)
+	waMsg, optionMap, err := wa.Main.MsgConv.PollStartToWhatsApp(ctx, msg.Event.Sender, msg.Content, msg.ReplyTo, msg.Portal)
 	if err != nil {
 		return nil, wrapConversionError(fmt.Errorf("failed to convert poll start: %w", err))
 	}

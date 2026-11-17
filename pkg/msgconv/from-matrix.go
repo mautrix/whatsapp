@@ -95,6 +95,18 @@ func (mc *MessageConverter) generateContextInfo(
 	return contextInfo
 }
 
+func (mc *MessageConverter) allowRoomMention(ctx context.Context, portal *bridgev2.Portal, sender id.UserID, mentions *event.Mentions) bool {
+	if mentions == nil || !mentions.Room {
+		return false
+	}
+	pls, err := portal.Bridge.Matrix.GetPowerLevels(ctx, portal.MXID)
+	if err != nil {
+		zerolog.Ctx(ctx).Err(err).Msg("Failed to get power levels to check room mention permission")
+		return false
+	}
+	return pls.GetUserLevel(sender) >= pls.Notifications.Room()
+}
+
 func (mc *MessageConverter) getQuotedMessage(ctx context.Context, replyTo *database.Message, relatesTo *event.RelatesTo, portal *bridgev2.Portal) *waE2E.Message {
 	log := zerolog.Ctx(ctx).With().Stringer("reply_to_event_id", replyTo.MXID).Logger()
 	if relatesTo.GetReplyTo() == replyTo.MXID && len(relatesTo.InReplyTo.BeeperQuote) > 0 {
@@ -142,7 +154,7 @@ func (mc *MessageConverter) ToWhatsApp(
 	}
 
 	message := &waE2E.Message{}
-	contextInfo := mc.generateContextInfo(ctx, replyTo, content.RelatesTo, portal, content.BeeperDisappearingTimer, content.Mentions != nil && content.Mentions.Room)
+	contextInfo := mc.generateContextInfo(ctx, replyTo, content.RelatesTo, portal, content.BeeperDisappearingTimer, mc.allowRoomMention(ctx, portal, evt.Sender, content.Mentions))
 
 	switch content.MsgType {
 	case event.MsgText, event.MsgNotice, event.MsgEmote:
