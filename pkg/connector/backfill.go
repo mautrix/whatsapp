@@ -23,6 +23,7 @@ import (
 	"go.mau.fi/whatsmeow/types"
 	"google.golang.org/protobuf/encoding/protowire"
 	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/reflect/protoreflect"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/bridgev2/simplevent"
@@ -308,6 +309,9 @@ func (wa *WhatsAppClient) handleWAHistorySync(
 					Ints32("unknown_fields", unknownProtoFields(rawMsg.GetMessage())).
 					Ints32("unknown_key_fields", unknownProtoFields(rawMsg.GetMessage().GetKey())).
 					Ints32("unknown_message_fields", unknownProtoFields(rawMsg.GetMessage().GetMessage())).
+					Ints32("unknown_wrapper_fields", unknownProtoFields(rawMsg)).
+					Ints32("set_fields", setProtoFields(rawMsg.GetMessage())).
+					Ints32("set_key_fields", setProtoFields(rawMsg.GetMessage().GetKey())).
 					Msg("Dropping historical message due to parse error")
 				log.Trace().
 					Any("web_message_info", rawMsg.GetMessage()).
@@ -425,6 +429,16 @@ func unknownProtoFields(msg proto.Message) []int32 {
 		unknown = unknown[n:]
 		fields = append(fields, int32(num))
 	}
+	return fields
+}
+
+func setProtoFields(msg proto.Message) []int32 {
+	var fields []int32
+	msg.ProtoReflect().Range(func(fd protoreflect.FieldDescriptor, _ protoreflect.Value) bool {
+		fields = append(fields, int32(fd.Number()))
+		return true
+	})
+	slices.Sort(fields)
 	return fields
 }
 
@@ -732,6 +746,8 @@ func (wa *WhatsAppClient) convertHistorySyncMessages(
 				Ints32("unknown_fields", unknownProtoFields(msg)).
 				Ints32("unknown_key_fields", unknownProtoFields(msg.GetKey())).
 				Ints32("unknown_message_fields", unknownProtoFields(msg.GetMessage())).
+				Ints32("set_fields", setProtoFields(msg)).
+				Ints32("set_key_fields", setProtoFields(msg.GetKey())).
 				Msg("Dropping historical message due to parse error")
 			zerolog.Ctx(ctx).Trace().
 				Any("web_message_info", msg).
