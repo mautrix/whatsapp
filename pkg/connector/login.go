@@ -113,8 +113,6 @@ type WALogin struct {
 	PhoneCode bool
 	Timezone  string
 
-	ClientCapabilities bridgev2.ClientCapabilities
-
 	QRs           []string
 	StartTime     time.Time
 	LoginError    error
@@ -155,7 +153,6 @@ func (wl *WALogin) StartWithOverride(ctx context.Context, old *bridgev2.UserLogi
 }
 
 func (wl *WALogin) StartWithParams(ctx context.Context, params bridgev2.LoginStartParams) (*bridgev2.LoginStep, error) {
-	wl.ClientCapabilities = params.ClientCapabilities
 	wl.Main.firstClientConnectOnce.Do(wl.Main.onFirstClientConnect)
 	device := wl.Main.DeviceStore.NewDevice()
 	wl.Client = whatsmeow.NewClient(device, waLog.Zerolog(wl.Log))
@@ -451,11 +448,6 @@ func (wl *WALogin) onLoginComplete(ctx context.Context) (*bridgev2.LoginStep, er
 }
 
 func (wl *WALogin) makePasskeyStep() (*bridgev2.LoginStep, error) {
-	if !wl.ClientCapabilities.Has(bridgev2.ClientCapabilityWebAuthn) {
-		wl.Log.Debug().Msg("WhatsApp requested a passkey, but the client doesn't support webauthn")
-		wl.Cancel()
-		return nil, bridgev2.MissingClientCapabilityError(bridgev2.ClientCapabilityWebAuthn)
-	}
 	pubkeyData, err := json.Marshal(wl.PasskeyRequestData.PublicKey)
 	if err != nil {
 		wl.Log.Err(err).Msg("Failed to marshal public key data")
