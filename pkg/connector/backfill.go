@@ -942,6 +942,7 @@ func (wa *WhatsAppClient) handleOnDemandHistorySync(ctx context.Context, blob *w
 					return nil, err
 				}
 				resp.HasMore = conv.GetEndOfHistoryTransferType() == waHistorySync.Conversation_COMPLETE_BUT_MORE_MESSAGES_REMAIN_ON_PRIMARY
+				resp.AggressiveDeduplication = true
 				return resp, nil
 			},
 		})
