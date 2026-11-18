@@ -728,6 +728,13 @@ func (mc *MessageConverter) reuploadFileToWhatsApp(
 		}
 		mediaType = whatsmeow.MediaVideo
 	case event.MsgAudio:
+		if content.MSC3245Voice != nil && mime != "audio/ogg; codecs=opus" && ffmpeg.Supported() {
+			data, err = ffmpeg.ConvertBytes(ctx, data, ".opus", []string{}, []string{"-c:a", "libopus"}, mime)
+			if err != nil {
+				return nil, nil, mime, fmt.Errorf("%w (voice to opus): %w", bridgev2.ErrMediaConvertFailed, err)
+			}
+			mime = "audio/ogg; codecs=opus"
+		}
 		switch mime {
 		case "audio/aac", "audio/mp4", "audio/amr", "audio/mpeg", "audio/ogg; codecs=opus":
 			// Allowed
@@ -735,14 +742,7 @@ func (mc *MessageConverter) reuploadFileToWhatsApp(
 			// Hopefully it's opus already
 			mime = "audio/ogg; codecs=opus"
 		default:
-			if content.MSC3245Voice == nil || !ffmpeg.Supported() {
-				return nil, nil, mime, fmt.Errorf("%w %s in audio message", bridgev2.ErrUnsupportedMediaType, mime)
-			}
-			data, err = ffmpeg.ConvertBytes(ctx, data, ".ogg", []string{}, []string{"-vn", "-c:a", "libopus"}, mime)
-			if err != nil {
-				return nil, nil, mime, fmt.Errorf("%w (voice to ogg): %w", bridgev2.ErrMediaConvertFailed, err)
-			}
-			mime = "audio/ogg; codecs=opus"
+			return nil, nil, mime, fmt.Errorf("%w %s in audio message", bridgev2.ErrUnsupportedMediaType, mime)
 		}
 		mediaType = whatsmeow.MediaAudio
 	case event.MsgFile:
