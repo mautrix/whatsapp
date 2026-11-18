@@ -115,6 +115,7 @@ type WALogin struct {
 
 	QRs           []string
 	StartTime     time.Time
+	CodeTime      time.Time
 	LoginError    error
 	LoginSuccess  *events.PairSuccess
 	WaitForQRs    *exsync.Event
@@ -144,6 +145,7 @@ var (
 
 const LoginConnectWait = 30 * time.Second
 const LoginPairPhoneWait = 30 * time.Second
+const LoginPairingCodeLifetime = 180 * time.Second
 
 func (wl *WALogin) Start(ctx context.Context) (*bridgev2.LoginStep, error) {
 	return wl.StartWithParams(ctx, bridgev2.LoginStartParams{})
@@ -234,6 +236,7 @@ func (wl *WALogin) SubmitUserInput(ctx context.Context, input map[string]string)
 		}
 		return nil, wrapWhatsAppRespError(err)
 	}
+	wl.CodeTime = time.Now()
 	wl.Log.Debug().Msg("Phone code login started")
 	return &bridgev2.LoginStep{
 		Type:         bridgev2.LoginStepTypeDisplayAndWait,
@@ -252,6 +255,14 @@ func (wl *WALogin) connect(ctx context.Context) error {
 		err = wl.Client.Connect()
 	}
 	return err
+}
+
+func (wl *WALogin) pairingStillValid() bool {
+	if wl.PhoneCode {
+		return wl.CodeTime.IsZero() || time.Since(wl.CodeTime) < LoginPairingCodeLifetime
+	}
+	currentIndex, _ := wl.getQRIndex()
+	return currentIndex >= 0
 }
 
 func (wl *WALogin) leaveClientTunnel(ctx context.Context, reason error) bool {
@@ -354,7 +365,7 @@ func (wl *WALogin) handleEvent(rawEvt any) {
 			StatusCode: http.StatusInternalServerError,
 		}
 	case *events.Disconnected:
-		if !wl.LoginComplete.IsSet() && !wl.PasskeyRequest.IsSet() && wl.leaveClientTunnel(wl.Log.WithContext(wl.Main.Bridge.BackgroundCtx), errors.New("tunnel closed")) {
+		if !wl.LoginComplete.IsSet() && !wl.PasskeyRequest.IsSet() && wl.pairingStillValid() && wl.leaveClientTunnel(wl.Log.WithContext(wl.Main.Bridge.BackgroundCtx), errors.New("tunnel closed")) {
 			go wl.reconnectWithoutTunnel()
 			return
 		}
