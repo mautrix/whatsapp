@@ -26,6 +26,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/bridgev2/simplevent"
+	"maunium.net/go/mautrix/event"
 
 	"go.mau.fi/mautrix-whatsapp/pkg/connector/wadb"
 	"go.mau.fi/mautrix-whatsapp/pkg/waid"
@@ -759,6 +760,12 @@ func (wa *WhatsAppClient) convertHistorySyncMessages(
 		if !dups.Add(converted.ID) {
 			continue
 		}
+		// The list is reversed below, so votes go before the poll here to end up after it.
+		for _, vote := range slices.Backward(wa.convertHistorySyncPollVotes(ctx, portal, &evt.Info, converted, msg.GetPollUpdates())) {
+			if dups.Add(vote.ID) {
+				convertedMessages = append(convertedMessages, vote)
+			}
+		}
 		convertedMessages = append(convertedMessages, converted)
 		if mediaReq != nil {
 			mediaRequests = append(mediaRequests, mediaReq)
@@ -988,4 +995,60 @@ func (wa *WhatsAppClient) convertHistorySyncMessage(
 		})
 	}
 	return wrapped, mediaReq
+}
+
+func (wa *WhatsAppClient) convertHistorySyncPollVotes(
+	ctx context.Context, portal *bridgev2.Portal, info *types.MessageInfo, poll *bridgev2.BackfillMessage, updates []*waWeb.PollUpdate,
+) []*bridgev2.BackfillMessage {
+	if len(updates) == 0 || poll.ConvertedMessage == nil || len(poll.Parts) == 0 ||
+		poll.Parts[0].Type != event.EventUnstablePollStart || poll.Parts[0].DontBridge || portal.MXID == "" {
+		return nil
+	}
+	// Votes are in the same batch as the poll, so the poll's event ID isn't in the database yet.
+	pollMXID := wa.Main.Bridge.Matrix.GenerateDeterministicEventID(portal.MXID, portal.PortalKey, poll.ID, poll.Parts[0].ID)
+	if pollMXID == "" {
+		return nil
+	}
+	log := zerolog.Ctx(ctx)
+	votes := make([]*bridgev2.BackfillMessage, 0, len(updates))
+	for _, update := range updates {
+		key := update.GetPollUpdateMessageKey()
+		if update.GetVote() == nil || key.GetID() == "" {
+			continue
+		}
+		var sender, senderAlt types.JID
+		if key.GetFromMe() {
+			sender = wa.GetLID()
+		} else if key.GetParticipant() != "" {
+			sender, _ = types.ParseJID(key.GetParticipant())
+		} else if info.Chat.Server == types.DefaultUserServer || info.Chat.Server == types.HiddenUserServer || info.Chat.Server == types.BotServer {
+			sender = info.Chat
+		}
+		if sender.IsEmpty() {
+			continue
+		}
+		sender = sender.ToNonAD()
+		if sender.Server == types.DefaultUserServer {
+			lid, err := wa.GetStore().LIDs.GetLIDForPN(ctx, sender)
+			if err != nil {
+				log.Err(err).Stringer("pn", sender).Msg("Failed to get LID for poll voter in history sync")
+			} else if !lid.IsEmpty() {
+				senderAlt = lid
+			}
+		}
+		ts := time.UnixMilli(update.GetSenderTimestampMS())
+		if update.GetSenderTimestampMS() == 0 || ts.Before(info.Timestamp) {
+			ts = info.Timestamp
+		}
+		voteID := waid.MakeMessageIDWithAltSender(info.Chat, sender, senderAlt, key.GetID())
+		votes = append(votes, &bridgev2.BackfillMessage{
+			ConvertedMessage: wa.Main.MsgConv.HistorySyncPollVoteToMatrix(ctx, pollMXID, update.GetVote()),
+			Sender:           wa.makeEventSender(ctx, pickLID(sender, senderAlt)),
+			ID:               voteID,
+			TxnID:            networkid.TransactionID(voteID),
+			Timestamp:        ts,
+			StreamOrder:      ts.Unix(),
+		})
+	}
+	return votes
 }

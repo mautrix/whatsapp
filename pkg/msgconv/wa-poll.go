@@ -32,6 +32,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/event"
+	"maunium.net/go/mautrix/id"
 
 	"go.mau.fi/mautrix-whatsapp/pkg/waid"
 )
@@ -166,14 +167,27 @@ func (mc *MessageConverter) convertPollUpdateMessage(ctx context.Context, info *
 		return failedPollUpdatePart, nil
 	}
 
-	selectedHashes := make([]string, len(vote.GetSelectedOptions()))
-	if pollMessage.Metadata.(*waid.MessageMetadata).IsMatrixPoll {
-		mappedAnswers, err := mc.DB.PollOption.GetIDs(ctx, pollMessage.MXID, vote.GetSelectedOptions())
+	return mc.makePollVotePart(ctx, pollMessage.MXID, pollMessage.Metadata.(*waid.MessageMetadata).IsMatrixPoll, vote.GetSelectedOptions()), nil
+}
+
+// HistorySyncPollVoteToMatrix converts an already-decrypted vote from a history sync message's pollUpdates
+// into a poll response targeting the given poll start event.
+func (mc *MessageConverter) HistorySyncPollVoteToMatrix(ctx context.Context, pollMXID id.EventID, vote *waE2E.PollVoteMessage) *bridgev2.ConvertedMessage {
+	return &bridgev2.ConvertedMessage{
+		Parts: []*bridgev2.ConvertedMessagePart{mc.makePollVotePart(ctx, pollMXID, false, vote.GetSelectedOptions())},
+	}
+}
+
+func (mc *MessageConverter) makePollVotePart(ctx context.Context, pollMXID id.EventID, isMatrixPoll bool, selectedOptions [][]byte) *bridgev2.ConvertedMessagePart {
+	log := zerolog.Ctx(ctx)
+	selectedHashes := make([]string, len(selectedOptions))
+	if isMatrixPoll {
+		mappedAnswers, err := mc.DB.PollOption.GetIDs(ctx, pollMXID, selectedOptions)
 		if err != nil {
 			log.Err(err).Msg("Failed to get poll option IDs")
-			return failedPollUpdatePart, nil
+			return failedPollUpdatePart
 		}
-		for i, opt := range vote.GetSelectedOptions() {
+		for i, opt := range selectedOptions {
 			if len(opt) != 32 {
 				log.Warn().Int("hash_len", len(opt)).Msg("Unexpected option hash length in vote")
 				continue
@@ -185,7 +199,7 @@ func (mc *MessageConverter) convertPollUpdateMessage(ctx context.Context, info *
 			}
 		}
 	} else {
-		for i, opt := range vote.GetSelectedOptions() {
+		for i, opt := range selectedOptions {
 			selectedHashes[i] = hex.EncodeToString(opt)
 		}
 	}
@@ -194,7 +208,7 @@ func (mc *MessageConverter) convertPollUpdateMessage(ctx context.Context, info *
 		Content: &event.MessageEventContent{
 			RelatesTo: &event.RelatesTo{
 				Type:    event.RelReference,
-				EventID: pollMessage.MXID,
+				EventID: pollMXID,
 			},
 		},
 		Extra: map[string]any{
@@ -202,5 +216,5 @@ func (mc *MessageConverter) convertPollUpdateMessage(ctx context.Context, info *
 				"answers": selectedHashes,
 			},
 		},
-	}, nil
+	}
 }
