@@ -391,11 +391,20 @@ func (evt *WAUndecryptableMessage) GetType() bridgev2.RemoteEventType {
 const UndecryptableMessageNotice = "Decrypting message from WhatsApp failed, waiting for sender to re-send... " +
 	"([learn more](https://faq.whatsapp.com/general/security-and-privacy/seeing-waiting-for-this-message-this-may-take-a-while))"
 
+// unavailableTypeSenderDrop is sent for messages in restricted chats, which WhatsApp doesn't share with linked devices.
+const unavailableTypeSenderDrop events.UnavailableType = "sender_drop"
+
+const RestrictedChatMessageNotice = "This message is in a restricted chat, which WhatsApp only shows on your phone. " +
+	"([learn more](https://faq.whatsapp.com/715385484388016))"
+
 var undecryptableMessageContent event.MessageEventContent
+var restrictedChatMessageContent event.MessageEventContent
 
 func init() {
 	undecryptableMessageContent = format.RenderMarkdown(UndecryptableMessageNotice, true, false)
 	undecryptableMessageContent.MsgType = event.MsgNotice
+	restrictedChatMessageContent = format.RenderMarkdown(RestrictedChatMessageNotice, true, false)
+	restrictedChatMessageContent.MsgType = event.MsgNotice
 }
 
 func (evt *WAUndecryptableMessage) ConvertMessage(ctx context.Context, portal *bridgev2.Portal, intent bridgev2.MatrixAPI) (*bridgev2.ConvertedMessage, error) {
@@ -408,7 +417,8 @@ func (evt *WAUndecryptableMessage) ConvertMessage(ctx context.Context, portal *b
 		extra["fi.mau.whatsapp.source_broadcast_list"] = evt.Info.Chat.String()
 	}
 	content := &undecryptableMessageContent
-	if evt.Type == events.UnavailableTypeViewOnce {
+	switch evt.Type {
+	case events.UnavailableTypeViewOnce:
 		body := "You received a view once message. For added privacy, you can only open it on the WhatsApp app."
 		if evt.Info.IsFromMe {
 			body = "You sent a view once message from another device."
@@ -417,6 +427,8 @@ func (evt *WAUndecryptableMessage) ConvertMessage(ctx context.Context, portal *b
 			MsgType: event.MsgNotice,
 			Body:    body,
 		}
+	case unavailableTypeSenderDrop:
+		content = &restrictedChatMessageContent
 	}
 	// TODO thread root for comments
 	return &bridgev2.ConvertedMessage{
