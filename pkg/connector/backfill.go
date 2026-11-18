@@ -1001,10 +1001,12 @@ func (wa *WhatsAppClient) convertHistorySyncPollVotes(
 	ctx context.Context, portal *bridgev2.Portal, info *types.MessageInfo, poll *bridgev2.BackfillMessage, updates []*waWeb.PollUpdate,
 ) []*bridgev2.BackfillMessage {
 	if len(updates) == 0 || poll.ConvertedMessage == nil || len(poll.Parts) == 0 ||
-		poll.Parts[0].Type != event.EventUnstablePollStart || poll.Parts[0].DontBridge || portal.MXID == "" {
+		poll.Parts[0].Type != event.EventUnstablePollStart || poll.Parts[0].DontBridge || portal.MXID == "" ||
+		!wa.Main.Bridge.Matrix.GetCapabilities().BatchSending {
 		return nil
 	}
 	// Votes are in the same batch as the poll, so the poll's event ID isn't in the database yet.
+	// The deterministic ID is only the real event ID when the batch is sent with batch sending.
 	pollMXID := wa.Main.Bridge.Matrix.GenerateDeterministicEventID(portal.MXID, portal.PortalKey, poll.ID, poll.Parts[0].ID)
 	if pollMXID == "" {
 		return nil
@@ -1036,18 +1038,16 @@ func (wa *WhatsAppClient) convertHistorySyncPollVotes(
 				senderAlt = lid
 			}
 		}
-		ts := time.UnixMilli(update.GetSenderTimestampMS())
-		if update.GetSenderTimestampMS() == 0 || ts.Before(info.Timestamp) {
-			ts = info.Timestamp
-		}
 		voteID := waid.MakeMessageIDWithAltSender(info.Chat, sender, senderAlt, key.GetID())
 		votes = append(votes, &bridgev2.BackfillMessage{
 			ConvertedMessage: wa.Main.MsgConv.HistorySyncPollVoteToMatrix(ctx, pollMXID, update.GetVote()),
 			Sender:           wa.makeEventSender(ctx, pickLID(sender, senderAlt)),
 			ID:               voteID,
 			TxnID:            networkid.TransactionID(voteID),
-			Timestamp:        ts,
-			StreamOrder:      ts.Unix(),
+			// bridgev2 expects backfill batches to be sorted by timestamp, so votes reuse the poll's
+			// timestamp instead of their own to stay ordered right after it.
+			Timestamp:   info.Timestamp,
+			StreamOrder: info.Timestamp.Unix(),
 		})
 	}
 	return votes
