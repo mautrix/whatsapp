@@ -172,9 +172,9 @@ func (mc *MessageConverter) convertPollUpdateMessage(ctx context.Context, info *
 
 // HistorySyncPollVoteToMatrix converts an already-decrypted vote from a history sync message's pollUpdates
 // into a poll response targeting the given poll start event.
-func (mc *MessageConverter) HistorySyncPollVoteToMatrix(ctx context.Context, pollMXID id.EventID, vote *waE2E.PollVoteMessage) *bridgev2.ConvertedMessage {
+func (mc *MessageConverter) HistorySyncPollVoteToMatrix(ctx context.Context, pollMXID id.EventID, isMatrixPoll bool, vote *waE2E.PollVoteMessage) *bridgev2.ConvertedMessage {
 	return &bridgev2.ConvertedMessage{
-		Parts: []*bridgev2.ConvertedMessagePart{mc.makePollVotePart(ctx, pollMXID, false, vote.GetSelectedOptions())},
+		Parts: []*bridgev2.ConvertedMessagePart{mc.makePollVotePart(ctx, pollMXID, isMatrixPoll, vote.GetSelectedOptions())},
 	}
 }
 

@@ -1010,11 +1010,15 @@ func (wa *WhatsAppClient) convertHistorySyncPollVotes(
 	// The deterministic ID is only the real event ID when the batch is sent with batch sending.
 	log := zerolog.Ctx(ctx)
 	var pollMXID id.EventID
+	var isMatrixPoll bool
 	if existing, err := wa.Main.Bridge.DB.Message.GetPartByID(ctx, portal.Receiver, poll.ID, poll.Parts[0].ID); err != nil {
 		log.Err(err).Str("poll_id", string(poll.ID)).Msg("Failed to check for existing poll in backfill")
 		return nil
 	} else if existing != nil {
 		pollMXID = existing.MXID
+		if meta, ok := existing.Metadata.(*waid.MessageMetadata); ok {
+			isMatrixPoll = meta.IsMatrixPoll
+		}
 	} else {
 		pollMXID = wa.Main.Bridge.Matrix.GenerateDeterministicEventID(portal.MXID, portal.PortalKey, poll.ID, poll.Parts[0].ID)
 	}
@@ -1049,7 +1053,7 @@ func (wa *WhatsAppClient) convertHistorySyncPollVotes(
 		}
 		voteID := waid.MakeMessageIDWithAltSender(info.Chat, sender, senderAlt, key.GetID())
 		votes = append(votes, &bridgev2.BackfillMessage{
-			ConvertedMessage: wa.Main.MsgConv.HistorySyncPollVoteToMatrix(ctx, pollMXID, update.GetVote()),
+			ConvertedMessage: wa.Main.MsgConv.HistorySyncPollVoteToMatrix(ctx, pollMXID, isMatrixPoll, update.GetVote()),
 			Sender:           wa.makeEventSender(ctx, pickLID(sender, senderAlt)),
 			ID:               voteID,
 			TxnID:            networkid.TransactionID(voteID),
