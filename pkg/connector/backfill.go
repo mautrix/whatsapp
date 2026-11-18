@@ -27,6 +27,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/bridgev2/simplevent"
 	"maunium.net/go/mautrix/event"
+	"maunium.net/go/mautrix/id"
 
 	"go.mau.fi/mautrix-whatsapp/pkg/connector/wadb"
 	"go.mau.fi/mautrix-whatsapp/pkg/waid"
@@ -1007,11 +1008,19 @@ func (wa *WhatsAppClient) convertHistorySyncPollVotes(
 	}
 	// Votes are in the same batch as the poll, so the poll's event ID isn't in the database yet.
 	// The deterministic ID is only the real event ID when the batch is sent with batch sending.
-	pollMXID := wa.Main.Bridge.Matrix.GenerateDeterministicEventID(portal.MXID, portal.PortalKey, poll.ID, poll.Parts[0].ID)
+	log := zerolog.Ctx(ctx)
+	var pollMXID id.EventID
+	if existing, err := wa.Main.Bridge.DB.Message.GetPartByID(ctx, portal.Receiver, poll.ID, poll.Parts[0].ID); err != nil {
+		log.Err(err).Str("poll_id", string(poll.ID)).Msg("Failed to check for existing poll in backfill")
+		return nil
+	} else if existing != nil {
+		pollMXID = existing.MXID
+	} else {
+		pollMXID = wa.Main.Bridge.Matrix.GenerateDeterministicEventID(portal.MXID, portal.PortalKey, poll.ID, poll.Parts[0].ID)
+	}
 	if pollMXID == "" {
 		return nil
 	}
-	log := zerolog.Ctx(ctx)
 	votes := make([]*bridgev2.BackfillMessage, 0, len(updates))
 	for _, update := range updates {
 		key := update.GetPollUpdateMessageKey()
