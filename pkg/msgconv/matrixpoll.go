@@ -63,6 +63,7 @@ var (
 
 func (mc *MessageConverter) PollStartToWhatsApp(
 	ctx context.Context,
+	origSender *bridgev2.OrigSender,
 	content *event.PollStartEventContent,
 	replyTo *database.Message,
 	portal *bridgev2.Portal,
@@ -71,9 +72,10 @@ func (mc *MessageConverter) PollStartToWhatsApp(
 	if maxAnswers >= len(content.PollStart.Answers) || maxAnswers < 0 {
 		maxAnswers = 0
 	}
-	contextInfo := mc.generateContextInfo(ctx, replyTo, content.RelatesTo, portal, nil, content.Mentions != nil && content.Mentions.Room)
+	contextInfo := mc.generateContextInfo(ctx, replyTo, content.RelatesTo, portal, nil, mc.allowRoomMention(ctx, portal, origSender, content.Mentions))
 	var question string
 	question, contextInfo.MentionedJID = mc.msc1767ToWhatsApp(ctx, content.PollStart.Question, content.Mentions)
+	question = roomMentionToWhatsApp(question, contextInfo)
 	if len(question) == 0 {
 		return nil, nil, errPollMissingQuestion
 	}

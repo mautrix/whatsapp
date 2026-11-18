@@ -19,6 +19,7 @@ package msgconv
 import (
 	"bytes"
 	"context"
+	"errors"
 	"image"
 	"net/http"
 	"net/url"
@@ -52,7 +53,9 @@ func (mc *MessageConverter) convertURLPreviewToBeeper(ctx context.Context, msg *
 	if msg.ThumbnailDirectPath != nil {
 		var err error
 		thumbnailData, err = getClient(ctx).DownloadThumbnail(ctx, msg)
-		if err != nil {
+		if errors.Is(err, whatsmeow.ErrMediaDownloadFailedWith403) || errors.Is(err, whatsmeow.ErrMediaDownloadFailedWith404) || errors.Is(err, whatsmeow.ErrMediaDownloadFailedWith410) {
+			zerolog.Ctx(ctx).Debug().Err(err).Msg("Failed to download thumbnail for link preview")
+		} else if err != nil {
 			zerolog.Ctx(ctx).Err(err).Msg("Failed to download thumbnail for link preview")
 		}
 	}

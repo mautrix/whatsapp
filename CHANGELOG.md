@@ -1,3 +1,31 @@
+# v26.11
+
+* Added indication of which message is being pinned in the pin notice.
+* Added command to reset app state in case mute/archive/etc bridging is broken.
+* Added static location message as fallback for live location share starts.
+* Added migration to remove phone number ghosts that accidentally joined some
+  DMs after LID migration.
+* Added support for encrypting direct media with FLOE ([MSC4571]).
+* Changed backfill to drop messages in the official WhatsApp updates chat,
+  as new messages aren't bridged either.
+* Changed chat delete event handling to ignore the event if there are newer
+  messages than specified in the event.
+* Changed stream replaced and client outdated errors to not auto-reconnect even
+  if unknown error auto-reconnect is enabled in the config.
+* Moved Meta AI chats to use the bot JID instead of the old phone number.
+* Removed separate message for start of albums from WhatsApp.
+* Improved long message cut-off logic to avoid messages failing to bridge.
+* Fixed some direct media IDs using the wrong user ID and failing if the media
+  has to be requested from the phone.
+* Fixed backfill not deleting locally stored history sync fully in some cases.
+* Fixed handling ADV secret rotation during login.
+* Fixed backfill not treating messages sent with a previous phone number as own
+  messages.
+* Fixed media retry edits being sent as the wrong user if the original was sent
+  with a phone number ghost.
+
+[MSC4571]: https://github.com/matrix-org/matrix-spec-proposals/pull/4571
+
 # v26.10
 
 * Added support for new rich response messages used by the Muse AI bot.

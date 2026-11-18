@@ -1,4 +1,4 @@
--- v0 -> v11 (compatible with v3+): Latest revision
+-- v0 -> v12 (compatible with v3+): Latest revision
 
 CREATE TABLE whatsapp_poll_option_id (
     bridge_id TEXT  NOT NULL,
@@ -49,6 +49,8 @@ CREATE TABLE whatsapp_history_sync_message (
     CONSTRAINT whatsapp_history_sync_message_conversation_fkey FOREIGN KEY (bridge_id, user_login_id, chat_jid)
         REFERENCES whatsapp_history_sync_conversation (bridge_id, user_login_id, chat_jid) ON UPDATE CASCADE ON DELETE CASCADE
 );
+
+CREATE INDEX whatsapp_history_sync_message_chat_ts_idx ON whatsapp_history_sync_message (bridge_id, user_login_id, chat_jid, timestamp);
 
 CREATE TABLE whatsapp_media_backfill_request (
     bridge_id       TEXT    NOT NULL,

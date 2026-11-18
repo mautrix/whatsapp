@@ -21,6 +21,7 @@ import (
 	"go.mau.fi/whatsmeow/proto/waHistorySync"
 	"go.mau.fi/whatsmeow/proto/waWeb"
 	"go.mau.fi/whatsmeow/types"
+	"google.golang.org/protobuf/encoding/protowire"
 	"google.golang.org/protobuf/proto"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
@@ -293,7 +294,10 @@ func (wa *WhatsAppClient) handleWAHistorySync(
 		for i, rawMsg := range rawMessages {
 			// Don't store messages that will just be skipped.
 			msgEvt, err := wa.Client.ParseWebMessage(jid, rawMsg.GetMessage())
-			if err != nil {
+			if err != nil && getMessageType(rawMsg.GetMessage().GetMessage()) == "ignore" {
+				ignoredTypes++
+				continue
+			} else if err != nil {
 				log.Warn().Err(err).
 					Int("msg_index", i).
 					Str("msg_id", rawMsg.GetMessage().GetKey().GetID()).
@@ -301,6 +305,9 @@ func (wa *WhatsAppClient) handleWAHistorySync(
 					Stringer("stub_type", rawMsg.GetMessage().GetMessageStubType()).
 					Str("message_type", getMessageType(rawMsg.GetMessage().GetMessage())).
 					Bool("from_me", rawMsg.GetMessage().GetKey().GetFromMe()).
+					Ints32("unknown_fields", unknownProtoFields(rawMsg.GetMessage())).
+					Ints32("unknown_key_fields", unknownProtoFields(rawMsg.GetMessage().GetKey())).
+					Ints32("unknown_message_fields", unknownProtoFields(rawMsg.GetMessage().GetMessage())).
 					Msg("Dropping historical message due to parse error")
 				log.Trace().
 					Any("web_message_info", rawMsg.GetMessage()).
@@ -402,6 +409,27 @@ func (wa *WhatsAppClient) handleWAHistorySync(
 	return nil
 }
 
+func unknownProtoFields(msg proto.Message) []int32 {
+	var fields []int32
+	unknown := msg.ProtoReflect().GetUnknown()
+	for len(unknown) > 0 {
+		num, typ, n := protowire.ConsumeTag(unknown)
+		if n < 0 {
+			break
+		}
+		unknown = unknown[n:]
+		n = protowire.ConsumeFieldValue(num, typ, unknown)
+		if n < 0 {
+			break
+		}
+		unknown = unknown[n:]
+		fields = append(fields, int32(num))
+	}
+	return fields
+}
+
+const historySyncQueuedTimeout = 10 * time.Minute
+
 func (wa *WhatsAppClient) createPortalsFromHistorySync(ctx context.Context) {
 	log := wa.UserLogin.Log.With().
 		Str("action", "create portals from history sync").
@@ -445,6 +473,9 @@ func (wa *WhatsAppClient) createPortalsFromHistorySync(ctx context.Context) {
 			// We don't currently support new PSAs, so don't bother backfilling them either
 			wg.Done()
 			continue
+		} else if queuedAt, ok := wa.historySyncQueued.Get(conv.ChatJID); ok && time.Since(queuedAt) < historySyncQueuedTimeout {
+			wg.Done()
+			continue
 		}
 		// TODO can the chat info fetch be avoided entirely?
 		select {
@@ -485,6 +516,7 @@ func (wa *WhatsAppClient) createPortalsFromHistorySync(ctx context.Context) {
 			wg.Done()
 			continue
 		}
+		wa.historySyncQueued.Set(conv.ChatJID, time.Now())
 		res := wa.UserLogin.QueueRemoteEvent(&simplevent.ChatResync{
 			EventMeta: simplevent.EventMeta{
 				Type: bridgev2.RemoteEventChatResync,
@@ -500,6 +532,7 @@ func (wa *WhatsAppClient) createPortalsFromHistorySync(ctx context.Context) {
 					if err != nil {
 						zerolog.Ctx(ctx).Err(err).Msg("Failed to mark conversation as bridged")
 					}
+					wa.historySyncQueued.Delete(conv.ChatJID)
 					wg.Done()
 				},
 			},
@@ -507,6 +540,7 @@ func (wa *WhatsAppClient) createPortalsFromHistorySync(ctx context.Context) {
 			LatestMessageTS: conv.LastMessageTimestamp,
 		})
 		if !res.Success {
+			wa.historySyncQueued.Delete(conv.ChatJID)
 			log.Debug().Msg("Cancelling history sync portal creation loop")
 			return
 		}
@@ -514,6 +548,9 @@ func (wa *WhatsAppClient) createPortalsFromHistorySync(ctx context.Context) {
 	log.Info().Int("conversation_count", len(conversations)).Msg("Finished creating portals from history sync")
 	go func() {
 		wg.Wait()
+		if wa.historySyncQueued.Len() > 0 {
+			return
+		}
 		wa.UserLogin.Metadata.(*waid.UserLoginMetadata).HistorySyncPortalsNeedCreating = false
 		err = wa.UserLogin.Save(ctx)
 		if err != nil {
@@ -689,9 +726,15 @@ func (wa *WhatsAppClient) convertHistorySyncMessages(
 				Int("msg_index", i).
 				Str("msg_id", msg.GetKey().GetID()).
 				Uint64("msg_time_seconds", msg.GetMessageTimestamp()).
+				Stringer("stub_type", msg.GetMessageStubType()).
+				Str("message_type", getMessageType(msg.GetMessage())).
+				Bool("from_me", msg.GetKey().GetFromMe()).
+				Ints32("unknown_fields", unknownProtoFields(msg)).
+				Ints32("unknown_key_fields", unknownProtoFields(msg.GetKey())).
+				Ints32("unknown_message_fields", unknownProtoFields(msg.GetMessage())).
 				Msg("Dropping historical message due to parse error")
 			zerolog.Ctx(ctx).Trace().
-				Any("web_message_info", msg.GetMessage()).
+				Any("web_message_info", msg).
 				Msg("Content of event that failed to parse")
 			continue
 		}
