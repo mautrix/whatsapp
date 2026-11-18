@@ -339,7 +339,7 @@ func (wl *WALogin) Wait(ctx context.Context) (*bridgev2.LoginStep, error) {
 			wl.Cancel()
 			return nil, ctx.Err()
 		case <-wl.PasskeyRequest.GetChan():
-			return wl.makePasskeyStep()
+			return wl.makePasskeyStep(ctx)
 		case <-wl.LoginComplete.GetChan():
 			// continue
 		}
@@ -371,7 +371,7 @@ func (wl *WALogin) Wait(ctx context.Context) (*bridgev2.LoginStep, error) {
 			wl.Cancel()
 			return nil, ctx.Err()
 		case <-wl.PasskeyRequest.GetChan():
-			return wl.makePasskeyStep()
+			return wl.makePasskeyStep(ctx)
 		case <-wl.ADVRotate.GetChan():
 			wl.ADVRotate.Clear()
 			if currentIndex < 0 || currentIndex >= len(wl.QRs) {
@@ -447,7 +447,12 @@ func (wl *WALogin) onLoginComplete(ctx context.Context) (*bridgev2.LoginStep, er
 	}, nil
 }
 
-func (wl *WALogin) makePasskeyStep() (*bridgev2.LoginStep, error) {
+func (wl *WALogin) makePasskeyStep(ctx context.Context) (*bridgev2.LoginStep, error) {
+	if !bridgev2.HasClientCapability(ctx, bridgev2.ClientCapabilityWebAuthn) {
+		wl.Log.Debug().Msg("WhatsApp requested a passkey, but the client doesn't support webauthn")
+		wl.Cancel()
+		return nil, bridgev2.MissingClientCapabilityError(bridgev2.ClientCapabilityWebAuthn)
+	}
 	pubkeyData, err := json.Marshal(wl.PasskeyRequestData.PublicKey)
 	if err != nil {
 		wl.Log.Err(err).Msg("Failed to marshal public key data")
