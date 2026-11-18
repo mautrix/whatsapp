@@ -67,7 +67,7 @@ var (
 )
 
 func (wa *WhatsAppClient) HandleMatrixPollStart(ctx context.Context, msg *bridgev2.MatrixPollStart) (result *bridgev2.MatrixMessageResponse, retErr error) {
-	waMsg, optionMap, err := wa.Main.MsgConv.PollStartToWhatsApp(ctx, msg.Content, msg.ReplyTo, msg.Portal)
+	waMsg, optionMap, err := wa.Main.MsgConv.PollStartToWhatsApp(ctx, msg.OrigSender, msg.Content, msg.ReplyTo, msg.Portal)
 	if err != nil {
 		return nil, wrapConversionError(fmt.Errorf("failed to convert poll start: %w", err))
 	}
@@ -96,7 +96,7 @@ func (wa *WhatsAppClient) HandleMatrixPollVote(ctx context.Context, msg *bridgev
 }
 
 func (wa *WhatsAppClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.MatrixMessage) (result *bridgev2.MatrixMessageResponse, retErr error) {
-	waMsg, req, err := wa.Main.MsgConv.ToWhatsApp(ctx, wa.Client, msg.Event, msg.Content, msg.ReplyTo, msg.ThreadRoot, msg.Portal)
+	waMsg, req, err := wa.Main.MsgConv.ToWhatsApp(ctx, wa.Client, msg.Event, msg.Content, msg.ReplyTo, msg.ThreadRoot, msg.Portal, msg.OrigSender)
 	if err != nil {
 		return nil, wrapConversionError(fmt.Errorf("failed to convert message: %w", err))
 	}
@@ -273,7 +273,7 @@ func (wa *WhatsAppClient) HandleMatrixEdit(ctx context.Context, edit *bridgev2.M
 		return fmt.Errorf("failed to parse portal ID: %w", err)
 	}
 
-	waMsg, _, err := wa.Main.MsgConv.ToWhatsApp(ctx, wa.Client, edit.Event, edit.Content, nil, nil, edit.Portal)
+	waMsg, _, err := wa.Main.MsgConv.ToWhatsApp(ctx, wa.Client, edit.Event, edit.Content, nil, nil, edit.Portal, edit.OrigSender)
 	if err != nil {
 		return wrapConversionError(fmt.Errorf("failed to convert message: %w", err))
 	}

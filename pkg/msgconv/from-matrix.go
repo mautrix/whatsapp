@@ -29,6 +29,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -95,6 +96,31 @@ func (mc *MessageConverter) generateContextInfo(
 	return contextInfo
 }
 
+func (mc *MessageConverter) allowRoomMention(ctx context.Context, portal *bridgev2.Portal, origSender *bridgev2.OrigSender, mentions *event.Mentions) bool {
+	if mentions == nil || !mentions.Room || portal.RoomType != database.RoomTypeDefault {
+		return false
+	} else if jid, err := waid.ParsePortalID(portal.ID); err != nil || jid.Server != types.GroupServer {
+		return false
+	} else if origSender == nil {
+		return true
+	}
+	pls, err := portal.Bridge.Matrix.GetPowerLevels(ctx, portal.MXID)
+	if err != nil {
+		zerolog.Ctx(ctx).Err(err).Msg("Failed to get power levels to check room mention permission")
+		return false
+	}
+	return pls.GetUserLevel(origSender.UserID) >= pls.Notifications.Room()
+}
+
+var roomMentionRegex = regexp.MustCompile(`(^|\s)@room($|[\s,!?]|\.(?:\s|$))`)
+
+func roomMentionToWhatsApp(text string, contextInfo *waE2E.ContextInfo) string {
+	if contextInfo.GetNonJIDMentions() != 1 {
+		return text
+	}
+	return roomMentionRegex.ReplaceAllString(text, "${1}@all${2}")
+}
+
 func (mc *MessageConverter) getQuotedMessage(ctx context.Context, replyTo *database.Message, relatesTo *event.RelatesTo, portal *bridgev2.Portal) *waE2E.Message {
 	log := zerolog.Ctx(ctx).With().Stringer("reply_to_event_id", replyTo.MXID).Logger()
 	if relatesTo.GetReplyTo() == replyTo.MXID && len(relatesTo.InReplyTo.BeeperQuote) > 0 {
@@ -134,6 +160,7 @@ func (mc *MessageConverter) ToWhatsApp(
 	replyTo,
 	threadRoot *database.Message,
 	portal *bridgev2.Portal,
+	origSender *bridgev2.OrigSender,
 ) (*waE2E.Message, *whatsmeow.SendRequestExtra, error) {
 	ctx = context.WithValue(ctx, contextKeyClient, client)
 	ctx = context.WithValue(ctx, contextKeyPortal, portal)
@@ -142,7 +169,7 @@ func (mc *MessageConverter) ToWhatsApp(
 	}
 
 	message := &waE2E.Message{}
-	contextInfo := mc.generateContextInfo(ctx, replyTo, content.RelatesTo, portal, content.BeeperDisappearingTimer, content.Mentions != nil && content.Mentions.Room)
+	contextInfo := mc.generateContextInfo(ctx, replyTo, content.RelatesTo, portal, content.BeeperDisappearingTimer, mc.allowRoomMention(ctx, portal, origSender, content.Mentions))
 
 	switch content.MsgType {
 	case event.MsgText, event.MsgNotice, event.MsgEmote:
@@ -167,6 +194,11 @@ func (mc *MessageConverter) ToWhatsApp(
 			DegreesLongitude: &long,
 			Comment:          &content.Body,
 			ContextInfo:      contextInfo,
+		}
+		if msc3488, ok := evt.Content.Raw["org.matrix.msc3488.location"].(map[string]any); ok {
+			if description, ok := msc3488["description"].(string); ok && description != "" {
+				message.LocationMessage.Name = &description
+			}
 		}
 	default:
 		return nil, nil, fmt.Errorf("%w %s", bridgev2.ErrUnsupportedMessageType, content.MsgType)
@@ -216,6 +248,7 @@ func (mc *MessageConverter) constructMediaMessage(
 	var caption string
 	if content.FileName != "" && content.Body != content.FileName {
 		caption, contextInfo.MentionedJID = mc.parseText(ctx, content)
+		caption = roomMentionToWhatsApp(caption, contextInfo)
 	}
 	switch content.MsgType {
 	case event.MessageType(event.EventSticker.Type):
@@ -366,6 +399,7 @@ func (mc *MessageConverter) constructTextMessage(
 		return mc.constructGroupInviteMessage(ctx, content, groupInvite, contextInfo)
 	}
 	text, mentions := mc.parseText(ctx, content)
+	text = roomMentionToWhatsApp(text, contextInfo)
 	if len(mentions) > 0 {
 		contextInfo.MentionedJID = mentions
 	}
@@ -394,6 +428,7 @@ func (mc *MessageConverter) constructGroupInviteMessage(
 		return nil, fmt.Errorf("failed to parse invite meta: %w", err)
 	}
 	text, mentions := mc.parseText(ctx, content)
+	text = roomMentionToWhatsApp(text, contextInfo)
 	if len(mentions) > 0 {
 		contextInfo.MentionedJID = mentions
 	}
