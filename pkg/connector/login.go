@@ -113,6 +113,8 @@ type WALogin struct {
 	PhoneCode bool
 	Timezone  string
 
+	ClientCapabilities bridgev2.ClientCapabilities
+
 	QRs           []string
 	StartTime     time.Time
 	LoginError    error
@@ -153,6 +155,7 @@ func (wl *WALogin) StartWithOverride(ctx context.Context, old *bridgev2.UserLogi
 }
 
 func (wl *WALogin) StartWithParams(ctx context.Context, params bridgev2.LoginStartParams) (*bridgev2.LoginStep, error) {
+	wl.ClientCapabilities = params.ClientCapabilities
 	wl.Main.firstClientConnectOnce.Do(wl.Main.onFirstClientConnect)
 	device := wl.Main.DeviceStore.NewDevice()
 	wl.Client = whatsmeow.NewClient(device, waLog.Zerolog(wl.Log))
@@ -339,7 +342,7 @@ func (wl *WALogin) Wait(ctx context.Context) (*bridgev2.LoginStep, error) {
 			wl.Cancel()
 			return nil, ctx.Err()
 		case <-wl.PasskeyRequest.GetChan():
-			return wl.makePasskeyStep(ctx)
+			return wl.makePasskeyStep()
 		case <-wl.LoginComplete.GetChan():
 			// continue
 		}
@@ -371,7 +374,7 @@ func (wl *WALogin) Wait(ctx context.Context) (*bridgev2.LoginStep, error) {
 			wl.Cancel()
 			return nil, ctx.Err()
 		case <-wl.PasskeyRequest.GetChan():
-			return wl.makePasskeyStep(ctx)
+			return wl.makePasskeyStep()
 		case <-wl.ADVRotate.GetChan():
 			wl.ADVRotate.Clear()
 			if currentIndex < 0 || currentIndex >= len(wl.QRs) {
@@ -447,8 +450,8 @@ func (wl *WALogin) onLoginComplete(ctx context.Context) (*bridgev2.LoginStep, er
 	}, nil
 }
 
-func (wl *WALogin) makePasskeyStep(ctx context.Context) (*bridgev2.LoginStep, error) {
-	if !bridgev2.HasClientCapability(ctx, bridgev2.ClientCapabilityWebAuthn) {
+func (wl *WALogin) makePasskeyStep() (*bridgev2.LoginStep, error) {
+	if !wl.ClientCapabilities.Has(bridgev2.ClientCapabilityWebAuthn) {
 		wl.Log.Debug().Msg("WhatsApp requested a passkey, but the client doesn't support webauthn")
 		wl.Cancel()
 		return nil, bridgev2.MissingClientCapabilityError(bridgev2.ClientCapabilityWebAuthn)
