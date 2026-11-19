@@ -7,5 +7,5 @@ import (
 )
 
 func TestL10NCatalog(t *testing.T) {
-	l10ntest.CheckCatalog(t, "../../l10n/en.json", L.Name())
+	l10ntest.CheckCatalog(t, "../../l10n/en.json", L)
 }
