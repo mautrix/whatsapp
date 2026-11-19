@@ -132,7 +132,7 @@ type WALogin struct {
 	Closed          atomic.Bool
 	ClientTunnel    atomic.Bool
 	PairingDeadline atomic.Int64
-	EventHandlerID uint32
+	EventHandlerID  uint32
 }
 
 var (
