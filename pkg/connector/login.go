@@ -115,7 +115,6 @@ type WALogin struct {
 
 	QRs           []string
 	StartTime     time.Time
-	CodeTime      time.Time
 	LoginError    error
 	LoginSuccess  *events.PairSuccess
 	WaitForQRs    *exsync.Event
@@ -130,8 +129,9 @@ type WALogin struct {
 
 	ADVRotate *exsync.Event
 
-	Closed         atomic.Bool
-	ClientTunnel   atomic.Bool
+	Closed          atomic.Bool
+	ClientTunnel    atomic.Bool
+	PairingDeadline atomic.Int64
 	EventHandlerID uint32
 }
 
@@ -236,7 +236,7 @@ func (wl *WALogin) SubmitUserInput(ctx context.Context, input map[string]string)
 		}
 		return nil, wrapWhatsAppRespError(err)
 	}
-	wl.CodeTime = time.Now()
+	wl.PairingDeadline.Store(time.Now().Add(LoginPairingCodeLifetime).UnixNano())
 	wl.Log.Debug().Msg("Phone code login started")
 	return &bridgev2.LoginStep{
 		Type:         bridgev2.LoginStepTypeDisplayAndWait,
@@ -258,11 +258,8 @@ func (wl *WALogin) connect(ctx context.Context) error {
 }
 
 func (wl *WALogin) pairingStillValid() bool {
-	if wl.PhoneCode {
-		return wl.CodeTime.IsZero() || time.Since(wl.CodeTime) < LoginPairingCodeLifetime
-	}
-	currentIndex, _ := wl.getQRIndex()
-	return currentIndex >= 0
+	deadline := wl.PairingDeadline.Load()
+	return deadline == 0 || time.Now().UnixNano() < deadline
 }
 
 func (wl *WALogin) leaveClientTunnel(ctx context.Context, reason error) bool {
@@ -325,6 +322,13 @@ func (wl *WALogin) handleEvent(rawEvt any) {
 		reconnected := wl.QRs != nil
 		wl.QRs = evt.Codes
 		wl.StartTime = time.Now()
+		if !wl.PhoneCode {
+			var lifetime time.Duration
+			for _, interval := range qrIntervals {
+				lifetime += interval
+			}
+			wl.PairingDeadline.Store(wl.StartTime.Add(lifetime).UnixNano())
+		}
 		wl.WaitForQRs.Set()
 		if reconnected {
 			wl.ADVRotate.Set()
