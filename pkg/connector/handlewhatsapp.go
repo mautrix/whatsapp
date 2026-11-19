@@ -19,6 +19,7 @@ package connector
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -75,13 +76,31 @@ func init() {
 	})
 }
 
-var (
-	metaAISideChatJID       = types.NewJID("2942131436135992", types.BotServer)
-	legacyMetaAISideChatJID = types.NewJID("867051314767696555", types.BotServer)
-)
+var metaAISideChatJIDs = []types.JID{
+	types.NewJID("2942131436135992", types.BotServer),
+	types.NewJID("867051314767696555", types.BotServer),
+}
 
 func isMetaAISideChat(jid types.JID) bool {
-	return jid == metaAISideChatJID || jid == legacyMetaAISideChatJID
+	return slices.Contains(metaAISideChatJIDs, jid)
+}
+
+func (wa *WhatsAppClient) deleteMetaAISideChatPortals(ctx context.Context) {
+	for _, jid := range metaAISideChatJIDs {
+		portalKey := wa.makeWAPortalKey(jid)
+		portal, err := wa.Main.Bridge.GetExistingPortalByKey(ctx, portalKey)
+		if err != nil {
+			zerolog.Ctx(ctx).Warn().Err(err).Stringer("chat_jid", jid).Msg("Failed to check Meta AI side chat portal")
+		} else if portal != nil && portal.MXID != "" {
+			wa.UserLogin.QueueRemoteEvent(&simplevent.ChatDelete{
+				EventMeta: simplevent.EventMeta{
+					Type:      bridgev2.RemoteEventChatDelete,
+					PortalKey: portalKey,
+				},
+				OnlyForMe: true,
+			})
+		}
+	}
 }
 
 func (wa *WhatsAppClient) handleWAEvent(rawEvt any) (success bool) {
@@ -189,6 +208,7 @@ func (wa *WhatsAppClient) handleWAEvent(rawEvt any) (success bool) {
 			go func() {
 				wa.resyncWASARootSecrets(ctx)
 				wa.requestMuseProfile(ctx)
+				wa.deleteMetaAISideChatPortals(ctx)
 			}()
 		}
 		if len(wa.GetStore().PushName) > 0 {
