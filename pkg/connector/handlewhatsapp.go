@@ -75,6 +75,15 @@ func init() {
 	})
 }
 
+var (
+	metaAISideChatJID       = types.NewJID("2942131436135992", types.BotServer)
+	legacyMetaAISideChatJID = types.NewJID("867051314767696555", types.BotServer)
+)
+
+func isMetaAISideChat(jid types.JID) bool {
+	return jid == metaAISideChatJID || jid == legacyMetaAISideChatJID
+}
+
 func (wa *WhatsAppClient) handleWAEvent(rawEvt any) (success bool) {
 	log := wa.UserLogin.Log
 	ctx := log.WithContext(wa.Main.Bridge.BackgroundCtx)
@@ -303,7 +312,8 @@ func (wa *WhatsAppClient) handleWAMessage(ctx context.Context, evt *events.Messa
 	success = true
 	if (evt.Info.Chat == types.StatusBroadcastJID && !wa.Main.Config.EnableStatusBroadcast) ||
 		(evt.Info.Chat.Server == types.NewsletterServer && wa.disableNewsletter) ||
-		(evt.Info.Chat.Server == types.BroadcastServer && evt.Info.IsFromMe) {
+		(evt.Info.Chat.Server == types.BroadcastServer && evt.Info.IsFromMe) ||
+		isMetaAISideChat(evt.Info.Chat) {
 		return
 	}
 	if !wa.ensureAltJIDs(ctx, &evt.Info.MessageSource, true) {
@@ -449,6 +459,9 @@ func makeHDMediaReplacementEdit(message *waE2E.Message, parentKey *waCommon.Mess
 }
 
 func (wa *WhatsAppClient) handleWAUndecryptableMessage(ctx context.Context, evt *events.UndecryptableMessage) bool {
+	if isMetaAISideChat(evt.Info.Chat) {
+		return true
+	}
 	if !wa.ensureAltJIDs(ctx, &evt.Info.MessageSource, true) {
 		return false
 	}
