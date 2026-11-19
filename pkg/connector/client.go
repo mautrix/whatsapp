@@ -135,6 +135,7 @@ type WhatsAppClient struct {
 	appStateRecoveryLock      sync.Mutex
 	appStateFullSyncAttempted map[appstate.WAPatchName]time.Time
 	appStateResetSent         atomic.Bool
+	appStateResetLoggedOut    atomic.Bool
 
 	wasaResyncLock         sync.Mutex
 	museProfileLock        sync.Mutex

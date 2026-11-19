@@ -215,15 +215,17 @@ func (wa *WhatsAppClient) handleWAEvent(rawEvt any) (success bool) {
 		wa.UserLogin.BridgeState.Send(status.BridgeState{StateEvent: status.StateConnected})
 		wa.notifyOfflineSyncWaiter(nil)
 	case *events.LoggedOut:
-		errorCode := WAUnknownLogout
-		if wa.appStateResetSent.CompareAndSwap(true, false) {
-			errorCode = WAAppStateReset
-		} else if evt.Reason == events.ConnectFailureLoggedOut {
-			errorCode = WALoggedOut
-		} else if evt.Reason == events.ConnectFailureMainDeviceGone {
-			errorCode = WAMainDeviceGone
+		if !wa.appStateResetSent.Load() {
+			errorCode := WAUnknownLogout
+			if evt.Reason == events.ConnectFailureLoggedOut {
+				errorCode = WALoggedOut
+			} else if evt.Reason == events.ConnectFailureMainDeviceGone {
+				errorCode = WAMainDeviceGone
+			}
+			wa.handleWALogout(ctx, errorCode)
+		} else if wa.appStateResetLoggedOut.CompareAndSwap(false, true) {
+			wa.handleWALogout(ctx, WAAppStateReset)
 		}
-		wa.handleWALogout(ctx, errorCode)
 		wa.notifyOfflineSyncWaiter(fmt.Errorf("logged out: %s", evt.Reason))
 	case *events.Disconnected:
 		// Don't send the normal transient disconnect state if we're already in a different transient disconnect state.
@@ -1121,7 +1123,7 @@ func (wa *WhatsAppClient) resetAppState(ctx context.Context, cli *whatsmeow.Clie
 	}
 	log.Info().Msg("Sent app state fatal exception notification, logging out")
 	time.Sleep(5 * time.Second)
-	if !wa.appStateResetSent.CompareAndSwap(true, false) {
+	if !wa.appStateResetLoggedOut.CompareAndSwap(false, true) {
 		return
 	}
 	err = cli.Logout(ctx)
