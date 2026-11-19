@@ -129,10 +129,9 @@ type WALogin struct {
 
 	ADVRotate *exsync.Event
 
-	Closed          atomic.Bool
-	ClientTunnel    atomic.Bool
-	PairingDeadline atomic.Int64
-	EventHandlerID  uint32
+	Closed         atomic.Bool
+	EventHandlerID uint32
+	ClientTunnel   bool
 }
 
 var (
@@ -145,7 +144,6 @@ var (
 
 const LoginConnectWait = 30 * time.Second
 const LoginPairPhoneWait = 30 * time.Second
-const LoginPairingCodeLifetime = 180 * time.Second
 
 func (wl *WALogin) Start(ctx context.Context) (*bridgev2.LoginStep, error) {
 	return wl.StartWithParams(ctx, bridgev2.LoginStartParams{})
@@ -167,7 +165,7 @@ func (wl *WALogin) StartWithParams(ctx context.Context, params bridgev2.LoginSta
 	}
 	if params.WebSocketHTTP != nil {
 		wl.Client.SetPreLoginHTTPClient(&http.Client{Transport: params.WebSocketHTTP})
-		wl.ClientTunnel.Store(true)
+		wl.ClientTunnel = true
 	}
 
 	if wl.PhoneCode {
@@ -236,7 +234,6 @@ func (wl *WALogin) SubmitUserInput(ctx context.Context, input map[string]string)
 		}
 		return nil, wrapWhatsAppRespError(err)
 	}
-	wl.PairingDeadline.Store(time.Now().Add(LoginPairingCodeLifetime).UnixNano())
 	wl.Log.Debug().Msg("Phone code login started")
 	return &bridgev2.LoginStep{
 		Type:         bridgev2.LoginStepTypeDisplayAndWait,
@@ -251,38 +248,15 @@ func (wl *WALogin) SubmitUserInput(ctx context.Context, input map[string]string)
 
 func (wl *WALogin) connect(ctx context.Context) error {
 	err := wl.Client.Connect()
-	if err != nil && wl.leaveClientTunnel(ctx, err) {
-		err = wl.Client.Connect()
+	if err == nil || !wl.ClientTunnel {
+		return err
 	}
-	return err
-}
-
-func (wl *WALogin) pairingStillValid() bool {
-	deadline := wl.PairingDeadline.Load()
-	return deadline == 0 || time.Now().UnixNano() < deadline
-}
-
-func (wl *WALogin) leaveClientTunnel(ctx context.Context, reason error) bool {
-	if ctx.Err() != nil || wl.Closed.Load() || !wl.ClientTunnel.CompareAndSwap(true, false) {
-		return false
+	wl.Log.Warn().Err(err).Msg("Failed to connect through client WebSocket tunnel, retrying on the bridge's own connection")
+	wl.ClientTunnel = false
+	if proxyErr := wl.Main.updateProxy(ctx, wl.Client, true); proxyErr != nil {
+		return proxyErr
 	}
-	wl.Log.Warn().Err(reason).Msg("Client WebSocket tunnel failed, continuing login on the bridge's own connection")
-	if err := wl.Main.updateProxy(ctx, wl.Client, true); err != nil {
-		wl.Log.Err(err).Msg("Failed to switch login back to the bridge's own connection")
-		return false
-	}
-	return true
-}
-
-func (wl *WALogin) reconnectWithoutTunnel() {
-	err := wl.Client.Connect()
-	if wl.Closed.Load() {
-		wl.Client.Disconnect()
-	} else if err != nil {
-		wl.Log.Err(err).Msg("Failed to reconnect to WhatsApp after the client WebSocket tunnel closed")
-		wl.LoginError = wrapWhatsAppRespError(err)
-		wl.LoginComplete.Set()
-	}
+	return wl.Client.Connect()
 }
 
 func makeQRStep(qr string) *bridgev2.LoginStep {
@@ -319,20 +293,9 @@ func (wl *WALogin) handleEvent(rawEvt any) {
 	switch evt := rawEvt.(type) {
 	case *events.QR:
 		wl.Log.Debug().Int("code_count", len(evt.Codes)).Msg("Received QR codes")
-		reconnected := wl.QRs != nil
 		wl.QRs = evt.Codes
 		wl.StartTime = time.Now()
-		if !wl.PhoneCode {
-			var lifetime time.Duration
-			for _, interval := range qrIntervals {
-				lifetime += interval
-			}
-			wl.PairingDeadline.Store(wl.StartTime.Add(lifetime).UnixNano())
-		}
 		wl.WaitForQRs.Set()
-		if reconnected {
-			wl.ADVRotate.Set()
-		}
 		return
 	case *events.RotateADVSecret:
 		wl.Log.Debug().Msg("Rotating ADV secret in all QRs")
@@ -369,10 +332,6 @@ func (wl *WALogin) handleEvent(rawEvt any) {
 			StatusCode: http.StatusInternalServerError,
 		}
 	case *events.Disconnected:
-		if !wl.LoginComplete.IsSet() && !wl.PasskeyRequest.IsSet() && wl.pairingStillValid() && wl.leaveClientTunnel(wl.Log.WithContext(wl.Main.Bridge.BackgroundCtx), errors.New("tunnel closed")) {
-			go wl.reconnectWithoutTunnel()
-			return
-		}
 		wl.Log.Warn().Msg("Got disconnected event (login timed out)")
 		wl.LoginError = ErrLoginTimeout
 	case *events.Connected, *events.ConnectFailure, *events.LoggedOut, *events.TemporaryBan:
@@ -430,14 +389,12 @@ func (wl *WALogin) Wait(ctx context.Context) (*bridgev2.LoginStep, error) {
 			return wl.makePasskeyStep()
 		case <-wl.ADVRotate.GetChan():
 			wl.ADVRotate.Clear()
-			currentIndex, _ = wl.getQRIndex()
 			if currentIndex < 0 || currentIndex >= len(wl.QRs) {
-				wl.Log.Debug().Msg("QR codes changed, but no QRs are left to return")
+				wl.Log.Debug().Msg("ADV secret was rotated, but no QRs are left to return")
 				wl.Cancel()
 				return nil, ErrLoginTimeout
 			}
-			wl.PrevQRIndex.Store(int32(currentIndex))
-			wl.Log.Debug().Msg("QR codes changed, returning current QR immediately")
+			wl.Log.Debug().Msg("ADV secret was rotated, returning current QR immediately")
 			return makeQRStep(wl.QRs[currentIndex]), nil
 		case <-wl.LoginComplete.GetChan():
 			// continue
