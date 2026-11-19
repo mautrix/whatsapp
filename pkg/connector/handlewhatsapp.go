@@ -18,6 +18,7 @@ package connector
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -56,6 +57,7 @@ const (
 	WAStreamError      status.BridgeStateErrorCode = "wa-stream-error"
 	WAClientOutdated   status.BridgeStateErrorCode = "wa-client-outdated"
 	WATemporaryBan     status.BridgeStateErrorCode = "wa-temporary-ban"
+	WAAppStateReset    status.BridgeStateErrorCode = "wa-app-state-reset"
 )
 
 func init() {
@@ -72,6 +74,7 @@ func init() {
 		WADisconnected:     "Disconnected from WhatsApp. Trying to reconnect.",
 		WAClientOutdated:   "Connect failure: 405 client outdated. Bridge must be updated.",
 		WAStreamReplaced:   "Stream replaced: the bridge was started in another location.",
+		WAAppStateReset:    "Your chat settings couldn't be synced from your phone, so the bridge asked WhatsApp to reset them, which logs out all linked devices. Relogin to continue using the bridge.",
 	})
 }
 
@@ -212,7 +215,17 @@ func (wa *WhatsAppClient) handleWAEvent(rawEvt any) (success bool) {
 		wa.UserLogin.BridgeState.Send(status.BridgeState{StateEvent: status.StateConnected})
 		wa.notifyOfflineSyncWaiter(nil)
 	case *events.LoggedOut:
-		wa.handleWALogout(ctx, evt.Reason, evt.OnConnect)
+		if !wa.appStateResetSent.Load() {
+			errorCode := WAUnknownLogout
+			if evt.Reason == events.ConnectFailureLoggedOut {
+				errorCode = WALoggedOut
+			} else if evt.Reason == events.ConnectFailureMainDeviceGone {
+				errorCode = WAMainDeviceGone
+			}
+			wa.handleWALogout(ctx, errorCode)
+		} else if wa.appStateResetLoggedOut.CompareAndSwap(false, true) {
+			wa.handleWALogout(ctx, WAAppStateReset)
+		}
 		wa.notifyOfflineSyncWaiter(fmt.Errorf("logged out: %s", evt.Reason))
 	case *events.Disconnected:
 		// Don't send the normal transient disconnect state if we're already in a different transient disconnect state.
@@ -606,13 +619,7 @@ func (wa *WhatsAppClient) handleWAChatPresence(ctx context.Context, evt *events.
 	})
 }
 
-func (wa *WhatsAppClient) handleWALogout(ctx context.Context, reason events.ConnectFailureReason, onConnect bool) {
-	errorCode := WAUnknownLogout
-	if reason == events.ConnectFailureLoggedOut {
-		errorCode = WALoggedOut
-	} else if reason == events.ConnectFailureMainDeviceGone {
-		errorCode = WAMainDeviceGone
-	}
+func (wa *WhatsAppClient) handleWALogout(ctx context.Context, errorCode status.BridgeStateErrorCode) {
 	wa.Disconnect()
 	wa.Client = nil
 	wa.JID = types.EmptyJID
@@ -1039,13 +1046,29 @@ func (wa *WhatsAppClient) handleWAAppStateSyncError(ctx context.Context, evt *ev
 		}()
 		return
 	}
+	if cli := wa.Client; cli != nil && !lastRecovery.IsZero() && meta.PhoneLastSeen.After(lastRecovery) && isFatalAppStateError(evt.Error) {
+		if wa.appStateResetSent.Swap(true) {
+			return
+		}
+		log.Warn().
+			Err(evt.Error).
+			Time("last_recovery_attempt", lastRecovery).
+			Time("phone_last_seen", meta.PhoneLastSeen.Time).
+			Msg("Phone didn't answer app state recovery, sending fatal exception notification")
+		wa.UserLogin.TrackAnalytics("WhatsApp Appstate Fatal Exception", map[string]any{
+			"patch_name": evt.Name,
+		})
+		go wa.resetAppState(ctx, cli, evt.Name)
+		return
+	}
 	log.Info().
 		Err(evt.Error).
 		Msg("Trying recovery for app state after full sync error")
 	if meta.AppStateRecoveryAttempted == nil {
 		meta.AppStateRecoveryAttempted = make(map[appstate.WAPatchName]time.Time)
 	}
-	meta.AppStateRecoveryAttempted[evt.Name] = time.Now()
+	recoveryTS := time.Now()
+	meta.AppStateRecoveryAttempted[evt.Name] = recoveryTS
 	err := wa.UserLogin.Save(ctx)
 	if err != nil {
 		log.Err(err).Msg("Failed to save login metadata after marking app state recovery as attempted")
@@ -1057,6 +1080,20 @@ func (wa *WhatsAppClient) handleWAAppStateSyncError(ctx context.Context, evt *ev
 		resp, err := wa.Client.SendPeerMessage(ctx, whatsmeow.BuildAppStateRecoveryRequest(evt.Name))
 		if err != nil {
 			log.Err(err).Msg("Failed to send app state recovery request")
+			wa.appStateRecoveryLock.Lock()
+			if !meta.AppStateRecoveryAttempted[evt.Name].Equal(recoveryTS) {
+				wa.appStateRecoveryLock.Unlock()
+				return
+			} else if lastRecovery.IsZero() {
+				delete(meta.AppStateRecoveryAttempted, evt.Name)
+			} else {
+				meta.AppStateRecoveryAttempted[evt.Name] = lastRecovery
+			}
+			wa.appStateRecoveryLock.Unlock()
+			err = wa.UserLogin.Save(ctx)
+			if err != nil {
+				log.Err(err).Msg("Failed to save login metadata after unmarking app state recovery as attempted")
+			}
 		} else {
 			log.Debug().
 				Str("message_id", resp.ID).
@@ -1064,6 +1101,40 @@ func (wa *WhatsAppClient) handleWAAppStateSyncError(ctx context.Context, evt *ev
 				Msg("Sent app state recovery request")
 		}
 	}()
+}
+
+func isFatalAppStateError(err error) bool {
+	return errors.Is(err, appstate.ErrMismatchingLTHash) ||
+		errors.Is(err, appstate.ErrMismatchingPatchMAC) ||
+		errors.Is(err, appstate.ErrMismatchingContentMAC) ||
+		errors.Is(err, appstate.ErrMismatchingIndexMAC) ||
+		errors.Is(err, whatsmeow.ErrMediaDownloadFailedWith403) ||
+		errors.Is(err, whatsmeow.ErrMediaDownloadFailedWith404) ||
+		errors.Is(err, whatsmeow.ErrMediaDownloadFailedWith410)
+}
+
+func (wa *WhatsAppClient) resetAppState(ctx context.Context, cli *whatsmeow.Client, name appstate.WAPatchName) {
+	log := zerolog.Ctx(ctx)
+	_, err := cli.SendPeerMessage(ctx, whatsmeow.BuildFatalAppStateExceptionNotification(name))
+	if err != nil {
+		log.Err(err).Msg("Failed to send app state fatal exception notification")
+		wa.appStateResetSent.Store(false)
+		return
+	}
+	log.Info().Msg("Sent app state fatal exception notification, logging out")
+	time.Sleep(5 * time.Second)
+	if !wa.appStateResetLoggedOut.CompareAndSwap(false, true) {
+		return
+	}
+	err = cli.Logout(ctx)
+	if err != nil {
+		log.Err(err).Msg("Failed to log out after app state fatal exception notification")
+		err = cli.Store.Delete(ctx)
+		if err != nil {
+			log.Err(err).Msg("Failed to delete device store after app state fatal exception notification")
+		}
+	}
+	wa.handleWALogout(ctx, WAAppStateReset)
 }
 
 func (wa *WhatsAppClient) resyncBlocklist(ctx context.Context) func() bool {
