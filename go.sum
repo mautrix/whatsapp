@@ -69,6 +69,8 @@ go.mau.fi/libsignal v0.2.3 h1:kSN5CEcW0DhKWqAo/bsBcQvlv0+MRz/x1tYbA+kuA8w=
 go.mau.fi/libsignal v0.2.3/go.mod h1:FyLu6+l3LSljimq16QFkLnC6PHsPYtn+B80R6JkTH70=
 go.mau.fi/util v0.11.1 h1:TOxiPZ0XLkpp3CBItIocTnW6rBsGv4fVLa70iBMTXh0=
 go.mau.fi/util v0.11.1/go.mod h1:663DkAQb9DjC+SBu+IPK73RgFg0QwLy/R9dN3IAvSI8=
+go.mau.fi/util v0.11.2-0.20261119181938-15152e7b5f79 h1:33y9tMKIFW3RwB4YR/AwWlU/YgLHf2ilr9bkfmuTQRA=
+go.mau.fi/util v0.11.2-0.20261119181938-15152e7b5f79/go.mod h1:663DkAQb9DjC+SBu+IPK73RgFg0QwLy/R9dN3IAvSI8=
 go.mau.fi/webp v0.3.0 h1:gVHQZtz21Ziwj+CDuklbX9mqpsnDIFKxs/BJyV7iZzA=
 go.mau.fi/webp v0.3.0/go.mod h1:rlZFTev+dYxhvk+XNBP/5GcTt4gXmzAB4DU0aGUYIQo=
 go.mau.fi/whatsmeow v0.0.0-20261116172437-19d61352436f h1:35MsRpG44DDnw7c9SPlkpNrGzyWRz9oJqCIs1T+Vdaw=
@@ -107,3 +109,5 @@ maunium.net/go/mautrix v0.33.1-0.20261117144116-fb27cd4bbdb5 h1:wE6Dyt5kX0sXCnXC
 maunium.net/go/mautrix v0.33.1-0.20261117144116-fb27cd4bbdb5/go.mod h1:JVnq9oVnx8uaeTjIqECp6Ytk5z6vdAexexusXKZ6ysc=
 maunium.net/go/mautrix v0.33.1-0.20261119172954-261e67375904 h1:5YC1AHmor9G+n900mRU7FpKMbIhPZMKvjK29KY4mir4=
 maunium.net/go/mautrix v0.33.1-0.20261119172954-261e67375904/go.mod h1:JVnq9oVnx8uaeTjIqECp6Ytk5z6vdAexexusXKZ6ysc=
+maunium.net/go/mautrix v0.33.1-0.20261119182119-82a7d9c92a0f h1:x3Ntf5hAFi8alXt1uTqO2kVxnq7QoQmIhLhKiV8raQI=
+maunium.net/go/mautrix v0.33.1-0.20261119182119-82a7d9c92a0f/go.mod h1:Y+gUkBdHiSv+6yVkKFNuruC8TTRIdsz9M0Q4H9hELoY=

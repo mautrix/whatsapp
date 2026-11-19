@@ -3,7 +3,7 @@ package connector
 import (
 	"testing"
 
-	"maunium.net/go/mautrix/bridgev2/l10n/l10ntest"
+	"go.mau.fi/util/l10n/l10ntest"
 )
 
 func TestL10NCatalog(t *testing.T) {

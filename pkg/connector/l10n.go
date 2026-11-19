@@ -1,7 +1,7 @@
 package connector
 
 import (
-	"maunium.net/go/mautrix/bridgev2/l10n"
+	"go.mau.fi/util/l10n"
 )
 
 var L = l10n.NewNamespace("mautrix-whatsapp")
