@@ -20,6 +20,7 @@ import (
 	waLog "go.mau.fi/whatsmeow/util/log"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
+	"maunium.net/go/mautrix/bridgev2/l10n"
 	"maunium.net/go/mautrix/bridgev2/status"
 
 	"go.mau.fi/mautrix-whatsapp/pkg/waid"
@@ -38,12 +39,12 @@ const (
 
 func (wa *WhatsAppConnector) GetLoginFlows() []bridgev2.LoginFlow {
 	return []bridgev2.LoginFlow{{
-		Name:        "QR",
-		Description: "Scan a QR code to pair the bridge to your WhatsApp account",
+		Name:        msgFlowQRName.Message(),
+		Description: msgFlowQRDescription.Message(),
 		ID:          LoginFlowIDQR,
 	}, {
-		Name:        "Pairing code",
-		Description: "Input your phone number to get a pairing code, to pair the bridge to your WhatsApp account",
+		Name:        msgFlowPhoneName.Message(),
+		Description: msgFlowPhoneDescription.Message(),
 		ID:          LoginFlowIDPhone,
 	}}
 }
@@ -183,8 +184,8 @@ func (wl *WALogin) StartWithParams(ctx context.Context, params bridgev2.LoginSta
 				Fields: []bridgev2.LoginInputDataField{{
 					Type:        bridgev2.LoginInputFieldTypePhoneNumber,
 					ID:          "phone_number",
-					Name:        "Phone number",
-					Description: "Your WhatsApp phone number in international format",
+					Name:        msgFieldPhoneName.Message(),
+					Description: msgFieldPhoneDescription.Message(),
 				}},
 			},
 		}, nil
@@ -236,7 +237,7 @@ func (wl *WALogin) SubmitUserInput(ctx context.Context, input map[string]string)
 	return &bridgev2.LoginStep{
 		Type:         bridgev2.LoginStepTypeDisplayAndWait,
 		StepID:       LoginStepIDCode,
-		Instructions: "Input the pairing code in the WhatsApp mobile app to log in",
+		Instructions: msgStepCodeInstructions.Message(),
 		DisplayAndWaitParams: &bridgev2.LoginDisplayAndWaitParams{
 			Type: bridgev2.LoginDisplayTypeCode,
 			Data: pairingCode,
@@ -248,7 +249,7 @@ func makeQRStep(qr string) *bridgev2.LoginStep {
 	return &bridgev2.LoginStep{
 		Type:         bridgev2.LoginStepTypeDisplayAndWait,
 		StepID:       LoginStepIDQR,
-		Instructions: "Scan the QR code with the WhatsApp mobile app to log in",
+		Instructions: msgStepQRInstructions.Message(),
 		DisplayAndWaitParams: &bridgev2.LoginDisplayAndWaitParams{
 			Type: bridgev2.LoginDisplayTypeQR,
 			Data: qr,
@@ -439,7 +440,7 @@ func (wl *WALogin) onLoginComplete(ctx context.Context) (*bridgev2.LoginStep, er
 	return &bridgev2.LoginStep{
 		Type:         bridgev2.LoginStepTypeComplete,
 		StepID:       LoginStepIDComplete,
-		Instructions: fmt.Sprintf("Successfully logged in as %s", ul.RemoteName),
+		Instructions: msgStepCompleteInstructions.Render(l10n.Params{"phone": ul.RemoteName}),
 		CompleteParams: &bridgev2.LoginCompleteParams{
 			UserLoginID: ul.ID,
 			UserLogin:   ul,
