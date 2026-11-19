@@ -216,7 +216,7 @@ func (wa *WhatsAppClient) handleWAEvent(rawEvt any) (success bool) {
 		wa.notifyOfflineSyncWaiter(nil)
 	case *events.LoggedOut:
 		errorCode := WAUnknownLogout
-		if wa.appStateResetSent.Load() {
+		if wa.appStateResetSent.CompareAndSwap(true, false) {
 			errorCode = WAAppStateReset
 		} else if evt.Reason == events.ConnectFailureLoggedOut {
 			errorCode = WALoggedOut
@@ -1065,7 +1065,8 @@ func (wa *WhatsAppClient) handleWAAppStateSyncError(ctx context.Context, evt *ev
 	if meta.AppStateRecoveryAttempted == nil {
 		meta.AppStateRecoveryAttempted = make(map[appstate.WAPatchName]time.Time)
 	}
-	meta.AppStateRecoveryAttempted[evt.Name] = time.Now()
+	recoveryTS := time.Now()
+	meta.AppStateRecoveryAttempted[evt.Name] = recoveryTS
 	err := wa.UserLogin.Save(ctx)
 	if err != nil {
 		log.Err(err).Msg("Failed to save login metadata after marking app state recovery as attempted")
@@ -1077,6 +1078,20 @@ func (wa *WhatsAppClient) handleWAAppStateSyncError(ctx context.Context, evt *ev
 		resp, err := wa.Client.SendPeerMessage(ctx, whatsmeow.BuildAppStateRecoveryRequest(evt.Name))
 		if err != nil {
 			log.Err(err).Msg("Failed to send app state recovery request")
+			wa.appStateRecoveryLock.Lock()
+			if !meta.AppStateRecoveryAttempted[evt.Name].Equal(recoveryTS) {
+				wa.appStateRecoveryLock.Unlock()
+				return
+			} else if lastRecovery.IsZero() {
+				delete(meta.AppStateRecoveryAttempted, evt.Name)
+			} else {
+				meta.AppStateRecoveryAttempted[evt.Name] = lastRecovery
+			}
+			wa.appStateRecoveryLock.Unlock()
+			err = wa.UserLogin.Save(ctx)
+			if err != nil {
+				log.Err(err).Msg("Failed to save login metadata after unmarking app state recovery as attempted")
+			}
 		} else {
 			log.Debug().
 				Str("message_id", resp.ID).
@@ -1106,12 +1121,16 @@ func (wa *WhatsAppClient) resetAppState(ctx context.Context, cli *whatsmeow.Clie
 	}
 	log.Info().Msg("Sent app state fatal exception notification, logging out")
 	time.Sleep(5 * time.Second)
-	if wa.Client != cli {
+	if !wa.appStateResetSent.CompareAndSwap(true, false) {
 		return
 	}
 	err = cli.Logout(ctx)
 	if err != nil {
 		log.Err(err).Msg("Failed to log out after app state fatal exception notification")
+		err = cli.Store.Delete(ctx)
+		if err != nil {
+			log.Err(err).Msg("Failed to delete device store after app state fatal exception notification")
+		}
 	}
 	wa.handleWALogout(ctx, WAAppStateReset)
 }
