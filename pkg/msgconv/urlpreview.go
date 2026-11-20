@@ -104,12 +104,12 @@ func (mc *MessageConverter) convertURLPreviewToWhatsApp(ctx context.Context, con
 		}
 		// WhatsApp only supports a single preview.
 		for _, candidate := range content.BeeperLinkPreviews {
-			if candidate.Title != "" || candidate.Description != "" || candidate.ImageURL != "" || candidate.ImageEncryption != nil {
+			if candidate != nil && (candidate.Title != "" || candidate.Description != "" || candidate.ImageURL != "" || candidate.ImageEncryption != nil) {
 				preview = candidate
 				break
 			}
 		}
-		if preview == nil {
+		if preview == nil && content.BeeperLinkPreviews[0] != nil {
 			fetchURL = content.BeeperLinkPreviews[0].MatchedURL
 		}
 	} else {
