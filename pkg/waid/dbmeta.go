@@ -82,6 +82,14 @@ const (
 	MsgErrMediaNotFound    MessageErrorType = "media_not_found"
 )
 
+type MuseApprovalMeta struct {
+	ID       string   `json:"id"`
+	Question string   `json:"question,omitempty"`
+	Summary  string   `json:"summary,omitempty"`
+	Options  []string `json:"options,omitempty"`
+	Resolved bool     `json:"resolved,omitzero"`
+}
+
 type GroupInviteMeta struct {
 	JID        types.JID `json:"jid"`
 	Code       string    `json:"code"`
@@ -97,6 +105,7 @@ type MessageMetadata struct {
 	Error            MessageErrorType  `json:"error,omitempty"`
 	BroadcastListJID *types.JID        `json:"broadcast_list_jid,omitempty"`
 	GroupInvite      *GroupInviteMeta  `json:"group_invite,omitempty"`
+	MuseApproval     *MuseApprovalMeta `json:"muse_approval,omitempty"`
 	FailedMediaMeta  json.RawMessage   `json:"media_meta,omitempty"`
 	DirectMediaMeta  json.RawMessage   `json:"direct_media_meta,omitempty"`
 	IsMatrixPoll     bool              `json:"is_matrix_poll,omitzero"`
@@ -118,6 +127,9 @@ func (mm *MessageMetadata) CopyFrom(other any) {
 	}
 	if otherMM.GroupInvite != nil {
 		mm.GroupInvite = otherMM.GroupInvite
+	}
+	if otherMM.MuseApproval != nil {
+		mm.MuseApproval = otherMM.MuseApproval
 	}
 	mm.IsMatrixPoll = mm.IsMatrixPoll || otherMM.IsMatrixPoll
 }
