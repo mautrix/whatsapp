@@ -236,6 +236,44 @@ func (mc *MessageConverter) ToWhatsApp(
 	return message, extra, nil
 }
 
+func (mc *MessageConverter) EditToWhatsApp(
+	ctx context.Context,
+	client *whatsmeow.Client,
+	evt *event.Event,
+	content *event.MessageEventContent,
+	portal *bridgev2.Portal,
+	origSender *bridgev2.OrigSender,
+) (*waE2E.Message, error) {
+	switch content.MsgType {
+	case event.MsgText, event.MsgNotice, event.MsgEmote:
+		message, _, err := mc.ToWhatsApp(ctx, client, evt, content, nil, nil, portal, origSender)
+		return message, err
+	case event.MsgImage, event.MsgVideo, event.MsgFile:
+		ctx = context.WithValue(ctx, contextKeyClient, client)
+		ctx = context.WithValue(ctx, contextKeyPortal, portal)
+		contextInfo := mc.generateContextInfo(ctx, nil, content.RelatesTo, portal, content.BeeperDisappearingTimer, mc.allowRoomMention(ctx, portal, origSender, content.Mentions))
+		caption := proto.String(mc.parseCaption(ctx, content, contextInfo))
+		if content.MsgType == event.MsgVideo || content.GetInfo().MimeType == "image/gif" {
+			return &waE2E.Message{VideoMessage: &waE2E.VideoMessage{Caption: caption, ContextInfo: contextInfo}}, nil
+		} else if content.MsgType == event.MsgImage {
+			return &waE2E.Message{ImageMessage: &waE2E.ImageMessage{Caption: caption, ContextInfo: contextInfo}}, nil
+		}
+		return &waE2E.Message{DocumentWithCaptionMessage: &waE2E.FutureProofMessage{
+			Message: &waE2E.Message{DocumentMessage: &waE2E.DocumentMessage{Caption: caption, ContextInfo: contextInfo}},
+		}}, nil
+	default:
+		return nil, fmt.Errorf("%w of %s messages", bridgev2.ErrEditsNotSupported, content.MsgType)
+	}
+}
+
+func (mc *MessageConverter) parseCaption(ctx context.Context, content *event.MessageEventContent, contextInfo *waE2E.ContextInfo) (caption string) {
+	if content.FileName != "" && content.Body != content.FileName {
+		caption, contextInfo.MentionedJID = mc.parseText(ctx, content)
+		caption = roomMentionToWhatsApp(caption, contextInfo)
+	}
+	return
+}
+
 func (mc *MessageConverter) constructMediaMessage(
 	ctx context.Context,
 	content *event.MessageEventContent,
@@ -245,11 +283,7 @@ func (mc *MessageConverter) constructMediaMessage(
 	contextInfo *waE2E.ContextInfo,
 	mime string,
 ) *waE2E.Message {
-	var caption string
-	if content.FileName != "" && content.Body != content.FileName {
-		caption, contextInfo.MentionedJID = mc.parseText(ctx, content)
-		caption = roomMentionToWhatsApp(caption, contextInfo)
-	}
+	caption := mc.parseCaption(ctx, content, contextInfo)
 	switch content.MsgType {
 	case event.MessageType(event.EventSticker.Type):
 		width := uint32(content.Info.Width)
