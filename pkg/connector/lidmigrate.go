@@ -36,6 +36,9 @@ import (
 )
 
 func (wa *WhatsAppClient) FindAltTargetMessage(ctx context.Context, targetMsg networkid.MessageID, evt bridgev2.RemoteEventWithTargetMessage) (alts []networkid.MessageID, err error) {
+	if targetMsg == "" {
+		return nil, nil
+	}
 	parsed, err := waid.ParseMessageID(targetMsg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse target message ID: %w", err)
