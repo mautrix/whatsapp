@@ -24,6 +24,7 @@ import (
 	"google.golang.org/protobuf/encoding/protowire"
 	"google.golang.org/protobuf/proto"
 	"maunium.net/go/mautrix/bridgev2"
+	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/bridgev2/simplevent"
 
@@ -798,15 +799,11 @@ func (wa *WhatsAppClient) fetchMessagesFromPhone(ctx context.Context, portalJID 
 	anchor := params.AnchorMessage
 	parsed, err := waid.ParseMessageID(anchor.ID)
 	if err != nil {
-		anchor, err = wa.Main.Bridge.DB.Message.GetFirstPortalMessageExcludingIDPattern(ctx, params.Portal.PortalKey, "fake:%")
+		anchor, parsed, err = wa.getFirstRealPortalMessage(ctx, params.Portal.PortalKey)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get first non-fake portal message: %w", err)
 		} else if anchor == nil {
 			return &bridgev2.FetchMessagesResponse{}, nil
-		}
-		parsed, err = waid.ParseMessageID(anchor.ID)
-		if err != nil {
-			return nil, fmt.Errorf("failed to parse anchor message ID: %w", err)
 		}
 	}
 
@@ -847,6 +844,32 @@ func (wa *WhatsAppClient) fetchMessagesFromPhone(ctx context.Context, portalJID 
 		HasMore: true,
 		Pending: true,
 	}, nil
+}
+
+func (wa *WhatsAppClient) getFirstRealPortalMessage(ctx context.Context, portalKey networkid.PortalKey) (*database.Message, *waid.ParsedMessageID, error) {
+	for _, excludePattern := range []string{"fake:%", "%:FAKE::%"} {
+		anchor, err := wa.Main.Bridge.DB.Message.GetFirstPortalMessageExcludingIDPattern(ctx, portalKey, excludePattern)
+		if err != nil || anchor == nil {
+			return nil, nil, err
+		} else if parsed, err := waid.ParseMessageID(anchor.ID); err == nil {
+			return anchor, parsed, nil
+		}
+	}
+	var anchor *database.Message
+	var parsed *waid.ParsedMessageID
+	err := wa.Main.Bridge.DB.Message.IterPortalMessages(ctx, portalKey).Iter(func(msg *database.Message) (bool, error) {
+		var parseErr error
+		parsed, parseErr = waid.ParseMessageID(msg.ID)
+		if parseErr != nil {
+			return true, nil
+		}
+		anchor = msg
+		return false, nil
+	})
+	if err != nil || anchor == nil {
+		return nil, nil, err
+	}
+	return anchor, parsed, nil
 }
 
 type onDemandHistorySyncRequest struct {
