@@ -95,6 +95,7 @@ func (mc *MessageConverter) convertURLPreviewToWhatsApp(ctx context.Context, con
 	log := zerolog.Ctx(ctx)
 	var preview *event.BeeperLinkPreview
 
+	var fetchURL string
 	if content.BeeperLinkPreviews != nil {
 		// Note: this check explicitly happens after checking for nil: empty arrays are treated as no previews,
 		//       but omitting the field means the bridge may look for URLs in the message text.
@@ -102,23 +103,34 @@ func (mc *MessageConverter) convertURLPreviewToWhatsApp(ctx context.Context, con
 			return false
 		}
 		// WhatsApp only supports a single preview.
-		preview = content.BeeperLinkPreviews[0]
-	} else if mc.FetchURLPreviews {
+		for _, candidate := range content.BeeperLinkPreviews {
+			if candidate.Title != "" || candidate.Description != "" || candidate.ImageURL != "" || candidate.ImageEncryption != nil {
+				preview = candidate
+				break
+			}
+		}
+		if preview == nil {
+			fetchURL = content.BeeperLinkPreviews[0].MatchedURL
+		}
+	} else {
+		fetchURL = URLRegex.FindString(content.Body)
+	}
+	if preview == nil && mc.FetchURLPreviews {
 		if conn, ok := mc.Bridge.Matrix.(bridgev2.MatrixConnectorWithURLPreviews); !ok {
 			return false
-		} else if matchedURL := URLRegex.FindString(content.Body); len(matchedURL) == 0 {
+		} else if len(fetchURL) == 0 {
 			return false
-		} else if parsed, err := url.Parse(matchedURL); err != nil {
+		} else if parsed, err := url.Parse(fetchURL); err != nil {
 			return false
 		} else if parsed.Host, err = idna.ToASCII(parsed.Host); err != nil {
 			return false
 		} else if mxPreview, err := conn.GetURLPreview(ctx, parsed.String()); err != nil {
-			log.Err(err).Str("url", matchedURL).Msg("Failed to fetch URL preview")
+			log.Err(err).Str("url", fetchURL).Msg("Failed to fetch URL preview")
 			return false
 		} else {
 			preview = &event.BeeperLinkPreview{
 				LinkPreview: *mxPreview,
-				MatchedURL:  matchedURL,
+				MatchedURL:  fetchURL,
 			}
 		}
 	}
