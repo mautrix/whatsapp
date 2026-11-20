@@ -181,10 +181,11 @@ func (wl *WALogin) StartWithParams(ctx context.Context, params bridgev2.LoginSta
 			StepID: LoginStepIDPhoneNumber,
 			UserInputParams: &bridgev2.LoginUserInputParams{
 				Fields: []bridgev2.LoginInputDataField{{
-					Type:        bridgev2.LoginInputFieldTypePhoneNumber,
-					ID:          "phone_number",
-					Name:        "Phone number",
-					Description: "Your WhatsApp phone number in international format",
+					Type:           bridgev2.LoginInputFieldTypePhoneNumber,
+					ID:             "phone_number",
+					Name:           "Phone number",
+					Description:    "Your WhatsApp phone number in international format",
+					AutofillDomain: "whatsapp.com",
 				}},
 			},
 		}, nil
