@@ -25,10 +25,12 @@ import (
 
 	"github.com/rs/zerolog"
 	"go.mau.fi/whatsmeow"
+	"go.mau.fi/whatsmeow/proto/waCommon"
 	"go.mau.fi/whatsmeow/proto/waE2E"
 	"go.mau.fi/whatsmeow/proto/waMmsRetry"
 	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
+	"google.golang.org/protobuf/proto"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
@@ -264,7 +266,11 @@ func (evt *WAMessageEvent) GetTargetMessage() networkid.MessageID {
 		ctx := evt.wa.UserLogin.Log.
 			With().Str("action", "get edit target message").Str("message_id", evt.Info.ID).Logger().
 			WithContext(evt.wa.Main.Bridge.BackgroundCtx)
-		return msgconv.KeyToMessageID(ctx, evt.wa.Client, evt.Info.Chat, evt.Info.Sender, protocolMsg.GetKey())
+		key := protocolMsg.GetKey()
+		if key != nil && evt.Info.IsGroup && !key.GetFromMe() && key.GetParticipant() == "" {
+			key = &waCommon.MessageKey{RemoteJID: key.RemoteJID, FromMe: proto.Bool(true), ID: key.ID}
+		}
+		return msgconv.KeyToMessageID(ctx, evt.wa.Client, evt.Info.Chat, evt.Info.Sender, key)
 	}
 	return ""
 }
