@@ -270,6 +270,8 @@ func (wa *WhatsAppConnector) makeDirectMediaResponse(
 			}
 			if errors.Is(err, whatsmeow.ErrInvalidMediaSHA256) {
 				zerolog.Ctx(ctx).Warn().Err(err).Msg("Mismatching media checksums in message. Ignoring because WhatsApp seems to ignore them too")
+			} else if errors.Is(err, whatsmeow.ErrInvalidMediaEncSHA256) {
+				return nil, mautrix.MNotFound.WithMessage("Media on WhatsApp servers doesn't match the message")
 			} else if err != nil {
 				return nil, err
 			}
