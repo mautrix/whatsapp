@@ -142,7 +142,6 @@ func isCorruptHistorySyncBlob(err error) bool {
 	return errors.Is(err, whatsmeow.ErrInvalidMediaHMAC) ||
 		errors.Is(err, whatsmeow.ErrInvalidMediaEncSHA256) ||
 		errors.Is(err, whatsmeow.ErrInvalidMediaSHA256) ||
-		errors.Is(err, whatsmeow.ErrFileLengthMismatch) ||
 		errors.Is(err, io.ErrUnexpectedEOF) ||
 		errors.Is(err, zlib.ErrChecksum) ||
 		errors.Is(err, zlib.ErrHeader) ||
