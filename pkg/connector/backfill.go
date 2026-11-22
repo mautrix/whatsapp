@@ -138,11 +138,17 @@ func (wa *WhatsAppClient) saveWAHistorySyncNotification(ctx context.Context, evt
 const maxHistorySyncDownloadAttempts = 10
 
 func isCorruptHistorySyncBlob(err error) bool {
-	var corruptErr flate.CorruptInputError
-	return errors.Is(err, whatsmeow.ErrInvalidMediaHMAC) ||
+	if errors.Is(err, whatsmeow.ErrInvalidMediaHMAC) ||
 		errors.Is(err, whatsmeow.ErrInvalidMediaEncSHA256) ||
-		errors.Is(err, whatsmeow.ErrInvalidMediaSHA256) ||
-		errors.Is(err, io.ErrUnexpectedEOF) ||
+		errors.Is(err, whatsmeow.ErrInvalidMediaSHA256) {
+		return true
+	}
+	errStr := err.Error()
+	if !strings.HasPrefix(errStr, "failed to decompress: ") && !strings.HasPrefix(errStr, "failed to prepare to decompress: ") {
+		return false
+	}
+	var corruptErr flate.CorruptInputError
+	return errors.Is(err, io.ErrUnexpectedEOF) ||
 		errors.Is(err, zlib.ErrChecksum) ||
 		errors.Is(err, zlib.ErrHeader) ||
 		errors.Is(err, zlib.ErrDictionary) ||
