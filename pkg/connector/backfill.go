@@ -64,6 +64,7 @@ func (wa *WhatsAppClient) historySyncLoop(ctx context.Context) {
 			}
 		}
 	}()
+	var lastFailedRowID, failedAttempts int
 	for {
 		var resetTimer, errored bool
 		select {
@@ -75,13 +76,18 @@ func (wa *WhatsAppClient) historySyncLoop(ctx context.Context) {
 			} else if notif == nil {
 				wa.UserLogin.Log.Debug().Msg("No more queued history sync notifications")
 			} else {
-				resetTimer, errored = wa.downloadAndSaveWAHistorySyncData(ctx, notif, rowid)
+				if rowid != lastFailedRowID {
+					failedAttempts = 0
+				}
+				resetTimer, errored = wa.downloadAndSaveWAHistorySyncData(ctx, notif, rowid, failedAttempts)
 				// Continue waking up the loop until all queued notifications are processed
 				select {
 				case wa.historySyncWakeup <- struct{}{}:
 				default:
 				}
 				if errored {
+					lastFailedRowID = rowid
+					failedAttempts++
 					wa.UserLogin.Log.Debug().Msg("Temporarily stopping history sync loop after error")
 					select {
 					case <-time.After(1 * time.Minute):
@@ -121,7 +127,9 @@ func (wa *WhatsAppClient) saveWAHistorySyncNotification(ctx context.Context, evt
 	}
 }
 
-func (wa *WhatsAppClient) downloadAndSaveWAHistorySyncData(ctx context.Context, evt *waE2E.HistorySyncNotification, rowid int) (resetTimer, errored bool) {
+const maxHistorySyncDownloadAttempts = 10
+
+func (wa *WhatsAppClient) downloadAndSaveWAHistorySyncData(ctx context.Context, evt *waE2E.HistorySyncNotification, rowid, failedAttempts int) (resetTimer, errored bool) {
 	log := wa.UserLogin.Log.With().
 		Str("action", "download history sync").
 		Stringer("sync_type", evt.GetSyncType()).
@@ -145,6 +153,13 @@ func (wa *WhatsAppClient) downloadAndSaveWAHistorySyncData(ctx context.Context, 
 	blob, err := wa.Client.DownloadHistorySync(log.WithContext(ctx), evt, true)
 	if errors.Is(err, whatsmeow.ErrMediaDownloadFailedWith403) || errors.Is(err, whatsmeow.ErrMediaDownloadFailedWith404) || errors.Is(err, whatsmeow.ErrMediaDownloadFailedWith410) {
 		log.Err(err).Msg("History sync blob is no longer available, dropping notification")
+		if err = wa.Main.DB.HSNotif.Delete(ctx, rowid); err != nil {
+			log.Err(err).Msg("Failed to delete queued history sync notification")
+			errored = true
+		}
+		return
+	} else if err != nil && failedAttempts+1 >= maxHistorySyncDownloadAttempts {
+		log.Err(err).Int("attempts", failedAttempts+1).Msg("Failed to download history sync too many times, dropping notification")
 		if err = wa.Main.DB.HSNotif.Delete(ctx, rowid); err != nil {
 			log.Err(err).Msg("Failed to delete queued history sync notification")
 			errored = true
