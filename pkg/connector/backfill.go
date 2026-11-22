@@ -1,9 +1,12 @@
 package connector
 
 import (
+	"compress/flate"
+	"compress/zlib"
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"runtime/debug"
 	"slices"
 	"strconv"
@@ -79,15 +82,20 @@ func (wa *WhatsAppClient) historySyncLoop(ctx context.Context) {
 				if rowid != lastFailedRowID {
 					failedAttempts = 0
 				}
-				resetTimer, errored = wa.downloadAndSaveWAHistorySyncData(ctx, notif, rowid, failedAttempts)
+				var badBlob bool
+				resetTimer, errored, badBlob = wa.downloadAndSaveWAHistorySyncData(ctx, notif, rowid, failedAttempts)
 				// Continue waking up the loop until all queued notifications are processed
 				select {
 				case wa.historySyncWakeup <- struct{}{}:
 				default:
 				}
-				if errored {
+				if badBlob {
 					lastFailedRowID = rowid
 					failedAttempts++
+				} else {
+					lastFailedRowID = 0
+				}
+				if errored {
 					wa.UserLogin.Log.Debug().Msg("Temporarily stopping history sync loop after error")
 					select {
 					case <-time.After(1 * time.Minute):
@@ -129,7 +137,20 @@ func (wa *WhatsAppClient) saveWAHistorySyncNotification(ctx context.Context, evt
 
 const maxHistorySyncDownloadAttempts = 10
 
-func (wa *WhatsAppClient) downloadAndSaveWAHistorySyncData(ctx context.Context, evt *waE2E.HistorySyncNotification, rowid, failedAttempts int) (resetTimer, errored bool) {
+func isCorruptHistorySyncBlob(err error) bool {
+	var corruptErr flate.CorruptInputError
+	return errors.Is(err, whatsmeow.ErrInvalidMediaHMAC) ||
+		errors.Is(err, whatsmeow.ErrInvalidMediaEncSHA256) ||
+		errors.Is(err, whatsmeow.ErrInvalidMediaSHA256) ||
+		errors.Is(err, whatsmeow.ErrFileLengthMismatch) ||
+		errors.Is(err, io.ErrUnexpectedEOF) ||
+		errors.Is(err, zlib.ErrChecksum) ||
+		errors.Is(err, zlib.ErrHeader) ||
+		errors.Is(err, zlib.ErrDictionary) ||
+		errors.As(err, &corruptErr)
+}
+
+func (wa *WhatsAppClient) downloadAndSaveWAHistorySyncData(ctx context.Context, evt *waE2E.HistorySyncNotification, rowid, failedAttempts int) (resetTimer, errored, badBlob bool) {
 	log := wa.UserLogin.Log.With().
 		Str("action", "download history sync").
 		Stringer("sync_type", evt.GetSyncType()).
@@ -158,7 +179,7 @@ func (wa *WhatsAppClient) downloadAndSaveWAHistorySyncData(ctx context.Context, 
 			errored = true
 		}
 		return
-	} else if err != nil && failedAttempts+1 >= maxHistorySyncDownloadAttempts {
+	} else if err != nil && isCorruptHistorySyncBlob(err) && failedAttempts+1 >= maxHistorySyncDownloadAttempts {
 		log.Err(err).Int("attempts", failedAttempts+1).Msg("Failed to download history sync too many times, dropping notification")
 		if err = wa.Main.DB.HSNotif.Delete(ctx, rowid); err != nil {
 			log.Err(err).Msg("Failed to delete queued history sync notification")
@@ -168,6 +189,7 @@ func (wa *WhatsAppClient) downloadAndSaveWAHistorySyncData(ctx context.Context, 
 	} else if err != nil {
 		log.Err(err).Msg("Failed to download history sync")
 		errored = true
+		badBlob = isCorruptHistorySyncBlob(err)
 		return
 	}
 	if blob.GetSyncType() == waHistorySync.HistorySync_ON_DEMAND {
