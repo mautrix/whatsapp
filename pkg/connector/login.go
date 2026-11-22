@@ -64,6 +64,11 @@ var (
 		Err:        "Entering code or scanning QR timed out. Please try again.",
 		StatusCode: http.StatusBadRequest,
 	}
+	ErrLoginDisconnected = bridgev2.RespError{
+		ErrCode:    "FI.MAU.WHATSAPP.LOGIN_DISCONNECTED",
+		Err:        "Connection to WhatsApp was interrupted while waiting for login. Please try again.",
+		StatusCode: http.StatusInternalServerError,
+	}
 	ErrUnexpectedDisconnect = bridgev2.RespError{
 		ErrCode:    "FI.MAU.WHATSAPP.LOGIN_UNEXPECTED_EVENT",
 		Err:        "Unexpected event while waiting for login",
@@ -318,8 +323,13 @@ func (wl *WALogin) handleEvent(rawEvt any) {
 			StatusCode: http.StatusInternalServerError,
 		}
 	case *events.Disconnected:
-		wl.Log.Warn().Msg("Got disconnected event (login timed out)")
-		wl.LoginError = ErrLoginTimeout
+		if currentIndex, _ := wl.getQRIndex(); currentIndex >= 0 {
+			wl.Log.Warn().Int("qr_index", currentIndex).Msg("Got disconnected event before QR codes ran out")
+			wl.LoginError = ErrLoginDisconnected
+		} else {
+			wl.Log.Warn().Msg("Got disconnected event (login timed out)")
+			wl.LoginError = ErrLoginTimeout
+		}
 	case *events.Connected, *events.ConnectFailure, *events.LoggedOut, *events.TemporaryBan:
 		wl.Log.Warn().Any("event_data", evt).Type("event_type", evt).Msg("Got unexpected disconnect event")
 		wl.LoginError = ErrUnexpectedDisconnect
