@@ -324,10 +324,15 @@ func (wl *WALogin) handleEvent(rawEvt any) {
 		}
 	case *events.Disconnected:
 		if currentIndex, _ := wl.getQRIndex(); currentIndex >= 0 {
-			wl.Log.Warn().Int("qr_index", currentIndex).Msg("Got disconnected event before QR codes ran out")
+			wl.Log.Warn().
+				Int("qr_index", currentIndex).
+				Stringer("since_first_qr", time.Since(wl.StartTime)).
+				Msg("Got disconnected event before QR codes ran out")
 			wl.LoginError = ErrLoginDisconnected
 		} else {
-			wl.Log.Warn().Msg("Got disconnected event (login timed out)")
+			wl.Log.Warn().
+				Stringer("since_first_qr", time.Since(wl.StartTime)).
+				Msg("Got disconnected event (login timed out)")
 			wl.LoginError = ErrLoginTimeout
 		}
 	case *events.Connected, *events.ConnectFailure, *events.LoggedOut, *events.TemporaryBan:
