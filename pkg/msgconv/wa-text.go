@@ -18,15 +18,12 @@ package msgconv
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"html"
 	"regexp"
-	"slices"
 	"strconv"
 	"strings"
 
-	"github.com/rs/zerolog"
 	"go.mau.fi/whatsmeow/proto/waE2E"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/event"
@@ -47,61 +44,6 @@ func (mc *MessageConverter) convertTextMessage(ctx context.Context, msg *waE2E.M
 	mc.parseFormatting(part.Content, false, false)
 	part.Content.BeeperLinkPreviews = mc.convertURLPreviewToBeeper(ctx, msg.GetExtendedTextMessage())
 	return
-}
-
-func (mc *MessageConverter) cutOffLongMessage(content *event.MessageEventContent) {
-	size := len(content.Body) + len(content.FormattedBody)
-	if content.Mentions != nil {
-		for _, userID := range content.Mentions.UserIDs {
-			size += len(userID) * 2
-		}
-	}
-	if size <= 40000 {
-		return
-	}
-	if content.Mentions != nil {
-		content.Mentions.UserIDs = slices.DeleteFunc(content.Mentions.UserIDs, mc.Bridge.IsGhostMXID)
-	}
-	if content.FormattedBody == "" {
-		if len(content.Body) > 40000 {
-			content.Body = content.Body[:40000] + "\n\n[long message cut off]"
-		}
-	} else if len(content.FormattedBody) > 20000 && len(content.Body) > 500 {
-		content.Body = content.Body[:500] + "[...]"
-	}
-	if len(content.FormattedBody) > 40000 {
-		content.FormattedBody = content.FormattedBody[:40000] + "<br><em>[long message cut off]</em>"
-	}
-}
-
-func logOversizedPart(ctx context.Context, part *bridgev2.ConvertedMessagePart) {
-	if part == nil || part.Content == nil {
-		return
-	}
-	contentJSON, _ := json.Marshal(part.Content)
-	extraJSON, _ := json.Marshal(part.Extra)
-	if len(contentJSON)+len(extraJSON) <= 40000 {
-		return
-	}
-	extraKeys := make([]string, 0, len(part.Extra))
-	for key := range part.Extra {
-		extraKeys = append(extraKeys, key)
-	}
-	var mentionCount int
-	if part.Content.Mentions != nil {
-		mentionCount = len(part.Content.Mentions.UserIDs)
-	}
-	linkPreviewJSON, _ := json.Marshal(part.Content.BeeperLinkPreviews)
-	zerolog.Ctx(ctx).Warn().
-		Str("msg_type", string(part.Content.MsgType)).
-		Int("content_json_size", len(contentJSON)).
-		Int("extra_json_size", len(extraJSON)).
-		Int("body_size", len(part.Content.Body)).
-		Int("formatted_body_size", len(part.Content.FormattedBody)).
-		Int("mention_count", mentionCount).
-		Int("link_preview_json_size", len(linkPreviewJSON)).
-		Strs("extra_keys", extraKeys).
-		Msg("Converted message part is larger than the cut-off limit")
 }
 
 func (mc *MessageConverter) parseFormatting(content *event.MessageEventContent, allowInlineURL, forceHTML bool) {
