@@ -88,6 +88,7 @@ func (mc *MessageConverter) convertMediaMessage(
 	if mc.DirectMedia {
 		if preparedMedia.Info.MimeType == "application/was" {
 			preparedMedia.Info.MimeType = "video/lottie+json"
+			preparedMedia.Info.Size = 0
 			preparedMedia.FileName = "sticker.json"
 		}
 		preparedMedia.FillFileName()
@@ -426,6 +427,7 @@ func (mc *MessageConverter) reuploadWhatsAppAttachment(
 		if part.Info.MimeType == "" {
 			part.Info.MimeType = http.DetectContentType(data)
 		}
+		part.Info.Size = len(data)
 		part.FillFileName()
 		part.URL, part.File, err = intent.UploadMedia(ctx, roomID, data, part.FileName, part.Info.MimeType)
 		if err != nil {
