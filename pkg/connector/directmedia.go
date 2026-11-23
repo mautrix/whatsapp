@@ -254,7 +254,7 @@ func (wa *WhatsAppConnector) makeDirectMediaResponse(
 		Callback: func(f *os.File) (*mediaproxy.FileMeta, error) {
 			log := zerolog.Ctx(ctx)
 			err := waClient.Client.DownloadToFile(ctx, dm, f)
-			if keys != nil && (errors.Is(err, whatsmeow.ErrMediaDownloadFailedWith403) || errors.Is(err, whatsmeow.ErrMediaDownloadFailedWith404) || errors.Is(err, whatsmeow.ErrMediaDownloadFailedWith410) || errors.Is(err, whatsmeow.ErrNoURLPresent)) {
+			if keys != nil && (errors.Is(err, whatsmeow.ErrMediaDownloadFailedWith403) || errors.Is(err, whatsmeow.ErrMediaDownloadFailedWith404) || errors.Is(err, whatsmeow.ErrMediaDownloadFailedWith410) || errors.Is(err, whatsmeow.ErrNoURLPresent) || errors.Is(err, whatsmeow.ErrInvalidMediaEncSHA256)) {
 				val := params["com.beeper.interactive_download_request"]
 				if val == "false" || (!wa.Config.DirectMediaAutoRequest && val != "true") {
 					return nil, ErrReloadNeeded
