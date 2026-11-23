@@ -266,6 +266,11 @@ func (wa *WhatsAppConnector) makeDirectMediaResponse(
 					return nil, err
 				}
 				log.Trace().Msg("Retrying download after successful retry")
+				if _, err = f.Seek(0, io.SeekStart); err != nil {
+					return nil, fmt.Errorf("failed to seek to start of media file: %w", err)
+				} else if err = f.Truncate(0); err != nil {
+					return nil, fmt.Errorf("failed to truncate media file: %w", err)
+				}
 				err = waClient.Client.DownloadToFile(ctx, keys, f)
 			}
 			if errors.Is(err, whatsmeow.ErrInvalidMediaSHA256) {
