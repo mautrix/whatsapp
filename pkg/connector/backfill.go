@@ -33,13 +33,23 @@ import (
 
 var _ bridgev2.BackfillingNetworkAPI = (*WhatsAppClient)(nil)
 
+// historySyncCompleteWait is how long to wait for stragglers after the phone reports that the full history sync
+// reached 100%, instead of the whole dispatch_wait.
+const historySyncCompleteWait = 10 * time.Minute
+
 func (wa *WhatsAppClient) historySyncLoop(ctx context.Context) {
 	dispatchTimer := time.NewTimer(wa.Main.Config.HistorySync.DispatchWait)
+	// Set when the latest FULL history sync notification said progress=100, so portals can be created sooner.
+	var fullSyncComplete bool
 
 	var timerPending atomic.Bool
+	// Set while the short startup dispatch is pending, so the initial queue wakeup below doesn't re-arm the timer
+	// with the whole dispatch_wait (which made the 5 second restart dispatch never happen).
+	var startupDispatch bool
 	if !wa.isNewLogin && wa.UserLogin.Metadata.(*waid.UserLoginMetadata).HistorySyncPortalsNeedCreating {
 		dispatchTimer.Reset(5 * time.Second)
 		timerPending.Store(true)
+		startupDispatch = true
 	} else {
 		dispatchTimer.Stop()
 	}
@@ -76,6 +86,10 @@ func (wa *WhatsAppClient) historySyncLoop(ctx context.Context) {
 				wa.UserLogin.Log.Debug().Msg("No more queued history sync notifications")
 			} else {
 				resetTimer, errored = wa.downloadAndSaveWAHistorySyncData(ctx, notif, rowid)
+				startupDispatch = false
+				if !errored && notif.GetSyncType() == waE2E.HistorySyncType_FULL {
+					fullSyncComplete = notif.GetProgress() >= 100
+				}
 				// Continue waking up the loop until all queued notifications are processed
 				select {
 				case wa.historySyncWakeup <- struct{}{}:
@@ -99,7 +113,13 @@ func (wa *WhatsAppClient) historySyncLoop(ctx context.Context) {
 			timerPending.Store(true)
 		}
 		if timerPending.Load() {
-			dispatchTimer.Reset(wa.Main.Config.HistorySync.DispatchWait)
+			wait := wa.Main.Config.HistorySync.DispatchWait
+			if startupDispatch {
+				wait = 5 * time.Second
+			} else if fullSyncComplete && wait > historySyncCompleteWait {
+				wait = historySyncCompleteWait
+			}
+			dispatchTimer.Reset(wait)
 		}
 	}
 }
