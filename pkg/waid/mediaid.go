@@ -215,10 +215,11 @@ func isUpperHex(str string) bool {
 }
 
 const (
-	compactJIDRawString   = 0
-	compactJIDUserInt     = 1
-	compactJIDUserDevice  = 2
-	compactJIDGroupString = 3
+	compactJIDRawString     = 0
+	compactJIDUserInt       = 1
+	compactJIDUserDevice    = 2
+	compactJIDGroupString   = 3
+	compactJIDNewsletterInt = 4
 
 	compactMsgIDRawString = 0
 	compactMsgIDUpperHex  = 1
@@ -264,6 +265,11 @@ func compactJID(jid types.JID) []byte {
 		}
 	} else if jid.Server == types.GroupServer {
 		return append([]byte{compactJIDGroupString}, jid.User...)
+	} else if jid.Server == types.NewsletterServer {
+		newsletterInt, err := strconv.ParseUint(jid.User, 10, 64)
+		if err == nil {
+			return binary.BigEndian.AppendUint64([]byte{compactJIDNewsletterInt}, newsletterInt)
+		}
 	}
 	return append([]byte{compactJIDRawString}, []byte(jid.String())...)
 }
@@ -297,6 +303,14 @@ func parseCompactJID(jid []byte) (types.JID, error) {
 		return types.JID{
 			User:   string(jid[1:]),
 			Server: types.GroupServer,
+		}, nil
+	case compactJIDNewsletterInt:
+		if len(jid) != 9 {
+			return types.EmptyJID, fmt.Errorf("invalid compact newsletter JID length")
+		}
+		return types.JID{
+			User:   strconv.FormatUint(binary.BigEndian.Uint64(jid[1:]), 10),
+			Server: types.NewsletterServer,
 		}, nil
 	default:
 		return types.EmptyJID, fmt.Errorf("invalid compact JID type")
