@@ -60,11 +60,7 @@ var (
 		Err:        "Please enable WhatsApp web multidevice and scan the QR code again.",
 		StatusCode: http.StatusBadRequest,
 	}
-	ErrLoginTimeout = bridgev2.RespError{
-		ErrCode:    "FI.MAU.WHATSAPP.LOGIN_TIMEOUT",
-		Err:        "Entering code or scanning QR timed out. Please try again.",
-		StatusCode: http.StatusBadRequest,
-	}
+	ErrLoginTimeout         = bridgev2.ErrLoginTimedOut.WithMessage("Entering code or scanning QR timed out. Please try again.")
 	ErrUnexpectedDisconnect = bridgev2.RespError{
 		ErrCode:    "FI.MAU.WHATSAPP.LOGIN_UNEXPECTED_EVENT",
 		Err:        "Unexpected event while waiting for login",
