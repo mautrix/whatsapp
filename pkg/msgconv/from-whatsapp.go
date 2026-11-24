@@ -226,6 +226,10 @@ func (mc *MessageConverter) ToMatrix(
 		part, contextInfo = mc.convertContactMessage(ctx, waMsg.ContactMessage)
 	case waMsg.ContactsArrayMessage != nil:
 		part, contextInfo = mc.convertContactsArrayMessage(ctx, waMsg.ContactsArrayMessage)
+	case waMsg.SendPaymentMessage != nil, waMsg.RequestPaymentMessage != nil,
+		waMsg.DeclinePaymentRequestMessage != nil, waMsg.CancelPaymentRequestMessage != nil,
+		waMsg.PaymentInviteMessage != nil:
+		part, contextInfo = mc.convertPaymentMessage(ctx, waMsg)
 	case waMsg.PlaceholderMessage != nil:
 		part, contextInfo = mc.convertPlaceholderMessage(ctx, waMsg)
 	case waMsg.GroupInviteMessage != nil:

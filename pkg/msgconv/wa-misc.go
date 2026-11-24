@@ -22,6 +22,8 @@ import (
 	"fmt"
 	"html"
 	"html/template"
+	"math"
+	"strconv"
 	"strings"
 	"time"
 
@@ -383,4 +385,49 @@ func (mc *MessageConverter) convertRichResponseMessage(ctx context.Context, msg 
 		Content: &content,
 		Extra:   unknownPart.Extra,
 	}, msg.GetContextInfo()
+}
+
+func formatPaymentAmount(money *waE2E.Money, amount1000 uint64, currency string) string {
+	if money.GetCurrencyCode() != "" {
+		value := float64(money.GetValue()) / math.Pow10(int(money.GetOffset()))
+		return fmt.Sprintf("%s %s", strconv.FormatFloat(value, 'f', -1, 64), money.GetCurrencyCode())
+	} else if currency != "" {
+		return fmt.Sprintf("%s %s", strconv.FormatFloat(float64(amount1000)/1000, 'f', -1, 64), currency)
+	}
+	return ""
+}
+
+func (mc *MessageConverter) convertPaymentMessage(ctx context.Context, msg *waE2E.Message) (*bridgev2.ConvertedMessagePart, *waE2E.ContextInfo) {
+	var body string
+	var note *waE2E.Message
+	switch {
+	case msg.SendPaymentMessage != nil:
+		body = "Sent a payment"
+		note = msg.SendPaymentMessage.GetNoteMessage()
+	case msg.RequestPaymentMessage != nil:
+		req := msg.RequestPaymentMessage
+		body = "Requested a payment"
+		if amount := formatPaymentAmount(req.GetAmount(), req.GetAmount1000(), req.GetCurrencyCodeIso4217()); amount != "" {
+			body = fmt.Sprintf("Requested a payment of %s", amount)
+		}
+		note = req.GetNoteMessage()
+	case msg.DeclinePaymentRequestMessage != nil:
+		body = "Declined a payment request"
+	case msg.CancelPaymentRequestMessage != nil:
+		body = "Cancelled a payment request"
+	case msg.PaymentInviteMessage != nil:
+		body = "Invited you to set up WhatsApp payments"
+	}
+	body += ". Open WhatsApp to see the details."
+	noteText := note.GetConversation()
+	if noteText == "" {
+		noteText = note.GetExtendedTextMessage().GetText()
+	}
+	if noteText != "" {
+		body = fmt.Sprintf("%s\n\n%s", body, noteText)
+	}
+	part, _ := mc.convertUnknownMessage(ctx, msg)
+	part.Content.MsgType = event.MsgText
+	part.Content.Body = body
+	return part, nil
 }
