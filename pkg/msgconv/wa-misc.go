@@ -23,7 +23,6 @@ import (
 	"html"
 	"html/template"
 	"math"
-	"strconv"
 	"strings"
 	"time"
 
@@ -387,12 +386,22 @@ func (mc *MessageConverter) convertRichResponseMessage(ctx context.Context, msg 
 	}, msg.GetContextInfo()
 }
 
+func formatMoney(value float64, currency string) string {
+	if value == math.Trunc(value) {
+		return fmt.Sprintf("%.0f %s", value, currency)
+	}
+	return fmt.Sprintf("%.2f %s", value, currency)
+}
+
 func formatPaymentAmount(money *waE2E.Money, amount1000 uint64, currency string) string {
 	if money.GetCurrencyCode() != "" {
-		value := float64(money.GetValue()) / math.Pow10(int(money.GetOffset()))
-		return fmt.Sprintf("%s %s", strconv.FormatFloat(value, 'f', -1, 64), money.GetCurrencyCode())
+		divisor := float64(money.GetOffset())
+		if money.GetOffset() <= 4 {
+			divisor = math.Pow10(int(money.GetOffset()))
+		}
+		return formatMoney(float64(money.GetValue())/divisor, money.GetCurrencyCode())
 	} else if currency != "" {
-		return fmt.Sprintf("%s %s", strconv.FormatFloat(float64(amount1000)/1000, 'f', -1, 64), currency)
+		return formatMoney(float64(amount1000)/1000, currency)
 	}
 	return ""
 }
