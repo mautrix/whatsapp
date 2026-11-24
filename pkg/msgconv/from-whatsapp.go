@@ -121,6 +121,22 @@ func (mc *MessageConverter) addMentions(ctx context.Context, mentionedJID []stri
 	}
 }
 
+func (mc *MessageConverter) addGroupMentions(groupMentions []*waE2E.GroupMention, into *event.MessageEventContent) {
+	if len(groupMentions) == 0 {
+		return
+	}
+	into.EnsureHasHTML()
+	for _, mention := range groupMentions {
+		if mention.GetGroupJID() == "" || mention.GetGroupSubject() == "" {
+			continue
+		}
+		mentionText := "@" + mention.GetGroupJID()
+		replacement := "@" + mention.GetGroupSubject()
+		into.Body = strings.ReplaceAll(into.Body, mentionText, replacement)
+		into.FormattedBody = strings.ReplaceAll(into.FormattedBody, mentionText, html.EscapeString(replacement))
+	}
+}
+
 func (mc *MessageConverter) ToMatrix(
 	ctx context.Context,
 	portal *bridgev2.Portal,
@@ -210,6 +226,10 @@ func (mc *MessageConverter) ToMatrix(
 		part, contextInfo = mc.convertContactMessage(ctx, waMsg.ContactMessage)
 	case waMsg.ContactsArrayMessage != nil:
 		part, contextInfo = mc.convertContactsArrayMessage(ctx, waMsg.ContactsArrayMessage)
+	case waMsg.SendPaymentMessage != nil, waMsg.RequestPaymentMessage != nil,
+		waMsg.DeclinePaymentRequestMessage != nil, waMsg.CancelPaymentRequestMessage != nil,
+		waMsg.PaymentInviteMessage != nil:
+		part, contextInfo = mc.convertPaymentMessage(ctx, waMsg)
 	case waMsg.PlaceholderMessage != nil:
 		part, contextInfo = mc.convertPlaceholderMessage(ctx, waMsg)
 	case waMsg.GroupInviteMessage != nil:
@@ -244,6 +264,7 @@ func (mc *MessageConverter) ToMatrix(
 		part.Extra["fi.mau.whatsapp.source_broadcast_list"] = info.Chat.String()
 	}
 	mc.addMentions(ctx, contextInfo.GetMentionedJID(), part.Content)
+	mc.addGroupMentions(contextInfo.GetGroupMentions(), part.Content)
 	if contextInfo.GetNonJIDMentions() == 1 {
 		part.Content.Mentions.Room = true
 	}

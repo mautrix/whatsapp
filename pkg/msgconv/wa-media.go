@@ -457,7 +457,11 @@ func (mc *MessageConverter) makeMediaFailure(ctx context.Context, mediaInfo *Pre
 	var extra map[string]any
 	var dbMeta any
 	errorMsg := fmt.Sprintf("Failed to bridge %s, please view it on the WhatsApp app", mediaInfo.TypeDescription)
-	if keys != nil && (errors.Is(err, whatsmeow.ErrMediaDownloadFailedWith403) || errors.Is(err, whatsmeow.ErrMediaDownloadFailedWith404) || errors.Is(err, whatsmeow.ErrMediaDownloadFailedWith410)) {
+	mediaGone := errors.Is(err, whatsmeow.ErrMediaDownloadFailedWith403) || errors.Is(err, whatsmeow.ErrMediaDownloadFailedWith404) || errors.Is(err, whatsmeow.ErrMediaDownloadFailedWith410)
+	if keys == nil && (mediaGone || errors.Is(err, whatsmeow.ErrInvalidMediaEncSHA256)) {
+		// Media retry responses have no keys: the phone already re-uploaded the file, so these can't be recovered
+		logLevel = zerolog.DebugLevel
+	} else if keys != nil && mediaGone {
 		logLevel = zerolog.DebugLevel
 		keys.DirectPath = ""
 		mediaInfo.FailedKeys = keys
