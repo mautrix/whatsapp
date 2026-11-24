@@ -140,10 +140,12 @@ func KeyToMessageID(ctx context.Context, client *whatsmeow.Client, chat, sender 
 	return waid.MakeMessageID(chat, sender, key.GetID())
 }
 
-var failedPollUpdatePart = &bridgev2.ConvertedMessagePart{
-	Type:       event.EventUnstablePollResponse,
-	Content:    &event.MessageEventContent{},
-	DontBridge: true,
+func makeFailedPollUpdatePart() *bridgev2.ConvertedMessagePart {
+	return &bridgev2.ConvertedMessagePart{
+		Type:       event.EventUnstablePollResponse,
+		Content:    &event.MessageEventContent{},
+		DontBridge: true,
+	}
 }
 
 func (mc *MessageConverter) convertPollUpdateMessage(ctx context.Context, info *types.MessageInfo, msg *waE2E.PollUpdateMessage) (*bridgev2.ConvertedMessagePart, *waE2E.ContextInfo) {
@@ -152,10 +154,10 @@ func (mc *MessageConverter) convertPollUpdateMessage(ctx context.Context, info *
 	pollMessage, err := mc.Bridge.DB.Message.GetPartByID(ctx, getPortal(ctx).Receiver, pollMessageID, "")
 	if err != nil {
 		log.Err(err).Msg("Failed to get poll update target message")
-		return failedPollUpdatePart, nil
+		return makeFailedPollUpdatePart(), nil
 	} else if pollMessage == nil {
 		log.Warn().Str("target_message_id", string(pollMessageID)).Msg("Poll update target message not found")
-		return failedPollUpdatePart, nil
+		return makeFailedPollUpdatePart(), nil
 	}
 	vote, err := getClient(ctx).DecryptPollVote(ctx, &events.Message{
 		Info:    *info,
@@ -163,7 +165,7 @@ func (mc *MessageConverter) convertPollUpdateMessage(ctx context.Context, info *
 	})
 	if err != nil {
 		log.Err(err).Msg("Failed to decrypt vote message")
-		return failedPollUpdatePart, nil
+		return makeFailedPollUpdatePart(), nil
 	}
 
 	selectedHashes := make([]string, len(vote.GetSelectedOptions()))
@@ -171,7 +173,7 @@ func (mc *MessageConverter) convertPollUpdateMessage(ctx context.Context, info *
 		mappedAnswers, err := mc.DB.PollOption.GetIDs(ctx, pollMessage.MXID, vote.GetSelectedOptions())
 		if err != nil {
 			log.Err(err).Msg("Failed to get poll option IDs")
-			return failedPollUpdatePart, nil
+			return makeFailedPollUpdatePart(), nil
 		}
 		for i, opt := range vote.GetSelectedOptions() {
 			if len(opt) != 32 {

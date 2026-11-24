@@ -192,6 +192,9 @@ func (evt *WAMessageEvent) ConvertEdit(ctx context.Context, portal *bridgev2.Por
 		cacheMessage = evt.GetID()
 	} else {
 		editedMsg = evt.Message.GetProtocolMessage().GetEditedMessage()
+		if editedMsg.GetGroupMentionedMessage().GetMessage() != nil {
+			editedMsg = editedMsg.GetGroupMentionedMessage().GetMessage()
+		}
 		if editedMsg.GetLottieStickerMessage().GetMessage() != nil {
 			editedMsg = editedMsg.GetLottieStickerMessage().GetMessage()
 		}
