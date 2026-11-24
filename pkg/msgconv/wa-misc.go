@@ -23,6 +23,7 @@ import (
 	"html"
 	"html/template"
 	"math"
+	"strconv"
 	"strings"
 	"time"
 
@@ -386,22 +387,34 @@ func (mc *MessageConverter) convertRichResponseMessage(ctx context.Context, msg 
 	}, msg.GetContextInfo()
 }
 
-func formatMoney(value float64, currency string) string {
-	if value == math.Trunc(value) {
-		return fmt.Sprintf("%.0f %s", value, currency)
+func formatMoney(value float64, decimals int, currency string) string {
+	formatted := strconv.FormatFloat(value, 'f', decimals, 64)
+	if whole, frac, ok := strings.Cut(formatted, "."); ok {
+		frac = strings.TrimRight(frac, "0")
+		if frac == "" {
+			formatted = whole
+		} else {
+			if len(frac) == 1 {
+				frac += "0"
+			}
+			formatted = whole + "." + frac
+		}
 	}
-	return fmt.Sprintf("%.2f %s", value, currency)
+	return fmt.Sprintf("%s %s", formatted, currency)
 }
 
 func formatPaymentAmount(money *waE2E.Money, amount1000 uint64, currency string) string {
 	if money.GetCurrencyCode() != "" {
-		divisor := float64(money.GetOffset())
-		if money.GetOffset() <= 4 {
-			divisor = math.Pow10(int(money.GetOffset()))
+		offset := money.GetOffset()
+		decimals := int(offset)
+		divisor := math.Pow10(decimals)
+		if offset > 4 {
+			divisor = float64(offset)
+			decimals = int(math.Ceil(math.Log10(divisor)))
 		}
-		return formatMoney(float64(money.GetValue())/divisor, money.GetCurrencyCode())
+		return formatMoney(float64(money.GetValue())/divisor, decimals, money.GetCurrencyCode())
 	} else if currency != "" {
-		return formatMoney(float64(amount1000)/1000, currency)
+		return formatMoney(float64(amount1000)/1000, 3, currency)
 	}
 	return ""
 }
