@@ -495,7 +495,7 @@ func (wa *WhatsAppClient) createPortalsFromHistorySync(ctx context.Context) {
 	}()
 	ctx = log.WithContext(ctx)
 	wa.historySyncPortalLock.Lock()
-	wa.historySyncPassGen = wa.historySyncPortalGen
+	gen := wa.historySyncPortalGen
 	wa.historySyncPortalLock.Unlock()
 	limit := wa.Main.Config.HistorySync.MaxInitialConversations
 	loginTS := wa.UserLogin.Metadata.(*waid.UserLoginMetadata).LoggedInAt
@@ -601,6 +601,9 @@ func (wa *WhatsAppClient) createPortalsFromHistorySync(ctx context.Context) {
 		}
 	}
 	log.Info().Int("conversation_count", len(conversations)).Msg("Finished creating portals from history sync")
+	wa.historySyncPortalLock.Lock()
+	wa.historySyncPassGen = gen
+	wa.historySyncPortalLock.Unlock()
 	go func() {
 		wg.Wait()
 		if wa.historySyncQueued.Len() > 0 {
