@@ -902,6 +902,7 @@ func (wa *WhatsAppClient) fetchMessagesFromPhone(ctx context.Context, portalJID 
 
 type onDemandHistorySyncRequest struct {
 	ID         types.MessageID
+	PrevID     types.MessageID
 	SentAt     time.Time
 	PNFallback bool
 }
@@ -922,7 +923,7 @@ func (wa *WhatsAppClient) startOnDemandHistorySyncRequest(ctx context.Context, p
 				Stringer("portal_jid", portalJID).
 				Time("sent_at", req.SentAt).
 				Msg("Previous history sync request wasn't answered, retrying with phone number JID")
-			wa.onDemandHistorySyncRequests[portalJID] = onDemandHistorySyncRequest{ID: msgID, SentAt: time.Now(), PNFallback: true}
+			wa.onDemandHistorySyncRequests[portalJID] = onDemandHistorySyncRequest{ID: msgID, PrevID: req.ID, SentAt: time.Now(), PNFallback: true}
 			return pnJID, true
 		}
 		zerolog.Ctx(ctx).Debug().
@@ -940,7 +941,7 @@ func (wa *WhatsAppClient) finishOnDemandHistorySyncRequest(sessionID string) {
 	wa.onDemandHistorySyncLock.Lock()
 	defer wa.onDemandHistorySyncLock.Unlock()
 	for chatJID, req := range wa.onDemandHistorySyncRequests {
-		if req.ID == sessionID {
+		if req.ID == sessionID || req.PrevID == sessionID {
 			delete(wa.onDemandHistorySyncRequests, chatJID)
 		}
 	}
