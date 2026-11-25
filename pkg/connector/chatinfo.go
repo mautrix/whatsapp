@@ -484,7 +484,7 @@ func (wa *WhatsAppClient) makePortalAvatarFetcher(avatarID string, sender types.
 			existingID = ""
 		}
 		var wrappedAvatar *bridgev2.Avatar
-		avatar, err := wa.Client.GetProfilePictureInfo(ctx, jid, &whatsmeow.GetProfilePictureParams{
+		avatar, err := wa.getProfilePictureInfo(ctx, jid, &whatsmeow.GetProfilePictureParams{
 			ExistingID:  existingID,
 			IsCommunity: portal.RoomType == database.RoomTypeSpace,
 		})
@@ -498,6 +498,8 @@ func (wa *WhatsAppClient) makePortalAvatarFetcher(avatarID string, sender types.
 				ID:     "unauthorized",
 				Remove: true,
 			}
+		} else if errors.Is(err, errAvatarRateLimited) {
+			return false
 		} else if err != nil {
 			zerolog.Ctx(ctx).Err(err).Msg("Failed to get avatar info")
 			return false
