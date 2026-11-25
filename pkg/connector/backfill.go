@@ -852,8 +852,16 @@ func (wa *WhatsAppClient) fetchMessagesFromPhone(ctx context.Context, portalJID 
 		}
 	}
 
+	var pnJID types.JID
+	if portalJID.Server == types.HiddenUserServer {
+		pnJID, err = wa.GetStore().LIDs.GetPNForLID(ctx, portalJID)
+		if err != nil {
+			zerolog.Ctx(ctx).Warn().Err(err).Stringer("portal_jid", portalJID).Msg("Failed to get phone number for on-demand history sync request")
+		}
+	}
 	msgID := wa.Client.GenerateMessageID()
-	if !wa.startOnDemandHistorySyncRequest(ctx, portalJID, msgID) {
+	requestChat, ok := wa.startOnDemandHistorySyncRequest(ctx, portalJID, pnJID, msgID)
+	if !ok {
 		return &bridgev2.FetchMessagesResponse{
 			HasMore: true,
 			Pending: true,
@@ -861,7 +869,7 @@ func (wa *WhatsAppClient) fetchMessagesFromPhone(ctx context.Context, portalJID 
 	}
 	reqData := wa.Client.BuildHistorySyncRequest(&types.MessageInfo{
 		MessageSource: types.MessageSource{
-			Chat:     portalJID,
+			Chat:     requestChat,
 			Sender:   parsed.Sender,
 			IsFromMe: wa.IsOwnJID(parsed.Sender),
 			IsGroup:  parsed.Chat.Server == types.GroupServer,
@@ -872,6 +880,7 @@ func (wa *WhatsAppClient) fetchMessagesFromPhone(ctx context.Context, portalJID 
 	zerolog.Ctx(ctx).Debug().
 		Str("request_msg_id", msgID).
 		Stringer("portal_jid", portalJID).
+		Stringer("request_chat_jid", requestChat).
 		Any("anchor_msg_parsed", parsed).
 		Any("request_data", reqData).
 		Msg("Sending history sync request")
@@ -892,25 +901,39 @@ func (wa *WhatsAppClient) fetchMessagesFromPhone(ctx context.Context, portalJID 
 }
 
 type onDemandHistorySyncRequest struct {
-	ID     types.MessageID
-	SentAt time.Time
+	ID         types.MessageID
+	SentAt     time.Time
+	PNFallback bool
 }
 
 const onDemandHistorySyncRequestTimeout = 1 * time.Hour
 
-func (wa *WhatsAppClient) startOnDemandHistorySyncRequest(ctx context.Context, portalJID types.JID, msgID types.MessageID) bool {
+// Phones often ignore requests for DMs they still key by phone number, so unanswered LID requests are retried with the PN.
+const onDemandHistorySyncPNFallbackDelay = 1 * time.Minute
+
+func (wa *WhatsAppClient) startOnDemandHistorySyncRequest(ctx context.Context, portalJID, pnJID types.JID, msgID types.MessageID) (types.JID, bool) {
 	wa.onDemandHistorySyncLock.Lock()
 	defer wa.onDemandHistorySyncLock.Unlock()
-	if req, inFlight := wa.onDemandHistorySyncRequests[portalJID]; inFlight && time.Since(req.SentAt) < onDemandHistorySyncRequestTimeout {
+	req, inFlight := wa.onDemandHistorySyncRequests[portalJID]
+	if inFlight && time.Since(req.SentAt) < onDemandHistorySyncRequestTimeout {
+		if !req.PNFallback && !pnJID.IsEmpty() && time.Since(req.SentAt) > onDemandHistorySyncPNFallbackDelay {
+			zerolog.Ctx(ctx).Debug().
+				Str("unanswered_request_msg_id", req.ID).
+				Stringer("portal_jid", portalJID).
+				Time("sent_at", req.SentAt).
+				Msg("Previous history sync request wasn't answered, retrying with phone number JID")
+			wa.onDemandHistorySyncRequests[portalJID] = onDemandHistorySyncRequest{ID: msgID, SentAt: time.Now(), PNFallback: true}
+			return pnJID, true
+		}
 		zerolog.Ctx(ctx).Debug().
 			Str("in_flight_request_msg_id", req.ID).
 			Stringer("portal_jid", portalJID).
 			Time("sent_at", req.SentAt).
 			Msg("Not sending history sync request, previous request is still in flight")
-		return false
+		return types.EmptyJID, false
 	}
 	wa.onDemandHistorySyncRequests[portalJID] = onDemandHistorySyncRequest{ID: msgID, SentAt: time.Now()}
-	return true
+	return portalJID, true
 }
 
 func (wa *WhatsAppClient) finishOnDemandHistorySyncRequest(sessionID string) {
