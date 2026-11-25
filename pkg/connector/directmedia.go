@@ -254,7 +254,7 @@ func (wa *WhatsAppConnector) makeDirectMediaResponse(
 		Callback: func(f *os.File) (*mediaproxy.FileMeta, error) {
 			log := zerolog.Ctx(ctx)
 			err := waClient.Client.DownloadToFile(ctx, dm, f)
-			if keys != nil && (errors.Is(err, whatsmeow.ErrMediaDownloadFailedWith403) || errors.Is(err, whatsmeow.ErrMediaDownloadFailedWith404) || errors.Is(err, whatsmeow.ErrMediaDownloadFailedWith410) || errors.Is(err, whatsmeow.ErrNoURLPresent)) {
+			if keys != nil && (errors.Is(err, whatsmeow.ErrMediaDownloadFailedWith403) || errors.Is(err, whatsmeow.ErrMediaDownloadFailedWith404) || errors.Is(err, whatsmeow.ErrMediaDownloadFailedWith410) || errors.Is(err, whatsmeow.ErrNoURLPresent) || errors.Is(err, whatsmeow.ErrInvalidMediaEncSHA256)) {
 				val := params["com.beeper.interactive_download_request"]
 				if val == "false" || (!wa.Config.DirectMediaAutoRequest && val != "true") {
 					return nil, ErrReloadNeeded
@@ -266,10 +266,17 @@ func (wa *WhatsAppConnector) makeDirectMediaResponse(
 					return nil, err
 				}
 				log.Trace().Msg("Retrying download after successful retry")
+				if _, err = f.Seek(0, io.SeekStart); err != nil {
+					return nil, fmt.Errorf("failed to seek to start of media file: %w", err)
+				} else if err = f.Truncate(0); err != nil {
+					return nil, fmt.Errorf("failed to truncate media file: %w", err)
+				}
 				err = waClient.Client.DownloadToFile(ctx, keys, f)
 			}
 			if errors.Is(err, whatsmeow.ErrInvalidMediaSHA256) {
 				zerolog.Ctx(ctx).Warn().Err(err).Msg("Mismatching media checksums in message. Ignoring because WhatsApp seems to ignore them too")
+			} else if errors.Is(err, whatsmeow.ErrInvalidMediaEncSHA256) {
+				return nil, mautrix.MNotFound.WithMessage("Media on WhatsApp servers doesn't match the message")
 			} else if err != nil {
 				return nil, err
 			}
