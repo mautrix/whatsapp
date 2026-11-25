@@ -413,6 +413,7 @@ func (wa *WhatsAppClient) fetchGhostAvatar(ctx context.Context, ghost *bridgev2.
 			Remove: true,
 		}
 	} else if errors.Is(err, errAvatarRateLimited) {
+		zerolog.Ctx(ctx).Debug().Stringer("jid", jid).Msg("Skipping ghost avatar fetch while rate limited")
 		return false
 	} else if err != nil {
 		zerolog.Ctx(ctx).Err(err).Msg("Failed to get avatar info")

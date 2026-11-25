@@ -499,6 +499,7 @@ func (wa *WhatsAppClient) makePortalAvatarFetcher(avatarID string, sender types.
 				Remove: true,
 			}
 		} else if errors.Is(err, errAvatarRateLimited) {
+			zerolog.Ctx(ctx).Debug().Msg("Skipping portal avatar fetch while rate limited")
 			return false
 		} else if err != nil {
 			zerolog.Ctx(ctx).Err(err).Msg("Failed to get avatar info")
