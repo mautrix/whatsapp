@@ -941,7 +941,7 @@ func (wa *WhatsAppClient) finishOnDemandHistorySyncRequest(sessionID string) {
 	wa.onDemandHistorySyncLock.Lock()
 	defer wa.onDemandHistorySyncLock.Unlock()
 	for chatJID, req := range wa.onDemandHistorySyncRequests {
-		if req.ID == sessionID || req.PrevID == sessionID {
+		if req.ID == sessionID || (req.PrevID != "" && req.PrevID == sessionID) {
 			delete(wa.onDemandHistorySyncRequests, chatJID)
 		}
 	}
