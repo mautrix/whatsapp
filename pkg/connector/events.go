@@ -191,16 +191,7 @@ func (evt *WAMessageEvent) ConvertEdit(ctx context.Context, portal *bridgev2.Por
 		editedMsg = evt.Message
 		cacheMessage = evt.GetID()
 	} else {
-		editedMsg = evt.Message.GetProtocolMessage().GetEditedMessage()
-		if editedMsg.GetGroupMentionedMessage().GetMessage() != nil {
-			editedMsg = editedMsg.GetGroupMentionedMessage().GetMessage()
-		}
-		if editedMsg.GetLottieStickerMessage().GetMessage() != nil {
-			editedMsg = editedMsg.GetLottieStickerMessage().GetMessage()
-		}
-		if editedMsg.GetDocumentWithCaptionMessage().GetMessage() != nil {
-			editedMsg = editedMsg.GetDocumentWithCaptionMessage().GetMessage()
-		}
+		editedMsg = events.UnwrapMessage(evt.Message.GetProtocolMessage().GetEditedMessage())
 		meta := existing[0].Metadata.(*waid.MessageMetadata)
 		if slices.Contains(meta.Edits, evt.Info.ID) {
 			return nil, fmt.Errorf("%w: edit already handled", bridgev2.ErrIgnoringRemoteEvent)
