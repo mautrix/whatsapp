@@ -133,6 +133,7 @@ type WALogin struct {
 
 	Closed         atomic.Bool
 	EventHandlerID uint32
+	ClientTunnel   bool
 }
 
 var (
@@ -166,6 +167,7 @@ func (wl *WALogin) StartWithParams(ctx context.Context, params bridgev2.LoginSta
 	}
 	if params.WebSocketHTTP != nil {
 		wl.Client.SetPreLoginHTTPClient(&http.Client{Transport: params.WebSocketHTTP})
+		wl.ClientTunnel = true
 	}
 
 	if wl.PhoneCode {
@@ -192,7 +194,7 @@ func (wl *WALogin) StartWithParams(ctx context.Context, params bridgev2.LoginSta
 			},
 		}, nil
 	}
-	err := wl.Client.Connect()
+	err := wl.connect(ctx)
 	if err != nil {
 		wl.Log.Err(err).Msg("Failed to connect to WhatsApp for QR login")
 		return nil, wrapWhatsAppRespError(err)
@@ -209,7 +211,7 @@ func (wl *WALogin) StartWithParams(ctx context.Context, params bridgev2.LoginSta
 }
 
 func (wl *WALogin) SubmitUserInput(ctx context.Context, input map[string]string) (*bridgev2.LoginStep, error) {
-	err := wl.Client.Connect()
+	err := wl.connect(ctx)
 	if err != nil {
 		wl.Log.Err(err).Msg("Failed to connect to WhatsApp for phone code login")
 		return nil, wrapWhatsAppRespError(err)
@@ -245,6 +247,19 @@ func (wl *WALogin) SubmitUserInput(ctx context.Context, input map[string]string)
 			Data: pairingCode,
 		},
 	}, nil
+}
+
+func (wl *WALogin) connect(ctx context.Context) error {
+	err := wl.Client.Connect()
+	if err == nil || !wl.ClientTunnel {
+		return err
+	}
+	wl.Log.Warn().Err(err).Msg("Failed to connect through client WebSocket tunnel, retrying on the bridge's own connection")
+	wl.ClientTunnel = false
+	if proxyErr := wl.Main.updateProxy(ctx, wl.Client, true); proxyErr != nil {
+		return proxyErr
+	}
+	return wl.Client.Connect()
 }
 
 func makeQRStep(qr string) *bridgev2.LoginStep {
