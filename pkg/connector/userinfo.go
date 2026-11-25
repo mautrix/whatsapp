@@ -439,6 +439,9 @@ func (wa *WhatsAppClient) resyncContacts(forceAvatarSync, automatic bool) {
 	for jid := range contacts {
 		if ctx.Err() != nil {
 			return
+		} else if wa.Client == nil {
+			log.Debug().Msg("Client was logged out, stopping contact resync")
+			return
 		}
 		ghost, err := wa.Main.Bridge.GetGhostByID(ctx, waid.MakeUserID(jid))
 		if err != nil {
