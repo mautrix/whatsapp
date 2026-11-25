@@ -220,6 +220,7 @@ const (
 	compactJIDUserDevice    = 2
 	compactJIDGroupString   = 3
 	compactJIDNewsletterInt = 4
+	compactJIDLIDInt        = 5
 
 	compactMsgIDRawString = 0
 	compactMsgIDUpperHex  = 1
@@ -257,7 +258,7 @@ func compactJID(jid types.JID) []byte {
 				return binary.BigEndian.AppendUint64([]byte{compactJIDUserInt}, userInt)
 			} else {
 				data := make([]byte, 1, 1+8+2)
-				data[1] = compactJIDUserDevice
+				data[0] = compactJIDUserDevice
 				data = binary.BigEndian.AppendUint64(data, userInt)
 				data = binary.BigEndian.AppendUint16(data, jid.Device)
 				return data
@@ -265,6 +266,11 @@ func compactJID(jid types.JID) []byte {
 		}
 	} else if jid.Server == types.GroupServer {
 		return append([]byte{compactJIDGroupString}, jid.User...)
+	} else if jid.Server == types.HiddenUserServer && jid.Device == 0 {
+		lidInt, err := strconv.ParseUint(jid.User, 10, 64)
+		if err == nil {
+			return binary.BigEndian.AppendUint64([]byte{compactJIDLIDInt}, lidInt)
+		}
 	} else if jid.Server == types.NewsletterServer {
 		newsletterInt, err := strconv.ParseUint(jid.User, 10, 64)
 		if err == nil {
@@ -311,6 +317,14 @@ func parseCompactJID(jid []byte) (types.JID, error) {
 		return types.JID{
 			User:   strconv.FormatUint(binary.BigEndian.Uint64(jid[1:]), 10),
 			Server: types.NewsletterServer,
+		}, nil
+	case compactJIDLIDInt:
+		if len(jid) != 9 {
+			return types.EmptyJID, fmt.Errorf("invalid compact LID JID length")
+		}
+		return types.JID{
+			User:   strconv.FormatUint(binary.BigEndian.Uint64(jid[1:]), 10),
+			Server: types.HiddenUserServer,
 		}, nil
 	default:
 		return types.EmptyJID, fmt.Errorf("invalid compact JID type")
