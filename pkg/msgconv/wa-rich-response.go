@@ -35,6 +35,11 @@ import (
 	"maunium.net/go/mautrix/format/mdext"
 )
 
+type unifiedRichResponse struct {
+	ResponseID string                            `json:"response_id"`
+	Sections   []richresponse.ViewModelContainer `json:"sections"`
+}
+
 func (mc *MessageConverter) convertUnifiedRichResponseMessage(ctx context.Context, data []byte) *bridgev2.ConvertedMessagePart {
 	extra := map[string]any{}
 	_, canonicalErr := canonicaljson.Marshal(json.RawMessage(data))
@@ -43,7 +48,7 @@ func (mc *MessageConverter) convertUnifiedRichResponseMessage(ctx context.Contex
 	} else if len(data) < 16*1024 {
 		extra["fi.mau.whatsapp.non_json_rich_message"] = base64.StdEncoding.EncodeToString(data)
 	}
-	var rrMsg richresponse.RichResponse
+	var rrMsg unifiedRichResponse
 	err := json.Unmarshal(data, &rrMsg)
 	if err != nil {
 		zerolog.Ctx(ctx).Err(err).Msg("Failed to unmarshal unified rich response message")
