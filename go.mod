@@ -14,7 +14,7 @@ require (
 	github.com/yuin/goldmark v1.8.7
 	go.mau.fi/util v0.11.2-0.20261123232031-42f343a1bef8
 	go.mau.fi/webp v0.3.0
-	go.mau.fi/whatsmeow v0.0.0-20261116172437-19d61352436f
+	go.mau.fi/whatsmeow v0.0.0-20261125173901-9242b04b2108
 	golang.org/x/image v0.48.0
 	golang.org/x/net v0.62.0
 	golang.org/x/sync v0.25.0
