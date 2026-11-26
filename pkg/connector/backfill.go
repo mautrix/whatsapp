@@ -350,6 +350,9 @@ func (wa *WhatsAppClient) handleWAHistorySync(
 					Ints32("unknown_fields", shape.ProtoUnknownFields(rawMsg.GetMessage())).
 					Ints32("unknown_key_fields", shape.ProtoUnknownFields(rawMsg.GetMessage().GetKey())).
 					Ints32("unknown_message_fields", shape.ProtoUnknownFields(rawMsg.GetMessage().GetMessage())).
+					Ints32("unknown_wrapper_fields", shape.ProtoUnknownFields(rawMsg)).
+					Ints32("set_fields", shape.ProtoFields(rawMsg.GetMessage())).
+					Ints32("set_key_fields", shape.ProtoFields(rawMsg.GetMessage().GetKey())).
 					Msg("Dropping historical message due to parse error")
 				log.Trace().
 					Any("web_message_info", rawMsg.GetMessage()).
@@ -755,6 +758,8 @@ func (wa *WhatsAppClient) convertHistorySyncMessages(
 				Ints32("unknown_fields", shape.ProtoUnknownFields(msg)).
 				Ints32("unknown_key_fields", shape.ProtoUnknownFields(msg.GetKey())).
 				Ints32("unknown_message_fields", shape.ProtoUnknownFields(msg.GetMessage())).
+				Ints32("set_fields", shape.ProtoFields(msg)).
+				Ints32("set_key_fields", shape.ProtoFields(msg.GetKey())).
 				Msg("Dropping historical message due to parse error")
 			zerolog.Ctx(ctx).Trace().
 				Any("web_message_info", msg).
