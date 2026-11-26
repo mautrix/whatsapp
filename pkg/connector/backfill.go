@@ -1,6 +1,7 @@
 package connector
 
 import (
+	"cmp"
 	"compress/flate"
 	"compress/zlib"
 	"context"
@@ -25,6 +26,7 @@ import (
 	"go.mau.fi/whatsmeow/proto/waHistorySync"
 	"go.mau.fi/whatsmeow/proto/waWeb"
 	"go.mau.fi/whatsmeow/types"
+	"go.mau.fi/whatsmeow/types/events"
 	"google.golang.org/protobuf/proto"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
@@ -365,7 +367,7 @@ func (wa *WhatsAppClient) handleWAHistorySync(
 			lastItemTime = msgEvt.Info.Timestamp
 
 			msgType := getMessageType(msgEvt.Message)
-			if msgType == "ignore" || strings.HasPrefix(msgType, "unknown_protocol_") {
+			if msgType == "ignore" || strings.HasPrefix(msgType, "unknown_protocol_") || isHistoryHDChild(msgEvt) {
 				ignoredTypes++
 				continue
 			}
@@ -766,6 +768,9 @@ func (wa *WhatsAppClient) convertHistorySyncMessages(
 				Msg("Content of event that failed to parse")
 			continue
 		}
+		if isHistoryHDChild(evt) {
+			continue
+		}
 		if !explodeOnError {
 			msgType := getMessageType(evt.Message)
 			if msgType == "ignore" || strings.HasPrefix(msgType, "unknown_protocol_") {
@@ -973,6 +978,18 @@ func (wa *WhatsAppClient) handleOnDemandHistorySync(ctx context.Context, blob *w
 			},
 		})
 	}
+}
+
+func isHistoryHDChild(evt *events.Message) bool {
+	if evt.Info.ID != evt.SourceWebMsg.GetKey().GetID() {
+		return false
+	}
+	child := evt.Message.GetAssociatedChildMessage().GetMessage()
+	pairedType := cmp.Or(
+		child.GetImageMessage().GetContextInfo().GetPairedMediaType(),
+		child.GetVideoMessage().GetContextInfo().GetPairedMediaType(),
+	)
+	return pairedType == waE2E.ContextInfo_HD_IMAGE_CHILD || pairedType == waE2E.ContextInfo_HD_VIDEO_CHILD
 }
 
 func (wa *WhatsAppClient) convertHistorySyncMessage(
