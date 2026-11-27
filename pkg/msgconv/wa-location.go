@@ -67,7 +67,7 @@ func addLocationThumbnail(ctx context.Context, content *event.MessageEventConten
 func (mc *MessageConverter) convertLocationMessage(ctx context.Context, msg *waE2E.LocationMessage) (*bridgev2.ConvertedMessagePart, *waE2E.ContextInfo) {
 	url := msg.GetURL()
 	if len(url) == 0 {
-		url = fmt.Sprintf("https://maps.google.com/?q=%.5f,%.5f", msg.GetDegreesLatitude(), msg.GetDegreesLongitude())
+		url = fmt.Sprintf("https://maps.google.com/?q=%f,%f", msg.GetDegreesLatitude(), msg.GetDegreesLongitude())
 	}
 	name := msg.GetName()
 	if len(name) == 0 {
@@ -79,7 +79,7 @@ func (mc *MessageConverter) convertLocationMessage(ctx context.Context, msg *waE
 		Body:          fmt.Sprintf("Location: %s\n%s\n%s", name, msg.GetAddress(), url),
 		Format:        event.FormatHTML,
 		FormattedBody: fmt.Sprintf(`Location: <a href="%s">%s</a><br>%s`, html.EscapeString(url), html.EscapeString(name), html.EscapeString(msg.GetAddress())),
-		GeoURI:        fmt.Sprintf("geo:%.5f,%.5f", msg.GetDegreesLatitude(), msg.GetDegreesLongitude()),
+		GeoURI:        fmt.Sprintf("geo:%f,%f", msg.GetDegreesLatitude(), msg.GetDegreesLongitude()),
 	}
 	addLocationThumbnail(ctx, content, msg.GetJPEGThumbnail())
 
@@ -106,7 +106,7 @@ func (mc *MessageConverter) convertLiveLocationMessage(ctx context.Context, msg 
 	}
 
 	lat, long := msg.GetDegreesLatitude(), msg.GetDegreesLongitude()
-	url := fmt.Sprintf("https://maps.google.com/?q=%.5f,%.5f", lat, long)
+	url := fmt.Sprintf("https://maps.google.com/?q=%f,%f", lat, long)
 	name := formatCoordinates(lat, long)
 	const note = "Live updates are only visible in the WhatsApp app."
 	body := fmt.Sprintf("Live location: %s\n%s", name, url)
@@ -120,7 +120,7 @@ func (mc *MessageConverter) convertLiveLocationMessage(ctx context.Context, msg 
 		Body:          body + "\n\n" + note,
 		Format:        event.FormatHTML,
 		FormattedBody: formattedBody + "<br><br>" + note,
-		GeoURI:        fmt.Sprintf("geo:%.5f,%.5f", lat, long),
+		GeoURI:        fmt.Sprintf("geo:%f,%f", lat, long),
 	}
 	addLocationThumbnail(ctx, content, msg.GetJPEGThumbnail())
 
