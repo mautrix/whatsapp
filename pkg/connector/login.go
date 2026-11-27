@@ -13,6 +13,7 @@ import (
 	"github.com/rs/zerolog"
 	"go.mau.fi/util/exsync"
 	"go.mau.fi/util/jsontime"
+	"go.mau.fi/util/l10n"
 	"go.mau.fi/util/ptr"
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/types"
@@ -38,12 +39,12 @@ const (
 
 func (wa *WhatsAppConnector) GetLoginFlows() []bridgev2.LoginFlow {
 	return []bridgev2.LoginFlow{{
-		Name:        "QR",
-		Description: "Scan a QR code to pair the bridge to your WhatsApp account",
+		Name:        msgFlowQRName.Message(),
+		Description: msgFlowQRDescription.Message(),
 		ID:          LoginFlowIDQR,
 	}, {
-		Name:        "Pairing code",
-		Description: "Input your phone number to get a pairing code, to pair the bridge to your WhatsApp account",
+		Name:        msgFlowPhoneName.Message(),
+		Description: msgFlowPhoneDescription.Message(),
 		ID:          LoginFlowIDPhone,
 	}}
 }
@@ -59,10 +60,11 @@ var (
 		Err:        "Please enable WhatsApp web multidevice and scan the QR code again.",
 		StatusCode: http.StatusBadRequest,
 	}
-	ErrLoginTimeout = bridgev2.RespError{
-		ErrCode:    "FI.MAU.WHATSAPP.LOGIN_TIMEOUT",
-		Err:        "Entering code or scanning QR timed out. Please try again.",
-		StatusCode: http.StatusBadRequest,
+	ErrLoginTimeout      = bridgev2.ErrLoginTimedOut.WithMessage("Entering code or scanning QR timed out. Please try again.")
+	ErrLoginDisconnected = bridgev2.RespError{
+		ErrCode:    "FI.MAU.WHATSAPP.LOGIN_DISCONNECTED",
+		Err:        "Connection to WhatsApp was interrupted while waiting for login. Please try again.",
+		StatusCode: http.StatusInternalServerError,
 	}
 	ErrUnexpectedDisconnect = bridgev2.RespError{
 		ErrCode:    "FI.MAU.WHATSAPP.LOGIN_UNEXPECTED_EVENT",
@@ -131,6 +133,7 @@ type WALogin struct {
 
 	Closed         atomic.Bool
 	EventHandlerID uint32
+	ClientTunnel   bool
 }
 
 var (
@@ -164,6 +167,7 @@ func (wl *WALogin) StartWithParams(ctx context.Context, params bridgev2.LoginSta
 	}
 	if params.WebSocketHTTP != nil {
 		wl.Client.SetPreLoginHTTPClient(&http.Client{Transport: params.WebSocketHTTP})
+		wl.ClientTunnel = true
 	}
 
 	if wl.PhoneCode {
@@ -181,15 +185,16 @@ func (wl *WALogin) StartWithParams(ctx context.Context, params bridgev2.LoginSta
 			StepID: LoginStepIDPhoneNumber,
 			UserInputParams: &bridgev2.LoginUserInputParams{
 				Fields: []bridgev2.LoginInputDataField{{
-					Type:        bridgev2.LoginInputFieldTypePhoneNumber,
-					ID:          "phone_number",
-					Name:        "Phone number",
-					Description: "Your WhatsApp phone number in international format",
+					Type:           bridgev2.LoginInputFieldTypePhoneNumber,
+					ID:             "phone_number",
+					Name:           msgFieldPhoneName.Message(),
+					Description:    msgFieldPhoneDescription.Message(),
+					AutofillDomain: "whatsapp.com",
 				}},
 			},
 		}, nil
 	}
-	err := wl.Client.Connect()
+	err := wl.connect(ctx)
 	if err != nil {
 		wl.Log.Err(err).Msg("Failed to connect to WhatsApp for QR login")
 		return nil, wrapWhatsAppRespError(err)
@@ -206,7 +211,7 @@ func (wl *WALogin) StartWithParams(ctx context.Context, params bridgev2.LoginSta
 }
 
 func (wl *WALogin) SubmitUserInput(ctx context.Context, input map[string]string) (*bridgev2.LoginStep, error) {
-	err := wl.Client.Connect()
+	err := wl.connect(ctx)
 	if err != nil {
 		wl.Log.Err(err).Msg("Failed to connect to WhatsApp for phone code login")
 		return nil, wrapWhatsAppRespError(err)
@@ -236,7 +241,7 @@ func (wl *WALogin) SubmitUserInput(ctx context.Context, input map[string]string)
 	return &bridgev2.LoginStep{
 		Type:         bridgev2.LoginStepTypeDisplayAndWait,
 		StepID:       LoginStepIDCode,
-		Instructions: "Input the pairing code in the WhatsApp mobile app to log in",
+		Instructions: msgStepCodeInstructions.Message(),
 		DisplayAndWaitParams: &bridgev2.LoginDisplayAndWaitParams{
 			Type: bridgev2.LoginDisplayTypeCode,
 			Data: pairingCode,
@@ -244,11 +249,24 @@ func (wl *WALogin) SubmitUserInput(ctx context.Context, input map[string]string)
 	}, nil
 }
 
+func (wl *WALogin) connect(ctx context.Context) error {
+	err := wl.Client.Connect()
+	if err == nil || !wl.ClientTunnel {
+		return err
+	}
+	wl.Log.Warn().Err(err).Msg("Failed to connect through client WebSocket tunnel, retrying on the bridge's own connection")
+	wl.ClientTunnel = false
+	if proxyErr := wl.Main.updateProxy(ctx, wl.Client, true); proxyErr != nil {
+		return proxyErr
+	}
+	return wl.Client.Connect()
+}
+
 func makeQRStep(qr string) *bridgev2.LoginStep {
 	return &bridgev2.LoginStep{
 		Type:         bridgev2.LoginStepTypeDisplayAndWait,
 		StepID:       LoginStepIDQR,
-		Instructions: "Scan the QR code with the WhatsApp mobile app to log in",
+		Instructions: msgStepQRInstructions.Message(),
 		DisplayAndWaitParams: &bridgev2.LoginDisplayAndWaitParams{
 			Type: bridgev2.LoginDisplayTypeQR,
 			Data: qr,
@@ -317,8 +335,18 @@ func (wl *WALogin) handleEvent(rawEvt any) {
 			StatusCode: http.StatusInternalServerError,
 		}
 	case *events.Disconnected:
-		wl.Log.Warn().Msg("Got disconnected event (login timed out)")
-		wl.LoginError = ErrLoginTimeout
+		if currentIndex, _ := wl.getQRIndex(); currentIndex >= 0 {
+			wl.Log.Warn().
+				Int("qr_index", currentIndex).
+				Stringer("since_first_qr", time.Since(wl.StartTime)).
+				Msg("Got disconnected event before QR codes ran out")
+			wl.LoginError = ErrLoginDisconnected
+		} else {
+			wl.Log.Warn().
+				Stringer("since_first_qr", time.Since(wl.StartTime)).
+				Msg("Got disconnected event (login timed out)")
+			wl.LoginError = ErrLoginTimeout
+		}
 	case *events.Connected, *events.ConnectFailure, *events.LoggedOut, *events.TemporaryBan:
 		wl.Log.Warn().Any("event_data", evt).Type("event_type", evt).Msg("Got unexpected disconnect event")
 		wl.LoginError = ErrUnexpectedDisconnect
@@ -439,7 +467,7 @@ func (wl *WALogin) onLoginComplete(ctx context.Context) (*bridgev2.LoginStep, er
 	return &bridgev2.LoginStep{
 		Type:         bridgev2.LoginStepTypeComplete,
 		StepID:       LoginStepIDComplete,
-		Instructions: fmt.Sprintf("Successfully logged in as %s", ul.RemoteName),
+		Instructions: msgStepCompleteInstructions.Render(l10n.Params{"phone": ul.RemoteName}),
 		CompleteParams: &bridgev2.LoginCompleteParams{
 			UserLoginID: ul.ID,
 			UserLogin:   ul,

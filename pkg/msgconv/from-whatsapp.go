@@ -121,12 +121,20 @@ func (mc *MessageConverter) addMentions(ctx context.Context, mentionedJID []stri
 	}
 }
 
-var failedCommentPart = &bridgev2.ConvertedMessagePart{
-	Type: event.EventMessage,
-	Content: &event.MessageEventContent{
-		Body:    "Failed to decrypt comment",
-		MsgType: event.MsgNotice,
-	},
+func (mc *MessageConverter) addGroupMentions(groupMentions []*waE2E.GroupMention, into *event.MessageEventContent) {
+	if len(groupMentions) == 0 {
+		return
+	}
+	into.EnsureHasHTML()
+	for _, mention := range groupMentions {
+		if mention.GetGroupJID() == "" || mention.GetGroupSubject() == "" {
+			continue
+		}
+		mentionText := "@" + mention.GetGroupJID()
+		replacement := "@" + mention.GetGroupSubject()
+		into.Body = strings.ReplaceAll(into.Body, mentionText, replacement)
+		into.FormattedBody = strings.ReplaceAll(into.FormattedBody, mentionText, html.EscapeString(replacement))
+	}
 }
 
 func (mc *MessageConverter) ToMatrix(
@@ -218,6 +226,10 @@ func (mc *MessageConverter) ToMatrix(
 		part, contextInfo = mc.convertContactMessage(ctx, waMsg.ContactMessage)
 	case waMsg.ContactsArrayMessage != nil:
 		part, contextInfo = mc.convertContactsArrayMessage(ctx, waMsg.ContactsArrayMessage)
+	case waMsg.SendPaymentMessage != nil, waMsg.RequestPaymentMessage != nil,
+		waMsg.DeclinePaymentRequestMessage != nil, waMsg.CancelPaymentRequestMessage != nil,
+		waMsg.PaymentInviteMessage != nil:
+		part, contextInfo = mc.convertPaymentMessage(ctx, waMsg)
 	case waMsg.PlaceholderMessage != nil:
 		part, contextInfo = mc.convertPlaceholderMessage(ctx, waMsg)
 	case waMsg.GroupInviteMessage != nil:
@@ -227,7 +239,13 @@ func (mc *MessageConverter) ToMatrix(
 	case waMsg.ProtocolMessage != nil && waMsg.ProtocolMessage.GetType() == waE2E.ProtocolMessage_EPHEMERAL_SETTING:
 		part, contextInfo = mc.convertEphemeralSettingMessage(ctx, waMsg.ProtocolMessage, info.Timestamp, isBackfill)
 	case waMsg.EncCommentMessage != nil:
-		part = failedCommentPart
+		part = &bridgev2.ConvertedMessagePart{
+			Type: event.EventMessage,
+			Content: &event.MessageEventContent{
+				Body:    "Failed to decrypt comment",
+				MsgType: event.MsgNotice,
+			},
+		}
 	default:
 		part, contextInfo = mc.convertUnknownMessage(ctx, rawWaMsg)
 	}
@@ -246,6 +264,7 @@ func (mc *MessageConverter) ToMatrix(
 		part.Extra["fi.mau.whatsapp.source_broadcast_list"] = info.Chat.String()
 	}
 	mc.addMentions(ctx, contextInfo.GetMentionedJID(), part.Content)
+	mc.addGroupMentions(contextInfo.GetGroupMentions(), part.Content)
 	if contextInfo.GetNonJIDMentions() == 1 {
 		part.Content.Mentions.Room = true
 	}
@@ -320,9 +339,6 @@ func (mc *MessageConverter) ToMatrix(
 		}
 		cm.ThreadRoot = ptr.Ptr(waid.MakeMessageID(chat, pcp, commentTarget.GetID()))
 	}
-	mc.cutOffLongMessage(part.Content)
-	logOversizedPart(ctx, part)
-
 	return cm
 }
 

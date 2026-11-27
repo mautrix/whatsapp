@@ -28,6 +28,7 @@ import (
 	"time"
 
 	"github.com/rs/zerolog"
+	"go.mau.fi/util/shape"
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/proto/waE2E"
 	"golang.org/x/net/idna"
@@ -56,7 +57,12 @@ func (mc *MessageConverter) convertURLPreviewToBeeper(ctx context.Context, msg *
 		if errors.Is(err, whatsmeow.ErrMediaDownloadFailedWith403) || errors.Is(err, whatsmeow.ErrMediaDownloadFailedWith404) || errors.Is(err, whatsmeow.ErrMediaDownloadFailedWith410) {
 			zerolog.Ctx(ctx).Debug().Err(err).Msg("Failed to download thumbnail for link preview")
 		} else if err != nil {
-			zerolog.Ctx(ctx).Err(err).Msg("Failed to download thumbnail for link preview")
+			zerolog.Ctx(ctx).Err(err).
+				Bool("has_media_key", len(msg.GetMediaKey()) > 0).
+				Bool("has_jpeg_thumbnail", len(msg.GetJPEGThumbnail()) > 0).
+				Bool("thumbnail_hashes_equal", len(msg.GetThumbnailSHA256()) > 0 && bytes.Equal(msg.GetThumbnailSHA256(), msg.GetThumbnailEncSHA256())).
+				Ints32("set_fields", shape.ProtoFields(msg)).
+				Msg("Failed to download thumbnail for link preview")
 		}
 	}
 	if thumbnailData == nil && msg.JPEGThumbnail != nil {

@@ -29,9 +29,7 @@ type Config struct {
 	OSName      string `yaml:"os_name"`
 	BrowserName string `yaml:"browser_name"`
 
-	Proxy          string `yaml:"proxy"`
-	GetProxyURL    string `yaml:"get_proxy_url"`
-	ProxyOnlyLogin bool   `yaml:"proxy_only_login"`
+	ProxyOnlyLogin bool `yaml:"proxy_only_login"`
 
 	DisplaynameTemplate string `yaml:"displayname_template"`
 
@@ -108,8 +106,6 @@ func upgradeConfig(helper up.Helper) {
 	helper.Copy(up.Str, "os_name")
 	helper.Copy(up.Str, "browser_name")
 
-	helper.Copy(up.Str|up.Null, "proxy")
-	helper.Copy(up.Str|up.Null, "get_proxy_url")
 	helper.Copy(up.Bool, "proxy_only_login")
 
 	helper.Copy(up.Str, "displayname_template")
@@ -206,7 +202,7 @@ func (wa *WhatsAppConnector) GetConfig() (string, any, up.Upgrader) {
 	return ExampleConfig, &wa.Config, &up.StructUpgrader{
 		SimpleUpgrader: up.SimpleUpgrader(upgradeConfig),
 		Blocks: [][]string{
-			{"proxy"},
+			{"proxy_only_login"},
 			{"displayname_template"},
 			{"call_start_notices"},
 			{"animated_sticker"},

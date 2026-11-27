@@ -12,15 +12,15 @@ require (
 	github.com/rs/zerolog v1.35.1
 	github.com/tidwall/gjson v1.20.0
 	github.com/yuin/goldmark v1.8.7
-	go.mau.fi/util v0.11.1
+	go.mau.fi/util v0.11.2-0.20261124193158-ca7820d78067
 	go.mau.fi/webp v0.3.0
-	go.mau.fi/whatsmeow v0.0.0-20261116172437-19d61352436f
+	go.mau.fi/whatsmeow v0.0.0-20261126231607-ae388b0429be
 	golang.org/x/image v0.48.0
 	golang.org/x/net v0.62.0
 	golang.org/x/sync v0.25.0
 	google.golang.org/protobuf v1.36.12
 	gopkg.in/yaml.v3 v3.0.1
-	maunium.net/go/mautrix v0.33.1-0.20261117144116-fb27cd4bbdb5
+	maunium.net/go/mautrix v0.33.1-0.20261124203058-ef9b6a2833c4
 )
 
 require (

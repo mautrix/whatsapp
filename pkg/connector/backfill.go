@@ -1,9 +1,13 @@
 package connector
 
 import (
+	"cmp"
+	"compress/flate"
+	"compress/zlib"
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"runtime/debug"
 	"slices"
 	"strconv"
@@ -16,12 +20,13 @@ import (
 	"go.mau.fi/util/exerrors"
 	"go.mau.fi/util/exmaps"
 	"go.mau.fi/util/ptr"
+	"go.mau.fi/util/shape"
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/proto/waE2E"
 	"go.mau.fi/whatsmeow/proto/waHistorySync"
 	"go.mau.fi/whatsmeow/proto/waWeb"
 	"go.mau.fi/whatsmeow/types"
-	"google.golang.org/protobuf/encoding/protowire"
+	"go.mau.fi/whatsmeow/types/events"
 	"google.golang.org/protobuf/proto"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
@@ -64,6 +69,7 @@ func (wa *WhatsAppClient) historySyncLoop(ctx context.Context) {
 			}
 		}
 	}()
+	var lastFailedRowID, failedAttempts int
 	for {
 		var resetTimer, errored bool
 		select {
@@ -75,11 +81,21 @@ func (wa *WhatsAppClient) historySyncLoop(ctx context.Context) {
 			} else if notif == nil {
 				wa.UserLogin.Log.Debug().Msg("No more queued history sync notifications")
 			} else {
-				resetTimer, errored = wa.downloadAndSaveWAHistorySyncData(ctx, notif, rowid)
+				if rowid != lastFailedRowID {
+					failedAttempts = 0
+				}
+				var badBlob bool
+				resetTimer, errored, badBlob = wa.downloadAndSaveWAHistorySyncData(ctx, notif, rowid, failedAttempts)
 				// Continue waking up the loop until all queued notifications are processed
 				select {
 				case wa.historySyncWakeup <- struct{}{}:
 				default:
+				}
+				if badBlob {
+					lastFailedRowID = rowid
+					failedAttempts++
+				} else {
+					lastFailedRowID = 0
 				}
 				if errored {
 					wa.UserLogin.Log.Debug().Msg("Temporarily stopping history sync loop after error")
@@ -121,7 +137,27 @@ func (wa *WhatsAppClient) saveWAHistorySyncNotification(ctx context.Context, evt
 	}
 }
 
-func (wa *WhatsAppClient) downloadAndSaveWAHistorySyncData(ctx context.Context, evt *waE2E.HistorySyncNotification, rowid int) (resetTimer, errored bool) {
+const maxHistorySyncDownloadAttempts = 10
+
+func isCorruptHistorySyncBlob(err error) bool {
+	if errors.Is(err, whatsmeow.ErrInvalidMediaHMAC) ||
+		errors.Is(err, whatsmeow.ErrInvalidMediaEncSHA256) ||
+		errors.Is(err, whatsmeow.ErrInvalidMediaSHA256) {
+		return true
+	}
+	errStr := err.Error()
+	if !strings.HasPrefix(errStr, "failed to decompress: ") && !strings.HasPrefix(errStr, "failed to prepare to decompress: ") {
+		return false
+	}
+	var corruptErr flate.CorruptInputError
+	return errors.Is(err, io.ErrUnexpectedEOF) ||
+		errors.Is(err, zlib.ErrChecksum) ||
+		errors.Is(err, zlib.ErrHeader) ||
+		errors.Is(err, zlib.ErrDictionary) ||
+		errors.As(err, &corruptErr)
+}
+
+func (wa *WhatsAppClient) downloadAndSaveWAHistorySyncData(ctx context.Context, evt *waE2E.HistorySyncNotification, rowid, failedAttempts int) (resetTimer, errored, badBlob bool) {
 	log := wa.UserLogin.Log.With().
 		Str("action", "download history sync").
 		Stringer("sync_type", evt.GetSyncType()).
@@ -150,9 +186,17 @@ func (wa *WhatsAppClient) downloadAndSaveWAHistorySyncData(ctx context.Context, 
 			errored = true
 		}
 		return
+	} else if err != nil && isCorruptHistorySyncBlob(err) && failedAttempts+1 >= maxHistorySyncDownloadAttempts {
+		log.Err(err).Int("attempts", failedAttempts+1).Msg("Failed to download history sync too many times, dropping notification")
+		if err = wa.Main.DB.HSNotif.Delete(ctx, rowid); err != nil {
+			log.Err(err).Msg("Failed to delete queued history sync notification")
+			errored = true
+		}
+		return
 	} else if err != nil {
 		log.Err(err).Msg("Failed to download history sync")
 		errored = true
+		badBlob = isCorruptHistorySyncBlob(err)
 		return
 	}
 	if blob.GetSyncType() == waHistorySync.HistorySync_ON_DEMAND {
@@ -308,9 +352,12 @@ func (wa *WhatsAppClient) handleWAHistorySync(
 					Stringer("stub_type", rawMsg.GetMessage().GetMessageStubType()).
 					Str("message_type", getMessageType(rawMsg.GetMessage().GetMessage())).
 					Bool("from_me", rawMsg.GetMessage().GetKey().GetFromMe()).
-					Ints32("unknown_fields", unknownProtoFields(rawMsg.GetMessage())).
-					Ints32("unknown_key_fields", unknownProtoFields(rawMsg.GetMessage().GetKey())).
-					Ints32("unknown_message_fields", unknownProtoFields(rawMsg.GetMessage().GetMessage())).
+					Ints32("unknown_fields", shape.ProtoUnknownFields(rawMsg.GetMessage())).
+					Ints32("unknown_key_fields", shape.ProtoUnknownFields(rawMsg.GetMessage().GetKey())).
+					Ints32("unknown_message_fields", shape.ProtoUnknownFields(rawMsg.GetMessage().GetMessage())).
+					Ints32("unknown_wrapper_fields", shape.ProtoUnknownFields(rawMsg)).
+					Ints32("set_fields", shape.ProtoFields(rawMsg.GetMessage())).
+					Ints32("set_key_fields", shape.ProtoFields(rawMsg.GetMessage().GetKey())).
 					Msg("Dropping historical message due to parse error")
 				log.Trace().
 					Any("web_message_info", rawMsg.GetMessage()).
@@ -323,7 +370,7 @@ func (wa *WhatsAppClient) handleWAHistorySync(
 			lastItemTime = msgEvt.Info.Timestamp
 
 			msgType := getMessageType(msgEvt.Message)
-			if msgType == "ignore" || strings.HasPrefix(msgType, "unknown_protocol_") {
+			if msgType == "ignore" || strings.HasPrefix(msgType, "unknown_protocol_") || isHistoryHDChild(msgEvt) {
 				ignoredTypes++
 				continue
 			}
@@ -410,25 +457,6 @@ func (wa *WhatsAppClient) handleWAHistorySync(
 		Dur("duration", time.Since(start)).
 		Msg("Finished storing history sync")
 	return nil
-}
-
-func unknownProtoFields(msg proto.Message) []int32 {
-	var fields []int32
-	unknown := msg.ProtoReflect().GetUnknown()
-	for len(unknown) > 0 {
-		num, typ, n := protowire.ConsumeTag(unknown)
-		if n < 0 {
-			break
-		}
-		unknown = unknown[n:]
-		n = protowire.ConsumeFieldValue(num, typ, unknown)
-		if n < 0 {
-			break
-		}
-		unknown = unknown[n:]
-		fields = append(fields, int32(num))
-	}
-	return fields
 }
 
 const historySyncQueuedTimeout = 10 * time.Minute
@@ -652,6 +680,7 @@ func (wa *WhatsAppClient) FetchMessages(ctx context.Context, params bridgev2.Fet
 	// TODO might be better to always set true here and let GetBetween return an empty result to mark as false?
 	resp.HasMore = hasMore
 	resp.Forward = params.Forward
+	resp.AggressiveDeduplication = !params.Forward
 	resp.MarkRead = markRead
 	if params.Forward && !markRead && conv != nil && !ptr.Val(conv.MarkedAsUnread) {
 		resp.ReadUpTo = historySyncReadUpTo(resp.Messages, int(ptr.Val(conv.UnreadCount)))
@@ -732,13 +761,18 @@ func (wa *WhatsAppClient) convertHistorySyncMessages(
 				Stringer("stub_type", msg.GetMessageStubType()).
 				Str("message_type", getMessageType(msg.GetMessage())).
 				Bool("from_me", msg.GetKey().GetFromMe()).
-				Ints32("unknown_fields", unknownProtoFields(msg)).
-				Ints32("unknown_key_fields", unknownProtoFields(msg.GetKey())).
-				Ints32("unknown_message_fields", unknownProtoFields(msg.GetMessage())).
+				Ints32("unknown_fields", shape.ProtoUnknownFields(msg)).
+				Ints32("unknown_key_fields", shape.ProtoUnknownFields(msg.GetKey())).
+				Ints32("unknown_message_fields", shape.ProtoUnknownFields(msg.GetMessage())).
+				Ints32("set_fields", shape.ProtoFields(msg)).
+				Ints32("set_key_fields", shape.ProtoFields(msg.GetKey())).
 				Msg("Dropping historical message due to parse error")
 			zerolog.Ctx(ctx).Trace().
 				Any("web_message_info", msg).
 				Msg("Content of event that failed to parse")
+			continue
+		}
+		if isHistoryHDChild(evt) {
 			continue
 		}
 		if !explodeOnError {
@@ -944,10 +978,23 @@ func (wa *WhatsAppClient) handleOnDemandHistorySync(ctx context.Context, blob *w
 					return nil, err
 				}
 				resp.HasMore = conv.GetEndOfHistoryTransferType() == waHistorySync.Conversation_COMPLETE_BUT_MORE_MESSAGES_REMAIN_ON_PRIMARY
+				resp.AggressiveDeduplication = true
 				return resp, nil
 			},
 		})
 	}
+}
+
+func isHistoryHDChild(evt *events.Message) bool {
+	if evt.Info.ID != evt.SourceWebMsg.GetKey().GetID() {
+		return false
+	}
+	child := evt.Message.GetAssociatedChildMessage().GetMessage()
+	pairedType := cmp.Or(
+		child.GetImageMessage().GetContextInfo().GetPairedMediaType(),
+		child.GetVideoMessage().GetContextInfo().GetPairedMediaType(),
+	)
+	return pairedType == waE2E.ContextInfo_HD_IMAGE_CHILD || pairedType == waE2E.ContextInfo_HD_VIDEO_CHILD
 }
 
 func (wa *WhatsAppClient) convertHistorySyncMessage(
