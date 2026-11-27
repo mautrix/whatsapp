@@ -391,9 +391,6 @@ func (evt *WAUndecryptableMessage) GetType() bridgev2.RemoteEventType {
 const UndecryptableMessageNotice = "Decrypting message from WhatsApp failed, waiting for sender to re-send... " +
 	"([learn more](https://faq.whatsapp.com/general/security-and-privacy/seeing-waiting-for-this-message-this-may-take-a-while))"
 
-// unavailableTypeSenderDrop is sent for messages in restricted chats, which WhatsApp doesn't share with linked devices.
-const unavailableTypeSenderDrop events.UnavailableType = "sender_drop"
-
 const RestrictedChatMessageNotice = "This message is in a restricted chat, which WhatsApp only shows on your phone. " +
 	"([learn more](https://faq.whatsapp.com/715385484388016))"
 
@@ -427,7 +424,7 @@ func (evt *WAUndecryptableMessage) ConvertMessage(ctx context.Context, portal *b
 			MsgType: event.MsgNotice,
 			Body:    body,
 		}
-	case unavailableTypeSenderDrop:
+	case events.UnavailableTypeSenderDrop:
 		content = &restrictedChatMessageContent
 	}
 	// TODO thread root for comments
