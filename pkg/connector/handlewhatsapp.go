@@ -75,10 +75,8 @@ func init() {
 	})
 }
 
-var metaAISideChatJID = types.NewJID("2942131436135992", types.BotServer)
-
 func (wa *WhatsAppClient) deleteMetaAISideChatPortal(ctx context.Context) {
-	portalKey := wa.makeWAPortalKey(metaAISideChatJID)
+	portalKey := wa.makeWAPortalKey(types.MetaAISideChatJID)
 	portal, err := wa.Main.Bridge.GetExistingPortalByKey(ctx, portalKey)
 	if err != nil {
 		zerolog.Ctx(ctx).Warn().Err(err).Msg("Failed to check Meta AI side chat portal")
