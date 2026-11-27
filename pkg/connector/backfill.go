@@ -677,6 +677,7 @@ func (wa *WhatsAppClient) FetchMessages(ctx context.Context, params bridgev2.Fet
 	// TODO might be better to always set true here and let GetBetween return an empty result to mark as false?
 	resp.HasMore = hasMore
 	resp.Forward = params.Forward
+	resp.AggressiveDeduplication = !params.Forward
 	resp.MarkRead = markRead
 	if params.Forward && !markRead && conv != nil && !ptr.Val(conv.MarkedAsUnread) {
 		resp.ReadUpTo = historySyncReadUpTo(resp.Messages, int(ptr.Val(conv.UnreadCount)))
@@ -974,6 +975,7 @@ func (wa *WhatsAppClient) handleOnDemandHistorySync(ctx context.Context, blob *w
 					return nil, err
 				}
 				resp.HasMore = conv.GetEndOfHistoryTransferType() == waHistorySync.Conversation_COMPLETE_BUT_MORE_MESSAGES_REMAIN_ON_PRIMARY
+				resp.AggressiveDeduplication = true
 				return resp, nil
 			},
 		})
