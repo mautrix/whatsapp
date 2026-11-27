@@ -130,6 +130,10 @@ type WhatsAppClient struct {
 	lastPresence       types.Presence
 	blocklistLock      sync.Mutex
 
+	historySyncPortalLock sync.Mutex
+	historySyncPortalGen  uint64
+	historySyncPassGen    uint64
+
 	disableNewsletter bool
 
 	appStateRecoveryLock      sync.Mutex
