@@ -377,6 +377,23 @@ func (wa *WhatsAppClient) makeLazyGhostAvatarUpdater(avatarID string, forceUpdat
 	}
 }
 
+const avatarRateLimitCooldown = 1 * time.Minute
+
+var errAvatarRateLimited = errors.New("avatar fetches are paused after a rate limit error")
+
+func (wa *WhatsAppClient) getProfilePictureInfo(ctx context.Context, jid types.JID, params *whatsmeow.GetProfilePictureParams) (*types.ProfilePictureInfo, error) {
+	if time.Now().UnixMilli() < wa.avatarRateLimited.Load() {
+		return nil, errAvatarRateLimited
+	}
+	avatar, err := wa.Client.GetProfilePictureInfo(ctx, jid, params)
+	if errors.Is(err, whatsmeow.ErrIQRateOverLimit) {
+		wa.avatarRateLimited.Store(time.Now().Add(avatarRateLimitCooldown).UnixMilli())
+		zerolog.Ctx(ctx).Warn().Err(err).Msg("Avatar fetch rate limited, pausing avatar fetches")
+		return nil, errAvatarRateLimited
+	}
+	return avatar, err
+}
+
 func (wa *WhatsAppClient) fetchGhostAvatar(ctx context.Context, ghost *bridgev2.Ghost) bool {
 	jid := waid.ParseUserID(ghost.ID)
 	existingID := string(ghost.AvatarID)
@@ -384,7 +401,7 @@ func (wa *WhatsAppClient) fetchGhostAvatar(ctx context.Context, ghost *bridgev2.
 		existingID = ""
 	}
 	var wrappedAvatar *bridgev2.Avatar
-	avatar, err := wa.Client.GetProfilePictureInfo(ctx, jid, &whatsmeow.GetProfilePictureParams{ExistingID: existingID})
+	avatar, err := wa.getProfilePictureInfo(ctx, jid, &whatsmeow.GetProfilePictureParams{ExistingID: existingID})
 	if errors.Is(err, whatsmeow.ErrProfilePictureNotSet) {
 		wrappedAvatar = &bridgev2.Avatar{
 			ID:     "remove",
@@ -395,6 +412,9 @@ func (wa *WhatsAppClient) fetchGhostAvatar(ctx context.Context, ghost *bridgev2.
 			ID:     "unauthorized",
 			Remove: true,
 		}
+	} else if errors.Is(err, errAvatarRateLimited) {
+		zerolog.Ctx(ctx).Debug().Stringer("jid", jid).Msg("Skipping ghost avatar fetch while rate limited")
+		return false
 	} else if err != nil {
 		zerolog.Ctx(ctx).Err(err).Msg("Failed to get avatar info")
 		return false
