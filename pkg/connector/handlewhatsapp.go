@@ -19,7 +19,6 @@ package connector
 import (
 	"context"
 	"fmt"
-	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -76,30 +75,21 @@ func init() {
 	})
 }
 
-var metaAISideChatJIDs = []types.JID{
-	types.NewJID("2942131436135992", types.BotServer),
-	types.NewJID("867051314767696555", types.BotServer),
-}
+var metaAISideChatJID = types.NewJID("2942131436135992", types.BotServer)
 
-func isMetaAISideChat(jid types.JID) bool {
-	return slices.Contains(metaAISideChatJIDs, jid)
-}
-
-func (wa *WhatsAppClient) deleteMetaAISideChatPortals(ctx context.Context) {
-	for _, jid := range metaAISideChatJIDs {
-		portalKey := wa.makeWAPortalKey(jid)
-		portal, err := wa.Main.Bridge.GetExistingPortalByKey(ctx, portalKey)
-		if err != nil {
-			zerolog.Ctx(ctx).Warn().Err(err).Stringer("chat_jid", jid).Msg("Failed to check Meta AI side chat portal")
-		} else if portal != nil && portal.MXID != "" {
-			wa.UserLogin.QueueRemoteEvent(&simplevent.ChatDelete{
-				EventMeta: simplevent.EventMeta{
-					Type:      bridgev2.RemoteEventChatDelete,
-					PortalKey: portalKey,
-				},
-				OnlyForMe: true,
-			})
-		}
+func (wa *WhatsAppClient) deleteMetaAISideChatPortal(ctx context.Context) {
+	portalKey := wa.makeWAPortalKey(metaAISideChatJID)
+	portal, err := wa.Main.Bridge.GetExistingPortalByKey(ctx, portalKey)
+	if err != nil {
+		zerolog.Ctx(ctx).Warn().Err(err).Msg("Failed to check Meta AI side chat portal")
+	} else if portal != nil && portal.MXID != "" {
+		wa.UserLogin.QueueRemoteEvent(&simplevent.ChatDelete{
+			EventMeta: simplevent.EventMeta{
+				Type:      bridgev2.RemoteEventChatDelete,
+				PortalKey: portalKey,
+			},
+			OnlyForMe: true,
+		})
 	}
 }
 
@@ -208,7 +198,7 @@ func (wa *WhatsAppClient) handleWAEvent(rawEvt any) (success bool) {
 			go func() {
 				wa.resyncWASARootSecrets(ctx)
 				wa.requestMuseProfile(ctx)
-				wa.deleteMetaAISideChatPortals(ctx)
+				wa.deleteMetaAISideChatPortal(ctx)
 			}()
 		}
 		if len(wa.GetStore().PushName) > 0 {
@@ -332,8 +322,7 @@ func (wa *WhatsAppClient) handleWAMessage(ctx context.Context, evt *events.Messa
 	success = true
 	if (evt.Info.Chat == types.StatusBroadcastJID && !wa.Main.Config.EnableStatusBroadcast) ||
 		(evt.Info.Chat.Server == types.NewsletterServer && wa.disableNewsletter) ||
-		(evt.Info.Chat.Server == types.BroadcastServer && evt.Info.IsFromMe) ||
-		isMetaAISideChat(evt.Info.Chat) {
+		(evt.Info.Chat.Server == types.BroadcastServer && evt.Info.IsFromMe) {
 		return
 	}
 	if !wa.ensureAltJIDs(ctx, &evt.Info.MessageSource, true) {
@@ -479,9 +468,6 @@ func makeHDMediaReplacementEdit(message *waE2E.Message, parentKey *waCommon.Mess
 }
 
 func (wa *WhatsAppClient) handleWAUndecryptableMessage(ctx context.Context, evt *events.UndecryptableMessage) bool {
-	if isMetaAISideChat(evt.Info.Chat) {
-		return true
-	}
 	if !wa.ensureAltJIDs(ctx, &evt.Info.MessageSource, true) {
 		return false
 	}
