@@ -211,8 +211,9 @@ func (wa *WhatsAppClient) downloadAndSaveWAHistorySyncData(ctx context.Context, 
 		}
 		return
 	}
+	pnToLID := wa.getHistorySyncChatLIDs(log.WithContext(ctx), blob)
 	err = wa.Main.DB.DoTxn(ctx, nil, func(ctx context.Context) (innerErr error) {
-		innerErr = wa.handleWAHistorySync(ctx, evt, blob, true)
+		innerErr = wa.handleWAHistorySync(ctx, evt, blob, pnToLID, true)
 		if innerErr != nil {
 			return
 		}
@@ -239,10 +240,30 @@ func (wa *WhatsAppClient) downloadAndSaveWAHistorySyncData(ctx context.Context, 
 	return
 }
 
+func (wa *WhatsAppClient) getHistorySyncChatLIDs(ctx context.Context, evt *waHistorySync.HistorySync) map[types.JID]types.JID {
+	var pns []types.JID
+	for _, conv := range evt.GetConversations() {
+		jid, err := types.ParseJID(conv.GetID())
+		if err == nil && jid.Server == types.DefaultUserServer && jid != types.PSAJID && jid != types.MetaAIJID {
+			pns = append(pns, jid)
+		}
+	}
+	if len(pns) == 0 {
+		return nil
+	}
+	pnToLID, err := wa.GetStore().LIDs.GetManyLIDsForPNs(ctx, pns)
+	if err != nil {
+		zerolog.Ctx(ctx).Err(err).Int("pn_count", len(pns)).Msg("Failed to get LIDs for phone numbers in history sync")
+		return nil
+	}
+	return pnToLID
+}
+
 func (wa *WhatsAppClient) handleWAHistorySync(
 	ctx context.Context,
 	notif *waE2E.HistorySyncNotification,
 	evt *waHistorySync.HistorySync,
+	pnToLID map[types.JID]types.JID,
 	stopOnError bool,
 ) error {
 	if evt == nil || evt.SyncType == nil {
@@ -310,11 +331,8 @@ func (wa *WhatsAppClient) handleWAHistorySync(
 		}
 		if jid == types.MetaAIJID {
 			jid = types.NewMetaAIJID
-		} else if jid.Server == types.DefaultUserServer {
-			lid, err := wa.GetStore().LIDs.GetLIDForPN(ctx, jid)
-			if err != nil {
-				log.Err(err).Stringer("pn", jid).Msg("Failed to get LID for phone number in history sync")
-			} else if lid.IsEmpty() {
+		} else if jid.Server == types.DefaultUserServer && pnToLID != nil {
+			if lid, ok := pnToLID[jid]; !ok {
 				log.Warn().Stringer("pn", jid).Msg("No LID found for phone number in history sync")
 			} else {
 				log.Debug().
