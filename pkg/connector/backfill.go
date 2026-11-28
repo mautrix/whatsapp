@@ -305,6 +305,9 @@ func (wa *WhatsAppClient) handleWAHistorySync(
 			// so drop history as well. This should be removed if the PSA chat gets properly bridged in the future.
 			log.Debug().Stringer("chat_jid", jid).Msg("Skipping PSA in history sync")
 			continue
+		} else if jid == types.MetaAISideChatJID {
+			log.Debug().Stringer("chat_jid", jid).Msg("Skipping Meta AI side chat in history sync")
+			continue
 		} else {
 			totalMessageCount += len(conv.GetMessages())
 		}

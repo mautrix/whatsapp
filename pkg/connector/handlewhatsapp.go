@@ -75,6 +75,22 @@ func init() {
 	})
 }
 
+func (wa *WhatsAppClient) deleteMetaAISideChatPortal(ctx context.Context) {
+	portalKey := wa.makeWAPortalKey(types.MetaAISideChatJID)
+	portal, err := wa.Main.Bridge.GetExistingPortalByKey(ctx, portalKey)
+	if err != nil {
+		zerolog.Ctx(ctx).Warn().Err(err).Msg("Failed to check Meta AI side chat portal")
+	} else if portal != nil && portal.MXID != "" {
+		wa.UserLogin.QueueRemoteEvent(&simplevent.ChatDelete{
+			EventMeta: simplevent.EventMeta{
+				Type:      bridgev2.RemoteEventChatDelete,
+				PortalKey: portalKey,
+			},
+			OnlyForMe: true,
+		})
+	}
+}
+
 func (wa *WhatsAppClient) handleWAEvent(rawEvt any) (success bool) {
 	log := wa.UserLogin.Log
 	ctx := log.WithContext(wa.Main.Bridge.BackgroundCtx)
@@ -180,6 +196,7 @@ func (wa *WhatsAppClient) handleWAEvent(rawEvt any) (success bool) {
 			go func() {
 				wa.resyncWASARootSecrets(ctx)
 				wa.requestMuseProfile(ctx)
+				wa.deleteMetaAISideChatPortal(ctx)
 			}()
 		}
 		if len(wa.GetStore().PushName) > 0 {
