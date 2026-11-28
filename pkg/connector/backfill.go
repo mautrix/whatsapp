@@ -600,11 +600,7 @@ func (wa *WhatsAppClient) FetchMessages(ctx context.Context, params bridgev2.Fet
 		zerolog.Ctx(ctx).Warn().Stringer("portal_jid", portalJID).Msg("FetchMessages called for phone number portal")
 	}
 	if history, ok := params.BundledData.(*waGroupHistory.GroupHistory); ok && params.Forward {
-		resp, err := wa.convertHistorySyncMessages(ctx, params.Portal, portalJID, history.GetMessages(), false, false)
-		if resp != nil {
-			resp.CompleteCallback = nil
-		}
-		return resp, err
+		return wa.convertHistorySyncMessages(ctx, params.Portal, portalJID, history.GetMessages(), false, false)
 	}
 	var markRead bool
 	var startTime, endTime *time.Time
@@ -1004,6 +1000,8 @@ func isHistoryHDChild(evt *events.Message) bool {
 	return pairedType == waE2E.ContextInfo_HD_IMAGE_CHILD || pairedType == waE2E.ContextInfo_HD_VIDEO_CHILD
 }
 
+const maxHistoryBundleSize = 64 * 1024 * 1024
+
 func (wa *WhatsAppClient) handleMessageHistoryBundle(ctx context.Context, info types.MessageInfo, bundle *waE2E.MessageHistoryBundle) {
 	log := zerolog.Ctx(ctx).With().
 		Str("action", "handle message history bundle").
@@ -1030,7 +1028,10 @@ func (wa *WhatsAppClient) handleMessageHistoryBundle(ctx context.Context, info t
 	}
 	reader, err := zlib.NewReader(bytes.NewReader(data))
 	if err == nil {
-		data, err = io.ReadAll(reader)
+		data, err = io.ReadAll(io.LimitReader(reader, maxHistoryBundleSize+1))
+		if err == nil && len(data) > maxHistoryBundleSize {
+			err = fmt.Errorf("decompressed size exceeds %d bytes", maxHistoryBundleSize)
+		}
 	}
 	if err != nil {
 		log.Err(err).Msg("Failed to decompress message history bundle")
@@ -1042,6 +1043,13 @@ func (wa *WhatsAppClient) handleMessageHistoryBundle(ctx context.Context, info t
 		return
 	} else if len(history.GetMessages()) == 0 {
 		log.Debug().Msg("Message history bundle is empty")
+		return
+	}
+	history.Messages = slices.DeleteFunc(history.Messages, func(msg *waWeb.WebMessageInfo) bool {
+		return msg.GetKey().GetRemoteJID() != info.Chat.String()
+	})
+	if len(history.Messages) == 0 {
+		log.Debug().Msg("Message history bundle has no messages for this chat")
 		return
 	}
 	sender := info.Sender.String()
