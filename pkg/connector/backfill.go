@@ -1,6 +1,7 @@
 package connector
 
 import (
+	"bytes"
 	"cmp"
 	"compress/flate"
 	"compress/zlib"
@@ -23,12 +24,14 @@ import (
 	"go.mau.fi/util/shape"
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/proto/waE2E"
+	"go.mau.fi/whatsmeow/proto/waGroupHistory"
 	"go.mau.fi/whatsmeow/proto/waHistorySync"
 	"go.mau.fi/whatsmeow/proto/waWeb"
 	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
 	"google.golang.org/protobuf/proto"
 	"maunium.net/go/mautrix/bridgev2"
+	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/bridgev2/simplevent"
 
@@ -596,6 +599,9 @@ func (wa *WhatsAppClient) FetchMessages(ctx context.Context, params bridgev2.Fet
 	if portalJID.Server == types.DefaultUserServer {
 		zerolog.Ctx(ctx).Warn().Stringer("portal_jid", portalJID).Msg("FetchMessages called for phone number portal")
 	}
+	if history, ok := params.BundledData.(*waGroupHistory.GroupHistory); ok && params.Forward {
+		return wa.convertHistorySyncMessages(ctx, params.Portal, portalJID, history.GetMessages(), false, false, false)
+	}
 	var markRead bool
 	var startTime, endTime *time.Time
 	var conv *wadb.Conversation
@@ -670,7 +676,7 @@ func (wa *WhatsAppClient) FetchMessages(ctx context.Context, params bridgev2.Fet
 			}
 		}
 	}
-	resp, err := wa.convertHistorySyncMessages(ctx, params.Portal, portalJID, messages, true, !params.Forward && !hasMore)
+	resp, err := wa.convertHistorySyncMessages(ctx, params.Portal, portalJID, messages, true, true, !params.Forward && !hasMore)
 	if err != nil {
 		return nil, fmt.Errorf("failed to convert messages: %w", err)
 	}
@@ -733,6 +739,7 @@ func (wa *WhatsAppClient) convertHistorySyncMessages(
 	portalJID types.JID,
 	messages []*waWeb.WebMessageInfo,
 	explodeOnError bool,
+	deleteStored bool,
 	deleteEverything bool,
 ) (*bridgev2.FetchMessagesResponse, error) {
 	cli := wa.Client
@@ -805,7 +812,7 @@ func (wa *WhatsAppClient) convertHistorySyncMessages(
 		CompleteCallback: func() {
 			if deleteEverything {
 				wa.deleteHistorySyncMessages(ctx, portalJID, 1<<62, oldestTS)
-			} else {
+			} else if deleteStored {
 				wa.deleteHistorySyncMessages(ctx, portalJID, newestTS, oldestTS)
 			}
 			if len(mediaRequests) > 0 {
@@ -970,7 +977,7 @@ func (wa *WhatsAppClient) handleOnDemandHistorySync(ctx context.Context, blob *w
 					Int("message_count", len(messages)).
 					Stringer("end_of_history_type", conv.GetEndOfHistoryTransferType()).
 					Msg("Converting messages to bridge from on-demand history sync")
-				resp, err := wa.convertHistorySyncMessages(ctx, portal, portalJID, messages, false, false)
+				resp, err := wa.convertHistorySyncMessages(ctx, portal, portalJID, messages, false, true, false)
 				if err != nil {
 					return nil, err
 				}
@@ -992,6 +999,96 @@ func isHistoryHDChild(evt *events.Message) bool {
 		child.GetVideoMessage().GetContextInfo().GetPairedMediaType(),
 	)
 	return pairedType == waE2E.ContextInfo_HD_IMAGE_CHILD || pairedType == waE2E.ContextInfo_HD_VIDEO_CHILD
+}
+
+const maxHistoryBundleSize = 64 * 1024 * 1024
+
+func (wa *WhatsAppClient) handleMessageHistoryBundle(ctx context.Context, info types.MessageInfo, bundle *waE2E.MessageHistoryBundle) {
+	log := zerolog.Ctx(ctx).With().
+		Str("action", "handle message history bundle").
+		Str("message_id", info.ID).
+		Stringer("chat_jid", info.Chat).
+		Logger()
+	ctx = log.WithContext(ctx)
+	ownJID, ownLID := wa.JID.ToNonAD(), wa.GetLID().ToNonAD()
+	isReceiver := slices.ContainsFunc(bundle.GetMessageHistoryMetadata().GetHistoryReceivers(), func(receiver string) bool {
+		jid, err := types.ParseJID(receiver)
+		return err == nil && (jid.ToNonAD() == ownJID || jid.ToNonAD() == ownLID)
+	})
+	if info.Chat.Server != types.GroupServer || !isReceiver {
+		log.Debug().Msg("Ignoring message history bundle that isn't for us")
+		return
+	}
+	data, err := wa.Client.DownloadMediaWithPath(
+		ctx, bundle.GetDirectPath(), bundle.GetFileEncSHA256(), bundle.GetFileSHA256(), bundle.GetMediaKey(),
+		"Group History", "group-history", false,
+	)
+	if err != nil {
+		log.Err(err).Msg("Failed to download message history bundle")
+		return
+	}
+	reader, err := zlib.NewReader(bytes.NewReader(data))
+	if err == nil {
+		data, err = io.ReadAll(io.LimitReader(reader, maxHistoryBundleSize+1))
+		if err == nil && len(data) > maxHistoryBundleSize {
+			err = fmt.Errorf("decompressed size exceeds %d bytes", maxHistoryBundleSize)
+		}
+	}
+	if err != nil {
+		log.Err(err).Msg("Failed to decompress message history bundle")
+		return
+	}
+	var history waGroupHistory.GroupHistory
+	if err = proto.Unmarshal(data, &history); err != nil {
+		log.Err(err).Msg("Failed to unmarshal message history bundle")
+		return
+	} else if len(history.GetMessages()) == 0 {
+		log.Debug().Msg("Message history bundle is empty")
+		return
+	}
+	history.Messages = slices.DeleteFunc(history.Messages, func(msg *waWeb.WebMessageInfo) bool {
+		return msg.GetKey().GetRemoteJID() != info.Chat.String()
+	})
+	if len(history.Messages) == 0 {
+		log.Debug().Msg("Message history bundle has no messages for this chat")
+		return
+	}
+	sender := info.Sender.String()
+	for _, msg := range history.Messages {
+		if msg.GetKey().GetFromMe() {
+			msg.Key.FromMe = proto.Bool(false)
+			msg.Participant = proto.String(sender)
+		} else if msg.Key != nil && msg.GetParticipant() == "" && msg.Key.GetParticipant() == "" {
+			msg.Key.FromMe = proto.Bool(true)
+		}
+		for _, reaction := range msg.GetReactions() {
+			if reaction.GetKey().GetFromMe() {
+				reaction.Key.FromMe = proto.Bool(false)
+				reaction.Key.Participant = proto.String(sender)
+			} else if reaction.Key != nil && reaction.Key.GetParticipant() == "" {
+				reaction.Key.FromMe = proto.Bool(true)
+			}
+		}
+	}
+	slices.SortStableFunc(history.Messages, func(a, b *waWeb.WebMessageInfo) int {
+		return cmp.Compare(a.GetMessageTimestamp(), b.GetMessageTimestamp())
+	})
+	slices.Reverse(history.Messages)
+	log.Debug().Int("message_count", len(history.Messages)).Msg("Received message history bundle")
+	wa.UserLogin.QueueRemoteEvent(&simplevent.ChatResync{
+		EventMeta: simplevent.EventMeta{
+			Type:         bridgev2.RemoteEventChatResync,
+			PortalKey:    wa.makeWAPortalKey(info.Chat),
+			CreatePortal: true,
+			LogContext: func(c zerolog.Context) zerolog.Context {
+				return c.Str("history_bundle_id", info.ID)
+			},
+		},
+		CheckNeedsBackfillFunc: func(ctx context.Context, latestMessage *database.Message) (bool, error) {
+			return true, nil
+		},
+		BundledBackfillData: &history,
+	})
 }
 
 func (wa *WhatsAppClient) convertHistorySyncMessage(

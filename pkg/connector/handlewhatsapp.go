@@ -357,6 +357,10 @@ func (wa *WhatsAppClient) handleWAMessage(ctx context.Context, evt *events.Messa
 		}
 		return
 	}
+	if bundle := evt.Message.GetMessageHistoryBundle(); bundle != nil && !evt.Info.IsFromMe && wa.Main.Bridge.Config.Backfill.Enabled {
+		wa.handleMessageHistoryBundle(ctx, evt.Info, bundle)
+		return
+	}
 	if parsedMessageType == "ignore" {
 		return
 	} else if strings.HasPrefix(parsedMessageType, "unknown_protocol_") {
