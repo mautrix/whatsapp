@@ -600,7 +600,7 @@ func (wa *WhatsAppClient) FetchMessages(ctx context.Context, params bridgev2.Fet
 		zerolog.Ctx(ctx).Warn().Stringer("portal_jid", portalJID).Msg("FetchMessages called for phone number portal")
 	}
 	if history, ok := params.BundledData.(*waGroupHistory.GroupHistory); ok && params.Forward {
-		return wa.convertHistorySyncMessages(ctx, params.Portal, portalJID, history.GetMessages(), false, false)
+		return wa.convertHistorySyncMessages(ctx, params.Portal, portalJID, history.GetMessages(), false, false, false)
 	}
 	var markRead bool
 	var startTime, endTime *time.Time
@@ -676,7 +676,7 @@ func (wa *WhatsAppClient) FetchMessages(ctx context.Context, params bridgev2.Fet
 			}
 		}
 	}
-	resp, err := wa.convertHistorySyncMessages(ctx, params.Portal, portalJID, messages, true, !params.Forward && !hasMore)
+	resp, err := wa.convertHistorySyncMessages(ctx, params.Portal, portalJID, messages, true, true, !params.Forward && !hasMore)
 	if err != nil {
 		return nil, fmt.Errorf("failed to convert messages: %w", err)
 	}
@@ -739,6 +739,7 @@ func (wa *WhatsAppClient) convertHistorySyncMessages(
 	portalJID types.JID,
 	messages []*waWeb.WebMessageInfo,
 	explodeOnError bool,
+	deleteStored bool,
 	deleteEverything bool,
 ) (*bridgev2.FetchMessagesResponse, error) {
 	cli := wa.Client
@@ -811,7 +812,7 @@ func (wa *WhatsAppClient) convertHistorySyncMessages(
 		CompleteCallback: func() {
 			if deleteEverything {
 				wa.deleteHistorySyncMessages(ctx, portalJID, 1<<62, oldestTS)
-			} else {
+			} else if deleteStored {
 				wa.deleteHistorySyncMessages(ctx, portalJID, newestTS, oldestTS)
 			}
 			if len(mediaRequests) > 0 {
@@ -976,7 +977,7 @@ func (wa *WhatsAppClient) handleOnDemandHistorySync(ctx context.Context, blob *w
 					Int("message_count", len(messages)).
 					Stringer("end_of_history_type", conv.GetEndOfHistoryTransferType()).
 					Msg("Converting messages to bridge from on-demand history sync")
-				resp, err := wa.convertHistorySyncMessages(ctx, portal, portalJID, messages, false, false)
+				resp, err := wa.convertHistorySyncMessages(ctx, portal, portalJID, messages, false, true, false)
 				if err != nil {
 					return nil, err
 				}
